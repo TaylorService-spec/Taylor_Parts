@@ -22,10 +22,13 @@
 //   NOT a dual read. Nothing in the running system imports it (adminPolicyNoFirebase.test.mjs asserts that).
 //   NOT an inference. A Security Role is never derived from `users/{uid}.role`, a Job Role, operationalRoles, a
 //     title, ownership or a manager. The legacy `role` string is reported in its OWN section, LEGACY_USERS_ROLE,
-//     and never merged into assignments: whether those values migrate at all is an open Owner question.
-//   NOT a migration plan. Scoped and conditioned-role assignments are flagged
-//     MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY because the PostgreSQL evaluator (effectiveObjectAccess.ts
-//     loadPrincipalPolicy) ignores scope and has no Conditions today; copying such a grant would WIDEN it.
+//     and never merged into assignments -- Owner ruling 2026-09-18 §3 fixes it as LEGACY ADVISORY EVIDENCE:
+//     never sufficient alone to create an assignment, and never silently dropped either.
+//   NOT a migration plan. A row carries every BLOCKER that applies to it, under two codes that differ in who
+//     clears them: MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY (scoped or conditioned -- the PostgreSQL evaluator,
+//     effectiveObjectAccess.ts loadPrincipalPolicy, ignores scope and has no Conditions today, so copying such a
+//     grant would WIDEN it) and ROLE_NOT_IN_GOVERNED_CATALOG (§4 -- the named Role is not governed vocabulary or
+//     has no Role in this tenant, so there is nothing to migrate INTO). A blocked row is never migratable.
 //
 // ════════════════════ DELETION CONDITION ════════════════════
 //
@@ -37,8 +40,16 @@ import { FIREBASE_IDENTITY_PROVIDER } from "../principalContext";
 import type { PolicyReader } from "../policyRepository";
 
 export const ROLE_ASSIGNMENT_CENSUS_FORMAT = "EOS_ROLE_ASSIGNMENT_CENSUS";
-export const ROLE_ASSIGNMENT_CENSUS_VERSION = 1;
+export const ROLE_ASSIGNMENT_CENSUS_VERSION = 2;
 export const MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY = "MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY";
+/**
+ * Owner ruling 2026-09-18 §4. An assignment naming a Role the governed catalog does not contain is a
+ * migration BLOCKER, not a note in a list. The two codes differ in WHO clears them:
+ * MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY waits on PostgreSQL gaining Conditions and scope; this one
+ * waits on an administrator fixing the catalog or the data. The census never creates the missing Role
+ * and never normalizes a similar-looking key into it -- either would invent authority.
+ */
+export const ROLE_NOT_IN_GOVERNED_CATALOG = "ROLE_NOT_IN_GOVERNED_CATALOG";
 export const LEGACY_USERS_ROLE = "LEGACY_USERS_ROLE";
 /** The legacy privileged-request status that still awaits a decision (trustedWriterCommands.ts PRIVILEGED_REQUEST_STATUS). */
 export const LEGACY_PRIVILEGED_PENDING_STATUS = "PENDING_APPROVAL";
@@ -238,9 +249,14 @@ export async function buildRoleAssignmentCensus(input: RoleAssignmentCensusInput
   const legacyAssignmentRows = legacyRows
     .map((a) => {
       const resolved = resolution.get(a.subject) ?? null;
-      const refusalReasons: string[] = [];
-      if (a.scopeType !== "global") refusalReasons.push("SCOPED");
-      if (conditioned.has(a.roleKey)) refusalReasons.push("CONDITIONED_ROLE");
+      // Every blocker that applies, each with the code naming who clears it. Both checks below run
+      // independently and both may fire: a key outside the declared catalog is ungoverned vocabulary,
+      // and a key with no Role in THIS tenant has no target to migrate into. Fail-closed either way.
+      const migrationBlockers: { code: string; reason: string }[] = [];
+      if (a.scopeType !== "global") migrationBlockers.push({ code: MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY, reason: "SCOPED" });
+      if (conditioned.has(a.roleKey)) migrationBlockers.push({ code: MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY, reason: "CONDITIONED_ROLE" });
+      if (!catalogKeys.has(a.roleKey)) migrationBlockers.push({ code: ROLE_NOT_IN_GOVERNED_CATALOG, reason: "UNKNOWN_ROLE_ID" });
+      if (!tenantRoleKeys.has(a.roleKey)) migrationBlockers.push({ code: ROLE_NOT_IN_GOVERNED_CATALOG, reason: "NOT_IN_TENANT_CATALOG" });
       return {
         documentId: a.documentId,
         subject: a.subject,
@@ -253,7 +269,8 @@ export async function buildRoleAssignmentCensus(input: RoleAssignmentCensusInput
         legacyQualification: legacyQualification(a, legacyCurrentAccessVersion(profilesById.get(a.subject))),
         roleKeyInCatalog: catalogKeys.has(a.roleKey),
         roleKeyInTenant: tenantRoleKeys.has(a.roleKey),
-        migrationRefusal: refusalReasons.length > 0 ? { code: MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY, reasons: refusalReasons } : null,
+        migrationBlockers,
+        migratable: migrationBlockers.length === 0,
       };
     })
     .sort((x, y) => byText(x.documentId, y.documentId));
@@ -346,14 +363,48 @@ export async function buildRoleAssignmentCensus(input: RoleAssignmentCensusInput
   }
 
   // ── LEGACY_USERS_ROLE: reported SEPARATELY, never merged into assignments ──
+  //
+  // Owner ruling 2026-09-18 §3: LEGACY ADVISORY EVIDENCE. Reported, never sufficient on its own to
+  // create a Security Role assignment, and never silently dropped. Each row carries what an
+  // administrator needs to decide: the value, whether a Role of that key even exists (in the declared
+  // catalog and in THIS tenant), what governed authority the Principal actually holds today, and --
+  // when a Principal has a legacy string and NO governed current assignment source -- an explicit
+  // reconciliation flag. Matching a key is a LOOKUP, not an inference: `matchingCatalogRoleKey` says a
+  // Role of that name exists, never that this Principal should hold it.
   const legacyUsersRoleRows = profileDocs
     .filter((d) => d.data.role !== undefined && d.data.role !== null)
-    .map((d) => ({
-      uid: d.id,
-      role: typeof d.data.role === "string" ? d.data.role : null,
-      malformed: typeof d.data.role !== "string",
-      principalId: resolution.get(d.id)?.principalId ?? null,
-    }))
+    .map((d) => {
+      const role = typeof d.data.role === "string" ? d.data.role : null;
+      const principalId = resolution.get(d.id)?.principalId ?? null;
+      const legacyAssignments = legacyAssignmentRows.filter((r) => r.subject === d.id);
+      const postgresAssignments = principalId === null ? [] : postgresAssignmentRows.filter((r) => r.principalId === principalId);
+      const governedSources = {
+        legacyAssignments: legacyAssignments.length,
+        legacyQualifying: legacyAssignments.filter((r) => r.legacyQualification.qualifies).length,
+        postgresAssignments: postgresAssignments.length,
+        postgresQualifying: postgresAssignments.filter((r) => r.postgresQualification.qualifies).length,
+      };
+      const hasGovernedSource = governedSources.legacyQualifying > 0 || governedSources.postgresQualifying > 0;
+      return {
+        uid: d.id,
+        role,
+        malformed: role === null,
+        principalId,
+        principalStatus: resolution.get(d.id)?.principalStatus ?? null,
+        membershipStatus: resolution.get(d.id)?.membershipStatus ?? null,
+        matchingCatalogRoleKey: role !== null && catalogKeys.has(role) ? role : null,
+        matchingTenantRoleKey: role !== null && tenantRoleKeys.has(role) ? role : null,
+        governedSources,
+        effectiveAccessEvidence: {
+          legacyRoleKeys: [...new Set(legacyAssignments.filter((r) => r.legacyQualification.qualifies).map((r) => r.roleKey))].sort(byText),
+          postgresRoleKeys: [...new Set(postgresAssignments.filter((r) => r.postgresQualification.qualifies).map((r) => r.roleKey ?? `unknown-role:${r.roleId}`))].sort(byText),
+        },
+        requiresExplicitReconciliation: !hasGovernedSource,
+        remediation: hasGovernedSource
+          ? "None required from this value. The Principal's access is already governed by the assignments listed above; the legacy string is advisory only and migrates nothing."
+          : "An administrator must decide this Principal's Security Role explicitly. No assignment is created from the legacy value, and the Principal is not dropped: they hold no qualifying governed assignment in either store today.",
+      };
+    })
     .sort((x, y) => byText(x.uid, y.uid));
   const legacyUsersRoleByValue = countBy(legacyUsersRoleRows, (r) => (r.role === null ? "(malformed)" : r.role), () => "active")
     .map((e) => ({ role: e.key, count: e.active }));
@@ -366,7 +417,9 @@ export async function buildRoleAssignmentCensus(input: RoleAssignmentCensusInput
   }
   const requestsByStatus = [...requestStatus.keys()].sort(byText).map((status) => ({ status, count: requestStatus.get(status) as number }));
 
-  const refusals = legacyAssignmentRows.filter((r) => r.migrationRefusal !== null);
+  const blocked = legacyAssignmentRows.filter((r) => r.migrationBlockers.length > 0);
+  const blockedFor = (reason: string) => blocked.filter((r) => r.migrationBlockers.some((b) => b.reason === reason));
+  const blockedByCode = (code: string) => blocked.filter((r) => r.migrationBlockers.some((b) => b.code === code));
 
   const report = {
     format: ROLE_ASSIGNMENT_CENSUS_FORMAT,
@@ -414,18 +467,28 @@ export async function buildRoleAssignmentCensus(input: RoleAssignmentCensusInput
       legacyRoleIdsNotInCatalog,
       catalogRoleKeysMissingInTenant,
     },
-    migrationRefusals: {
-      code: MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY,
-      count: refusals.length,
-      scoped: refusals.filter((r) => r.migrationRefusal!.reasons.includes("SCOPED")).length,
-      conditionedRole: refusals.filter((r) => r.migrationRefusal!.reasons.includes("CONDITIONED_ROLE")).length,
-      documentIds: refusals.map((r) => r.documentId),
+    migrationBlockers: {
+      count: blocked.length,
+      migratable: legacyAssignmentRows.length - blocked.length,
+      byCode: [
+        { code: MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY, count: blockedByCode(MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY).length, clearedBy: "PostgreSQL gaining Condition and scope evaluation" },
+        { code: ROLE_NOT_IN_GOVERNED_CATALOG, count: blockedByCode(ROLE_NOT_IN_GOVERNED_CATALOG).length, clearedBy: "an administrator completing the governed Role catalog, or correcting the assignment" },
+      ],
+      byReason: {
+        scoped: blockedFor("SCOPED").length,
+        conditionedRole: blockedFor("CONDITIONED_ROLE").length,
+        unknownRoleId: blockedFor("UNKNOWN_ROLE_ID").length,
+        notInTenantCatalog: blockedFor("NOT_IN_TENANT_CATALOG").length,
+      },
+      documentIds: blocked.map((r) => r.documentId),
     },
     diff: { matched, activeStatusMismatch, onlyInFirestore, onlyInPostgres },
     legacyUsersRole: {
       classification: LEGACY_USERS_ROLE,
+      tenant: { key: tenant.key, id: tenantId },
       mergedIntoAssignments: false,
-      note: "The legacy user-profile role string is reported separately. Whether these values migrate is an open Owner question; no Security Role is inferred from them.",
+      note: "LEGACY ADVISORY EVIDENCE (Owner ruling 2026-09-18 §3). Reported, never merged, never dropped. A Security Role is never inferred from this value alone: a Principal with no governed current assignment source is flagged requiresExplicitReconciliation for an administrator to decide.",
+      requiresExplicitReconciliation: legacyUsersRoleRows.filter((r) => r.requiresExplicitReconciliation).length,
       byValue: legacyUsersRoleByValue,
       rows: legacyUsersRoleRows,
     },
@@ -440,13 +503,17 @@ export async function buildRoleAssignmentCensus(input: RoleAssignmentCensusInput
       subjectsWithoutPrincipal: subjectsWithoutPrincipal.length,
       principalsWithoutActiveMembership: principalsWithoutActiveMembership.length,
       legacyRoleIdsMissingInTenant: legacyRoleIdsMissingInTenant.length,
-      migrationRefused: refusals.length,
+      migrationBlocked: blocked.length,
+      migrationBlockedByEvaluatorParity: blockedByCode(MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY).length,
+      migrationBlockedByCatalog: blockedByCode(ROLE_NOT_IN_GOVERNED_CATALOG).length,
+      migratable: legacyAssignmentRows.length - blocked.length,
       matched: matched.length,
       activeStatusMismatch: activeStatusMismatch.length,
       onlyInFirestore: onlyInFirestore.length,
       onlyInPostgres: onlyInPostgres.length,
       postgresEvaluatorIgnoresScope: postgresAssignmentRows.filter((r) => r.evaluatorIgnoresScope).length,
       legacyUsersRole: legacyUsersRoleRows.length,
+      legacyUsersRoleRequiringReconciliation: legacyUsersRoleRows.filter((r) => r.requiresExplicitReconciliation).length,
       privilegedRoleRequestsPendingApproval: requestStatus.get(LEGACY_PRIVILEGED_PENDING_STATUS) ?? 0,
     },
   };
@@ -466,11 +533,13 @@ export function describeRoleAssignmentCensus(census: RoleAssignmentCensus): stri
     `  subjects with no Principal             ${s.subjectsWithoutPrincipal}`,
     `  Principals with no active membership   ${s.principalsWithoutActiveMembership}`,
     `  legacy roleIds with no tenant Role key ${s.legacyRoleIdsMissingInTenant}`,
-    `  ${MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY} ${s.migrationRefused}`,
+    `  migration BLOCKED / migratable         ${s.migrationBlocked} / ${s.migratable}`,
+    `    ${MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY} ${s.migrationBlockedByEvaluatorParity}`,
+    `    ${ROLE_NOT_IN_GOVERNED_CATALOG}         ${s.migrationBlockedByCatalog}`,
     `  matched / status mismatch              ${s.matched} / ${s.activeStatusMismatch}`,
     `  only in Firestore / only in PostgreSQL ${s.onlyInFirestore} / ${s.onlyInPostgres}`,
     `  PostgreSQL scoped (evaluator ignores)  ${s.postgresEvaluatorIgnoresScope}`,
-    `  ${LEGACY_USERS_ROLE} (separate)          ${s.legacyUsersRole}`,
+    `  ${LEGACY_USERS_ROLE} (separate)          ${s.legacyUsersRole} (needing reconciliation ${s.legacyUsersRoleRequiringReconciliation})`,
     `  privileged requests pending approval   ${s.privilegedRoleRequestsPendingApproval}`,
   ].join("\n");
 }
