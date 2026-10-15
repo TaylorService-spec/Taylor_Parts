@@ -107,6 +107,18 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.ok(d.items.some((i) => i.id === assigned && i.status === "SCHEDULED" && i.action.assignee === "Finley Tech"), "the ASSIGNEE is shown as the assignee");
   });
 
+  await t.test("COMPANY ISOLATION (DECISIONS #235): Key figures cover only the caller's authorized companies; an unauthorized company is NOT_AUTHORIZED", async () => {
+    // Finance persona, Taylor home company, no operatingCompany assignment: its default consolidated view is Taylor alone.
+    const f = ok(await mw(ctrl));
+    assert.deepEqual(section(f, "measures").summary.scope.companies, ["taylor"], "consolidated Key figures = the authorized union, never every active company");
+    // Asking for Ventana: every Analysis-backed section refuses; My Work itself still answers.
+    const v = ok(await mw(ctrl, { operatingCompanyId: "ventana" }));
+    for (const key of ["attention", "measures"]) {
+      assert.deepEqual([section(v, key).status, section(v, key).items.length, section(v, key).hasMore], ["NOT_AUTHORIZED", 0, false], key);
+    }
+    assert.equal("summary" in section(v, "measures"), false, "no figure, no scope, for an unauthorized company");
+  });
+
   await t.test("RETAIL SALES: owner and accountable are distinct answers; channel scope holds -- National records never appear", async () => {
     const w = ok(await mw(retail));
     assert.equal(w.persona.key, "retail-sales");

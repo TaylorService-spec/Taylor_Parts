@@ -8390,3 +8390,51 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - No revocation, expansion or change of Finance grants without the exact change set presented for Owner approval.
 
 **Still separately gated:** identity migration, permission/grant changes, financial grants, production deployment and destructive migrations. O-0 remains DEFERRED (#233).
+
+## #235 — OWNER: EOS Core Company Authority V1 — Analysis and My Work company isolation (2026-10-15)
+
+**Status: OWNER APPROVED (security ruling, 2026-10-15).** Applied to Analysis and My Work only. Commercial reads need a separate decision.
+
+**Why.** Lane D's authenticated UAT of #2099 at `a1261486` found that Analysis and My Work Key figures defaulted to a consolidated view of **every active company**, whatever the caller's assignment. `eosAnalysis/analysis.ts` `companyScope` took no actor. As a result, real Ventana figures reached Taylor-only office, retail and national-accounts staff. #2099 is merged and deployed, with security acceptance OPEN until this correction passes authenticated runtime tests.
+
+**Rule (`functions/src/eosOps/companyAuthority.ts` `resolveCompanyAuthority(db, tenantId, principalId)`).** EOS Core owns company authority. It is server-side and read-only, and grants nothing.
+1. **Identity.** An ENABLED Principal with an ACTIVE tenant membership and EXACTLY ONE active Employee link, to an access-eligible Employee (ACTIVE / CONTRACTOR).
+   - No link, more than one link, or a missing or ineligible Employee means **no authority**. Identity ambiguity fails closed.
+2. **Ordinary authority.** That Employee's home operating company (`eos_workforce.employees.operating_company_id`), when it is ACTIVE for the tenant.
+3. **Explicit expansion (Owner Q1).** Every company named by the Principal's ACTIVE, non-stale, tenant-matching `operatingCompany`-scoped role assignments, when that company is ACTIVE.
+   - This confers REACH only, never a capability.
+4. **Never.**
+   - A global Role, Administrator standing, a Firebase claim, or a frontend or client-selected company implies no company.
+   - No role-name exceptions.
+5. **Result.** The union of 2 and 3. Empty means no company data.
+
+**Applied to (Owner Q2).** `readAnalysisWorkspace` and `readMeasureAnalysis`, and through them My Work's attention, insights, Key figures and rental exceptions.
+- **Consolidated or omitted.** The authorized union, never every active company.
+- **An explicit company outside the union.** Refused exactly like an unknown one (`OPERATING_COMPANY_UNKNOWN`), so out of scope == unknown.
+- **No authority.** `COMPANY_AUTHORITY_REQUIRED` (403). My Work shows the affected sections as NOT_AUTHORIZED and still answers.
+- **Unchanged:**
+  - every measure's capability, channel, warehouse and queue rule;
+  - drill-through re-authorization;
+  - action availability;
+  - **Finance's stricter rule** (#232 Phase 1 correction, `financeCompanyAccess.ts`). A finance figure still needs a Financials assignment for every company in scope, and a consolidated finance figure still needs EVERY active company, not just the narrower union.
+
+**Supersedes** #232's "non-finance Analysis measures … are unchanged" **only** for company visibility.
+
+**Not changed (and not authorized here):** role assignments, grants, identities, employee records; Commercial reads; production or Functions deployment.
+
+**Effect.**
+- Callers whose only authority is a Taylor home company see Taylor only.
+- Owner, GM and Finance reach Ventana only through explicit `operatingCompany` assignments (today the Financials company assignments).
+- A Principal with no linked Employee sees no company data.
+
+**Proof.** `functions/test/analysisPostgres.test.mjs` COMPANY-AUTHORITY and FIN-SCOPE; `functions/test/myWorkPostgres.test.mjs` COMPANY ISOLATION. They cover:
+- Taylor-only and Ventana-only isolation;
+- consolidated = the authorized union;
+- an unauthorized explicit company is refused like an unknown one;
+- an assignment expands reach without adding any measure;
+- a disabled assignment is ignored;
+- a global Role without an Employee, with or without assignments, is refused;
+- an ineligible Employee and an absent Principal have no authority;
+- duplicate active links cannot be represented.
+
+**Gate.** Lane D independently reviews the exact PR head and runs an authenticated runtime verification. No merge or deploy without a further Owner authorization.
