@@ -1,0 +1,1 @@
+function e(e){return typeof e==`string`?e.trim().toLowerCase():``}var t=`nameLower`;export{e as n,t};

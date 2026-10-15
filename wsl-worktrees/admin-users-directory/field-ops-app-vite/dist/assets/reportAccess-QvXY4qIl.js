@@ -1,0 +1,1 @@
+var e=Object.freeze([`report.customer.read`,`report.contact.read`,`report.location.read`,`report.equipment.read`]),t=Object.freeze({create:`report.definition.create`,read:`report.definition.read`,rename:`report.definition.rename`,duplicate:`report.definition.duplicate`,delete:`report.definition.delete`}),n=Object.freeze(Object.values(t));export{n,e as r,t};
