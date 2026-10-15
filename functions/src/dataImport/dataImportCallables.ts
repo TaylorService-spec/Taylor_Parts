@@ -95,6 +95,7 @@ import {
   FirestoreCatalogWriterClosedError,
   FirestoreCatalogNotCurrentError,
 } from "../catalogMaster/catalogWriterState.js";
+import { assertFirestoreEquipmentWriterOpen, FirestoreEquipmentWriterClosedError } from "../eosOps/equipmentWriterState.js";
 import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
@@ -243,6 +244,13 @@ export function mapError(err: unknown): HttpsError {
       "failed-precondition",
       "Inventory Import is unavailable on this legacy import runtime: it resolves Part references against the "
       + "Firestore catalog, which is no longer current truth.",
+      { code: err.code },
+    );
+  }
+  if (err instanceof FirestoreEquipmentWriterClosedError) {
+    return new HttpsError(
+      "failed-precondition",
+      "Equipment Import is unavailable on this legacy import runtime: the Equipment register authority has moved to PostgreSQL.",
       { code: err.code },
     );
   }
@@ -414,8 +422,8 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
     //              catalog is still CURRENT during the rollback window, so this read stays legal there and
     //              stops only once PostgreSQL is ACTIVE and the Firestore copy has become a snapshot.
     //
-    // NOTHING ELSE IS TOUCHED. CUSTOMERS has its own CRM guard above; EQUIPMENT and SERVICE_HISTORY reach
-    // no catalog object at all and keep their present behaviour exactly. Staging, preview and listing are
+    // NOTHING ELSE IS TOUCHED. CUSTOMERS has its own CRM guard above and EQUIPMENT its own register guard below;
+    // SERVICE_HISTORY reaches no catalog object at all and keeps its present behaviour exactly. Staging, preview and listing are
     // untouched for every entity type, including these two -- an administrator can still load a file and
     // see what it would do; what is refused is EXECUTION against an authority that has moved.
     //
@@ -424,6 +432,9 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
     // honest answer on this runtime is a refusal, not a fallback.
     if (staged.entityType === "PARTS") assertFirestoreCatalogWriterOpen("part.import");
     if (staged.entityType === "INVENTORY") assertFirestoreCatalogReadCurrent("dataImport.inventory.partReference");
+    // EQUIPMENT REGISTER, the same shape (Owner ruling D-1): the register authority is eos_ops.equipment and the
+    // Firestore `equipment` collection is FROZEN, so an equipment import is refused whole before the claim.
+    if (staged.entityType === "EQUIPMENT") assertFirestoreEquipmentWriterOpen("equipment.import");
     const claimed = beginExecution(staged, actorUid, new Date().toISOString());
     if (!(await store.claimForExecution(claimed))) {
       // Someone else claimed it between the read and the write. Refusing is correct:

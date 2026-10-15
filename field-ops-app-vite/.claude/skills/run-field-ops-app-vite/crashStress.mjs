@@ -22,7 +22,7 @@ const BASE = "https://eos-platform-sandbox.web.app";
 const SKILL = "D:/Taylor_Parts-eos/field-ops-app-vite/.claude/skills/run-field-ops-app-vite";
 const { signInPersona, seedAuthenticatedSession } = await import(`file:///${SKILL}/deployedSession.mjs`);
 
-const persona = process.argv[2] ?? "admin";
+const persona = process.argv[2] ?? "administrator";
 const THROTTLE = process.argv[3] === "slow";
 const session = await signInPersona(persona);
 const browser = await chromium.launch();

@@ -52,7 +52,7 @@ const { loadSandboxPersona } = await import(L("scripts/sandboxCredentials.mjs"))
 
 const REGION = "us-central1";
 /** The administrator this script acts AS. A real principal, holding real authority, audited as itself. */
-const ACTOR_PERSONA = "owner";
+const ACTOR_PERSONA = "ownerExecutive"; // the canonical role key (sandboxRoleIdentityRegistry), never a legacy alias
 
 // TARGET AUTHORITY ONLY -- the runtime question is NOT solved here.
 //

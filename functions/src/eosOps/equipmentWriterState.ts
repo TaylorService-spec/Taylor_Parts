@@ -22,3 +22,24 @@ export function assertEquipmentWriterAuthorityCoherent(state: EquipmentWriterAut
   }
 }
 assertEquipmentWriterAuthorityCoherent(EQUIPMENT_WRITER_AUTHORITY);
+
+/** The server-side legacy Firestore Equipment writers this freeze guards. Data Import is the only one still deployed. */
+export type FirestoreEquipmentWriterId = "equipment.import";
+
+export class FirestoreEquipmentWriterClosedError extends Error {
+  readonly code: "FIRESTORE_EQUIPMENT_WRITER_FROZEN" | "FIRESTORE_EQUIPMENT_WRITER_RETIRED";
+  constructor(readonly writer: FirestoreEquipmentWriterId, readonly state: "FROZEN" | "RETIRED") {
+    super(state === "FROZEN"
+      ? `the Firestore Equipment writer ${writer} is frozen; the Equipment register authority is PostgreSQL (eos_ops.equipment)`
+      : `the Firestore Equipment writer ${writer} is retired; Equipment is written through the PostgreSQL register`);
+    this.name = "FirestoreEquipmentWriterClosedError";
+    this.code = state === "FROZEN" ? "FIRESTORE_EQUIPMENT_WRITER_FROZEN" : "FIRESTORE_EQUIPMENT_WRITER_RETIRED";
+  }
+}
+
+/** First act of every server-side legacy Firestore Equipment writer. A no-op only while Firestore is OPEN. */
+export function assertFirestoreEquipmentWriterOpen(writer: FirestoreEquipmentWriterId, authority: EquipmentWriterAuthority = EQUIPMENT_WRITER_AUTHORITY): void {
+  if (writer !== "equipment.import") throw new Error(`unknown server-side Firestore Equipment writer ${String(writer)}`);
+  assertEquipmentWriterAuthorityCoherent(authority);
+  if (authority.firestore !== "OPEN") throw new FirestoreEquipmentWriterClosedError(writer, authority.firestore);
+}

@@ -379,7 +379,7 @@ test("A SIGNED-OUT RUN IS REFUSED, never measured", () => {
   // this gate, which then reported a PRECONDITION ERROR only because the tab rail was missing. Every
   // measurement from a sign-in screen reports clean: no tables, no raw ids, no enum leaks. That is
   // indistinguishable from a genuinely healthy family.
-  assert.match(code, /assertSignedIn\(page, "admin"\)/);
+  assert.match(code, /assertSignedIn\(page, "administrator"\)/); // the canonical role key (UAT credential single source)
 });
 
 // ── RACE, found by two runs of ONE bundle disagreeing.
