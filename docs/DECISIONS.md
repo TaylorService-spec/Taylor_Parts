@@ -8328,3 +8328,28 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 **Scoped-only holders.** A principal holding `finance.payment.read` only through a company-scoped assignment reads Finance and Analysis finance measures at that company; the `financials.payments` / `analysis.workspace` navigation doors remain flat-earned (the surface catalog admits a scoped door only on a list read), so such a principal has no menu entry. No such principal exists or is proposed.
 
 **Governance (proposed, NOT executed).** A `financeCompanyAccess` Role holding exactly `finance.payment.read`, assigned per company. Until assigned, every Finance user is refused (fail closed): the assignments must be applied before this deploys.
+
+## #233 — OWNER: O-0 repository privacy is DEFERRED to the final delivery stage (2026-10-15)
+
+**Status: DEFERRED — OWNER DIRECTED.**
+
+**Decision.**
+1. Do not change the visibility of `TaylorService-spec/Taylor_Parts` now. Repository privacy (O-0 in the EOS product program plan, `docs/architecture/eos-product-program.md` §3) is revisited as a **final commercial-release readiness item**.
+2. O-0 is **not** a dependency or blocker for:
+   - the Firebase exit (O-1);
+   - EOS Core authority;
+   - the customer deployment architecture (O-9);
+   - the UX redesign;
+   - employee UAT;
+   - nonproduction development.
+
+   All previously authorized work continues.
+3. Strict protections stay in force while the repository is public:
+   - **Never commit** credentials, customer information or sensitive evidence.
+   - The existing secret-scanning and repository security controls stay active, including the `gitleaks` check on pull requests and the Firebase exit and equivalence guards.
+   - Sensitive local evidence stays outside git: the 2026-10-14 cleanup evidence is local only, credentials are in Keeper, and production and migration evidence is in the encrypted restricted-Drive archive.
+4. **Do not reopen this decision** unless a verified security exposure requires immediate action.
+
+**Context.**
+- The SaaS readiness assessment (PR #2054, OD-2) and the product program plan both recommended making the repository private. The Owner has sequenced that to the end of delivery.
+- A 2026-10-14 review classified the committed `executionModeToken` (`functions/authpr4/production-authorization.json`) as a non-secret execution marker; there is no exposure that requires reopening.
