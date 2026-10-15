@@ -68,9 +68,9 @@ excess elsewhere. **P3** = already compact, or a placeholder.
 | Inbound Work | `/service/inbound-work` | `service/InboundWorkWorkspace.jsx:684` | Compact | P3 | — |
 | Job Assignments | `/service/job-assignments` | `jobs/Jobs.jsx:159` | Compact | P3 | — |
 | Jobs | `/service/dispatch` | `dispatch/Dispatch.jsx:159` | Hand-rolled `<h2>Dispatch</h2>` (≠ "Jobs"); card per job | P3 | — |
-| Dispatcher Board | `/service/dispatcher-board` | `dispatcherBoard/DispatcherBoard.jsx:516` | ~72-word always-visible rules paragraph; ~78-word "Board Rules" footer; "This Session" header | **P1** | — (Lane A A9 plans card work: coordinate) |
-| Scheduling (hidden) | `/service/scheduling` | `scheduling/SchedulingWorkspace.jsx:168` | Compact | P3 | — |
-| Dispatch Board (hidden) | `/service/dispatch-scheduling` | `dispatch/DispatchSchedulingWorkspace.jsx:195` | 27-word instruction | P3 | — |
+| Dispatcher Board | `/service/dispatcher-board` | `dispatcherBoard/DispatcherBoard.jsx:516` | ~72-word always-visible rules paragraph; ~78-word "Board Rules" footer; "This Session" header | **P1** | **Scheduling lane — coordinate** (owns the board and its compact redesign; `modules/dispatcherBoard/*`, `domain/dispatchBoardGeometry.js`) |
+| Scheduling (hidden) | `/service/scheduling` | `scheduling/SchedulingWorkspace.jsx:168` | Compact | P3 | **Scheduling lane — coordinate** |
+| Dispatch Board (hidden) | `/service/dispatch-scheduling` | `dispatch/DispatchSchedulingWorkspace.jsx:195` | 27-word instruction | P3 | **Scheduling lane — coordinate** |
 | Coordinated Visits | `/service/coordinated-visits` | `service/CoordinatedVisitsWorkspace.jsx:203` | Compact; Sample Data banner must stay | P3 | — |
 | Coordinated Mission | `/service/coordinated-mission` | `mobile/CoordinatedMissionView.jsx:129` | Compact | P3 | — |
 | Technician Workspace | `/service/technician-workspace` | `mobile/FieldMode.jsx:226`, `technician/TechnicianShell.jsx` | Compact | P3 | — |
@@ -177,10 +177,10 @@ explanations under it may move to a tip).
 | 4 | Administration — configuration | Duplicate Rules, Warehouse Racking, System and Sales Configuration, Email & Communications, Integrations | Integrations: Owner to choose "FAQ in a tip/disclosure" vs "move to the user guide" |
 | 5 | Inventory | Parts Manager / Warehouse Manager / Reorder Queue (one component), Truck Inventory, Receiving, Cycle Counts, Parts Catalog, Catalog Admin, Manufacturers, Warehouses | — |
 | 6 | Purchasing | Purchase Orders, Receipts, Suppliers | — |
-| 7 | Service | Dispatcher Board (rules → tip/disclosure; footer → tip), Jobs header, Inventory & Supply Overview | Dispatcher Board: Lane A A9 / Dispatch domain acceptance |
+| 7 | Service | Jobs header, Inventory & Supply Overview | The scheduling board is the Scheduling lane (below) |
 | 8 | Sales & Rental | Rental (empty tables collapse to one line) | — |
 | 9 | Insights | Report Builder, Analysis | Analysis after #2105 |
-| Handoff | Not this lane | My Dashboard (Lane A); nav-label drift (Lane A A3); Financials pages and Financial Policy (Finance lane); Data Import and Equipment (Lane C); Workflows (reserved); Audit Logs (after #1965) | Hand each the standard + components |
+| Handoff | Not this lane | Dispatcher Board, Scheduling and Dispatch Board (**Scheduling lane**, `work/eos-employee-shift-schedule`: reuses the shared components, standard §9); My Dashboard (Lane A); nav-label drift (Lane A A3); Financials pages and Financial Policy (Finance lane); Data Import and Equipment (Lane C); Workflows (reserved); Audit Logs (after #1965) | Hand each the standard + components |
 
 Each rollout PR: shared components only, no reads or permissions changed, wording moved not deleted, before/after frames at
 1440 and 375 from `test/__visual__/renderCompactUx.test.jsx`, and an assertion in `test/compactUxStandard.test.jsx` that the

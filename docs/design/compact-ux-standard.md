@@ -125,3 +125,30 @@ a card with an illustration and a paragraph.
   visual harness (`test/__visual__/`, `VISUAL=1`).
 - Reserved files (navigation, My Work, AdminWorkflows, Work Order detail, data import, equipment) are
   migrated only by, or with a handoff from, the lane that owns them (`docs/engineering/ACTIVE_WORKSTREAMS.md`).
+
+## 9. Component reference (stable import paths)
+
+Other lanes (Scheduling, Lane A, Finance) reuse these instead of building their own. Paths are under
+`field-ops-app-vite/src/`; the primitives are also exported from `shared/ui/primitives/index.js`. A change to a
+prop contract below is a Lane UX change and is recorded here first.
+
+| Need | Component | Import | Props that matter |
+|---|---|---|---|
+| Page title, one-line subtitle, actions | `PageHeader` | `shared/ui/primitives` | `title`, `description` (one line), `help` (InfoTip), `actions`, `eyebrow` |
+| Workspace page (header + context + attention + work + aside) | `WorkspaceShell` | `shared/ui/WorkspaceShell.jsx` | `title`, `help`, `actions`, `context`, `attention`, `supporting`, `density` |
+| Section title inside a page | `SectionHeader` | `shared/ui/primitives` | `title`, `level`, `actions` (keep `description` to one line or move it to an InfoTip in `title`) |
+| Search / filters / sort row | `Toolbar` | `shared/ui/primitives` | `label`, children (each page owns its controls) |
+| View chips | `FilterBar` | `shared/ui/FilterBar.jsx` | `options`, `activeKey`, `onChange`, `variant` |
+| Secondary explanation | `InfoTip` | `shared/ui/primitives` | `label` ("About …"), children = plain text |
+| Field label + help + hint + error | `Field` | `shared/ui/form` | `id`, `label`, `help` (tip), `hint` (visible), `error`, `required` |
+| Status in a table or inline | `StatusPill` | `shared/ui/StatusPill.jsx` | `tone`, `label` |
+| Status on its own line | `StatusIndicator` | `shared/ui/primitives` | `tone`, `label` |
+| Banner above the work ("needs attention") | `AttentionBand` | `shared/ui/AttentionBand.jsx` | `items` (severity BLOCKING/ATTENTION), `ariaLabel` |
+| Empty / filtered-empty | `EmptyState` | `shared/ui/EmptyState.jsx` | `variant` (`database`/`filtered`), `title`, `message`, `guidance`, `action` |
+| Loading / denied / unavailable / not activated | `HonestState` | `shared/ui/HonestState.jsx` | `state` (`HONEST_STATE.*`), `subject`, `detail`, `onRetry` |
+| Compact list of destinations or items | `.fo-compact-list` | `index.css` | rows of name + `.fo-compact-list__summary` + optional InfoTip |
+| Small label/value facts | `.fo-facts` | `index.css` | a `<dl>` |
+
+Tones come from `shared/ui/tone.js` (one vocabulary for pills, indicators and bands). There is no separate
+"StatusBadge" or "Banner" component; `StatusPill`/`StatusIndicator` and `AttentionBand` are those, and a new one is not
+added.
