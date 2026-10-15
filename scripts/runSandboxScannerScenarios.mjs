@@ -40,7 +40,7 @@ console.log("-- setup (governed commands, admin/partsManager) --");
 // The human code the put-away/pick scenarios type is therefore READ BACK from the result, never invented.
 const POSITION = (Number(RUN.slice(-4)) % 900) + 1;
 async function makeBin(warehouseId, bay, idempotencyKey) {
-  const r = await callAs("admin", "createBin", { warehouseId, area: "SCN", aisle: "S", bay, position: POSITION, idempotencyKey });
+  const r = await callAs("administrator", "createBin", { warehouseId, area: "SCN", aisle: "S", bay, position: POSITION, idempotencyKey });
   console.log(`   createBin SCN S${bay}-${POSITION} @ ${warehouseId}:`, r.ok ? `${r.result?.outcome} ${r.result?.code}` : `${r.code} ${r.message ?? ""}`.slice(0, 90));
   return r.ok ? r.result.code : null;
 }
@@ -274,14 +274,14 @@ for (const [name, data] of [
 // technician's governed truck, and the scenario sends to exactly that.
 console.log("\n-- 13. Technician incoming transfers (governed read) --");
 const receivableIds = async () => {
-  const r = await callAs("technician", "listMyReceivableTransfers", {});
+  const r = await callAs("serviceTechnician", "listMyReceivableTransfers", {});
   return r.ok ? r.result.transfers.map((t) => t.transferOrderId) : null;
 };
 await expectRefused("13 the caller cannot name a truck", "technician", "listMyReceivableTransfers",
   { truckId: truck }, "validation", "the server derives the truck");
 await expectRefused("13 no receive authority, no list", "partsManager", "listMyReceivableTransfers", {},
   "gate", "the read rides inventory.transfer.receive");
-const mine = await callAs("technician", "listMyReceivableTransfers", {});
+const mine = await callAs("serviceTechnician", "listMyReceivableTransfers", {});
 record("13 technician's own truck resolves", "technician", "truck named by the server",
   mine.ok ? `truck ${mine.result.truck?.locationId}` : `${mine.code}: ${String(mine.message ?? "").slice(0, 80)}`, mine.ok,
   mine.ok ? "" : "prerequisite: the technician persona needs exactly one ACTIVE truck in the Truck Registry");
@@ -312,7 +312,7 @@ if (mine.ok) {
     record("13 a completed transfer leaves the list", "technician", "absent", after?.includes(toMe.id) ? "STILL LISTED" : "absent", Boolean(after) && !after.includes(toMe.id));
   }
   // Put the other truck's stock where it was going, so no sandbox transfer is left in transit.
-  if (toOther?.ok) await callAs("admin", "receiveTransferOrder", { transferOrderId: toOther.id });
+  if (toOther?.ok) await callAs("administrator", "receiveTransferOrder", { transferOrderId: toOther.id });
 }
 
 // ═════════ report ═════════

@@ -34,7 +34,7 @@ const ref = (type, locationId) => ({ type, locationId });
 const key = (tag) => `${tag}-${RUN}`;
 
 const onHand = async (partId) => {
-  const r = await callAs("admin", "getPartBalance", { partId });
+  const r = await callAs("administrator", "getPartBalance", { partId });
   return r.ok ? r.result?.onHand : null;
 };
 
@@ -42,7 +42,7 @@ console.log(`BIN RELEASE QUICK GATE -- run ${RUN}\n`);
 
 // ═════════ setup: bins through the governed command ═════════
 async function makeBin(warehouseId, position) {
-  const r = await callAs("admin", "createBin", { warehouseId, area: "QG", aisle: "Z", bay: 1, position, idempotencyKey: key(`qgbin-${warehouseId}-${position}`) });
+  const r = await callAs("administrator", "createBin", { warehouseId, area: "QG", aisle: "Z", bay: 1, position, idempotencyKey: key(`qgbin-${warehouseId}-${position}`) });
   console.log(`   createBin ${warehouseId} QG-Z01-${position}:`, r.ok ? r.result.outcome : `${r.code} ${String(r.message ?? "").slice(0, 80)}`);
   return r.ok ? r.result.binId : null;
 }
@@ -81,7 +81,7 @@ record("4 two parts, two lines, both governed", "partsAssociate", "relocated x2"
 
 // ═════════ 6-7. serialized ═════════
 console.log("\n-- 6-7. serialized --");
-const eq = await callAs("admin", "getAvailableEquipment", { partId: SERIAL_PART });
+const eq = await callAs("administrator", "getAvailableEquipment", { partId: SERIAL_PART });
 const unit = eq.ok ? (eq.result.availableEquipment ?? []).find((u) => u.currentLocationId === WH) : null;
 if (!unit) {
   record("6 serialized relocation", "partsAssociate", "a unit at wh-main", "no available unit at wh-main", false, "seed a serialized unit to exercise 6-7");

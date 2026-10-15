@@ -416,7 +416,7 @@ async function main() {
   const { signInPersona } = await import(
     pathToFileURL(join(REPO_ROOT, "field-ops-app-vite", ".claude", "skills", "run-field-ops-app-vite", "deployedSession.mjs")).href
   );
-  const session = await signInPersona("admin");
+  const session = await signInPersona("administrator");
   const actorUid = session.uid ?? session.localId ?? "sbx-admin";
 
   // Phase 1 — SOURCE FACTS (Admin SDK). Idempotent: set(merge) at a deterministic id.

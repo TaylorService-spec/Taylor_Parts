@@ -62,29 +62,29 @@ async function main() {
   const PART = 'PRT-1005', TECH_ID = 'tech-sbx-01', UNIT_MINOR = 5000, COMPANY = 'TAYLOR';
 
   // 1. Opportunity
-  let r = await call('createOpportunity', 'owner', { accountId: ACCOUNT, ownerEmployeeId: OWNER_EMP, salesChannel: 'RETAIL', lines: [{ kind: 'PART', ref: PART, qty: 1 }], idempotencyKey: key('opp') });
-  state.opportunityId = r.opportunityId; log('createOpportunity', 'owner', 'PASS', `opportunityId=${r.opportunityId} stage=${r.stage}`);
+  let r = await call('createOpportunity', 'ownerExecutive', { accountId: ACCOUNT, ownerEmployeeId: OWNER_EMP, salesChannel: 'RETAIL', lines: [{ kind: 'PART', ref: PART, qty: 1 }], idempotencyKey: key('opp') });
+  state.opportunityId = r.opportunityId; log('createOpportunity', 'ownerExecutive', 'PASS', `opportunityId=${r.opportunityId} stage=${r.stage}`);
 
   // 2. lifecycle transitions to DECISION
   for (const stage of ['QUALIFYING', 'SOLUTION', 'QUOTING', 'CUSTOMER_REVIEW', 'DECISION']) {
-    r = await call('transitionOpportunity', 'owner', { opportunityId: state.opportunityId, toStage: stage, idempotencyKey: key(`stage-${stage}`) });
-    log('transitionOpportunity', 'owner', 'PASS', `-> ${r.stage}`);
+    r = await call('transitionOpportunity', 'ownerExecutive', { opportunityId: state.opportunityId, toStage: stage, idempotencyKey: key(`stage-${stage}`) });
+    log('transitionOpportunity', 'ownerExecutive', 'PASS', `-> ${r.stage}`);
   }
   // 3. WON
-  r = await call('transitionOpportunity', 'owner', { opportunityId: state.opportunityId, outcome: 'WON', idempotencyKey: key('won') });
-  log('transitionOpportunity(WON)', 'owner', 'PASS', `stage=${r.stage} outcome=${r.outcome}`);
+  r = await call('transitionOpportunity', 'ownerExecutive', { opportunityId: state.opportunityId, outcome: 'WON', idempotencyKey: key('won') });
+  log('transitionOpportunity(WON)', 'ownerExecutive', 'PASS', `stage=${r.stage} outcome=${r.outcome}`);
 
   // 4. Sales Order (priced, with source Opportunity lineage)
-  r = await call('createSalesOrder', 'owner', { accountId: ACCOUNT, ownerEmployeeId: OWNER_EMP, salesChannel: 'RETAIL', locationId: LOCATION, sourceOpportunityId: state.opportunityId, lines: [{ kind: 'PART', ref: PART, orderedQty: 1, unitPrice: UNIT_MINOR }], idempotencyKey: key('so') });
-  state.salesOrderId = r.salesOrderId; log('createSalesOrder', 'owner', 'PASS', `salesOrderId=${r.salesOrderId}`);
+  r = await call('createSalesOrder', 'ownerExecutive', { accountId: ACCOUNT, ownerEmployeeId: OWNER_EMP, salesChannel: 'RETAIL', locationId: LOCATION, sourceOpportunityId: state.opportunityId, lines: [{ kind: 'PART', ref: PART, orderedQty: 1, unitPrice: UNIT_MINOR }], idempotencyKey: key('so') });
+  state.salesOrderId = r.salesOrderId; log('createSalesOrder', 'ownerExecutive', 'PASS', `salesOrderId=${r.salesOrderId}`);
 
   // 5. allocation
-  r = await call('allocateSalesOrder', 'owner', { salesOrderId: state.salesOrderId });
-  log('allocateSalesOrder', 'owner', 'PASS', `readiness=${r.readiness} counts=${JSON.stringify(r.counts ?? {})}`);
+  r = await call('allocateSalesOrder', 'ownerExecutive', { salesOrderId: state.salesOrderId });
+  log('allocateSalesOrder', 'ownerExecutive', 'PASS', `readiness=${r.readiness} counts=${JSON.stringify(r.counts ?? {})}`);
 
   // 6. service -> Work Order
-  r = await call('createServiceForSalesOrder', 'owner', { salesOrderId: state.salesOrderId });
-  state.workOrderId = r.workOrderId; log('createServiceForSalesOrder', 'owner', 'PASS', `workOrderId=${r.workOrderId} woNumber=${r.woNumber}`);
+  r = await call('createServiceForSalesOrder', 'ownerExecutive', { salesOrderId: state.salesOrderId });
+  state.workOrderId = r.workOrderId; log('createServiceForSalesOrder', 'ownerExecutive', 'PASS', `workOrderId=${r.workOrderId} woNumber=${r.woNumber}`);
 
   // 7. dispatch chain (admin/dispatcher)
   await call('transitionWorkOrder', 'dispatcher', { workOrderId: state.workOrderId, action: 'MarkReady' }); log('WO MarkReady', 'dispatcher', 'PASS', '-> READY_TO_DISPATCH');
@@ -96,16 +96,16 @@ async function main() {
 
   // 8. technician execution chain (own assignment)
   for (const action of ['Accept', 'Travel', 'Arrive', 'WorkStart']) {
-    const rr = await call('transitionWorkOrder', 'technician', { workOrderId: state.workOrderId, action });
-    log(`WO ${action}`, 'technician', 'PASS', `-> ${rr.status}`);
+    const rr = await call('transitionWorkOrder', 'serviceTechnician', { workOrderId: state.workOrderId, action });
+    log(`WO ${action}`, 'serviceTechnician', 'PASS', `-> ${rr.status}`);
   }
   // 9. technician records PART actuals
-  r = await call('updateWorkOrderExecutionData', 'technician', { workOrderId: state.workOrderId, qtyUsedUpdates: [{ sku: PART, delta: 1 }], idempotencyKey: key('actuals') });
-  log('updateWorkOrderExecutionData', 'technician', 'PASS', `qtyUsed ${PART}+1`);
+  r = await call('updateWorkOrderExecutionData', 'serviceTechnician', { workOrderId: state.workOrderId, qtyUsedUpdates: [{ sku: PART, delta: 1 }], idempotencyKey: key('actuals') });
+  log('updateWorkOrderExecutionData', 'serviceTechnician', 'PASS', `qtyUsed ${PART}+1`);
 
   // 10. Complete -> SO fulfillment write-back
-  r = await call('transitionWorkOrder', 'technician', { workOrderId: state.workOrderId, action: 'Complete' });
-  log('WO Complete', 'technician', 'PASS', `-> ${r.status} (fulfillment write-back fires)`);
+  r = await call('transitionWorkOrder', 'serviceTechnician', { workOrderId: state.workOrderId, action: 'Complete' });
+  log('WO Complete', 'serviceTechnician', 'PASS', `-> ${r.status} (fulfillment write-back fires)`);
 
   // read the governed SO to get the exact committed currency + lineId + fulfilledQty (no inventing)
   const soDoc = (await db.collection('sales_orders').doc(state.salesOrderId).get()).data();
@@ -114,13 +114,13 @@ async function main() {
   console.log(`SO committed: currency=${soDoc.currency} state=${soDoc.state} line=${soLine.lineId} ordered=${soLine.orderedQty} allocated=${soLine.allocatedQty} fulfilled=${soLine.fulfilledQty} unitPrice=${soLine.unitPrice}`);
 
   // 11. invoice issuance
-  r = await call('issueInvoice', 'owner', {
+  r = await call('issueInvoice', 'ownerExecutive', {
     companyId: COMPANY, accountId: ACCOUNT, salesOrderId: state.salesOrderId, currency: state.currency,
     dueDate: t0 + 30 * 86400000, billingAction: 'BILL_NOW',
     lines: [{ salesOrderLineId: state.soLineId, kind: 'PART', ref: PART, billableQty: state.fulfilledQty || 1, unitPriceMinor: UNIT_MINOR, taxMinor: 0 }],
     idempotencyKey: key('invoice'),
   });
-  state.invoiceId = r.invoiceId; log('issueInvoice', 'owner', 'PASS', `invoiceId=${r.invoiceId} number=${r.invoiceNumber} total=${r.totalMinor}`);
+  state.invoiceId = r.invoiceId; log('issueInvoice', 'ownerExecutive', 'PASS', `invoiceId=${r.invoiceId} number=${r.invoiceNumber} total=${r.totalMinor}`);
 
   // 12. final read verification (admin, read-only)
   const opp = (await db.collection('opportunities').doc(state.opportunityId).get()).data();

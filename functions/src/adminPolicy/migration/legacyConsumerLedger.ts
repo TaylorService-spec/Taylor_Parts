@@ -288,13 +288,9 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     replacementAuthority: JOB_ROLE, replacementPr: null, status: "BLOCKED",
     blockedReason: "the write-time vocabulary and its labels retire with the legacy field, after K",
   }),
-  entry({
-    path: "field-ops-app-vite/src/hooks/useAssignableEmployees.js",
-    consumer: "the assignable-Employee hook, filtered by requiredOperationalRole",
-    terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} + eligible employment status, read from PostgreSQL`,
-    replacementPr: null, status: "NOT_STARTED", blockedReason: null,
-  }),
+  // field-ops-app-vite/src/hooks/useAssignableEmployees.js (the Firestore assignable-Employee hook) was DELETED by the
+  // Firebase-exit slice PR #2103: EmployeeAssignmentPicker now requires an injected governed source, and both live
+  // callers already inject the EOS read hooks/useReorderAssignmentTargets.js. A deleted file is no longer a consumer.
   // THE NEXT THREE ENTRIES ARE ONE FILTER, AND THEIR TARGET CODE IS PARTS_OPERATIONS.
   //
   // All three pass the legacy operationalRole PARTS_ASSOCIATE to the assignable-Employee picker. They previously

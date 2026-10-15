@@ -138,7 +138,7 @@ async function main() {
     process.exit(2);
   }
 
-  const acquirer = await signInPersona("admin");
+  const acquirer = await signInPersona("administrator");
   const request = {
     partId: DEFAULT_PART,
     serialNo: GATE_SERIAL,
@@ -188,7 +188,7 @@ async function main() {
   let deniedDetail = "(no second persona available)";
   let deniedOk = null;
   try {
-    const technician = await signInPersona("technician");
+    const technician = await signInPersona("serviceTechnician");
     const denied = await callAs(technician, "acquireSerializedAsset", request);
     deniedOk = denied.error?.status === "PERMISSION_DENIED" || denied.httpStatus === 403;
     deniedDetail = `status=${denied.error?.status ?? denied.httpStatus} outcome=${denied.result?.outcome ?? "(none)"}`;

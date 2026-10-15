@@ -208,7 +208,7 @@ async function main() {
 
   const apiKey = sandboxWebApiKey();
   const dispatcher = await signIn("dispatcher", apiKey);
-  const technician = await signIn("technician", apiKey);
+  const technician = await signIn("serviceTechnician", apiKey);
   console.log(`\nScheduling Functional Gate -- ${SANDBOX_PROJECT}`);
   console.log(`dispatcher uid ${dispatcher.uid} | technician uid ${technician.uid}\n`);
 

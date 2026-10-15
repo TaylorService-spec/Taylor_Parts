@@ -14,7 +14,7 @@ import LifecycleBand from "../../shared/ui/LifecycleBand.jsx";
 import WorkOrderActions from "../controlTower/WorkOrderActions";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import CustomerSchedulingLinkPanel from "./CustomerSchedulingLinkPanel.jsx";
-import { useWorkOrderPartsPlanCapability } from "../../access/useWorkOrderPartsPlanCapability.js";
+import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities.js";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
@@ -86,13 +86,21 @@ import {
 export default function WorkOrderDetailPage() {
   const { workOrderId } = useParams();
   const navigate = useNavigate();
-  const { role, user } = useAuth();
+  const { role } = useAuth();
 
   const backToWorkOrders = () => navigate(
     objectListPathWithState(OBJECT_LIST_KEY.WORK_ORDERS, savedListState(OBJECT_LIST_KEY.WORK_ORDERS)),
   );
 
-  const partsPlanCapability = useWorkOrderPartsPlanCapability(user);
+  // "Edit parts plan" is OFFERED from the caller's own EOS Work Order capabilities
+  // (readMyWorkOrderCapabilities): the same PostgreSQL-resolved set setWorkOrderPartsPlan re-checks
+  // server-side (O-2: EOS Core is the authority; this read only decides what to show). Fail closed:
+  // loading/failed hold nothing, so the editor shows its resolving / not-enabled copy instead.
+  const myWorkOrderCapabilities = useMyWorkOrderCapabilities();
+  const partsPlanCapability = {
+    hasCapability: myWorkOrderCapabilities.has,
+    resolving: myWorkOrderCapabilities.status === "loading",
+  };
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
   const { context: readinessContext } = useWorkOrderReadinessContext(workOrderId);
   // useEquipmentDoc returns { equipment, loading, error } — NOT { data }. Destructuring `data`
