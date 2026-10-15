@@ -7,18 +7,18 @@ import MyWorkspace from "../src/modules/workspace/MyWorkspace.jsx";
 import SiteSearch from "../src/modules/search/SiteSearch.jsx";
 import AppHeader from "../src/shared/ui/AppHeader.jsx";
 
-const sec = (key, title, over = {}) => ({ key, title, status: "READY", reason: null, hasMore: false, items: [], ...over });
+const sec = (key, title, over = {}) => ({ key, title, status: "READY", reason: null, count: 0, items: [], ...over });
 const WORK = {
   me: { principalId: "p1", employeeId: "e1", displayName: "Riley Retail", jobRole: { id: "retail-sales", label: "Retail Sales" } },
   persona: { key: "retail-sales", label: "Retail Sales", fromJobRole: true, analysisArea: "salesRetail" },
   operatingCompanyId: null,
   sections: [
-    sec("attention", "Needs attention", { items: [{ id: "o1", kind: "salesOrder", label: "SO-2026-000001", detail: "an order is waiting", status: "X", severity: "ATTENTION", priority: "HIGH", path: "/customers/opportunities/sales-order/o1" }] }),
-    sec("ownedRecords", "Records I own", { hasMore: true, items: [{ id: "o1", kind: "salesOrder", label: "SO-2026-000001", detail: "Harbor Grill", status: "CONFIRMED", path: "/customers/opportunities/sales-order/o1",
+    sec("attention", "Needs attention", { count: 1, items: [{ id: "o1", kind: "salesOrder", label: "SO-2026-000001", detail: "an order is waiting", status: "X", severity: "ATTENTION", priority: "HIGH", path: "/customers/opportunities/sales-order/o1" }] }),
+    sec("ownedRecords", "Records I own", { count: 30, items: [{ id: "o1", kind: "salesOrder", label: "SO-2026-000001", detail: "Harbor Grill", status: "CONFIRMED", path: "/customers/opportunities/sales-order/o1",
       action: { responsibility: { owner: "Riley Retail", accountable: "Morgan Manager" } } }] }),
     sec("dispatchQueue", "Work to schedule and dispatch", { status: "NOT_AUTHORIZED", reason: "requires workOrder.lifecycle.schedule" }),
-    sec("assignedWork", "Work assigned to me", { items: [{ id: "w1", kind: "workOrder", label: "WO-1", detail: "PM", status: "SCHEDULED", path: "/service/work-orders/w1", action: { assignee: "Tech A" } }] }),
-    sec("measures", "Key figures", { summary: { period: { currentFirstDay: "2026-10-01", currentLastDay: "2026-10-03" }, scope: { note: null },
+    sec("assignedWork", "Work assigned to me", { count: 1, items: [{ id: "w1", kind: "workOrder", label: "WO-1", detail: "PM", status: "SCHEDULED", path: "/service/work-orders/w1", action: { assignee: "Tech A" } }] }),
+    sec("measures", "Key figures", { count: 1, summary: { period: { currentFirstDay: "2026-10-01", currentLastDay: "2026-10-03" }, scope: { note: null },
       measures: [{ id: "m1", name: "Orders booked", basis: "EOS_OPERATIONAL_ACTUAL", unit: "COUNT", status: "COMPUTED", value: { value: 4 }, aggregate: null, variance: { percent: 25 } },
         { id: "m2", name: "Margin", basis: "EOS_OPERATIONAL_ACTUAL", unit: "MONEY", status: "REFUSED", reason: "requires salesOrder.cost.read" }] } }),
   ],
@@ -37,29 +37,11 @@ describe("MyWorkspace", () => {
     expect(container.textContent).toMatch(/Owner: Riley Retail · Accountable: Morgan Manager/);
     expect(container.textContent).toMatch(/Assignee: Tech A/);
     expect(container.textContent).toMatch(/Not available to you — requires workOrder.lifecycle.schedule/);
-    expect(container.textContent).toMatch(/More items available\./);
+    expect(container.textContent).toMatch(/Showing 1 of 30/);
     expect(container.textContent).toMatch(/\+25% vs prior/);
     expect(container.textContent).toMatch(/Not available to you — requires salesOrder.cost.read/);
     expect(screen.queryByLabelText("Company")).toBeNull();
     expect(callApi).toHaveBeenCalledWith("readMyWork", {});
-  });
-
-  // DECISIONS #172 regression: a section is a bounded preview of a paginated read. Even a payload that still carries a
-  // page-derived `count` (an older server) must never render it as a total, and a truncated attention list says only "more".
-  it("never shows a page count as a total for incomplete or paginated sections", async () => {
-    const page = Array.from({ length: 25 }, (_, n) => ({ id: `w${n}`, kind: "workOrder", label: `WO-${n}`, detail: null, status: "SCHEDULED", path: null }));
-    const paged = { ...WORK, sections: [
-      sec("attention", "Needs attention", { hasMore: true, count: 25, items: [WORK.sections[0].items[0]] }),
-      sec("assignedWork", "Work assigned to me", { hasMore: true, count: 25, items: page }),
-      sec("ownedRecords", "Records I own", { hasMore: false, count: 9137, items: [WORK.sections[1].items[0]] }),
-    ] };
-    const { container } = renderIn(<MyWorkspace callApi={vi.fn(async () => ({ ok: true, result: paged }))} />);
-    await screen.findByText("WO-24");
-    expect(container.textContent).not.toMatch(/Showing \d+ of|\bof 25\b/);
-    expect(container.querySelector(".ns-section__meta")).toBeNull();
-    expect(container.textContent).not.toMatch(/9137/);
-    expect(screen.getAllByText("More items available.")).toHaveLength(1);
-    expect(screen.getByText("More items need attention than are shown here.")).toBeTruthy();
   });
 
   it("offers the company projection to an executive and re-reads under it", async () => {

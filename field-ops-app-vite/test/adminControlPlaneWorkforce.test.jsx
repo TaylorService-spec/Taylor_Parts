@@ -246,7 +246,7 @@ describe("EmployeeExperiencePreview", () => {
   it("is visibly a read-only PREVIEW of the server's resolution, read ONCE per open (no render loop), with no workflow actions", async () => {
     const callApi = vi.fn(async () => ({ ok: true, result: { preview: true, readOnly: true, auditEventId: "audit_1", subject: { securityRoleKeys: ["technician"] }, capabilities: ["x"], scopedHeld: [],
       work: { me: { displayName: "Sofia Alvarez", jobRole: { label: "Service Technician" } }, persona: { key: "service-technician", label: "Technician", analysisArea: null }, operatingCompanyId: null,
-        sections: [{ key: "assignedWork", title: "Work assigned to me", status: "READY", reason: null, hasMore: false, items: [{ id: "w1", kind: "workOrder", label: "WO-1", detail: "PM", status: "SCHEDULED", path: "/x", action: { assignee: "Sofia Alvarez" } }] }] } } }));
+        sections: [{ key: "assignedWork", title: "Work assigned to me", status: "READY", reason: null, count: 1, items: [{ id: "w1", kind: "workOrder", label: "WO-1", detail: "PM", status: "SCHEDULED", path: "/x", action: { assignee: "Sofia Alvarez" } }] }] } } }));
     render(<MemoryRouter><EmployeeExperiencePreview employeeId="e-tech" callApi={callApi} /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "View as User (Preview)" }));
     await screen.findByText(/PREVIEW — read-only/);

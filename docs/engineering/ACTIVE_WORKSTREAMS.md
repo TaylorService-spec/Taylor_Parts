@@ -27,17 +27,6 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          My Work P0 — remove page-derived section counts (DECISIONS #172 correction, Owner request 2026-10-15)
-- Agent/session:       Claude Code side session · Role: builder
-- Branch / worktree:   `fix/mywork-count-totals-172` · `D:/Taylor_Parts-wt-mywork`
-- Base commit:         `e86fbfeb4`
-- Owned paths:         `functions/src/eosExperience/myWork.ts` · `field-ops-app-vite/src/modules/workspace/MyWorkspace.jsx` · their tests
-- Shared paths req'd:  this registry
-- Dependencies:        none (separate from the UX redesign and the Firebase exit)
-- Expected outcome:    sections carry a `hasMore` boolean, never a count; UI says "More items available."
-- Protected boundaries:no merge or deploy without Owner authorization
-- Lifecycle stage:     SANDBOX BUILD
-
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
 - Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`
