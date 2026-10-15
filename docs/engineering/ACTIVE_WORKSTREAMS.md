@@ -38,7 +38,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
 - Lifecycle stage:     SANDBOX BUILD
 
-- Capability:          Scheduling lane — Employee Work Schedule in Employee Administration + scheduler→Employee navigation + compact board treatment (Owner requirement 2026-10-15)
+- Capability:          Scheduling lane — Employee Work Schedule in Employee Administration + scheduler→Employee navigation + compact board treatment + Dispatch Map review (Owner requirements 2026-10-15)
 - Agent/session:       Claude Code Scheduling lane session · Role: builder (design first)
 - Branch / worktree:   `work/eos-employee-shift-schedule` · `D:/eos-shift-schedule`
 - Base commit:         `a1261486`

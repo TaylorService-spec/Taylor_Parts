@@ -6,6 +6,7 @@ Developed under the direction of Rudy DiGiorgio using AI-assisted engineering to
 
 Owner requirement: "EOS — Employee shift hours and scheduler navigation" (2026-10-15). Deliverables 1–6 follow in order.
 Decisions needing the Owner are labelled **SCH-D1 … SCH-D4** (§3.4). Each has a recommendation. Everything else is presentation work inside an approved architecture, and those choices are logged in §3.5.
+Added 2026-10-15: "EOS — Dispatch Map functionality review", covered in §7. Its Owner decisions are **MAP-D1 … MAP-D4**.
 
 ---
 
@@ -191,13 +192,87 @@ The prose rule paragraph (`DispatcherBoard.jsx:526-532`) becomes the one-line le
 
 ## 6. Implementation PR plan
 
-Each PR is verified locally (unit tests plus a Vite fixture screenshot), pushed once, and merged only with Owner approval. All PRs touch Scheduling-lane paths only. `DispatchViews.jsx:47,74` (the Lane A2 view-chip semantics) is not edited; if PR-1 needs that file, it rebases on A2.
+Each PR is verified locally (unit tests plus a Vite fixture screenshot), pushed once, and merged only with Owner approval. All PRs touch Scheduling-lane paths only. `DispatchViews.jsx:47,74` holds the Lane A2 view-chip semantics. Line 74 is the Map button's `role="tab"`, so the interim Map fix (§7.4) touches the same element. PR-1 therefore rebases on A2 when A2 lands first. If A2 has not landed, Lane A is asked to carry that one-element change instead.
 
 | PR | Scope | Files | Tests | Gate |
 |---|---|---|---|---|
-| **PR-1 Board: compact states + URL state** (presentation only) | §5 treatments; band from working intervals; label from `workingIntervals` (G-2, G-3, G-4, G-5); now-line; missing-schedule marker (no link yet); `view`/`date`/`techs` query params (G-6) | `dispatchBoardGeometry.js`, `DispatchLaneGrid.jsx`, `DispatcherBoard.jsx`, `DispatchViews.jsx` (cell classes only), `index.css` `.ns-dispatch*` | `dispatchBoardGeometry` unit tests: `nonWorkingSpans()` (break gap, overnight, unconfigured vs working), band union and fallback, label across a mid-week supersession and a non-Phoenix browser zone, `nowLinePercent`. Component tests: elapsed has no pattern class; blocked keeps hatch; unconfigured lane shows the marker and no %; URL round-trip (`?view=week&date=…&techs=…`), unknown params fall back. Existing "absent is not empty" tests stay green. | Owner visual review of before/after screenshots |
+| **PR-1 Board: compact states + URL state** (presentation only) | §5 treatments; band from working intervals; label from `workingIntervals` (G-2, G-3, G-4, G-5); now-line; missing-schedule marker (no link yet); `view`/`date`/`techs` query params (G-6); **interim Map fix (§7.4)**: the Map tab is visibly unavailable and `view=map` falls back to Day | `dispatchBoardGeometry.js`, `DispatchLaneGrid.jsx`, `DispatcherBoard.jsx`, `DispatchViews.jsx` (cell classes plus the Map button), `index.css` `.ns-dispatch*` | `dispatchBoardGeometry` unit tests: `nonWorkingSpans()` (break gap, overnight, unconfigured vs working), band union and fallback, label across a mid-week supersession and a non-Phoenix browser zone, `nowLinePercent`. Component tests: elapsed has no pattern class; blocked keeps hatch; unconfigured lane shows the marker and no %; URL round-trip (`?view=week&date=…&techs=…`), unknown params fall back. Map: the button has `aria-disabled="true"` and a reason linked by `aria-describedby`; activating it does not change the view; `?view=map` renders Day. Existing "absent is not empty" tests stay green. | Owner visual review of before/after screenshots |
 | **PR-2 Employee Work Schedule tab** (read + existing write commands) | §3.2 tab; editor and exceptions over the **existing** commands; offer gated by SCH-D1 A / SCH-D2 A | new `EmployeeWorkSchedule.jsx`, one tab entry in `UserDetail.jsx`, a pure `domain/employeeWorkSchedule.js` (form ↔ `weeklyHours`, break gaps) | Domain: weekly-grid ↔ `weeklyHours` round-trip, overlap and 6-interval limits mirror the server refusals, the no-default rule (an empty form submits nothing). Component: no-schedule honest state; read refused shows the "scheduling roles" state; editor hidden without `workOrder.lifecycle.schedule`; the submit payload equals the command contract; each server refusal code renders its sentence. Postgres: existing `workOrderAvailabilityPostgres.test.mjs` unchanged. | SCH-D1, SCH-D2 |
 | **PR-3 Scheduler → Employee links** | §4 link plus `returnTo`; the marker links to `?tab=schedule` | `DispatchLaneGrid.jsx`, the Week/2 Weeks identity cells, `UserDetail.jsx` back control, a tiny `safeReturnTo()` | Link is present only with Administration visible **and** `employee.record.read`; absent while loading or failed; href uses employeeId (a name change does not change the href); `returnTo` rejects absolute, protocol-relative and non-board paths; Back restores view, date and filter (router test). | SCH-D4 |
 | **PR-4 (optional) Adjusted-shift overrides** | additive table plus a precedence rung plus `set/endTechnicianDayOverride` commands plus a tab section | migration, `workOrderAvailability.ts`, tests | Postgres: precedence (override > company > company-wide), append/end-only triggers, placement accept/refuse inside an extended day, read surfaces the override in `workingIntervals`. | SCH-D3 = A; schema plus business-rule review |
 
-**Not in scope:** company-authority enforcement on the schedule commands (G-9, security lane / #235); production schedule data entry (an operator task after PR-2 ships); Firebase anything.
+**Not in scope:** company-authority enforcement on the schedule commands (G-9, security lane / #235); production schedule data entry (an operator task after PR-2 ships); Firebase anything; the functional Map (§7, separately approved).
+
+---
+
+## 7. Dispatch Map: functionality review (Owner finding, 2026-10-15)
+
+**Finding confirmed.** "Map · locations" is an active-looking tab that switches to a text placeholder. There is no map library, no provider, no coordinates, and no read that returns job addresses for a list of jobs. **The mapping infrastructure is missing**, so this section is a proposal only (§7.3). The one presentation change is the interim fix in §7.4, which is folded into PR-1.
+
+### 7.1 The five questions
+
+| # | Question | Answer and evidence |
+|---|---|---|
+| 1 | Does a map component exist? | **No.** `DispatchMapView` (`DispatchViews.jsx:254-275`) renders one paragraph: "Location-based dispatch is not available…". There is no map, tile, or canvas code. No source file imports leaflet, maplibre, mapbox, Google Maps or a geocoder. The only mention is a legacy Firebase `jobActions.js:24-28` comment: "`geo` (lat/lng) is intentionally not implemented yet". |
+| 2 | Does the button act? | It switches the view: `onClick={() => onChange(DISPATCH_VIEW.MAP)}` (`DispatchViews.jsx:72-82`), which sets `view = MAP` (`DispatcherBoard.jsx:101`). That turns off the availability read (`:138`) and renders the placeholder (`:648`). So it looks active, is announced as a selectable `role="tab"`, and leads nowhere useful. |
+| 3 | What data exists? | **Jobs:** `eos_ops.work_orders` has `operating_company_key`, `customer_id`, `location_id` (NOT NULL), `status`, `work_order_type`, `scheduled_start/end`, and the current assignee (migration `1761004800000:66,72,86,87,92`). **Addresses:** `eos_crm.account_locations` has `address_street/city/state/postal_code` and `access_notes`, but **no country and no latitude/longitude** (migration `1758758400000:251-262`). **The list read** (`listWorkOrders`, `SUMMARY_SELECT` at `workOrderQueries.ts:92-105`) returns `location_name` only, **not** the address. The address comes only from the single-record detail read (`:175`). **Warehouses:** there is no address column. **Technicians:** no position, base or GPS data exists. Employees do have personal `address_*` fields (migration `1759838400000:92-93`), and these must **never** be mapped. |
+| 4 | Is a mapping provider configured? | **No.** `field-ops-app-vite/package.json` has no map dependency. `functions/package.json` has none either; `@google-cloud/secret-manager` is unrelated. The repo has no `.env*` example for the app or the API. The only one is `integrations/chatgpt-eos-intake/.env.example`, which is unrelated. No variable named `*MAP*`, `*GEO*`, `*GOOGLE*` or `*MAPBOX*` exists. |
+| 5 | What visibility applies? | **Board route:** `/service/dispatcher-board`, surface `service.dispatch` (`navConfig.js:316,775`). **Job list:** `listWorkOrders` requires `workOrder.record.read` held unconditionally (`workOrderQueries.ts:200`) and filters **only by tenant** (`:239`), so it is tenant-wide across operating companies. This is the tracked company-isolation gap. DECISIONS #235 and `companyAuthority.ts` are **not on `main` at `a1261486`**; they are on the security lane's branch. **Detail views:** pins would open `/service/work-orders/:workOrderId` (`App.jsx:1217`, governed by the Work Order read) and `/customers/:accountId` (`App.jsx:1124`, mounted only when the Customers domain is visible, and its own read re-checks access). |
+
+### 7.2 Required behaviour vs. what exists
+
+| Owner requirement | Status |
+|---|---|
+| Map separate from route optimization | ✅ by design: display only. No routing, travel time or sequencing. |
+| Functional map of permitted job locations | ❌ blocked: needs coordinates, a provider and a map read (§7.3) |
+| Pin opens the governed Work Order or customer record | Designable: link by `workOrderId` / `customerId`; the customer link is shown only when the Customers domain is visible |
+| Date, technician, company and status filters | Server filters exist for status, window and assignee. The company filter waits on #235. |
+| Distinguish scheduled, unscheduled and location-unavailable | Designable once each job carries `coordinates: null` plus a reason |
+| No fabricated coordinates; no implied live GPS | Enforced by the proposal: only job **sites**, labelled as such |
+| Company isolation and server permissions preserved | ⚠️ the list is tenant-wide today. **The map must not ship before the #235 company filter applies to the read it uses.** |
+
+### 7.3 Minimal implementation proposal (NOT approved; spending and backend decision)
+
+**Shape.** There are four pieces.
+
+1. **Coordinates live with the address they describe.** Add columns to `eos_crm.account_locations` (additive, nullable): `latitude`, `longitude`, `geocode_source`, `geocode_quality`, `geocoded_at`, and `geocoded_address_hash`. A coordinate is valid only while the hash matches the current address, so an edited address means `location unavailable` until it is re-geocoded. Nothing is guessed from a city or postal centroid unless the quality field says so and the pin is drawn as approximate.
+2. **Geocoding is server-side only.** It runs as a job or command when a location is created or its address changes, plus a one-time batch for existing rows. That batch is an Owner-authorized production write. Failures are stored as `geocode_quality = 'UNMATCHED'`, never as a guessed point.
+3. **One new read, `listWorkOrderMapPoints`.** It takes `{ from, to, statuses, assigneeEmployeeId, operatingCompanyKey }` and is gated exactly like `listWorkOrders`, **plus** the #235 company filter. For each job it returns: `workOrderId`, `number`, `status`, `scheduledStart/End`, `assignee`, `operatingCompanyKey`, `customerId/Name`, `locationId/Name`, and `point: {lat, lng, quality} | null` with `unavailableReason`. It is bounded by window and limit, with `hasMore` and no fabricated totals (#172 rule).
+4. **The map view** shows job-site pins only. Pin colour or shape encodes scheduled vs unscheduled, and approximate points are hollow. Jobs without a point go to a "Location unavailable" side list that links to each Work Order. The legend reads "Job sites, not technician positions", and there are no technician markers. A pin opens a compact preview with "Open work order" and, when the Customers domain is visible, "Open customer".
+
+**Provider options.** List prices change, so re-quote from each vendor's current price sheet before approval.
+
+| Option | Basemap | Geocoding | Cost / licensing model | Data leaving EOS | Notes |
+|---|---|---|---|---|---|
+| **A. Open stack (recommended)** | MapLibre GL JS (BSD), with OpenStreetMap-derived vector tiles **self-hosted** as a Protomaps PMTiles file on object storage | US Census Geocoder (public, free, US addresses, batch); fallback is a commercial geocoder whose terms allow storing results | No per-view fee. You pay object storage and egress for a regional tile extract. OSM requires ODbL attribution. | Addresses go to the geocoder only (server-side). No browser key. Tile requests stay on our hosting. | Smallest third-party exposure. The OSM public tile server is **not** allowed for production use, so self-hosting is required. |
+| B. Commercial tiles (MapTiler / Stadia) + MapLibre | Hosted vector tiles | As A | Monthly plan with a free tier and per-request overage | Viewers' tile requests (map extent, not job data) reach the vendor. A browser key, restricted by domain. | Quickest to stand up, and still a small bundle |
+| C. Google Maps Platform | Google basemap | Google Geocoding | Per-load and per-request billing with a monthly credit | Browser key (restricted by referrer and API) plus a server key | **Terms restrict storing geocoded coordinates long-term**, which conflicts with §7.3-1. Use only if Google's current terms permit storage for our use. |
+| D. Mapbox | Mapbox tiles (GL JS v2+ is proprietary-licensed) | Mapbox "permanent" geocoding (paid tier needed to store results) | Per-load and per-request with a free tier | Browser token plus a server token | Mature, but a vendor lock-in and license change from the open stack |
+
+**Security considerations.**
+- Only server-authorized jobs: the map read reuses the list gate plus the company filter, and the client never merges in other reads.
+- No coordinates are computed or guessed in the browser.
+- There is no GPS or technician position anywhere, and Employee home addresses are never geocoded.
+- Geocoder keys are held server-side in the API's secret store (Render env), never in the repo or the bundle.
+- Any browser key is restricted by domain and by API.
+- Sending customer addresses to a third-party geocoder is a data-egress decision for the Owner (MAP-D3).
+- The tile and attribution requirements are met in the legend.
+
+**Owner decisions (map).**
+
+| ID | Decision | Recommendation |
+|---|---|---|
+| MAP-D1 | Build the functional map at all, and when | After the #235 company filter is on `main` |
+| MAP-D2 | Provider | **A** (open stack, self-hosted tiles) |
+| MAP-D3 | Allow sending customer site addresses to an external geocoder (spending plus data egress) | Yes, to the US Census Geocoder, server-side, batch only |
+| MAP-D4 | Schema plus read: coordinate columns on `account_locations` and `listWorkOrderMapPoints` | Approve as one separately reviewed backend PR (migration, read, Postgres tests), then a frontend PR |
+
+### 7.4 Interim fix (presentation only, in PR-1)
+
+The Map tab stays in place so the gap stays visible (the North Star rule: neither faked nor dropped), but it **stops looking active**.
+
+- It reads `Map · not available`, has `aria-disabled="true"`, is muted with `cursor: not-allowed`, and its click does nothing.
+- An `aria-describedby` reason (an InfoTip) says: "No map provider or job coordinates are configured yet. Day, Week and 2 Weeks are the scheduling views."
+- `DISPATCH_VIEW.MAP` is removed from the reachable views, and `?view=map` falls back to Day.
+- The placeholder `DispatchMapView` is deleted because nothing can reach it any more.
+- No backend, provider or dependency change.
