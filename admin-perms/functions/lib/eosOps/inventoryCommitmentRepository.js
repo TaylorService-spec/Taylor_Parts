@@ -1,0 +1,521 @@
+"use strict";
+// The eos_ops inventory COMMITMENT repository, and the Work Order inventory-effect REPLAY authority.
+//
+// ════════════════════ WHAT THIS IS, AND WHAT IT IS NOT ════════════════════
+//
+// This is the persistence boundary for migration 008's two tables. It is the Postgres target for the
+// two census blockers that had none (NB-2: no eos_ops reservation table; NB-7: no home for
+// `inventory_sync_status`), and nothing more. Like `cycleCountRepository.ts`, it is NOT wired to any
+// HTTP operation, is NOT called by the deployed client, and no live writer is cut over to it.
+//
+// IT IS A COMMITMENT AUTHORITY, NOT AN AVAILABILITY AUTHORITY. It answers "how much of this Part is
+// promised" and "what does this Work Order still hold". It deliberately does NOT answer "how much is
+// available", and `reserve()` deliberately does NOT gate on availability — see the refusal below.
+//
+// ════════════════════ COMMITMENT IS NOT MOVEMENT ════════════════════
+//
+// RESERVED / RELEASED / CONSUMED are commitment lifecycle facts. They write to
+// `eos_ops.inventory_commitments` and NEVER to `eos_ops.inventory_movements`; the three labels are
+// not members of `ops_movement_type` and must never be added to it. Migration 008's header carries
+// the full argument; the short version is that a reservation moves no stock, and a commitment row
+// has no location to put in `inventory_movements`' NOT NULL location columns.
+//
+// ════════════════════ WHY THERE IS NO AVAILABILITY CHECK HERE ════════════════════
+//
+// `inventoryService.ts`'s `reserveParts()` refuses a reservation it cannot cover. Reproducing that
+// here would require physical on-hand, and physical on-hand is a sum over `inventory_movements`
+// restricted to ELIGIBLE locations — status==ACTIVE Warehouses, with MOBILE/truck stock excluded.
+// eos_ops cannot express that restriction: migration 005 deliberately created no `locations` table
+// (:32-43), so Warehouse status is still Firestore reference data. A sum over every location in the
+// movement ledger would count truck stock as committable, which is EXACTLY the defect DECISIONS #165
+// removed from the live path ("'all locations' counted truck stock as committable. Both are gone.").
+//
+// So this layer refuses to author a number it cannot author correctly. Availability gating belongs
+// to the governed command that calls this repository, once the reference-data migration named in the
+// cutover-boundary doc has given eos_ops a Warehouse authority to filter on.
+//
+// ════════════════════ WHY THERE IS NO PER-PART MUTEX TABLE ════════════════════
+//
+// The live path holds a per-part sentinel (`inventory_reservation_locks`, `inventoryService.ts:60-65`).
+// That collection is a MUTEX, not a reservation: its own comment says it "contains no quantity and is
+// never read for availability", and it exists only to force a competing reserve into the same
+// Firestore transaction's read set so the availability check cannot be lost to a race. It holds no
+// business fact, so it has NO target table here and must be RETIRED at cutover rather than migrated.
+//
+// Nothing replaces it yet because there is nothing to protect: a mutex guards a check-then-act, and
+// this layer performs no check. When availability gating arrives, the Postgres primitive is a row
+// lock or an advisory lock taken inside the same transaction as the insert — not a second table.
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CommitmentIdempotencyConflictError = exports.InventoryCommitmentError = exports.WORK_ORDER_EFFECT_STATUSES = exports.WORK_ORDER_EFFECT_STATES = exports.COMMITMENT_EVENT_TYPES = void 0;
+exports.recordCommitmentEvent = recordCommitmentEvent;
+exports.reserve = reserve;
+exports.releaseOutstanding = releaseOutstanding;
+exports.reconcileConsumption = reconcileConsumption;
+exports.committedQuantityForPart = committedQuantityForPart;
+exports.outstandingByPart = outstandingByPart;
+exports.readCommitmentHistory = readCommitmentHistory;
+exports.claimWorkOrderEffect = claimWorkOrderEffect;
+exports.markWorkOrderEffectProcessed = markWorkOrderEffectProcessed;
+exports.recordWorkOrderEffectFailure = recordWorkOrderEffectFailure;
+exports.hasProcessedWorkOrderEffect = hasProcessedWorkOrderEffect;
+exports.readWorkOrderEffects = readWorkOrderEffects;
+// THE CATALOG ANSWERS WHAT A PART IS. Composed as a repository in this same Render runtime and run on
+// this command's own client, so the Part facts belong to the same transaction as the commitment rows.
+const postgresPartPolicyAuthority_js_1 = require("../catalogAuthority/postgresPartPolicyAuthority.js");
+const node_crypto_1 = require("node:crypto");
+const operatingCompanyCustody_js_1 = require("./operatingCompanyCustody.js");
+const SCHEMA = "eos_ops";
+const newId = (prefix) => `${prefix}_${(0, node_crypto_1.randomUUID)()}`;
+/** `eos_ops.ops_commitment_event_type`. Disjoint from `ops_movement_type`, by construction. */
+exports.COMMITMENT_EVENT_TYPES = ["RESERVED", "RELEASED", "CONSUMED"];
+/** `eos_ops.ops_work_order_effect_state` — exactly the three keys of `STATE_TRIGGERS`. */
+exports.WORK_ORDER_EFFECT_STATES = ["DISPATCHED", "COMPLETED", "CANCELLED"];
+/** `eos_ops.ops_work_order_effect_status`. */
+exports.WORK_ORDER_EFFECT_STATUSES = ["CLAIMED", "PROCESSED", "FAILED"];
+class InventoryCommitmentError extends Error {
+    code;
+    constructor(code, message) {
+        super(message);
+        this.code = code;
+        this.name = "InventoryCommitmentError";
+    }
+}
+exports.InventoryCommitmentError = InventoryCommitmentError;
+/**
+ * The same idempotency key was already used for a DIFFERENT commitment.
+ *
+ * Mirrors `IdempotencyConflictError` in `inventoryLedger/operationalMovementRepository.ts`: replay
+ * iff the stored row says the same thing, conflict iff it does not. A conflict is never silently
+ * treated as a replay, because that would drop a real commitment on the floor.
+ */
+class CommitmentIdempotencyConflictError extends InventoryCommitmentError {
+    constructor(idempotencyKey) {
+        super("IDEMPOTENCY_CONFLICT", `idempotencyKey ${idempotencyKey} was already used for a different commitment`);
+    }
+}
+exports.CommitmentIdempotencyConflictError = CommitmentIdempotencyConflictError;
+// ════════════════════ writing commitment events ════════════════════
+/**
+ * Append exactly ONE commitment event, idempotently.
+ *
+ * Append-only: a release is a new row, never an edit to the reservation it releases. This module
+ * offers no update and no delete against `inventory_commitments`, and a static test proves it —
+ * the same enforcement posture migration 005 records for `inventory_movements` (:53-59).
+ */
+async function recordCommitmentEvent(db, input) {
+    const companyKey = requireCompany(input.operatingCompanyKey);
+    requirePositiveQuantity(input.quantity, input.partId);
+    requireNonEmpty(input.idempotencyKey, "idempotencyKey");
+    const id = newId("cmt");
+    const { rows } = await db.query(`INSERT INTO ${SCHEMA}.inventory_commitments
+       (id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
+        idempotency_key, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+     RETURNING id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
+               idempotency_key`, [id, input.tenantId, companyKey, input.workOrderId, input.partId, input.eventType,
+        input.quantity, input.idempotencyKey, input.actorId]);
+    const inserted = rows[0];
+    if (inserted)
+        return { outcome: "applied", record: toRecord(inserted) };
+    // The key is taken. Replay only if the stored row says exactly the same thing; otherwise this is a
+    // different commitment wearing an already-used identity, and it must not be swallowed.
+    const existing = await readByIdempotencyKey(db, input.tenantId, input.idempotencyKey);
+    if (!existing) {
+        // The conflicting row belongs to another tenant's key space, which this tenant cannot see. The
+        // unique index is per-tenant, so this is unreachable in practice; it fails closed regardless.
+        throw new InventoryCommitmentError("IDEMPOTENCY_UNREADABLE", "the conflicting commitment is not visible to this tenant");
+    }
+    if (existing.operatingCompanyKey !== companyKey ||
+        existing.workOrderId !== input.workOrderId ||
+        existing.partId !== input.partId ||
+        existing.eventType !== input.eventType ||
+        existing.quantity !== input.quantity) {
+        throw new CommitmentIdempotencyConflictError(input.idempotencyKey);
+    }
+    return { outcome: "replayed", record: existing };
+}
+/**
+ * THE PART IS RESOLVED FROM THE CATALOG, IN THE CALLER'S TRANSACTION, BEFORE ANY ROW IS WRITTEN.
+ *
+ * A commitment line carries a partId and a quantity and nothing else -- no tracking mode, deliberately.
+ * The Firestore path took trackingMode from the Part authority rather than the caller, and this path must
+ * not be the one place that stopped being true: a caller that states tracking mode states whether its own
+ * quantity is countable stock or individually tracked units, which is the decision this repository exists
+ * to make on evidence.
+ *
+ * WHY IT REFUSES A SERIAL PART RATHER THAN COUNTING ONE. `inventory_commitments` promises a QUANTITY of a
+ * Part. A serial-tracked Part's commitment is a promise about NAMED units, and a row saying "3 of PRT-2001"
+ * cannot say which three. The existing validators refuse an unsupported tracking mode rather than
+ * approximating it; this is that same refusal, not a new policy.
+ *
+ * WHEREVER A PROMISE IS MADE. Both `reserve` and `reconcileConsumption` call it, because both author a
+ * commitment. `releaseOutstanding` deliberately does NOT -- see its own note.
+ *
+ * ALL PARTS IN ONE ROUND TRIP, before any write, so a plan whose fourth line names an unknown Part does not
+ * write the first three.
+ */
+async function requireCommittablePartsThroughClient(client, tenantId, partIds) {
+    if (partIds.length === 0)
+        return;
+    const policies = await (0, postgresPartPolicyAuthority_js_1.createPostgresPartPolicyAuthority)().readPartPolicies(client, tenantId, partIds);
+    for (const policy of policies) {
+        if (!policy.found) {
+            throw new InventoryCommitmentError("PART_NOT_FOUND", `part ${policy.partId} is not a Part of this tenant's catalog; a commitment cannot promise an unknown Part`);
+        }
+        if (policy.trackingMode !== "NONE") {
+            throw new InventoryCommitmentError("TRACKING_MODE_NOT_SUPPORTED", `part ${policy.partId} is ${String(policy.trackingMode)}-tracked (control type ${String(policy.controlType)}); `
+                + "a quantity commitment cannot represent individually tracked units");
+        }
+    }
+}
+/**
+ * DISPATCHED. Reserve the requested quantity per Part, ALL-OR-NOTHING in one database transaction.
+ *
+ * Duplicate lines for the same Part are summed FIRST, exactly as `reserveParts()` does
+ * (`inventoryService.ts:229-233`) — a Work Order's plan may legitimately carry two rows for one sku,
+ * and reserving them separately would evaluate each against the same un-decremented figure.
+ *
+ * No availability gate: see this file's header for why that number cannot yet be authored here.
+ */
+async function reserve(pool, ctx, lines) {
+    const byPart = new Map();
+    for (const line of lines) {
+        requirePositiveQuantity(line.quantity, line.partId);
+        byPart.set(line.partId, (byPart.get(line.partId) ?? 0) + line.quantity);
+    }
+    if (byPart.size === 0)
+        return [];
+    return inTransaction(pool, async (client) => {
+        await requireCommittablePartsThroughClient(client, ctx.tenantId, [...byPart.keys()]);
+        const written = [];
+        for (const [partId, quantity] of sorted(byPart)) {
+            written.push(await recordCommitmentEvent(client, {
+                ...ctx, partId, eventType: "RESERVED", quantity,
+                idempotencyKey: derivedKey(ctx.idempotencyKey, "RESERVED", partId),
+            }));
+        }
+        return written;
+    });
+}
+/**
+ * CANCELLED. Release everything this Work Order still holds, per Part, in one transaction.
+ *
+ * READ FROM THE COMMITMENT LEDGER, NOT FROM THE PLAN — the orphan fix DECISIONS #165 landed. A
+ * requirement deleted from the Work Order's plan after dispatch still has commitment rows, so a
+ * plan-driven loop cannot see the reservation it left behind; this derivation can. Safe when nothing
+ * was ever reserved: the map is empty and no row is written.
+ */
+async function releaseOutstanding(pool, ctx) {
+    return inTransaction(pool, async (client) => {
+        // NO CATALOG CHECK HERE, DELIBERATELY. Release is derived from the COMMITMENT LEDGER, not from the
+        // plan, for the orphan reason above -- and that is exactly why it must not ask the catalog whether the
+        // Part is still resolvable. A Part that was deactivated, or whose requirement was deleted, still has
+        // reservation rows this Work Order is holding; refusing to release them because the catalog no longer
+        // likes the Part would strand the stock forever. Validation belongs where a promise is MADE.
+        const outstanding = await outstandingByPart(client, ctx.tenantId, ctx.workOrderId);
+        const written = [];
+        for (const [partId, quantity] of sorted(outstanding)) {
+            if (quantity <= 0)
+                continue;
+            written.push(await recordCommitmentEvent(client, {
+                ...ctx, partId, eventType: "RELEASED", quantity,
+                idempotencyKey: derivedKey(ctx.idempotencyKey, "RELEASED", partId),
+            }));
+        }
+        return written;
+    });
+}
+/**
+ * COMPLETED. Reconcile this Work Order's commitment against what was actually used, in ONE
+ * transaction, per Part:
+ *
+ *   top up   the outstanding reservation to qtyPlanned (RESERVED, only the positive delta)
+ *   consume  the governed actual usage                  (CONSUMED)
+ *   release  the unused remainder qtyPlanned - actual   (RELEASED)
+ *
+ * This is `consumeParts()`'s arithmetic (`inventoryService.ts:389-420`) with one deliberate
+ * difference: overage is REFUSED, not clamped. The live path relies on `mergeQtyUsed()` having
+ * already clamped `qtyUsed` to [0, qtyPlanned] upstream, and its own comment records that the
+ * governed overage path (used > planned) "is a separate build (P1), not handled by this function".
+ * A persistence layer that silently clamped would destroy the evidence that an overage happened.
+ *
+ * NOTHING PHYSICAL HAPPENS HERE. A CONSUMED commitment row reconciles a promise; the physical
+ * removal of stock is a `WORK_ORDER_CONSUMPTION` row in `inventory_movements`, written by whoever
+ * owns that movement. The two are separate facts and this function authors only the first.
+ */
+async function reconcileConsumption(pool, ctx, lines) {
+    const planned = new Map();
+    for (const line of lines) {
+        requirePositiveQuantity(line.qtyPlanned, line.partId);
+        const used = line.qtyUsed ?? line.qtyPlanned;
+        if (!Number.isInteger(used) || used < 0) {
+            throw new InventoryCommitmentError("QUANTITY_INVALID", `qtyUsed for ${line.partId} must be a non-negative integer`);
+        }
+        if (used > line.qtyPlanned) {
+            throw new InventoryCommitmentError("CONSUMPTION_EXCEEDS_PLAN", `qtyUsed ${used} exceeds qtyPlanned ${line.qtyPlanned} for ${line.partId}; the governed overage path is not this function`);
+        }
+        const existing = planned.get(line.partId);
+        planned.set(line.partId, existing
+            ? { qtyPlanned: existing.qtyPlanned + line.qtyPlanned, qtyUsed: existing.qtyUsed + used }
+            : { qtyPlanned: line.qtyPlanned, qtyUsed: used });
+    }
+    if (planned.size === 0)
+        return [];
+    return inTransaction(pool, async (client) => {
+        await requireCommittablePartsThroughClient(client, ctx.tenantId, [...planned.keys()]);
+        const outstanding = await outstandingByPart(client, ctx.tenantId, ctx.workOrderId);
+        const written = [];
+        for (const [partId, { qtyPlanned, qtyUsed }] of sorted(planned)) {
+            const topUp = qtyPlanned - Math.max(0, outstanding.get(partId) ?? 0);
+            if (topUp > 0) {
+                written.push(await recordCommitmentEvent(client, {
+                    ...ctx, partId, eventType: "RESERVED", quantity: topUp,
+                    idempotencyKey: derivedKey(ctx.idempotencyKey, "RESERVED", partId),
+                }));
+            }
+            if (qtyUsed > 0) {
+                written.push(await recordCommitmentEvent(client, {
+                    ...ctx, partId, eventType: "CONSUMED", quantity: qtyUsed,
+                    idempotencyKey: derivedKey(ctx.idempotencyKey, "CONSUMED", partId),
+                }));
+            }
+            const remainder = qtyPlanned - qtyUsed;
+            if (remainder > 0) {
+                written.push(await recordCommitmentEvent(client, {
+                    ...ctx, partId, eventType: "RELEASED", quantity: remainder,
+                    idempotencyKey: derivedKey(ctx.idempotencyKey, "RELEASED", partId),
+                }));
+            }
+        }
+        return written;
+    });
+}
+// ════════════════════ the derivations ════════════════════
+/**
+ * THE COMMITTED-QUANTITY DERIVATION: how much of one Part is promised, across every Work Order.
+ *
+ * `RESERVED − RELEASED`, floored at 0, scoped to one tenant AND one operating company. Never a
+ * stored total — the same rule migration 005 states for balances: a second maintained number is a
+ * second thing to disagree with the evidence.
+ *
+ * CONSUMED IS DELIBERATELY NOT SUBTRACTED, and this is `openCommitment()`'s arithmetic
+ * (`inventoryService.ts:152-160`) preserved EXACTLY, not re-derived. Its reason there is precise:
+ * nothing in the live platform removes consumed stock from physical on-hand, so the consumed
+ * quantity is kept counted as committed to keep it out of availability — "wrong reason, right
+ * number".
+ *
+ * THAT REASON DOES NOT AUTOMATICALLY HOLD IN eos_ops, AND THIS IS THE OPEN QUESTION, NOT A DECISION.
+ * `ops_movement_type` DOES contain `WORK_ORDER_CONSUMPTION`, so a governed consumption here can
+ * record a real physical removal — and once it does, on-hand drops at consumption and a pool that
+ * also kept CONSUMED committed would subtract the same quantity twice. Whether this derivation
+ * switches to `RESERVED − RELEASED − CONSUMED` is exactly the ruling DECISIONS #165 records as
+ * blocking ("the fix is either a physical removal movement at consumption or a change to that
+ * ratified derivation, both of which are inventory-semantics decisions this package is not
+ * authorised to make"). This module preserves the live arithmetic and makes no such decision.
+ *
+ * NOTHING SUBTRACTS THIS FROM ANYTHING YET. There is no availability derivation in eos_ops (see the
+ * header), so no reader can currently be wrong either way.
+ */
+async function committedQuantityForPart(db, tenantId, operatingCompanyKey, partId) {
+    const companyKey = requireCompany(operatingCompanyKey);
+    const { rows } = await db.query(`SELECT COALESCE(SUM(
+              CASE event_type
+                WHEN 'RESERVED' THEN quantity
+                WHEN 'RELEASED' THEN -quantity
+                ELSE 0
+              END), 0) AS committed
+       FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND operating_company_key = $2 AND part_id = $3`, [tenantId, companyKey, partId]);
+    return Math.max(0, Number(rows[0]?.committed ?? 0));
+}
+/**
+ * What ONE Work Order still holds, per Part: `RESERVED − RELEASED − CONSUMED`.
+ *
+ * This is `outstandingByPart()` / `getOutstandingReservation()` (`inventoryService.ts:163-186`,
+ * `:277-291`) and it DOES subtract CONSUMED — correctly and uncontroversially, because a consumed
+ * unit is no longer something this Work Order is still holding a claim on. The pool derivation above
+ * asks a different question and has a different answer; the two are not in tension.
+ *
+ * Parts with no commitment rows are simply absent from the map. A negative value is returned as-is
+ * rather than floored, because a negative outstanding would be evidence of a real accounting fault
+ * (more released or consumed than was ever reserved) and hiding it would hide the fault.
+ */
+async function outstandingByPart(db, tenantId, workOrderId) {
+    const { rows } = await db.query(`SELECT part_id,
+            SUM(CASE event_type WHEN 'RESERVED' THEN quantity ELSE -quantity END) AS outstanding
+       FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND work_order_id = $2
+      GROUP BY part_id
+      ORDER BY part_id`, [tenantId, workOrderId]);
+    return new Map(rows.map((row) => [row.part_id, Number(row.outstanding)]));
+}
+/** Every commitment event this Work Order has raised, oldest first. The evidence behind the sums. */
+async function readCommitmentHistory(db, tenantId, workOrderId) {
+    const { rows } = await db.query(`SELECT id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
+            idempotency_key
+       FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND work_order_id = $2
+      ORDER BY created_at, id`, [tenantId, workOrderId]);
+    return rows.map(toRecord);
+}
+/**
+ * Claim (workOrderId, state) for processing. `true` means this caller owns the attempt.
+ *
+ * ONE STATEMENT, NOT A READ FOLLOWED BY A WRITE. The primary key is the serialization: the INSERT
+ * claims an unseen state; the ON CONFLICT re-claims only a FAILED one; a CLAIMED or PROCESSED row
+ * matches neither and the statement returns no row, which is the refusal. Two concurrent callers
+ * cannot both be told `true` — the second's statement finds the first's row already committed.
+ *
+ * This replaces `claimStateForProcessing()`'s Firestore transaction (`inventoryService.ts:465-476`)
+ * with the same guarantee and no check-then-act window at all.
+ *
+ * A CLAIMED row whose process died is NOT reclaimable, exactly as a Firestore `claims[state]`
+ * survives a crash today. Preserved deliberately; a lease would be new behaviour, not a migration.
+ */
+async function claimWorkOrderEffect(db, tenantId, workOrderId, state, actorId) {
+    const { rows } = await db.query(
+    // Aliased `AS effect` so the DO UPDATE clause can name the EXISTING row's columns unambiguously
+    // beside EXCLUDED's (the proposed row's).
+    `INSERT INTO ${SCHEMA}.work_order_inventory_effects AS effect
+       (tenant_id, work_order_id, state, status, claimed_by)
+     VALUES ($1, $2, $3, 'CLAIMED', $4)
+     ON CONFLICT (tenant_id, work_order_id, state) DO UPDATE
+        SET status = 'CLAIMED',
+            claimed_by = EXCLUDED.claimed_by,
+            claimed_at = now(),
+            attempts = effect.attempts + 1,
+            failure_message = NULL,
+            failed_at = NULL,
+            updated_at = now()
+      WHERE effect.status = 'FAILED'
+     RETURNING effect.work_order_id`, [tenantId, workOrderId, state, actorId]);
+    return rows.length === 1;
+}
+/**
+ * The effect succeeded. Marks it PROCESSED and clears the recorded failure, exactly as
+ * `markStateProcessed()` deletes `failures[state]` on success.
+ *
+ * Only a CLAIMED row may be marked processed. A caller that never claimed cannot declare an effect
+ * applied, and a PROCESSED row cannot be re-marked — both refuse rather than write.
+ */
+async function markWorkOrderEffectProcessed(db, tenantId, workOrderId, state) {
+    const { rowCount } = await db.query(`UPDATE ${SCHEMA}.work_order_inventory_effects
+        SET status = 'PROCESSED', processed_at = now(),
+            failure_message = NULL, failed_at = NULL, updated_at = now()
+      WHERE tenant_id = $1 AND work_order_id = $2 AND state = $3 AND status = 'CLAIMED'`, [tenantId, workOrderId, state]);
+    if (rowCount !== 1) {
+        throw new InventoryCommitmentError("EFFECT_NOT_CLAIMED", `${workOrderId}/${state} is not claimed by anyone; it cannot be marked processed`);
+    }
+}
+/**
+ * The effect failed. Records why, and RELEASES the claim in the same statement.
+ *
+ * Firestore needs two calls for this (`recordFailure()` then `clearClaim()`,
+ * `inventoryService.ts:539-547`) because the failure and the claim live in different map fields. Here
+ * FAILED *is* "not claimed": one status column cannot hold both, so a retry's
+ * `claimWorkOrderEffect()` sees a claimable row with no second write to depend on.
+ */
+async function recordWorkOrderEffectFailure(db, tenantId, workOrderId, state, failureMessage) {
+    requireNonEmpty(failureMessage, "failureMessage");
+    const { rowCount } = await db.query(`UPDATE ${SCHEMA}.work_order_inventory_effects
+        SET status = 'FAILED', failure_message = $4, failed_at = now(), updated_at = now()
+      WHERE tenant_id = $1 AND work_order_id = $2 AND state = $3 AND status = 'CLAIMED'`, [tenantId, workOrderId, state, failureMessage]);
+    if (rowCount !== 1) {
+        throw new InventoryCommitmentError("EFFECT_NOT_CLAIMED", `${workOrderId}/${state} is not claimed by anyone; there is no attempt to fail`);
+    }
+}
+/**
+ * Has this (workOrderId, state) effect already been applied?
+ *
+ * The Postgres form of `hasAppliedReservation()` (`inventoryService.ts:377-382`), which asks the
+ * same question of `processedStates.DISPATCHED`. An unseen Work Order is `false`, never an error:
+ * "never processed" is the honest answer for a Work Order that has had no effect yet.
+ */
+async function hasProcessedWorkOrderEffect(db, tenantId, workOrderId, state) {
+    const { rows } = await db.query(`SELECT status FROM ${SCHEMA}.work_order_inventory_effects
+      WHERE tenant_id = $1 AND work_order_id = $2 AND state = $3`, [tenantId, workOrderId, state]);
+    return rows[0]?.status === "PROCESSED";
+}
+/** Every recorded effect for one Work Order — the operator/runbook read. */
+async function readWorkOrderEffects(db, tenantId, workOrderId) {
+    const { rows } = await db.query(`SELECT tenant_id, work_order_id, state, status, claimed_by, failure_message, attempts
+       FROM ${SCHEMA}.work_order_inventory_effects
+      WHERE tenant_id = $1 AND work_order_id = $2
+      ORDER BY state`, [tenantId, workOrderId]);
+    return rows.map((row) => ({
+        tenantId: row.tenant_id,
+        workOrderId: row.work_order_id,
+        state: row.state,
+        status: row.status,
+        claimedBy: row.claimed_by,
+        failureMessage: row.failure_message,
+        attempts: Number(row.attempts),
+    }));
+}
+function toRecord(row) {
+    return {
+        id: row.id,
+        tenantId: row.tenant_id,
+        operatingCompanyKey: row.operating_company_key,
+        workOrderId: row.work_order_id,
+        partId: row.part_id,
+        eventType: row.event_type,
+        quantity: Number(row.quantity),
+        idempotencyKey: row.idempotency_key,
+    };
+}
+async function readByIdempotencyKey(db, tenantId, idempotencyKey) {
+    const { rows } = await db.query(`SELECT id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
+            idempotency_key
+       FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND idempotency_key = $2`, [tenantId, idempotencyKey]);
+    return rows[0] ? toRecord(rows[0]) : null;
+}
+/**
+ * Refused HERE as well as by the NOT NULL column, so a caller that omitted it gets the reason rather
+ * than a constraint name — the same posture `createSheet` takes in `cycleCountRepository.ts`.
+ */
+function requireCompany(value) {
+    return (0, operatingCompanyCustody_js_1.requireOperatingCompanyKey)(value);
+}
+function requirePositiveQuantity(quantity, partId) {
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+        throw new InventoryCommitmentError("QUANTITY_INVALID", `commitment quantity for ${partId} must be a positive integer; direction is carried by the event type, never by a sign`);
+    }
+}
+function requireNonEmpty(value, field) {
+    if (typeof value !== "string" || value.trim() === "") {
+        throw new InventoryCommitmentError("FIELD_REQUIRED", `${field} is required`);
+    }
+}
+/** Deterministic per-row replay identity, so replaying an operation replays each row it wrote. */
+function derivedKey(base, eventType, partId) {
+    return `${base}:${eventType}:${partId}`;
+}
+/** Stable iteration order, so a multi-row operation writes in the same order on every replay. */
+function sorted(map) {
+    return [...map.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+/**
+ * One transaction around a whole operation. All-or-nothing: a Work Order must never end up holding
+ * half a reservation, which is the same rule `reserveParts()` states ("no partial reservations ever
+ * land"). Never split these writes across round trips outside a transaction.
+ */
+async function inTransaction(pool, run) {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const result = await run(client);
+        await client.query("COMMIT");
+        return result;
+    }
+    catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    }
+    finally {
+        client.release();
+    }
+}
+//# sourceMappingURL=inventoryCommitmentRepository.js.map

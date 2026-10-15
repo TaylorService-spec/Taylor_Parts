@@ -1,0 +1,1 @@
+{"version":3,"file":"crmActivityTypes.js","sourceRoot":"","sources":["../../src/crmActivity/crmActivityTypes.ts"],"names":[],"mappings":";;;AAsBA,8CAEC;AAJY,QAAA,kBAAkB,GAA+B,CAAC,YAAY,EAAE,MAAM,EAAE,SAAS,EAAE,cAAc,EAAE,SAAS,CAAC,CAAC;AAE3H,SAAgB,iBAAiB,CAAC,KAAc;IAC9C,OAAO,OAAO,KAAK,KAAK,QAAQ,IAAK,0BAAwC,CAAC,QAAQ,CAAC,KAAK,CAAC,CAAC;AAChG,CAAC"}

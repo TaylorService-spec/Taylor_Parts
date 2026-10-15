@@ -1,0 +1,1353 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PostgresPolicyRepository = void 0;
+exports.salesChannelLabel = salesChannelLabel;
+// The PostgreSQL PolicyRepository adapter.
+//
+// ════════════════════ THE ONLY FILE THAT KNOWS WHAT A DATABASE IS ════════════════════
+//
+//   EOS service -> PolicyRepository / DAL -> THIS ADAPTER -> PostgreSQL
+//
+// Nothing above the port imports `pg`, sees a row, or knows a column name. The resolver, the
+// commands, the seed and every UI module speak the domain contracts in types.ts; SQL stops here.
+// That boundary is what lets the deployment posture change later -- shared database, dedicated
+// customer database, dedicated environment -- without EOS business code changing.
+//
+// ════════════════════ STANDARD POSTGRESQL, DELIBERATELY ════════════════════
+//
+// The production target is Render, and nothing in this file knows that. No Render API, no
+// Render-specific extension, no managed-platform assumption: the same adapter runs against a local
+// cluster, against CI, and against any managed Postgres. Connection details arrive as injected
+// configuration and are never read from a literal here.
+//
+// ════════════════════ ONE POOL PER PROCESS ════════════════════
+//
+// A Pool is a long-lived resource holding real sockets. Constructing one per request exhausts the
+// server's connection slots under exactly the load that makes it matter, and each new pool starts
+// cold. This adapter therefore RECEIVES a pool; `createPolicyDatabasePool` in policyDatabase.ts
+// makes the single one a process should own.
+//
+// ════════════════════ TRANSACTIONS ════════════════════
+//
+// `transact` takes ONE client out of the pool, runs BEGIN, hands the caller a transaction bound to
+// that client, and COMMITs or ROLLBACKs. Every write in a unit of work therefore lands on the same
+// connection -- which is what makes "a policy change and its access-version bump and its audit
+// event land together or not at all" true rather than hoped for.
+const node_crypto_1 = require("node:crypto");
+const policyRepository_1 = require("./policyRepository");
+const SCHEMA = "eos_policy";
+/** Every id this adapter mints. Opaque above the port; a UUID is simply the cheapest opaque thing. */
+const newId = () => (0, node_crypto_1.randomUUID)();
+const nowIso = () => new Date().toISOString();
+/** A timestamptz comes back as a Date. The domain speaks ISO strings, so the seam converts. */
+function iso(value) {
+    if (value instanceof Date)
+        return value.toISOString();
+    return typeof value === "string" ? value : "";
+}
+function isoOrNull(value) {
+    if (value === null || value === undefined)
+        return null;
+    return iso(value);
+}
+// ════════════════════ row mappers ════════════════════
+//
+// One direction only. The database's names are snake_case and the domain's are camelCase, and the
+// translation lives here so neither side has to know the other's spelling.
+const provenance = (r) => ({
+    createdBy: String(r.created_by),
+    createdAt: iso(r.created_at),
+    updatedBy: String(r.updated_by),
+    updatedAt: iso(r.updated_at),
+});
+const toTenant = (r) => ({
+    id: String(r.id),
+    key: String(r.key),
+    name: String(r.name),
+    status: String(r.status),
+    configurationVersion: Number(r.configuration_version),
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+});
+const toPrincipal = (r) => ({
+    id: String(r.id),
+    externalSubject: String(r.external_subject),
+    identityProvider: String(r.identity_provider),
+    displayName: r.display_name === null || r.display_name === undefined ? null : String(r.display_name),
+    status: String(r.status),
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+});
+const optionalIso = (v) => (v === null || v === undefined ? null : iso(v));
+const toIdentityBinding = (r) => ({
+    id: String(r.id),
+    principalId: String(r.principal_id),
+    identityProvider: String(r.identity_provider),
+    externalSubject: String(r.external_subject),
+    status: String(r.status),
+    createdBy: String(r.created_by),
+    createdAt: iso(r.created_at),
+    reason: String(r.reason),
+    revokedBy: r.revoked_by === null || r.revoked_by === undefined ? null : String(r.revoked_by),
+    revokedAt: optionalIso(r.revoked_at),
+    revokeReason: r.revoke_reason === null || r.revoke_reason === undefined ? null : String(r.revoke_reason),
+});
+const toMembership = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    principalId: String(r.principal_id),
+    status: String(r.status),
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+});
+const toAdminBootstrap = (r) => ({
+    tenantId: String(r.tenant_id),
+    principalId: String(r.principal_id),
+    performedBy: String(r.performed_by),
+    reason: r.reason === null || r.reason === undefined ? null : String(r.reason),
+    performedAt: iso(r.performed_at),
+});
+const toObject = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    key: String(r.key),
+    label: String(r.label),
+    labelPlural: r.label_plural ?? null,
+    description: r.description ?? null,
+    origin: r.origin,
+    lifecycle: r.lifecycle,
+    supportsDelete: r.supports_delete === true,
+    ...provenance(r),
+});
+const toField = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    objectId: String(r.object_id),
+    key: String(r.key),
+    label: String(r.label),
+    description: r.description ?? null,
+    dataType: r.data_type,
+    required: r.required === true,
+    allowedValues: Object.freeze([...(r.allowed_values ?? [])]),
+    // A default is stored as TEXT because one column cannot be four types. The domain's own value is
+    // a string for exactly that reason -- reconstructing a number or boolean here would be guessing
+    // at which, and guessing wrong on a boolean default is a silent behaviour change.
+    defaultValue: r.default_value ?? null,
+    searchable: r.searchable === true,
+    sortable: r.sortable === true,
+    reportable: r.reportable === true,
+    sensitivity: r.sensitivity,
+    referenceTo: r.reference_to ?? null,
+    origin: r.origin,
+    lifecycle: r.lifecycle,
+    ...provenance(r),
+});
+const toRole = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    key: String(r.key),
+    name: String(r.name),
+    description: r.description ?? null,
+    origin: r.origin,
+    protected: r.protected === true,
+    ...provenance(r),
+});
+const toCapability = (r) => ({
+    id: String(r.id),
+    key: String(r.key),
+    description: String(r.description),
+    objectKey: String(r.object_key),
+    actionKey: String(r.action_key),
+    actionKind: String(r.action_kind),
+    displayLabel: String(r.display_label),
+});
+const toDecision = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    roleKey: String(r.role_key),
+    capabilityKey: String(r.capability_key),
+    decision: String(r.decision),
+    requiresCondition: r.requires_condition === true,
+    reason: String(r.reason),
+    actorPrincipalId: String(r.actor_principal_id),
+    auditEventId: String(r.audit_event_id),
+    decidedAt: iso(r.decided_at),
+    supersededAt: isoOrNull(r.superseded_at),
+    supersededBy: r.superseded_by === null || r.superseded_by === undefined ? null : String(r.superseded_by),
+});
+const toGrantCondition = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    grantScope: String(r.grant_scope),
+    grantorKey: String(r.grantor_key),
+    capabilityKey: String(r.capability_key),
+    condition: r.condition,
+    status: String(r.status),
+    establishedBy: String(r.established_by),
+    establishedAt: iso(r.established_at),
+    updatedBy: String(r.updated_by),
+    updatedAt: iso(r.updated_at),
+});
+const toRoleCapability = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    roleId: String(r.role_id),
+    capabilityId: String(r.capability_id),
+    grantedBy: String(r.granted_by),
+    grantedAt: new Date(String(r.granted_at)).toISOString(),
+    ...provenance(r),
+});
+const toPrincipalCapability = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    principalId: String(r.principal_id),
+    capabilityId: String(r.capability_id),
+    grantedBy: String(r.granted_by),
+    grantedAt: new Date(String(r.granted_at)).toISOString(),
+    exceptionReason: r.exception_reason === undefined || r.exception_reason === null ? null : String(r.exception_reason),
+    expiresAt: isoOrNull(r.expires_at),
+    ...provenance(r),
+});
+const toObjectPermission = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    roleId: String(r.role_id),
+    objectId: String(r.object_id),
+    cred: Object.freeze({
+        C: r.can_create === true,
+        R: r.can_read === true,
+        E: r.can_edit === true,
+        D: r.can_delete === true,
+    }),
+    ...provenance(r),
+});
+/** NULL means INHERIT, so a null column is an ABSENT key rather than a `false`. */
+const toFieldOverride = (r) => {
+    const override = {};
+    if (r.can_create !== null)
+        override.C = r.can_create === true;
+    if (r.can_read !== null)
+        override.R = r.can_read === true;
+    if (r.can_edit !== null)
+        override.E = r.can_edit === true;
+    if (r.can_delete !== null)
+        override.D = r.can_delete === true;
+    return {
+        id: String(r.id),
+        tenantId: String(r.tenant_id),
+        roleId: String(r.role_id),
+        fieldId: String(r.field_id),
+        override: Object.freeze(override),
+        ...provenance(r),
+    };
+};
+const toAssignment = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    principalId: String(r.principal_id),
+    roleId: String(r.role_id),
+    scopeType: String(r.scope_type),
+    scopeValue: r.scope_value ?? null,
+    status: r.status,
+    grantedBy: String(r.granted_by),
+    grantedAt: iso(r.granted_at),
+    accessVersionAtGrant: Number(r.access_version_at_grant),
+    ...provenance(r),
+});
+const toWorkflow = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    key: String(r.key),
+    name: String(r.name),
+    description: r.description ?? null,
+    objectKey: r.object_key ?? null,
+    origin: r.origin,
+    activeVersionId: r.active_version_id ?? null,
+    ...provenance(r),
+});
+const toWorkflowVersion = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    workflowId: String(r.workflow_id),
+    version: Number(r.version),
+    status: r.status,
+    publishedAt: isoOrNull(r.published_at),
+    publishedBy: r.published_by ?? null,
+    ...provenance(r),
+});
+const toStep = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    workflowVersionId: String(r.workflow_version_id),
+    key: String(r.key),
+    label: String(r.label),
+    initial: r.is_initial === true,
+    terminal: r.is_terminal === true,
+    ...provenance(r),
+});
+const toAction = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    workflowVersionId: String(r.workflow_version_id),
+    key: String(r.key),
+    label: String(r.label),
+    fromStepKey: String(r.from_step_key),
+    toStepKey: String(r.to_step_key),
+    requiresOwnAssignment: r.requires_own_assignment === true,
+    capabilityKey: r.capability_key ?? null,
+    guardKind: r.guard_kind ?? null,
+    ...provenance(r),
+});
+const toBinding = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    workflowVersionId: String(r.workflow_version_id),
+    actionKey: String(r.action_key),
+    roleId: r.role_id === null || r.role_id === undefined ? null : String(r.role_id),
+    functionalRoleId: r.functional_role_id === null || r.functional_role_id === undefined ? null : String(r.functional_role_id),
+    bindingKind: r.binding_kind ?? "SECURITY_ROLE",
+    ...provenance(r),
+});
+const toInstanceEvent = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    instanceId: String(r.instance_id),
+    actionKey: String(r.action_key),
+    fromStepKey: String(r.from_step_key),
+    toStepKey: String(r.to_step_key),
+    actorUid: String(r.actor_uid),
+    occurredAt: iso(r.occurred_at),
+    reason: r.reason ?? null,
+    eventKind: r.event_kind ?? "TRANSITION",
+    actorPrincipalId: r.actor_principal_id ?? null,
+    fromVersionId: r.from_version_id ?? null,
+    toVersionId: r.to_version_id ?? null,
+    auditEventId: r.audit_event_id ?? null,
+});
+const toInstance = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    workflowVersionId: String(r.workflow_version_id),
+    objectKey: String(r.object_key),
+    recordId: String(r.record_id),
+    currentStepKey: String(r.current_step_key),
+    ...provenance(r),
+});
+const toAudit = (r) => ({
+    id: String(r.id),
+    tenantId: String(r.tenant_id),
+    action: String(r.action),
+    actorUid: String(r.actor_uid),
+    targetKind: String(r.target_kind),
+    targetId: String(r.target_id),
+    before: r.before ?? null,
+    after: r.after ?? null,
+    occurredAt: iso(r.occurred_at),
+    reason: r.reason ?? null,
+});
+// ════════════════════ the adapter ════════════════════
+class PostgresPolicyRepository {
+    pool;
+    /**
+     * @param pool a SHARED, long-lived pool. See policyDatabase.ts -- one per process, never per
+     *             request. This adapter never constructs one, so it cannot accidentally make a second.
+     */
+    constructor(pool) {
+        this.pool = pool;
+    }
+    async transact(actor, fn) {
+        if (!actor?.tenantId)
+            throw new policyRepository_1.PolicyStoreError("a tenant is required");
+        if (!actor?.uid)
+            throw new policyRepository_1.PolicyStoreError("an actor uid is required");
+        const client = await this.pool.connect();
+        try {
+            await client.query("BEGIN");
+            const result = await fn(makeTransaction(client, actor));
+            await client.query("COMMIT");
+            return result;
+        }
+        catch (err) {
+            // ROLLBACK is itself allowed to fail (a dead connection), and swallowing that would hide the
+            // ORIGINAL error behind a secondary one. The original is what the caller needs.
+            try {
+                await client.query("ROLLBACK");
+            }
+            catch {
+                /* the original error is rethrown below */
+            }
+            throw err;
+        }
+        finally {
+            // ALWAYS released. A leaked client is a pool slot gone for the life of the process, and the
+            // symptom appears much later as an unexplained hang.
+            client.release();
+        }
+    }
+    // ── reads. Every one is tenant-scoped in SQL, not in JavaScript after the fact. ──
+    async many(text, values, map) {
+        const { rows } = await this.pool.query(text, values);
+        return rows.map(map);
+    }
+    async one(text, values, map) {
+        const rows = await this.many(text, values, map);
+        return rows[0] ?? null;
+    }
+    // TENANT AND IDENTITY.
+    //
+    // `getTenantByKey` is the one read in this adapter with no tenant predicate, and deliberately so:
+    // a bootstrap must be able to ask whether a tenant exists before there is a tenant to scope by.
+    // It selects ONE tenant by its own natural key and returns nothing owned by it, so it cannot be
+    // turned into a cross-tenant read of policy.
+    getTenantByKey(key) {
+        return this.one(`SELECT * FROM ${SCHEMA}.tenants WHERE key = $1`, [key], toTenant);
+    }
+    getTenant(tenantId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.tenants WHERE id = $1`, [tenantId], toTenant);
+    }
+    getPrincipalBySubject(identityProvider, externalSubject) {
+        return this.one(`SELECT * FROM ${SCHEMA}.principals WHERE identity_provider = $1 AND external_subject = $2`, [identityProvider, externalSubject], toPrincipal);
+    }
+    getPrincipal(principalId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.principals WHERE id = $1`, [principalId], toPrincipal);
+    }
+    // ADDITIONAL IDENTITY BINDINGS (migration 1764200000000). ACTIVE rows only: a revoked binding
+    // resolves to nobody. Read only through principalContext.resolvePrincipalByVerifiedIdentity.
+    getPrincipalByIdentityBinding(identityProvider, externalSubject) {
+        return this.one(`SELECT p.* FROM ${SCHEMA}.principal_identities i
+         JOIN ${SCHEMA}.principals p ON p.id = i.principal_id
+        WHERE i.identity_provider = $1 AND i.external_subject = $2 AND i.status = 'active'`, [identityProvider, externalSubject], toPrincipal);
+    }
+    getActiveIdentityBinding(principalId, identityProvider) {
+        return this.one(`SELECT * FROM ${SCHEMA}.principal_identities
+        WHERE principal_id = $1 AND identity_provider = $2 AND status = 'active'`, [principalId, identityProvider], toIdentityBinding);
+    }
+    listMembershipsForPrincipal(principalId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1 ORDER BY created_at`, [principalId], toMembership);
+    }
+    getMembership(tenantId, principalId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.tenant_memberships WHERE tenant_id = $1 AND principal_id = $2`, [tenantId, principalId], toMembership);
+    }
+    async listTenantPrincipalIds(tenantId) {
+        const { rows } = await this.pool.query(`SELECT principal_id FROM ${SCHEMA}.tenant_memberships WHERE tenant_id = $1 ORDER BY created_at`, [tenantId]);
+        return rows.map((r) => String(r.principal_id));
+    }
+    getAdminBootstrap(tenantId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.tenant_admin_bootstraps WHERE tenant_id = $1`, [tenantId], toAdminBootstrap);
+    }
+    listObjects(tenantId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.objects WHERE tenant_id = $1 ORDER BY key`, [tenantId], toObject);
+    }
+    getObjectByKey(tenantId, key) {
+        return this.one(`SELECT * FROM ${SCHEMA}.objects WHERE tenant_id = $1 AND key = $2`, [tenantId, key], toObject);
+    }
+    listFields(tenantId, objectId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.object_fields WHERE tenant_id = $1 AND object_id = $2 ORDER BY key`, [tenantId, objectId], toField);
+    }
+    listRoles(tenantId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.roles WHERE tenant_id = $1 ORDER BY key`, [tenantId], toRole);
+    }
+    getRoleByKey(tenantId, key) {
+        return this.one(`SELECT * FROM ${SCHEMA}.roles WHERE tenant_id = $1 AND key = $2`, [tenantId, key], toRole);
+    }
+    // THE CAPABILITY CATALOG IS GLOBAL -- no tenant predicate, because `capabilities` has no
+    // tenant_id: a capability means the same thing everywhere and only its GRANTS are per-tenant.
+    listCapabilities() {
+        return this.many(`SELECT id, key, description, object_key, action_key, action_kind, display_label
+         FROM ${SCHEMA}.capabilities ORDER BY object_key, action_key`, [], toCapability);
+    }
+    listRoleCapabilities(tenantId, roleIds) {
+        if (roleIds && roleIds.length === 0)
+            return Promise.resolve([]);
+        return roleIds
+            ? this.many(`SELECT * FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1 AND role_id = ANY($2)`, [tenantId, [...roleIds]], toRoleCapability)
+            : this.many(`SELECT * FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1`, [tenantId], toRoleCapability);
+    }
+    listPrincipalCapabilities(tenantId, principalId) {
+        return principalId
+            // An EXPIRED direct grant confers nothing (migration 1762646400000). Read through to_jsonb so a database
+            // that predates the column still answers.
+            ? this.many(`SELECT pc.* FROM ${SCHEMA}.principal_capabilities pc WHERE pc.tenant_id = $1 AND pc.principal_id = $2
+                     AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`, [tenantId, principalId], toPrincipalCapability)
+            : this.many(`SELECT pc.* FROM ${SCHEMA}.principal_capabilities pc WHERE pc.tenant_id = $1
+                     AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`, [tenantId], toPrincipalCapability);
+    }
+    listObjectPermissions(tenantId, roleIds) {
+        if (roleIds.length === 0)
+            return Promise.resolve([]);
+        return this.many(`SELECT * FROM ${SCHEMA}.role_object_permissions WHERE tenant_id = $1 AND role_id = ANY($2)`, [tenantId, [...roleIds]], toObjectPermission);
+    }
+    listFieldOverrides(tenantId, roleIds) {
+        if (roleIds.length === 0)
+            return Promise.resolve([]);
+        return this.many(`SELECT * FROM ${SCHEMA}.role_field_permission_overrides WHERE tenant_id = $1 AND role_id = ANY($2)`, [tenantId, [...roleIds]], toFieldOverride);
+    }
+    listAssignmentsForPrincipal(tenantId, principalId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.user_role_assignments WHERE tenant_id = $1 AND principal_id = $2 ORDER BY granted_at`, [tenantId, principalId], toAssignment);
+    }
+    async getLinkedEmployeeAccessFact(tenantId, principalId) {
+        // The active link (at most one per Principal per tenant: employee_principal_links_one_active_per_principal), and
+        // the linked Employee's status IN THE SAME TENANT. A LEFT JOIN, so a link to an Employee that does not resolve in
+        // this tenant is reported (employmentStatus null) rather than silently read as "not linked".
+        const rows = await this.many(`SELECT l.employee_id, e.employment_status::text AS employment_status
+         FROM ${SCHEMA}.employee_principal_links l
+         LEFT JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+        WHERE l.tenant_id = $1 AND l.principal_id = $2 AND l.status = 'active'`, [tenantId, principalId], (r) => ({
+            employeeId: String(r.employee_id),
+            employmentStatus: typeof r.employment_status === "string" ? r.employment_status : null,
+        }));
+        if (rows.length === 0)
+            return null;
+        // TWO active links for one Principal is unrepresentable in a governed database (partial unique index); if it is
+        // ever observed, the fact is AMBIGUOUS and fails closed -- never "pick one".
+        if (rows.length > 1)
+            return { employeeId: rows.map((r) => r.employeeId).sort().join(","), employmentStatus: null, ambiguous: true };
+        return rows[0];
+    }
+    getAccessVersion(tenantId, principalId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.principal_access_versions WHERE tenant_id = $1 AND principal_id = $2`, [tenantId, principalId], (r) => ({
+            id: String(r.id),
+            tenantId: String(r.tenant_id),
+            principalId: String(r.principal_id),
+            accessVersion: Number(r.access_version),
+            updatedAt: iso(r.updated_at),
+        }));
+    }
+    listWorkflows(tenantId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflows WHERE tenant_id = $1 ORDER BY key`, [tenantId], toWorkflow);
+    }
+    listWorkflowVersions(tenantId, workflowId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflow_versions WHERE tenant_id = $1 AND workflow_id = $2 ORDER BY version`, [tenantId, workflowId], toWorkflowVersion);
+    }
+    listWorkflowSteps(tenantId, versionId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflow_steps WHERE tenant_id = $1 AND workflow_version_id = $2 ORDER BY key`, [tenantId, versionId], toStep);
+    }
+    listWorkflowActions(tenantId, versionId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflow_actions WHERE tenant_id = $1 AND workflow_version_id = $2 ORDER BY key`, [tenantId, versionId], toAction);
+    }
+    listWorkflowRoleBindings(tenantId, versionId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflow_role_bindings WHERE tenant_id = $1 AND workflow_version_id = $2`, [tenantId, versionId], toBinding);
+    }
+    // The Functional Role catalog lives in eos_workforce (migration 1762819200000). A database migrated to a boundary
+    // before that (the seed-boundary replay) has no catalog, and therefore no Functional Role -- never an error.
+    async listFunctionalRoles(tenantId) {
+        const present = await this.pool.query(`SELECT to_regclass('eos_workforce.functional_roles') IS NOT NULL AS present`);
+        if (present.rows[0]?.present !== true)
+            return [];
+        return this.many(`SELECT tenant_id, id, key, name, status FROM eos_workforce.functional_roles WHERE tenant_id = $1 ORDER BY key`, [tenantId], (r) => ({ tenantId: String(r.tenant_id), id: String(r.id), key: String(r.key), name: String(r.name),
+            status: String(r.status) }));
+    }
+    getWorkflowInstanceById(tenantId, instanceId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.workflow_instances WHERE tenant_id = $1 AND id = $2`, [tenantId, instanceId], toInstance);
+    }
+    listWorkflowInstances(tenantId, versionId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflow_instances WHERE tenant_id = $1 AND workflow_version_id = $2 ORDER BY object_key, record_id`, [tenantId, versionId], toInstance);
+    }
+    listWorkflowInstanceEvents(tenantId, instanceId) {
+        return this.many(`SELECT * FROM ${SCHEMA}.workflow_instance_events WHERE tenant_id = $1 AND instance_id = $2 ORDER BY occurred_at, id`, [tenantId, instanceId], toInstanceEvent);
+    }
+    getWorkflowInstance(tenantId, objectKey, recordId) {
+        return this.one(`SELECT * FROM ${SCHEMA}.workflow_instances WHERE tenant_id = $1 AND object_key = $2 AND record_id = $3`, [tenantId, objectKey, recordId], toInstance);
+    }
+    listAuditEvents(tenantId, limit) {
+        // Ordered ASC and bounded from the END, so "the last N" reads in the order they happened. A
+        // DESC page reversed in JavaScript would be the same rows in a different order, and the callers
+        // that diff before/after sequences care which.
+        return this.many(`SELECT * FROM (
+         SELECT * FROM ${SCHEMA}.audit_events WHERE tenant_id = $1 ORDER BY occurred_at DESC, id DESC LIMIT $2
+       ) recent ORDER BY occurred_at ASC, id ASC`, [tenantId, limit], toAudit);
+    }
+    queryAuditEvents(tenantId, filter) {
+        return this.many(`SELECT * FROM (
+         SELECT * FROM ${SCHEMA}.audit_events
+          WHERE tenant_id = $1
+            AND ($2::text IS NULL OR actor_uid = $2 OR target_id = $2
+                 OR after @> jsonb_build_object('principalId', $2::text) OR before @> jsonb_build_object('principalId', $2::text)
+                 OR after @> jsonb_build_object('granteeKey', $2::text) OR before @> jsonb_build_object('granteeKey', $2::text))
+            AND ($3::text IS NULL OR target_id = $3
+                 OR after @> jsonb_build_object('employeeId', $3::text) OR before @> jsonb_build_object('employeeId', $3::text))
+            AND ($4::text IS NULL
+                 OR after @> jsonb_build_object('granteeKey', $4::text) OR before @> jsonb_build_object('granteeKey', $4::text)
+                 OR after @> jsonb_build_object('roleKey', $4::text) OR before @> jsonb_build_object('roleKey', $4::text)
+                 OR ($5::text IS NOT NULL AND (after @> jsonb_build_object('roleId', $5::text) OR before @> jsonb_build_object('roleId', $5::text))))
+            AND ($6::text IS NULL OR after @> jsonb_build_object('objectKey', $6::text) OR before @> jsonb_build_object('objectKey', $6::text))
+            AND ($7::text IS NULL OR after @> jsonb_build_object('capabilityKey', $7::text) OR before @> jsonb_build_object('capabilityKey', $7::text))
+            AND ($8::text IS NULL OR after @> jsonb_build_object('actionKey', $8::text) OR before @> jsonb_build_object('actionKey', $8::text))
+            AND ($9::text IS NULL OR after @> jsonb_build_object('workflowKey', $9::text) OR before @> jsonb_build_object('workflowKey', $9::text)
+                 OR (target_kind LIKE 'workflow%' AND (after @> jsonb_build_object('key', $9::text) OR before @> jsonb_build_object('key', $9::text))))
+            AND ($10::timestamptz IS NULL OR occurred_at >= $10::timestamptz)
+            AND ($11::timestamptz IS NULL OR occurred_at <  $11::timestamptz)
+          ORDER BY occurred_at DESC, id DESC LIMIT $12
+       ) recent ORDER BY occurred_at ASC, id ASC`, [tenantId, filter.principalId ?? null, filter.employeeId ?? null, filter.roleKey ?? null, filter.roleId ?? null,
+            filter.objectKey ?? null, filter.capabilityKey ?? null, filter.actionKey ?? null, filter.workflowKey ?? null,
+            filter.from ?? null, filter.to ?? null, filter.limit], toAudit);
+    }
+    listRoleCapabilityDecisions(tenantId, options = {}) {
+        return this.many(`SELECT * FROM ${SCHEMA}.role_capability_decisions
+        WHERE tenant_id = $1 AND ($2::boolean = false OR superseded_at IS NULL)
+        ORDER BY role_key, capability_key, decided_at, id`, [tenantId, options.currentOnly !== false], toDecision);
+    }
+    listGrantConditions(tenantId, options = {}) {
+        return this.many(`SELECT * FROM ${SCHEMA}.capability_grant_conditions
+        WHERE tenant_id = $1 AND ($2::boolean = false OR status = 'ACTIVE')
+        ORDER BY grant_scope, grantor_key, capability_key`, [tenantId, options.activeOnly !== false], toGrantCondition);
+    }
+    // Lane SC: governed assignment-scope values, tenant-scoped. Read-only; each type names its one governed source.
+    async listAssignmentScopeValues(tenantId, scopeType) {
+        const q = this.pool;
+        if (scopeType === "operatingCompany") {
+            const { rows } = await q.query(`SELECT operating_company_id FROM ${SCHEMA}.tenant_operating_companies
+          WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY operating_company_id`, [tenantId]);
+            return rows.map((r) => ({ value: String(r.operating_company_id), label: String(r.operating_company_id) }));
+        }
+        if (scopeType === "location") {
+            const { rows } = await q.query(`SELECT id, name FROM eos_ops.warehouses WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY id`, [tenantId]);
+            return rows.map((r) => ({ value: String(r.id), label: String(r.name ?? r.id) }));
+        }
+        if (scopeType === "salesChannel") {
+            // Lane GA: the channels THIS tenant has activated, over the Commercial record vocabulary.
+            const { rows } = await q.query(`SELECT sales_channel::text AS sales_channel FROM ${SCHEMA}.tenant_sales_channels
+          WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY sales_channel::text`, [tenantId]);
+            return rows.map((r) => ({ value: String(r.sales_channel), label: salesChannelLabel(String(r.sales_channel)) }));
+        }
+        return null;
+    }
+}
+exports.PostgresPolicyRepository = PostgresPolicyRepository;
+// ════════════════════ the transaction ════════════════════
+function makeTransaction(client, actor) {
+    const tenantId = actor.tenantId;
+    const q = client;
+    /** Provenance columns, in insert order, for every stamped table. */
+    const stamp = () => {
+        const at = nowIso();
+        return [actor.uid, at, actor.uid, at];
+    };
+    /**
+     * A tenant-scoped fetch inside the transaction.
+     *
+     * A row belonging to ANOTHER tenant reports the same "not found" as one that does not exist.
+     * Distinguishing them would confirm the other tenant's row exists, which is itself a leak.
+     */
+    const requireOwned = async (table, id, kind) => {
+        const { rows } = await q.query(`SELECT * FROM ${SCHEMA}.${table} WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+        if (rows.length === 0)
+            throw new policyRepository_1.PolicyStoreError(`${kind} not found`);
+        return rows[0];
+    };
+    const assertDraftVersion = async (versionId) => {
+        const row = await requireOwned("workflow_versions", versionId, "workflow version");
+        if (row.status !== "DRAFT") {
+            throw new policyRepository_1.PolicyStoreError(`workflow version ${row.version} is ${row.status} and cannot be edited`);
+        }
+        return row;
+    };
+    /** Whether migration 1762732800000 has run on this database. Asked once per transaction. */
+    let controlPlaneColumns = null;
+    const workflowActionsHaveControlPlaneColumns = () => {
+        controlPlaneColumns ??= q.query(`SELECT 1 FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'workflow_actions' AND column_name = 'capability_key'`, [SCHEMA]).then((r) => r.rows.length > 0);
+        return controlPlaneColumns;
+    };
+    /** A workflow trigger refusal (RAISE ... 'WORKFLOW_...') or a unique violation is a store refusal. */
+    const workflowGuarded = async (run) => {
+        try {
+            return await run();
+        }
+        catch (err) {
+            const e = err;
+            if (e?.code === "P0001" && typeof e.message === "string" && e.message.startsWith("WORKFLOW_")) {
+                throw new policyRepository_1.PolicyStoreError(e.message);
+            }
+            if (e?.code === "23505")
+                throw new policyRepository_1.PolicyStoreError("duplicate key: that workflow row already exists");
+            throw err;
+        }
+    };
+    /** Postgres raises 23505 on a unique violation; the domain says so in words. */
+    const asDuplicate = (err, message) => {
+        if (err?.code === "23505")
+            throw new policyRepository_1.PolicyStoreError(message);
+        throw err;
+    };
+    return {
+        // ════════════════════ tenant and identity ════════════════════
+        async createTenant(input) {
+            // The tenant's id IS the actor's tenantId. The caller generated it before opening the
+            // transaction, so every row written in the same unit of work already references a tenant that
+            // exists -- which is what lets "create the tenant and seed it" be one atomic thing.
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.tenants (id, key, name, status, configuration_version, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, now(), now()) RETURNING *`, [tenantId, input.key, input.name, input.status ?? "active", input.configurationVersion ?? 0]);
+                return toTenant(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, `tenant key "${input.key}" already exists`);
+            }
+        },
+        async setTenantConfigurationVersion(id, version) {
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.tenants SET configuration_version = $1, updated_at = now()
+         WHERE id = $2 AND id = $3 RETURNING *`, [version, id, tenantId]);
+            if (rows.length === 0)
+                throw new policyRepository_1.PolicyStoreError("tenant not found");
+            return toTenant(rows[0]);
+        },
+        async createPrincipal(input) {
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.principals
+             (id, external_subject, identity_provider, display_name, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, now(), now()) RETURNING *`, [newId(), input.externalSubject, input.identityProvider, input.displayName ?? null, input.status ?? "active"]);
+                return toPrincipal(rows[0]);
+            }
+            catch (err) {
+                // One subject per provider is one principal. A second would split one human's Roles in half.
+                return asDuplicate(err, "principal already exists for that subject");
+            }
+        },
+        async setPrincipalIdentity(principalId, input) {
+            // TENANT-SCOPED IN SQL, not in JavaScript afterwards. The EXISTS clause is the whole guard:
+            // `principals` is a global table, so without it this statement would re-point ANY Principal in
+            // the installation, which is exactly the cross-tenant write every other method on this adapter
+            // makes unexpressible.
+            let rows;
+            try {
+                ({ rows } = await q.query(`UPDATE ${SCHEMA}.principals p
+              SET identity_provider = $1, external_subject = $2, display_name = $3, updated_at = now()
+            WHERE p.id = $4
+              AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                           WHERE m.principal_id = p.id AND m.tenant_id = $5)
+            RETURNING *`, [input.identityProvider, input.externalSubject, input.displayName ?? null, principalId, tenantId]));
+            }
+            catch (err) {
+                // One subject per provider is one principal, on UPDATE exactly as on INSERT. Re-pointing a
+                // Principal at a subject another one already holds would split one human's Roles in half --
+                // the same failure createPrincipal names, reached from the other direction.
+                return asDuplicate(err, "another principal already holds that identity");
+            }
+            if (rows.length === 0) {
+                throw new policyRepository_1.PolicyStoreError("principal not found in this tenant");
+            }
+            return toPrincipal(rows[0]);
+        },
+        async createPrincipalIdentityBinding(input) {
+            // TENANT-SCOPED IN SQL, exactly like setPrincipalIdentity: `principal_identities` is global, so
+            // the membership EXISTS is what stops one tenant binding a subject to another tenant's Principal.
+            let rows;
+            try {
+                ({ rows } = await q.query(`INSERT INTO ${SCHEMA}.principal_identities
+             (id, principal_id, identity_provider, external_subject, status, created_by, created_at, reason)
+           SELECT $1, p.id, $3, $4, 'active', $5, now(), $6
+             FROM ${SCHEMA}.principals p
+            WHERE p.id = $2
+              AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                           WHERE m.principal_id = p.id AND m.tenant_id = $7)
+           RETURNING *`, [newId(), input.principalId, input.identityProvider, input.externalSubject, input.createdBy, input.reason, tenantId]));
+            }
+            catch (err) {
+                return asDuplicate(err, "that identity is already bound, or the principal already has an active binding");
+            }
+            if (rows.length === 0)
+                throw new policyRepository_1.PolicyStoreError("principal not found in this tenant");
+            return toIdentityBinding(rows[0]);
+        },
+        async revokePrincipalIdentityBinding(principalId, identityProvider, revokedBy, reason) {
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.principal_identities i
+            SET status = 'revoked', revoked_by = $3, revoked_at = now(), revoke_reason = $4
+          WHERE i.principal_id = $1 AND i.identity_provider = $2 AND i.status = 'active'
+            AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                         WHERE m.principal_id = i.principal_id AND m.tenant_id = $5)
+          RETURNING *`, [principalId, identityProvider, revokedBy, reason, tenantId]);
+            if (rows.length === 0)
+                throw new policyRepository_1.PolicyStoreError("no active binding for that principal in this tenant");
+            return toIdentityBinding(rows[0]);
+        },
+        async createTenantMembership(principalId, status) {
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.tenant_memberships
+             (id, tenant_id, principal_id, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, now(), now()) RETURNING *`, [newId(), tenantId, principalId, status ?? "active"]);
+                return toMembership(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, "membership already exists");
+            }
+        },
+        async setTenantMembershipStatus(membershipId, status) {
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.tenant_memberships SET status = $1, updated_at = now()
+         WHERE id = $2 AND tenant_id = $3 RETURNING *`, [status, membershipId, tenantId]);
+            if (rows.length === 0)
+                throw new policyRepository_1.PolicyStoreError("membership not found");
+            return toMembership(rows[0]);
+        },
+        async recordAdminBootstrap(input) {
+            // ONE PER TENANT, enforced by the PRIMARY KEY rather than by a read-then-write the caller
+            // could race. Two concurrent bootstraps: one commits, the other is refused by the database.
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.tenant_admin_bootstraps
+             (tenant_id, principal_id, performed_by, reason, performed_at)
+           VALUES ($1, $2, $3, $4, now()) RETURNING *`, [tenantId, input.principalId, input.performedBy, input.reason ?? null]);
+                return toAdminBootstrap(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, "this tenant has already been bootstrapped");
+            }
+        },
+        async createObject(input) {
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.objects
+             (id, tenant_id, key, label, label_plural, description, origin, lifecycle, supports_delete,
+              created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`, [newId(), tenantId, input.key, input.label, input.labelPlural, input.description,
+                    input.origin, input.lifecycle, input.supportsDelete, ...stamp()]);
+                return toObject(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, `object key "${input.key}" already exists`);
+            }
+        },
+        async updateObject(objectId, patch) {
+            await requireOwned("objects", objectId, "object");
+            // COALESCE keeps an omitted field untouched rather than nulling it: a patch that names only
+            // the label must not silently erase the description.
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.objects
+            SET label        = COALESCE($1, label),
+                label_plural = CASE WHEN $2::boolean THEN $3 ELSE label_plural END,
+                description  = CASE WHEN $4::boolean THEN $5 ELSE description END,
+                updated_by = $6, updated_at = $7
+          WHERE id = $8 AND tenant_id = $9 RETURNING *`, [
+                patch.label ?? null,
+                patch.labelPlural !== undefined, patch.labelPlural ?? null,
+                patch.description !== undefined, patch.description ?? null,
+                actor.uid, nowIso(), objectId, tenantId,
+            ]);
+            if (rows.length === 0)
+                throw new policyRepository_1.PolicyStoreError("object not found");
+            return toObject(rows[0]);
+        },
+        async createField(input) {
+            await requireOwned("objects", input.objectId, "object");
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.object_fields
+             (id, tenant_id, object_id, key, label, description, data_type, required, allowed_values,
+              default_value, searchable, sortable, reportable, sensitivity, reference_to, origin, lifecycle,
+              created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`, [newId(), tenantId, input.objectId, input.key, input.label, input.description, input.dataType,
+                    input.required, [...input.allowedValues],
+                    input.defaultValue === null ? null : String(input.defaultValue),
+                    input.searchable, input.sortable, input.reportable, input.sensitivity, input.referenceTo,
+                    input.origin, input.lifecycle, ...stamp()]);
+                return toField(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, `field key "${input.key}" already exists on this object`);
+            }
+        },
+        async updateField(fieldId, patch) {
+            await requireOwned("object_fields", fieldId, "field");
+            // COLUMN NAMES ARE NOT INTERPOLATED FROM CALLER KEYS. Each is named literally here, so a patch
+            // carrying an unexpected property cannot reach the SQL text -- and `key` and `data_type` are
+            // simply absent, which is what makes "a field cannot be re-keyed or retyped" structural.
+            const sets = [];
+            const values = [];
+            const set = (column, value) => {
+                values.push(value);
+                sets.push(`${column} = $${values.length}`);
+            };
+            if (patch.label !== undefined)
+                set("label", patch.label);
+            if (patch.description !== undefined)
+                set("description", patch.description);
+            if (patch.required !== undefined)
+                set("required", patch.required);
+            if (patch.searchable !== undefined)
+                set("searchable", patch.searchable);
+            if (patch.sortable !== undefined)
+                set("sortable", patch.sortable);
+            if (patch.reportable !== undefined)
+                set("reportable", patch.reportable);
+            if (patch.sensitivity !== undefined)
+                set("sensitivity", patch.sensitivity);
+            if (patch.lifecycle !== undefined)
+                set("lifecycle", patch.lifecycle);
+            set("updated_by", actor.uid);
+            set("updated_at", nowIso());
+            values.push(fieldId, tenantId);
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.object_fields SET ${sets.join(", ")}
+         WHERE id = $${values.length - 1} AND tenant_id = $${values.length} RETURNING *`, values);
+            return toField(rows[0]);
+        },
+        async createRole(input) {
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.roles (id, tenant_id, key, name, description, origin, protected,
+             created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`, [newId(), tenantId, input.key, input.name, input.description, input.origin, input.protected, ...stamp()]);
+                return toRole(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, `role key "${input.key}" already exists`);
+            }
+        },
+        async updateRole(roleId, patch) {
+            await requireOwned("roles", roleId, "role");
+            const sets = [];
+            const values = [];
+            const set = (column, value) => {
+                values.push(value);
+                sets.push(`${column} = $${values.length}`);
+            };
+            if (patch.name !== undefined)
+                set("name", patch.name);
+            if (patch.description !== undefined)
+                set("description", patch.description);
+            set("updated_by", actor.uid);
+            set("updated_at", nowIso());
+            values.push(roleId, tenantId);
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.roles SET ${sets.join(", ")}
+         WHERE id = $${values.length - 1} AND tenant_id = $${values.length} RETURNING *`, values);
+            return toRole(rows[0]);
+        },
+        async setObjectPermission(roleId, objectId, cred) {
+            await requireOwned("roles", roleId, "role");
+            await requireOwned("objects", objectId, "object");
+            // UPSERT on the natural key, so setting a permission twice is one row rather than a duplicate
+            // the resolver would have to union with itself.
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.role_object_permissions
+           (id, tenant_id, role_id, object_id, can_create, can_read, can_edit, can_delete,
+            created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (tenant_id, role_id, object_id) DO UPDATE
+           SET can_create = EXCLUDED.can_create, can_read = EXCLUDED.can_read,
+               can_edit = EXCLUDED.can_edit, can_delete = EXCLUDED.can_delete,
+               updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
+         RETURNING *`, [newId(), tenantId, roleId, objectId, cred.C, cred.R, cred.E, cred.D, ...stamp()]);
+            return toObjectPermission(rows[0]);
+        },
+        async setFieldOverride(roleId, fieldId, override) {
+            await requireOwned("roles", roleId, "role");
+            await requireOwned("object_fields", fieldId, "field");
+            // AN EMPTY OVERRIDE IS THE ABSENCE OF A ROW. The table's own CHECK refuses an all-NULL row for
+            // the same reason: "no opinion" gets one spelling, not two.
+            if (Object.keys(override).length === 0) {
+                await q.query(`DELETE FROM ${SCHEMA}.role_field_permission_overrides
+           WHERE tenant_id = $1 AND role_id = $2 AND field_id = $3`, [tenantId, roleId, fieldId]);
+                return;
+            }
+            const val = (verb) => (override[verb] === undefined ? null : override[verb]);
+            await q.query(`INSERT INTO ${SCHEMA}.role_field_permission_overrides
+           (id, tenant_id, role_id, field_id, can_create, can_read, can_edit, can_delete,
+            created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (tenant_id, role_id, field_id) DO UPDATE
+           SET can_create = EXCLUDED.can_create, can_read = EXCLUDED.can_read,
+               can_edit = EXCLUDED.can_edit, can_delete = EXCLUDED.can_delete,
+               updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at`, [newId(), tenantId, roleId, fieldId, val("C"), val("R"), val("E"), val("D"), ...stamp()]);
+        },
+        // ── canonical Object-owned security grants ──
+        //
+        // IDEMPOTENT BY DESIGN. `ON CONFLICT DO NOTHING` plus a follow-up read returns the EXISTING row
+        // for a re-grant instead of raising, matching assignRole's no-op convention: granting something
+        // already granted is not an error an administrator can act on, and a duplicate row would make
+        // "revoke" ambiguous about which one it removed.
+        async grantRoleCapability(input) {
+            await requireOwned("roles", input.roleId, "role");
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.role_capabilities
+           (id, tenant_id, role_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (tenant_id, role_id, capability_id) DO NOTHING
+         RETURNING *`, [newId(), tenantId, input.roleId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()]);
+            if (rows.length > 0)
+                return toRoleCapability(rows[0]);
+            const existing = await q.query(`SELECT * FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1 AND role_id = $2 AND capability_id = $3`, [tenantId, input.roleId, input.capabilityId]);
+            return toRoleCapability(existing.rows[0]);
+        },
+        async revokeRoleCapability(roleId, capabilityId) {
+            const { rows } = await q.query(`DELETE FROM ${SCHEMA}.role_capabilities
+          WHERE tenant_id = $1 AND role_id = $2 AND capability_id = $3 RETURNING *`, [tenantId, roleId, capabilityId]);
+            // null, not a throw: "was never granted" is a legitimate answer to a revoke, and the command
+            // layer uses it to decide there is nothing to audit.
+            return rows.length > 0 ? toRoleCapability(rows[0]) : null;
+        },
+        async grantPrincipalCapability(input) {
+            // exception_reason / expires_at (migration 1762646400000) are written only when supplied, so a writer on an
+            // older schema is unaffected.
+            const extra = input.exceptionReason != null || input.expiresAt != null;
+            const base = [newId(), tenantId, input.principalId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()];
+            const { rows } = extra
+                ? await q.query(`INSERT INTO ${SCHEMA}.principal_capabilities
+             (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at,
+              exception_reason, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (tenant_id, principal_id, capability_id) DO UPDATE
+             -- An EXPIRED exception is REFRESHED (new reason, new expiry), never left expired under a
+             -- "granted" audit event. An unexpired one is untouched (the command treats it as a no-op).
+             SET exception_reason = EXCLUDED.exception_reason, expires_at = EXCLUDED.expires_at,
+                 granted_by = EXCLUDED.granted_by, granted_at = EXCLUDED.granted_at,
+                 updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
+             WHERE ${SCHEMA}.principal_capabilities.expires_at IS NOT NULL
+               AND ${SCHEMA}.principal_capabilities.expires_at <= now()
+           RETURNING *`, [...base, input.exceptionReason ?? null, input.expiresAt ?? null])
+                : await q.query(`INSERT INTO ${SCHEMA}.principal_capabilities
+             (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
+           RETURNING *`, base);
+            if (rows.length > 0)
+                return toPrincipalCapability(rows[0]);
+            const existing = await q.query(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3`, [tenantId, input.principalId, input.capabilityId]);
+            return toPrincipalCapability(existing.rows[0]);
+        },
+        async revokePrincipalCapability(principalId, capabilityId) {
+            const { rows } = await q.query(`DELETE FROM ${SCHEMA}.principal_capabilities
+          WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3 RETURNING *`, [tenantId, principalId, capabilityId]);
+            return rows.length > 0 ? toPrincipalCapability(rows[0]) : null;
+        },
+        async createAssignment(input) {
+            await requireOwned("roles", input.roleId, "role");
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.user_role_assignments
+             (id, tenant_id, principal_id, role_id, scope_type, scope_value, status, granted_by, granted_at,
+              access_version_at_grant, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`, [newId(), tenantId, input.principalId, input.roleId, input.scopeType, input.scopeValue,
+                    input.status, input.grantedBy, input.grantedAt, input.accessVersionAtGrant, ...stamp()]);
+                return toAssignment(rows[0]);
+            }
+            catch (err) {
+                // Two different mistakes, and an administrator should be told which. 23503 is the composite
+                // membership foreign key -- a Role granted to somebody who is not in this tenant. 23505 is
+                // the one-active-row index -- the same effective assignment, twice.
+                if (err?.code === "23503") {
+                    throw new policyRepository_1.PolicyStoreError("that principal is not a member of this tenant");
+                }
+                return asDuplicate(err, "an identical active assignment already exists");
+            }
+        },
+        async setAssignmentStatus(assignmentId, status) {
+            await requireOwned("user_role_assignments", assignmentId, "assignment");
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.user_role_assignments SET status = $1, updated_by = $2, updated_at = $3
+         WHERE id = $4 AND tenant_id = $5 RETURNING *`, [status, actor.uid, nowIso(), assignmentId, tenantId]);
+            return toAssignment(rows[0]);
+        },
+        async bumpAccessVersion(principalId) {
+            // ONE STATEMENT, so two concurrent bumps cannot both read the same old value and write the
+            // same new one. A read-then-write here would be a lost update, and a lost access-version bump
+            // means a revoked grant stays cached as valid.
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.principal_access_versions (id, tenant_id, principal_id, access_version, updated_at)
+         VALUES ($1,$2,$3,1,$4)
+         ON CONFLICT (tenant_id, principal_id) DO UPDATE
+           SET access_version = ${SCHEMA}.principal_access_versions.access_version + 1,
+               updated_at = EXCLUDED.updated_at
+         RETURNING access_version`, [newId(), tenantId, principalId, nowIso()]);
+            return Number(rows[0].access_version);
+        },
+        async createWorkflow(input) {
+            try {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.workflows (id, tenant_id, key, name, description, object_key, origin,
+             created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`, [newId(), tenantId, input.key, input.name, input.description, input.objectKey, input.origin, ...stamp()]);
+                return toWorkflow(rows[0]);
+            }
+            catch (err) {
+                return asDuplicate(err, `workflow key "${input.key}" already exists`);
+            }
+        },
+        async createWorkflowVersion(input) {
+            await requireOwned("workflows", input.workflowId, "workflow");
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.workflow_versions (id, tenant_id, workflow_id, version, status,
+           published_at, published_by, created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`, [newId(), tenantId, input.workflowId, input.version, input.status, input.publishedAt,
+                input.publishedBy, ...stamp()]);
+            return toWorkflowVersion(rows[0]);
+        },
+        async createWorkflowStep(input) {
+            await assertDraftVersion(input.workflowVersionId);
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.workflow_steps (id, tenant_id, workflow_version_id, key, label,
+           is_initial, is_terminal, created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`, [newId(), tenantId, input.workflowVersionId, input.key, input.label, input.initial, input.terminal, ...stamp()]);
+            return toStep(rows[0]);
+        },
+        async createWorkflowAction(input) {
+            await assertDraftVersion(input.workflowVersionId);
+            // The legacy flag and the guard are one fact (CHECK workflow_actions_guard_agrees_with_legacy_flag,
+            // and the workflow_actions_guard_sync trigger derives the guard from the flag).
+            const guardKind = input.guardKind ?? (input.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null);
+            // THE SEED BOUNDARY. The canonical seed is replayed against a chain migrated only up to
+            // 1761523200000 (roleCapabilityAuthorityBaseline), where capability_key does not exist yet. That
+            // schema cannot carry a capability, so none is written; the draft then cannot be published
+            // (ACTION_WITHOUT_CAPABILITY) until an administrator binds one on a new version.
+            if (!(await workflowActionsHaveControlPlaneColumns())) {
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.workflow_actions (id, tenant_id, workflow_version_id, key, label,
+             from_step_key, to_step_key, requires_own_assignment, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`, [newId(), tenantId, input.workflowVersionId, input.key, input.label, input.fromStepKey,
+                    input.toStepKey, guardKind === "RECORD_ASSIGNMENT", ...stamp()]);
+                return toAction(rows[0]);
+            }
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.workflow_actions (id, tenant_id, workflow_version_id, key, label,
+           from_step_key, to_step_key, requires_own_assignment, capability_key, guard_kind,
+           created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`, [newId(), tenantId, input.workflowVersionId, input.key, input.label, input.fromStepKey,
+                input.toStepKey, guardKind === "RECORD_ASSIGNMENT", input.capabilityKey ?? null, guardKind, ...stamp()]);
+            return toAction(rows[0]);
+        },
+        async createWorkflowRoleBinding(input) {
+            await assertDraftVersion(input.workflowVersionId);
+            if (input.bindingKind === "FUNCTIONAL_ROLE") {
+                // The FUNCTIONAL_ROLE target is a Functional Role of THIS tenant (the composite FK refuses anything else);
+                // role_id stays NULL (workflow_role_bindings_target_matches_kind).
+                if (input.roleId || !input.functionalRoleId)
+                    throw new policyRepository_1.PolicyStoreError("a FUNCTIONAL_ROLE binding names a Functional Role only");
+                const found = await q.query(`SELECT 1 FROM eos_workforce.functional_roles WHERE tenant_id = $1 AND id = $2`, [tenantId, input.functionalRoleId]);
+                if (found.rows.length === 0)
+                    throw new policyRepository_1.PolicyStoreError("functional role not found");
+                const { rows } = await q.query(`INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
+             role_id, created_by, created_at, updated_by, updated_at, binding_kind, functional_role_id)
+           VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,$8,'FUNCTIONAL_ROLE',$9) RETURNING *`, [newId(), tenantId, input.workflowVersionId, input.actionKey, ...stamp(), input.functionalRoleId]);
+                return toBinding(rows[0]);
+            }
+            if (!input.roleId || input.functionalRoleId)
+                throw new policyRepository_1.PolicyStoreError("a SECURITY_ROLE binding names a Security Role only");
+            await requireOwned("roles", input.roleId, "role");
+            const { rows } = await q.query(
+            // binding_kind is written only when it is not the column default, so the seed-boundary replay
+            // (a schema before 1762732800000) still writes the Security Role bindings it always did.
+            input.bindingKind && input.bindingKind !== "SECURITY_ROLE"
+                ? `INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
+               role_id, created_by, created_at, updated_by, updated_at, binding_kind)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`
+                : `INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
+               role_id, created_by, created_at, updated_by, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [newId(), tenantId, input.workflowVersionId, input.actionKey, input.roleId, ...stamp(),
+                ...(input.bindingKind && input.bindingKind !== "SECURITY_ROLE" ? [input.bindingKind] : [])]);
+            return toBinding(rows[0]);
+        },
+        async publishWorkflowVersion(versionId) {
+            await assertDraftVersion(versionId);
+            const at = nowIso();
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.workflow_versions
+         SET status = 'PUBLISHED', published_at = $1, published_by = $2, updated_by = $2, updated_at = $1
+         WHERE id = $3 AND tenant_id = $4 RETURNING *`, [at, actor.uid, versionId, tenantId]);
+            return toWorkflowVersion(rows[0]);
+        },
+        async createWorkflowInstance(input) {
+            await requireOwned("workflow_versions", input.workflowVersionId, "workflow version");
+            const { rows } = await workflowGuarded(() => q.query(`INSERT INTO ${SCHEMA}.workflow_instances (id, tenant_id, workflow_version_id, object_key,
+           record_id, current_step_key, created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [newId(), tenantId, input.workflowVersionId, input.objectKey, input.recordId, input.currentStepKey, ...stamp()]));
+            return toInstance(rows[0]);
+        },
+        async advanceWorkflowInstance(instanceId, toStepKey) {
+            await requireOwned("workflow_instances", instanceId, "workflow instance");
+            const { rows } = await q.query(`UPDATE ${SCHEMA}.workflow_instances SET current_step_key = $1, updated_by = $2, updated_at = $3
+         WHERE id = $4 AND tenant_id = $5 RETURNING *`, [toStepKey, actor.uid, nowIso(), instanceId, tenantId]);
+            return toInstance(rows[0]);
+        },
+        async appendWorkflowInstanceEvent(input) {
+            await q.query(`INSERT INTO ${SCHEMA}.workflow_instance_events (id, tenant_id, instance_id, action_key,
+           from_step_key, to_step_key, actor_uid, occurred_at, reason, event_kind, actor_principal_id,
+           from_version_id, to_version_id, audit_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, [newId(), tenantId, input.instanceId, input.actionKey, input.fromStepKey, input.toStepKey,
+                input.actorUid, input.occurredAt, input.reason, input.eventKind ?? "TRANSITION",
+                input.actorPrincipalId ?? null, input.fromVersionId ?? null, input.toVersionId ?? null,
+                input.auditEventId ?? null]);
+        },
+        // ── workflow control plane (migration 1762732800000) ──
+        // Every guard below is ALSO a database trigger; a trigger refusal is surfaced as a store refusal
+        // (CONFLICT at the API) rather than an opaque internal error.
+        async setWorkflowActiveVersion(workflowId, versionId) {
+            await requireOwned("workflows", workflowId, "workflow");
+            if (versionId !== null)
+                await requireOwned("workflow_versions", versionId, "workflow version");
+            const { rows } = await workflowGuarded(() => q.query(`UPDATE ${SCHEMA}.workflows SET active_version_id = $1, updated_by = $2, updated_at = $3
+          WHERE id = $4 AND tenant_id = $5 RETURNING *`, [versionId, actor.uid, nowIso(), workflowId, tenantId]));
+            return toWorkflow(rows[0]);
+        },
+        async retireWorkflowVersion(versionId) {
+            await requireOwned("workflow_versions", versionId, "workflow version");
+            const { rows } = await workflowGuarded(() => q.query(`UPDATE ${SCHEMA}.workflow_versions SET status = 'RETIRED', updated_by = $1, updated_at = $2
+          WHERE id = $3 AND tenant_id = $4 RETURNING *`, [actor.uid, nowIso(), versionId, tenantId]));
+            return toWorkflowVersion(rows[0]);
+        },
+        async repinWorkflowInstance(instanceId, versionId, stepKey) {
+            await requireOwned("workflow_instances", instanceId, "workflow instance");
+            await requireOwned("workflow_versions", versionId, "workflow version");
+            const { rows } = await workflowGuarded(() => q.query(`UPDATE ${SCHEMA}.workflow_instances
+            SET workflow_version_id = $1, current_step_key = $2, updated_by = $3, updated_at = $4
+          WHERE id = $5 AND tenant_id = $6 RETURNING *`, [versionId, stepKey, actor.uid, nowIso(), instanceId, tenantId]));
+            return toInstance(rows[0]);
+        },
+        // ── Administration decisions and grant conditions (migration 1762646400000) ──
+        async recordRoleCapabilityDecision(input) {
+            const id = newId();
+            // INSERT the successor FIRST, then stamp the predecessor with it: the one-current-per-cell
+            // exclusion constraint is DEFERRED to COMMIT, and the append-only trigger verifies that the stamp
+            // names an EXISTING current decision for the same cell in the same tenant.
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.role_capability_decisions
+           (id, tenant_id, role_key, capability_key, decision, requires_condition, reason,
+            actor_principal_id, audit_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [id, tenantId, input.roleKey, input.capabilityKey, input.decision, input.requiresCondition,
+                input.reason, input.actorPrincipalId, input.auditEventId]);
+            await q.query(`UPDATE ${SCHEMA}.role_capability_decisions SET superseded_at = now(), superseded_by = $4
+          WHERE tenant_id = $1 AND role_key = $2 AND capability_key = $3 AND superseded_at IS NULL AND id <> $4`, [tenantId, input.roleKey, input.capabilityKey, id]);
+            return toDecision(rows[0]);
+        },
+        // ── serialization and in-transaction reads for the Administration commands ──
+        async beginAdministrationCommand() {
+            // One governance lock per tenant: every Administration grant/revoke/condition/assignment
+            // command, and the catalog reconcile, serialize on it -- so the anti-lockout count, the no-op
+            // check and the decision read are all taken against a state nobody else is changing.
+            await q.query(`SELECT set_config('eos_policy.administration_command', 'on', true)`);
+            await q.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+        },
+        async lockGrantCell(grantorKey, capabilityKey, grantScope = "ROLE") {
+            if (grantScope !== "ROLE" && grantScope !== "PRINCIPAL")
+                throw new policyRepository_1.PolicyStoreError("unknown grant scope");
+            await q.query(`SELECT ${SCHEMA}.grant_cell_lock($1, $2, $3, $4)`, [tenantId, grantScope, grantorKey, capabilityKey]);
+        },
+        async readPrincipalGrantCell(principalId, capabilityKey) {
+            const grant = await q.query(`SELECT pc.*, (pc.expires_at IS NOT NULL AND pc.expires_at <= now()) AS dx_expired
+           FROM ${SCHEMA}.principal_capabilities pc
+           JOIN ${SCHEMA}.capabilities c ON c.id = pc.capability_id
+          WHERE pc.tenant_id = $1 AND pc.principal_id = $2 AND c.key = $3`, [tenantId, principalId, capabilityKey]);
+            const condition = await q.query(`SELECT * FROM ${SCHEMA}.capability_grant_conditions
+          WHERE tenant_id = $1 AND grant_scope = 'PRINCIPAL' AND grantor_key = $2 AND capability_key = $3 AND status = 'ACTIVE'`, [tenantId, principalId, capabilityKey]);
+            return {
+                grant: grant.rows[0] ? toPrincipalCapability(grant.rows[0]) : null,
+                expired: grant.rows[0]?.dx_expired === true,
+                condition: condition.rows[0] ? toGrantCondition(condition.rows[0]) : null,
+            };
+        },
+        async readGrantCell(roleKey, capabilityKey) {
+            const grant = await q.query(`SELECT rc.* FROM ${SCHEMA}.role_capabilities rc
+           JOIN ${SCHEMA}.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+           JOIN ${SCHEMA}.capabilities c ON c.id = rc.capability_id
+          WHERE rc.tenant_id = $1 AND r.key = $2 AND c.key = $3`, [tenantId, roleKey, capabilityKey]);
+            const decision = await q.query(`SELECT * FROM ${SCHEMA}.role_capability_decisions
+          WHERE tenant_id = $1 AND role_key = $2 AND capability_key = $3 AND superseded_at IS NULL`, [tenantId, roleKey, capabilityKey]);
+            const condition = await q.query(`SELECT * FROM ${SCHEMA}.capability_grant_conditions
+          WHERE tenant_id = $1 AND grant_scope = 'ROLE' AND grantor_key = $2 AND capability_key = $3 AND status = 'ACTIVE'`, [tenantId, roleKey, capabilityKey]);
+            return {
+                grant: grant.rows[0] ? toRoleCapability(grant.rows[0]) : null,
+                decision: decision.rows[0] ? toDecision(decision.rows[0]) : null,
+                condition: condition.rows[0] ? toGrantCondition(condition.rows[0]) : null,
+            };
+        },
+        async readAssignment(assignmentId) {
+            const { rows } = await q.query(`SELECT * FROM ${SCHEMA}.user_role_assignments WHERE tenant_id = $1 AND id = $2`, [tenantId, assignmentId]);
+            return rows[0] ? toAssignment(rows[0]) : null;
+        },
+        async administrationHolderCount(capabilityKey, exclude) {
+            // Holders the GATE would actually admit: an ENABLED principal with an ACTIVE membership, holding
+            // the key through an ACTIVE, GLOBAL, non-stale assignment to a Role granting it UNCONDITIONED, or
+            // through a direct grant with NO expiry (an expiring grant is a lockout on a timer).
+            const { rows } = await q.query(`WITH cap AS (SELECT id, key FROM ${SCHEMA}.capabilities WHERE key = $2),
+              holder_roles AS (
+                SELECT rc.role_id FROM ${SCHEMA}.role_capabilities rc
+                  JOIN cap ON cap.id = rc.capability_id
+                  JOIN ${SCHEMA}.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+                 WHERE rc.tenant_id = $1 AND rc.role_id IS DISTINCT FROM $4
+                   AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.capability_grant_conditions g
+                                    WHERE g.tenant_id = rc.tenant_id AND g.grant_scope = 'ROLE' AND g.grantor_key = r.key
+                                      AND g.capability_key = cap.key AND g.status = 'ACTIVE')),
+              via_role AS (
+                SELECT a.principal_id FROM ${SCHEMA}.user_role_assignments a
+                  JOIN holder_roles hr ON hr.role_id = a.role_id
+                  LEFT JOIN ${SCHEMA}.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
+                 WHERE a.tenant_id = $1 AND a.status = 'active' AND a.scope_type = 'global'
+                   AND a.id IS DISTINCT FROM $3
+                   AND a.access_version_at_grant <= coalesce(v.access_version, 0)),
+              via_direct AS (
+                SELECT pc.principal_id FROM ${SCHEMA}.principal_capabilities pc JOIN cap ON cap.id = pc.capability_id
+                 WHERE pc.tenant_id = $1 AND pc.principal_id IS DISTINCT FROM $5
+                   AND (to_jsonb(pc) ->> 'expires_at') IS NULL
+                   -- UNCONDITIONED only (lane DX): a conditioned direct grant is not a flat holding the gate admits.
+                   AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.capability_grant_conditions g
+                                    WHERE g.tenant_id = pc.tenant_id AND g.grant_scope = 'PRINCIPAL' AND g.grantor_key = pc.principal_id
+                                      AND g.capability_key = cap.key AND g.status = 'ACTIVE'))
+         SELECT count(DISTINCT p.id)::int AS n
+           FROM (SELECT principal_id FROM via_role UNION SELECT principal_id FROM via_direct) h
+           JOIN ${SCHEMA}.principals p ON p.id = h.principal_id AND p.status = 'active'
+           JOIN ${SCHEMA}.tenant_memberships m ON m.principal_id = p.id AND m.tenant_id = $1 AND m.status = 'active'`, [tenantId, capabilityKey, exclude.assignmentId ?? null, exclude.roleId ?? null, exclude.principalId ?? null]);
+            return Number(rows[0]?.n ?? 0);
+        },
+        async protectedRoleAssignmentCount(excludeAssignmentId) {
+            const { rows } = await q.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments a
+           JOIN ${SCHEMA}.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+          WHERE a.tenant_id = $1 AND r.protected AND a.status = 'active' AND a.scope_type = 'global'
+            AND a.id IS DISTINCT FROM $2`, [tenantId, excludeAssignmentId]);
+            return Number(rows[0]?.n ?? 0);
+        },
+        async activeGlobalAssignmentCountForRole(roleId, excludeAssignmentId) {
+            const { rows } = await q.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments a
+          WHERE a.tenant_id = $1 AND a.role_id = $2 AND a.status = 'active' AND a.scope_type = 'global'
+            AND a.id IS DISTINCT FROM $3`, [tenantId, roleId, excludeAssignmentId]);
+            return Number(rows[0]?.n ?? 0);
+        },
+        async readTenantSalesChannel(salesChannel) {
+            const { rows } = await q.query(`SELECT * FROM ${SCHEMA}.tenant_sales_channels WHERE tenant_id = $1 AND sales_channel::text = $2 FOR UPDATE`, [tenantId, salesChannel]);
+            return rows[0] ? toTenantSalesChannel(rows[0]) : null;
+        },
+        async writeTenantSalesChannel(salesChannel, status, source) {
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by)
+         VALUES ($1, $2::eos_commercial.commercial_sales_channel, $3, $4, $5, $5)
+         ON CONFLICT (tenant_id, sales_channel)
+         DO UPDATE SET status = EXCLUDED.status, source = EXCLUDED.source, updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`, [tenantId, salesChannel, status, source, actor.uid]);
+            return toTenantSalesChannel(rows[0]);
+        },
+        async activeScopedAssignmentCount(scopeType, scopeValue) {
+            const { rows } = await q.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments
+          WHERE tenant_id = $1 AND status = 'active' AND scope_type = $2 AND scope_value = $3`, [tenantId, scopeType, scopeValue]);
+            return Number(rows[0]?.n ?? 0);
+        },
+        async upsertGrantCondition(input) {
+            const { rows } = await q.query(`INSERT INTO ${SCHEMA}.capability_grant_conditions
+           (id, tenant_id, grant_scope, grantor_key, capability_key, condition, status, established_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'ACTIVE',$7,$7)
+         ON CONFLICT (tenant_id, grant_scope, grantor_key, capability_key)
+         DO UPDATE SET condition = EXCLUDED.condition, status = 'ACTIVE',
+                       updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`, [newId(), tenantId, input.grantScope, input.grantorKey, input.capabilityKey,
+                JSON.stringify(input.condition), actor.uid]);
+            return toGrantCondition(rows[0]);
+        },
+        async retireGrantCondition(grantScope, grantorKey, capabilityKey) {
+            try {
+                const { rows } = await q.query(`UPDATE ${SCHEMA}.capability_grant_conditions
+              SET status = 'RETIRED', updated_by = $5, updated_at = now()
+            WHERE tenant_id = $1 AND grant_scope = $2 AND grantor_key = $3 AND capability_key = $4
+              AND status = 'ACTIVE'
+            RETURNING *`, [tenantId, grantScope, grantorKey, capabilityKey, actor.uid]);
+                return rows.length > 0 ? toGrantCondition(rows[0]) : null;
+            }
+            catch (err) {
+                const message = err?.message ?? "";
+                if (message.includes("CONDITION_RETIREMENT_WOULD_WIDEN"))
+                    throw new policyRepository_1.PolicyStoreError(message);
+                throw err;
+            }
+        },
+        async appendAudit(input) {
+            const id = newId();
+            await q.query(`INSERT INTO ${SCHEMA}.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id,
+           before, after, occurred_at, reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [id, tenantId, input.action, input.actorUid, input.targetKind, input.targetId,
+                input.before === null || input.before === undefined ? null : JSON.stringify(input.before),
+                input.after === null || input.after === undefined ? null : JSON.stringify(input.after),
+                input.occurredAt, input.reason]);
+            return id;
+        },
+    };
+}
+// ════════════════════ tenant sales channels (lane GA) ════════════════════
+/** Display words for a channel. Presentation only; the value is the enum literal. */
+function salesChannelLabel(value) {
+    return value.toLowerCase().split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+function toTenantSalesChannel(r) {
+    const iso = (v) => (v instanceof Date ? v.toISOString() : String(v));
+    return Object.freeze({
+        tenantId: String(r.tenant_id), salesChannel: String(r.sales_channel), status: String(r.status),
+        source: String(r.source), establishedBy: String(r.established_by), establishedAt: iso(r.established_at),
+        updatedBy: String(r.updated_by), updatedAt: iso(r.updated_at),
+    });
+}
+//# sourceMappingURL=postgresPolicyRepository.js.map

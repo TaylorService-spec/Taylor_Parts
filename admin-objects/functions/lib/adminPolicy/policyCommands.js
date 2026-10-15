@@ -1,0 +1,1644 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ANTI_LOCKOUT_CAPABILITIES = exports.AdministrationDeniedError = exports.AdministrationRefusal = exports.PolicyValidationError = void 0;
+exports.createCustomField = createCustomField;
+exports.updateFieldDefinition = updateFieldDefinition;
+exports.updateObjectMetadata = updateObjectMetadata;
+exports.createRole = createRole;
+exports.setObjectPermission = setObjectPermission;
+exports.setFieldPermissionOverride = setFieldPermissionOverride;
+exports.rebindPrincipalIdentity = rebindPrincipalIdentity;
+exports.bindPrincipalEosIdentity = bindPrincipalEosIdentity;
+exports.revokePrincipalEosIdentity = revokePrincipalEosIdentity;
+exports.assignRole = assignRole;
+exports.governedAssignmentScopeValues = governedAssignmentScopeValues;
+exports.refuseUnsupportedAssignmentScope = refuseUnsupportedAssignmentScope;
+exports.listSupportedAssignmentScopes = listSupportedAssignmentScopes;
+exports.setTenantSalesChannelStatus = setTenantSalesChannelStatus;
+exports.revokeRole = revokeRole;
+exports.grantObjectActionToRole = grantObjectActionToRole;
+exports.revokeObjectActionFromRole = revokeObjectActionFromRole;
+exports.setGrantCondition = setGrantCondition;
+exports.retireGrantCondition = retireGrantCondition;
+exports.grantObjectActionToPrincipal = grantObjectActionToPrincipal;
+exports.revokeObjectActionFromPrincipal = revokeObjectActionFromPrincipal;
+exports.applyObjectWideRoleAuthority = applyObjectWideRoleAuthority;
+// The Admin policy mutation services.
+//
+// ════════════════════ WHAT EVERY COMMAND IN THIS FILE DOES ════════════════════
+//
+//   1. AUTHORIZE   against the administration authority, server-side, before anything is read
+//   2. VALIDATE    the change itself -- shape, references, and the invariants it could break
+//   3. TRANSACT    atomically, so a policy change and its consequences land together or not at all
+//   4. VERSION     bump the access version of every principal whose authority could have moved
+//   5. AUDIT       append one event; not optional, not configurable
+//   6. RETURN      the canonical stored result, never the caller's input echoed back
+//
+// The UI is not the security boundary and never was. These commands are.
+//
+// ════════════════════ TENANCY ════════════════════
+//
+// Every command takes an `AdminActor` whose `tenantId` was derived server-side from the
+// authenticated principal. No command accepts a tenant in its input, so a caller cannot name one --
+// cross-tenant mutation is not expressible rather than merely refused.
+const administrationAuthority_1 = require("./administrationAuthority");
+Object.defineProperty(exports, "AdministrationDeniedError", { enumerable: true, get: function () { return administrationAuthority_1.AdministrationDeniedError; } });
+const types_1 = require("./types");
+const principalContext_1 = require("./principalContext");
+const administrationCapabilityGate_1 = require("./administrationCapabilityGate");
+const roleCapabilityAdministration_1 = require("./roleCapabilityAdministration");
+const effectiveObjectAccess_1 = require("./effectiveObjectAccess");
+const policyRepository_1 = require("./policyRepository");
+const contextualAuthorization_1 = require("../eosOps/contextualAuthorization");
+const conditionalEntitlement_1 = require("../eosOps/conditionalEntitlement");
+const objectSecurityAuthority_1 = require("./objectSecurityAuthority");
+const assignmentScopeRuntime_1 = require("./assignmentScopeRuntime");
+const opportunityLifecycle_1 = require("../opportunity/opportunityLifecycle");
+class PolicyValidationError extends Error {
+}
+exports.PolicyValidationError = PolicyValidationError;
+/**
+ * A refusal an administrator can act on: a SYSTEM INVARIANT, a fail-closed condition rule, or the
+ * anti-lockout guard. `code` is stable and machine-readable; the message says why in words.
+ */
+class AdministrationRefusal extends PolicyValidationError {
+    code;
+    constructor(code, message) {
+        super(`${code}: ${message}`);
+        this.code = code;
+    }
+}
+exports.AdministrationRefusal = AdministrationRefusal;
+const nonEmpty = (v, what) => {
+    if (typeof v !== "string" || v.trim().length === 0)
+        throw new PolicyValidationError(`${what} is required`);
+    return v.trim();
+};
+/** A machine key: stable, storage-facing, and deliberately narrow so it can never need escaping. */
+const KEY_PATTERN = /^[a-z][a-zA-Z0-9_]{0,62}$/;
+const validKey = (v, what) => {
+    const s = nonEmpty(v, what);
+    if (!KEY_PATTERN.test(s)) {
+        throw new PolicyValidationError(`${what} must start with a lower-case letter and contain only letters, digits or underscore`);
+    }
+    return s;
+};
+function validCredSet(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new PolicyValidationError("a complete CRED set is required");
+    }
+    const v = value;
+    const out = { C: false, R: false, E: false, D: false };
+    for (const verb of types_1.CRED_VERBS) {
+        if (typeof v[verb] !== "boolean")
+            throw new PolicyValidationError(`CRED verb "${verb}" must be true or false`);
+        out[verb] = v[verb];
+    }
+    for (const k of Object.keys(v)) {
+        if (!types_1.CRED_VERBS.includes(k))
+            throw new PolicyValidationError(`"${k}" is not a CRED verb`);
+    }
+    return Object.freeze(out);
+}
+function validCredOverride(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new PolicyValidationError("an override must be an object");
+    }
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+        if (!types_1.CRED_VERBS.includes(k))
+            throw new PolicyValidationError(`"${k}" is not a CRED verb`);
+        if (typeof v !== "boolean")
+            throw new PolicyValidationError(`override for "${k}" must be true or false`);
+        out[k] = v;
+    }
+    return Object.freeze(out);
+}
+// ════════════════════ A CHANGE THAT CHANGES NOTHING IS NOT A MUTATION ════════════════════
+//
+// Every command below used to open a transaction, write, bump access versions and append an audit
+// event whether or not anything had changed. Measured against the deployed non-production API: an
+// identical `updateRole`, `updateObjectMetadata`, `updateCustomFieldMetadata`, `setObjectPermission`
+// and `setFieldPermissionOverride` EACH wrote an audit event whose only difference was `updatedAt`.
+// The two permission commands also bumped the access version of every holder of the Role, forcing
+// each of them to re-resolve authority that had not moved.
+//
+// An audit trail that records edits nobody made cannot be trusted about the ones they did, and the
+// rule was already decided: Ruling C made an identical role assignment idempotent, and acceptance
+// requires that an identical no-op write no mutation event. `assignRole` was the only command that
+// honoured it. Now they all do -- by returning the current record BEFORE any transaction opens, so
+// there is nothing to roll back and nothing to audit.
+/** Do two CRED shapes -- complete sets or partial overrides -- say the same thing about every verb? */
+const sameVerbs = (a, b) => types_1.CRED_VERBS.every((verb) => a?.[verb] === b[verb]);
+/** Would applying this patch leave every named value exactly as it is? Patches here are flat scalars. */
+const patchChangesNothing = (current, patch) => Object.entries(patch).every(([key, value]) => current[key] === value);
+const auditBase = (actor, action, targetKind, targetId, reason) => ({
+    action,
+    actorUid: actor.uid,
+    targetKind,
+    targetId,
+    occurredAt: new Date().toISOString(),
+    reason,
+});
+/**
+ * Create a CUSTOM field on an Object.
+ *
+ * Always CUSTOM and always DRAFT: an administrator cannot mint a SYSTEM field, because SYSTEM means
+ * "shipped with the platform and read by name in application code", and a field nothing reads is
+ * not that however it is labelled.
+ */
+async function createCustomField(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const objectKey = nonEmpty(input.objectKey, "objectKey");
+    const key = validKey(input.key, "field key");
+    const label = nonEmpty(input.label, "label");
+    if (!types_1.FIELD_DATA_TYPES.includes(input.dataType)) {
+        throw new PolicyValidationError(`"${String(input.dataType)}" is not a field data type`);
+    }
+    const sensitivity = input.sensitivity ?? "NORMAL";
+    if (!types_1.FIELD_SENSITIVITIES.includes(sensitivity)) {
+        throw new PolicyValidationError(`"${String(sensitivity)}" is not a sensitivity`);
+    }
+    const allowedValues = Object.freeze([...(input.allowedValues ?? [])]);
+    const isEnum = input.dataType === "ENUM" || input.dataType === "ENUM_SET";
+    if (isEnum && allowedValues.length === 0) {
+        throw new PolicyValidationError("an ENUM field needs allowed values -- an enum of nothing can hold nothing");
+    }
+    if (!isEnum && allowedValues.length > 0) {
+        throw new PolicyValidationError("allowed values apply to ENUM and ENUM_SET only");
+    }
+    if (input.dataType === "REFERENCE" && !input.referenceTo) {
+        throw new PolicyValidationError("a REFERENCE field must say which object it points at");
+    }
+    const object = await repo.getObjectByKey(actor.tenantId, objectKey);
+    if (!object)
+        throw new PolicyValidationError(`no object "${objectKey}"`);
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const field = await tx.createField({
+            objectId: object.id,
+            key,
+            label,
+            description: input.description ?? null,
+            dataType: input.dataType,
+            required: input.required === true,
+            allowedValues,
+            defaultValue: input.defaultValue ?? null,
+            searchable: input.searchable === true,
+            sortable: input.sortable === true,
+            reportable: input.reportable !== false,
+            sensitivity,
+            referenceTo: input.referenceTo ?? null,
+            origin: "CUSTOM",
+            lifecycle: "DRAFT",
+        });
+        await tx.appendAudit({
+            ...auditBase(actor, "createCustomField", "objectField", field.id, input.reason ?? null),
+            before: null,
+            after: field,
+        });
+        return field;
+    });
+}
+/**
+ * Update the EDITABLE metadata of a field.
+ *
+ * WHAT MAY NEVER CHANGE, on any field: its `key` and its `dataType`. A re-key silently orphans every
+ * stored value, and a retype makes the stored values mean something they were not written to mean.
+ * Neither is offered here -- not guarded behind a flag, not accepted with a warning. There is no
+ * parameter for either, so the request cannot be made.
+ *
+ * A SYSTEM field additionally refuses `lifecycle` changes: retiring a shipped field breaks
+ * application code that reads it by name, and that is a code change rather than a configuration one.
+ */
+async function updateFieldDefinition(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const fieldId = nonEmpty(input.fieldId, "fieldId");
+    const objects = await repo.listObjects(actor.tenantId);
+    let current = null;
+    for (const o of objects) {
+        const found = (await repo.listFields(actor.tenantId, o.id)).find((f) => f.id === fieldId);
+        if (found) {
+            current = found;
+            break;
+        }
+    }
+    if (!current)
+        throw new PolicyValidationError("field not found");
+    if (input.sensitivity && !types_1.FIELD_SENSITIVITIES.includes(input.sensitivity)) {
+        throw new PolicyValidationError(`"${String(input.sensitivity)}" is not a sensitivity`);
+    }
+    // ════════════════════ A SYSTEM FIELD DEFINITION IS PROTECTED, FULL STOP ════════════════════
+    //
+    // This used to protect only `lifecycle`, which left a SYSTEM field's label, description,
+    // required, searchable, sortable, reportable and sensitivity all editable. That is not the ruling:
+    // system Field DEFINITIONS are protected and custom Fields are Admin-editable.
+    //
+    // The distinction that makes this safe rather than restrictive: a SYSTEM field's DEFINITION is
+    // fixed, and its POLICY is not. An administrator still governs who may Create/Read/Edit/Delete it
+    // through Role Field CRED, which is the thing they actually need. What they may not do is rename
+    // or reclassify a field that application code reads by name -- `sensitivity` in particular is
+    // read by the field-projection path, so "just a label change" is not.
+    //
+    // Enforced HERE, next to the transaction, rather than by hiding a button: a caller that reaches
+    // the command directly gets the same refusal the UI would have prevented.
+    if (current.origin === "SYSTEM") {
+        throw new PolicyValidationError("a SYSTEM field's definition is protected -- its policy is configurable through Role field permissions, its definition is not");
+    }
+    // A MUTABLE builder over the record's EDITABLE fields only. `ObjectFieldRecord` is deeply readonly
+    // by design -- a stored policy record nobody can reassign in place -- so the patch names the
+    // writable subset rather than stripping that guarantee off the record type. `key` and `dataType`
+    // are absent from this list on purpose: see the doc comment above.
+    const patch = {};
+    if (input.label !== undefined)
+        patch.label = nonEmpty(input.label, "label");
+    if (input.description !== undefined)
+        patch.description = input.description;
+    if (input.required !== undefined)
+        patch.required = input.required === true;
+    if (input.searchable !== undefined)
+        patch.searchable = input.searchable === true;
+    if (input.sortable !== undefined)
+        patch.sortable = input.sortable === true;
+    if (input.reportable !== undefined)
+        patch.reportable = input.reportable === true;
+    if (input.sensitivity !== undefined)
+        patch.sensitivity = input.sensitivity;
+    if (input.lifecycle !== undefined)
+        patch.lifecycle = input.lifecycle;
+    // A request that names only what this command cannot express -- `key`, `dataType` -- used to reach
+    // the transaction with an empty patch, answer 200, and audit an "update" whose only change was
+    // `updatedAt`. The caller was told their key change succeeded. `updateRole` and
+    // `updateObjectMetadata` already refused this; now all three say the same thing.
+    if (Object.keys(patch).length === 0)
+        throw new PolicyValidationError("nothing to update");
+    if (patchChangesNothing(current, patch))
+        return current;
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const updated = await tx.updateField(fieldId, patch);
+        await tx.appendAudit({
+            ...auditBase(actor, "updateFieldDefinition", "objectField", fieldId, input.reason ?? null),
+            before: current,
+            after: updated,
+        });
+        return updated;
+    });
+}
+/**
+ * Change an Object's DISPLAY metadata.
+ *
+ * ════════════════════ WHY THIS EXISTS, AND WHY IT IS THIS SMALL ════════════════════
+ *
+ * Nothing could edit an Object at all -- no command, no port method -- while the Administration
+ * contract said Object definition editing is Admin-only. That gap made "Objects are editable" false
+ * in a screen that claimed it.
+ *
+ * What a tenant legitimately changes is what the Object is CALLED. This platform's own canonical
+ * object is keyed `account` and labelled "Accounts" while the business says Customer; that is
+ * exactly the case, and it is display metadata rather than a schema change.
+ *
+ * WHAT IS DELIBERATELY NOT EDITABLE, and would each be a different kind of change:
+ *
+ *   key              identity. Every stored permission, override and workflow references it.
+ *   origin           whether the platform owns this object, not a preference.
+ *   lifecycle        what the engine will enforce.
+ *   supportsDelete   MEASURED from whether a capability governs Delete. Making it editable would
+ *                    let an administrator promise a Delete grant the engine can never honour.
+ *
+ * There is no generic object patch, and adding one would make authorization a property of the
+ * arguments rather than of the operation.
+ */
+async function updateObjectMetadata(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const objectKey = nonEmpty(input.objectKey, "objectKey");
+    const object = await repo.getObjectByKey(actor.tenantId, objectKey);
+    if (!object)
+        throw new PolicyValidationError(`no object "${objectKey}"`);
+    const patch = {};
+    if (input.label !== undefined)
+        patch.label = nonEmpty(input.label, "label");
+    if (input.labelPlural !== undefined)
+        patch.labelPlural = input.labelPlural;
+    if (input.description !== undefined)
+        patch.description = input.description;
+    if (Object.keys(patch).length === 0)
+        throw new PolicyValidationError("nothing to update");
+    if (patchChangesNothing(object, patch))
+        return object;
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const updated = await tx.updateObject(object.id, patch);
+        await tx.appendAudit({
+            ...auditBase(actor, "updateObjectMetadata", "object", object.id, input.reason ?? null),
+            before: { label: object.label, labelPlural: object.labelPlural, description: object.description },
+            after: { label: updated.label, labelPlural: updated.labelPlural, description: updated.description },
+        });
+        return updated;
+    });
+}
+async function createRole(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const key = validKey(input.key, "role key");
+    const name = nonEmpty(input.name, "name");
+    // A tenant-created Role may not claim a protected key: it would be a second Role wearing the
+    // recovery Role's name, and every later "is this the admin Role" question would have two answers.
+    if (administrationAuthority_1.PROTECTED_ROLE_KEYS.includes(key)) {
+        throw new PolicyValidationError(`"${key}" is a protected system role key`);
+    }
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const role = await tx.createRole({
+            key, name, description: input.description ?? null, origin: "CUSTOM", protected: false,
+        });
+        await tx.appendAudit({
+            ...auditBase(actor, "createRole", "role", role.id, input.reason ?? null),
+            before: null,
+            after: role,
+        });
+        return role;
+    });
+}
+/**
+ * Set one Role's CRED over one Object.
+ *
+ * EVERY PRINCIPAL HOLDING THE ROLE HAS THEIR ACCESS VERSION BUMPED, in the same transaction. A
+ * permission change that landed without the bump would leave every cached authorization decision
+ * valid -- which is not a consistency inconvenience, it is the change silently not taking effect.
+ */
+async function setObjectPermission(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const roleId = nonEmpty(input.roleId, "roleId");
+    const objectKey = nonEmpty(input.objectKey, "objectKey");
+    const cred = validCredSet(input.cred);
+    const object = await repo.getObjectByKey(actor.tenantId, objectKey);
+    if (!object)
+        throw new PolicyValidationError(`no object "${objectKey}"`);
+    if (cred.D && !object.supportsDelete) {
+        // A grant with no enforcement point is refused rather than stored as a no-op an administrator
+        // would go on believing they had made.
+        throw new PolicyValidationError(`"${objectKey}" does not support Delete`);
+    }
+    const role = (await repo.listRoles(actor.tenantId)).find((r) => r.id === roleId);
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    const before = (await repo.listObjectPermissions(actor.tenantId, [roleId]))
+        .find((p) => p.objectId === object.id) ?? null;
+    // Only an EXISTING row can be re-stated. An absent row and an explicit all-false row resolve alike
+    // today but are different stored facts, so writing the first time is a real change.
+    if (before && sameVerbs(before.cred, cred))
+        return before;
+    const holders = await principalsHolding(repo, actor.tenantId, roleId);
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const row = await tx.setObjectPermission(roleId, object.id, cred);
+        for (const uid of holders)
+            await tx.bumpAccessVersion(uid);
+        await tx.appendAudit({
+            ...auditBase(actor, "setObjectPermission", "roleObjectPermission", row.id, input.reason ?? null),
+            before,
+            after: row,
+        });
+        return row;
+    });
+}
+async function setFieldPermissionOverride(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const roleId = nonEmpty(input.roleId, "roleId");
+    const fieldId = nonEmpty(input.fieldId, "fieldId");
+    const override = validCredOverride(input.override);
+    const before = (await repo.listFieldOverrides(actor.tenantId, [roleId])).find((o) => o.fieldId === fieldId) ?? null;
+    // Removing a row that is not there, or re-stating the one that is, changes nothing.
+    const removing = Object.keys(override).length === 0;
+    if (removing ? before === null : before !== null && sameVerbs(before.override, override))
+        return;
+    const holders = await principalsHolding(repo, actor.tenantId, roleId);
+    await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.setFieldOverride(roleId, fieldId, override);
+        for (const uid of holders)
+            await tx.bumpAccessVersion(uid);
+        await tx.appendAudit({
+            ...auditBase(actor, "setFieldPermissionOverride", "roleFieldOverride", fieldId, input.reason ?? null),
+            before,
+            after: Object.keys(override).length === 0 ? null : { roleId, fieldId, override },
+        });
+    });
+}
+/**
+ * Change WHICH EXTERNAL IDENTITY authenticates as an existing Principal. Nothing else.
+ *
+ * ════════════════════ WHY THIS COMMAND HAS TO EXIST ════════════════════
+ *
+ * The identity model is ONE external identity per Principal: `eos_policy.principals` carries
+ * `(identity_provider, external_subject)` under a UNIQUE constraint, and (until migration 1764200000000,
+ * which added an ADDITIONAL binding for EOS-issued identities only -- bindPrincipalEosIdentity) there was no
+ * separate identity-binding table. A Principal provisioned against a provider no verifier recognizes is
+ * therefore a Principal that can never authenticate, and there is no way to ADD a second binding to
+ * it -- so the only governed route from "authority fixture" to "account" is to move the binding it
+ * already has.
+ *
+ * Before this command the only route was an UPDATE typed into a database client. That is the act the
+ * governance rules forbid, and forbidding it while providing no alternative is what left the
+ * substitution happening by hand. This is the alternative: the same two columns, reached through the
+ * authority gate, the transaction, the version bump and the audit event that every other policy
+ * mutation goes through.
+ *
+ * ════════════════════ WHAT IT CANNOT DO ════════════════════
+ *
+ *   NOT AN AUTHORITY CHANGE   The Principal id does not move, and the id is what every assignment,
+ *                             membership, employee link, direct grant and audit row references. The
+ *                             set of Roles and capabilities before and after is the SAME SET, by
+ *                             construction rather than by a check.
+ *   NOT A CREATE              A Principal that does not exist, or is not an ACTIVE member of the
+ *                             actor's tenant, is refused. This never mints a Principal, so it can
+ *                             never be used to introduce an authority holder.
+ *   NOT A MERGE               If another Principal already holds the target identity, the store
+ *                             refuses. Two Principals for one subject would split one human's Roles;
+ *                             silently folding them together would be worse.
+ *   NOT A STATUS CHANGE       There is no status parameter. A disabled Principal stays disabled.
+ *
+ * ════════════════════ THE VERSION BUMP ════════════════════
+ *
+ * The capability set is unchanged, so the bump is not required for correctness -- it is the
+ * conservative direction. Any access context cached against this Principal was resolved for a
+ * different login, and the resolver's qualification rule only ever EXCLUDES grants stamped ABOVE the
+ * current version, so raising the current version can invalidate a cache but can never invalidate an
+ * existing grant.
+ *
+ * NO-OP IS SILENT. Re-stating the binding a Principal already has writes no row and NO AUDIT EVENT:
+ * an audit trail in which half the entries record that nothing happened is an audit trail nobody
+ * reads.
+ */
+async function rebindPrincipalIdentity(repo, actor, input) {
+    // Naming who a Principal IS is assignment-shaped authority -- the same gate that admits a
+    // Principal to the tenant in the first place. It is deliberately not a weaker one.
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "assignRole");
+    const principalId = nonEmpty(input.principalId, "principalId");
+    const identityProvider = nonEmpty(input.identityProvider, "identityProvider");
+    const externalSubject = nonEmpty(input.externalSubject, "externalSubject");
+    const principal = await repo.getPrincipal(principalId);
+    if (!principal)
+        throw new PolicyValidationError("principal not found");
+    const membership = await repo.getMembership(actor.tenantId, principalId);
+    if (!membership || membership.status !== "active") {
+        throw new PolicyValidationError("that principal is not an active member of this tenant");
+    }
+    const displayName = input.displayName === undefined ? principal.displayName : input.displayName;
+    if (principal.identityProvider === identityProvider
+        && principal.externalSubject === externalSubject
+        && principal.displayName === displayName) {
+        return principal;
+    }
+    const clash = await repo.getPrincipalBySubject(identityProvider, externalSubject);
+    if (clash && clash.id !== principalId) {
+        throw new PolicyValidationError("another principal already holds that identity");
+    }
+    // An EOS subject may also be held through an ADDITIONAL binding (principal_identities). Re-pointing a
+    // primary onto a subject another Principal holds that way would make one subject name two Principals.
+    if (identityProvider === principalContext_1.EOS_IDENTITY_PROVIDER) {
+        const bound = await repo.getPrincipalByIdentityBinding(identityProvider, externalSubject);
+        if (bound)
+            throw new PolicyValidationError("that EOS identity is already bound to a principal");
+    }
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const updated = await tx.setPrincipalIdentity(principalId, {
+            identityProvider,
+            externalSubject,
+            displayName,
+        });
+        await tx.bumpAccessVersion(principalId);
+        await tx.appendAudit({
+            ...auditBase(actor, "rebindPrincipalIdentity", "principal", principalId, input.reason ?? null),
+            // BOTH BINDINGS, named. "who could log in as this authority before, and who can now" is the
+            // only question this event will ever be asked, and an event recording only the new value
+            // cannot answer it.
+            before: {
+                identityProvider: principal.identityProvider,
+                externalSubject: principal.externalSubject,
+                displayName: principal.displayName,
+            },
+            after: {
+                identityProvider: updated.identityProvider,
+                externalSubject: updated.externalSubject,
+                displayName: updated.displayName,
+            },
+        });
+        return updated;
+    });
+}
+// ════════════════════ EOS IDENTITY BINDING — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
+//
+// docs/architecture/eos-identity-session-foundation.md, section 3(c). ADDITIVE: the Principal keeps its
+// primary (Firebase) binding; this adds an EOS-issued identity that resolves to the SAME Principal, so no
+// Role, grant, scope, assignment, Employee link or audit reference moves.
+/** An EOS identity subject. Mirrors the principal_identities CHECK and the token verifier. */
+const EOS_SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
+/**
+ * Bind an EOS identity subject to an EXISTING Principal. Identity only -- never an authority change.
+ *
+ *   GATE        the same assignment-shaped authority as rebindPrincipalIdentity (naming who a Principal IS).
+ *   NOT A CREATE a Principal that does not exist, or is not an ACTIVE member of the actor's tenant, is refused.
+ *   NOT SELF     the actor may not bind an identity to itself: that is a login it could hand to anyone.
+ *   NO SPLIT     a subject already bound (even revoked) or already some Principal's primary is refused, and a
+ *                Principal holds at most ONE active EOS binding.
+ *   NO-OP        re-stating the identical ACTIVE binding writes nothing and appends no audit event.
+ *   AUDITED      one audit_events row, actor = the administering Principal, target = the Principal, with the
+ *                binding in `after`. The access version is bumped (conservative: caches keyed on the old
+ *                login set are invalidated; no grant is affected).
+ */
+async function bindPrincipalEosIdentity(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "assignRole");
+    const principalId = nonEmpty(input.principalId, "principalId");
+    const externalSubject = nonEmpty(input.externalSubject, "externalSubject");
+    const reason = nonEmpty(input.reason, "reason");
+    if (!EOS_SUBJECT.test(externalSubject))
+        throw new PolicyValidationError("externalSubject is not a valid EOS subject");
+    if (reason.length > 500)
+        throw new PolicyValidationError("reason is too long");
+    if (principalId === actor.uid) {
+        throw new PolicyValidationError("an administrator may not bind an identity to their own principal");
+    }
+    const principal = await repo.getPrincipal(principalId);
+    if (!principal)
+        throw new PolicyValidationError("principal not found");
+    const membership = await repo.getMembership(actor.tenantId, principalId);
+    if (!membership || membership.status !== "active") {
+        throw new PolicyValidationError("that principal is not an active member of this tenant");
+    }
+    const existing = await repo.getActiveIdentityBinding(principalId, principalContext_1.EOS_IDENTITY_PROVIDER);
+    if (existing) {
+        if (existing.externalSubject === externalSubject)
+            return existing; // silent no-op
+        throw new PolicyValidationError("that principal already has an active EOS identity; revoke it first");
+    }
+    const holder = await (0, principalContext_1.resolvePrincipalByVerifiedIdentity)(repo, principalContext_1.EOS_IDENTITY_PROVIDER, externalSubject);
+    if (holder)
+        throw new PolicyValidationError("another principal already holds that identity");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const created = await tx.createPrincipalIdentityBinding({
+            principalId, identityProvider: principalContext_1.EOS_IDENTITY_PROVIDER, externalSubject, createdBy: actor.uid, reason,
+        });
+        await tx.bumpAccessVersion(principalId);
+        await tx.appendAudit({
+            ...auditBase(actor, "bindPrincipalEosIdentity", "principal", principalId, reason),
+            before: null,
+            after: { bindingId: created.id, identityProvider: created.identityProvider, externalSubject: created.externalSubject, status: created.status },
+        });
+        return created;
+    });
+}
+/** Revoke a Principal's ACTIVE EOS identity. Final: the subject is never re-issued. Same gate, audited. */
+async function revokePrincipalEosIdentity(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "assignRole");
+    const principalId = nonEmpty(input.principalId, "principalId");
+    const reason = nonEmpty(input.reason, "reason");
+    if (reason.length > 500)
+        throw new PolicyValidationError("reason is too long");
+    const membership = await repo.getMembership(actor.tenantId, principalId);
+    if (!membership)
+        throw new PolicyValidationError("that principal is not a member of this tenant");
+    const existing = await repo.getActiveIdentityBinding(principalId, principalContext_1.EOS_IDENTITY_PROVIDER);
+    if (!existing)
+        throw new PolicyValidationError("that principal has no active EOS identity");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        const revoked = await tx.revokePrincipalIdentityBinding(principalId, principalContext_1.EOS_IDENTITY_PROVIDER, actor.uid, reason);
+        await tx.bumpAccessVersion(principalId);
+        await tx.appendAudit({
+            ...auditBase(actor, "revokePrincipalEosIdentity", "principal", principalId, reason),
+            before: { bindingId: existing.id, identityProvider: existing.identityProvider, externalSubject: existing.externalSubject, status: existing.status },
+            after: { bindingId: revoked.id, identityProvider: revoked.identityProvider, externalSubject: revoked.externalSubject, status: revoked.status },
+        });
+        return revoked;
+    });
+}
+/** Two assignments are the SAME EFFECTIVE ASSIGNMENT when these four agree. */
+const sameEffectiveAssignment = (a, roleId, scopeType, scopeValue) => a.roleId === roleId &&
+    a.scopeType === scopeType &&
+    // NULL and "" are the same absence of a scope value. Treating them as different is how a
+    // "global" assignment gets two spellings and the uniqueness rule stops meaning anything.
+    (a.scopeValue ?? "") === (scopeValue ?? "");
+/**
+ * Assign a Role to a principal.
+ *
+ * ANY ROLE, INCLUDING ADMIN, per the Owner ruling -- role ASSIGNMENT and role DEFINITION are
+ * different authorities, and this is the first. The old two-person privileged route is superseded.
+ *
+ * ════════════════════ MEMBERSHIP IS REQUIRED ════════════════════
+ *
+ * A Role granted to somebody who is not a member of this tenant confers nothing -- they resolve to
+ * no context -- so it is not a grant, it is a row that looks like one. Refused here, and made
+ * UNREPRESENTABLE by the composite foreign key in migration 003. Both layers, because an API check
+ * defends the path that goes through the API and a migration or a repair script does not.
+ *
+ * ════════════════════ IDENTICAL ACTIVE ASSIGNMENTS ARE IDEMPOTENT ════════════════════
+ *
+ * Multi-role union stays ADDITIVE: a different Role, or the same Role at a different governed
+ * scope, is a second assignment and confers more. What is NOT a second assignment is the same
+ * principal holding the same Role at the same scope twice -- two active rows saying that confer no
+ * more authority than one, and leave an administrator with two things to revoke before the first
+ * stops applying.
+ *
+ * So this returns the EXISTING canonical row rather than creating a duplicate, writes no audit
+ * event for a change that did not happen, and does not bump the access version -- nothing about
+ * what the principal may do has moved. A revoked assignment does not block a later re-grant: that
+ * one is a real change and gets its own row and its own event.
+ */
+async function assignRole(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "assignRole");
+    if (input.requireStatedReason === true)
+        requireReason(input.reason, "assigning a Security Role");
+    const principalId = nonEmpty(input.principalId, "principalId");
+    const roleId = nonEmpty(input.roleId, "roleId");
+    const scopeType = input.scopeType ?? "global";
+    const scopeValue = input.scopeValue ?? null;
+    const role = (await repo.listRoles(actor.tenantId)).find((r) => r.id === roleId);
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    // PROTECTED OWNER (Controller ruling 2026-09-27): never appointed through ordinary role administration --
+    // not by admin.roleAssignment.write, admin.securityPolicy.write or R1, whoever the target. Decided before
+    // anything else about the request, so no caller can learn more than the refusal.
+    refuseProtectedOwnerMembership(role, "assign");
+    const membership = await repo.getMembership(actor.tenantId, principalId);
+    if (!membership || membership.status !== "active") {
+        throw new PolicyValidationError("that principal is not an active member of this tenant");
+    }
+    // (a) NOBODY STAFFS THEMSELVES. A Role assignment to the actor's own Principal is refused whatever
+    // the Role, so the assignment authority can never be turned into a self-escalation path.
+    if (principalId === actor.uid) {
+        throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not assign a Role to itself");
+    }
+    // (b) ASSIGNING SECURITY-POLICY AUTHORITY NEEDS SECURITY-POLICY AUTHORITY. A Role carrying
+    // admin.securityPolicy.write may be assigned only by an actor who holds it -- otherwise the
+    // assignment capability mints the definition capability (Pass 8 D5) -- with ONE exception, Owner
+    // ruling R1: the designated Administrator Role, for another Principal, globally, by a holder of
+    // admin.administratorRole.assign. Decided here and again UNDER THE GOVERNANCE LOCK below.
+    await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign");
+    // (c) OWNER GOVERNANCE AT THE PRINCIPAL: an owner holder may not reach an excluded capability by
+    // any Role (ruling A).
+    // Checked for a scoped assignment too (lane SC): stricter, never wider.
+    await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [role.key], []);
+    const held = await repo.listAssignmentsForPrincipal(actor.tenantId, principalId);
+    const already = held.find((a) => a.status === "active" && sameEffectiveAssignment(a, roleId, scopeType, scopeValue));
+    if (already)
+        return already;
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        // NO CONFIGURATION THE RUNTIME IGNORES (lane SC), decided UNDER THE GOVERNANCE LOCK (Pass 9 S2): a scoped
+        // assignment is stored only when the runtime decides it -- a consumed scope type, a governed value in THIS tenant,
+        // a Role carrying at least one capability evaluable at that scope, and no Administration capability. Every
+        // grant takes the same lock, so an Administration grant cannot commit between this check and the insert.
+        await refuseUnsupportedAssignmentScope(repo, actor.tenantId, role, scopeType, scopeValue);
+        // D5(b) / R1 re-decided under the lock, against the STORE (a concurrent revoke of the actor's staffing
+        // capability, or a grant of admin.securityPolicy.write to this Role, has committed or waits for us).
+        const staffing = await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign", { fresh: true });
+        // Re-check the idempotence under the governance lock: a concurrent identical assignment that
+        // committed first is returned, never duplicated.
+        const now = (await repo.listAssignmentsForPrincipal(actor.tenantId, principalId))
+            .find((a) => a.status === "active" && sameEffectiveAssignment(a, roleId, scopeType, scopeValue));
+        if (now)
+            return now;
+        // BUMP FIRST, then stamp the grant with the NEW version. A grant carrying the old version would
+        // be stale the instant it was written -- excluded by the resolver's own staleness rule, which is
+        // a grant that silently does nothing.
+        const accessVersion = await tx.bumpAccessVersion(principalId);
+        const assignment = await tx.createAssignment({
+            principalId,
+            roleId,
+            scopeType,
+            scopeValue,
+            status: "active",
+            grantedBy: actor.uid,
+            grantedAt: new Date().toISOString(),
+            accessVersionAtGrant: accessVersion,
+        });
+        await tx.appendAudit({
+            ...auditBase(actor, "assignRole", "roleAssignment", assignment.id, input.reason ?? null),
+            before: null,
+            after: staffing === "ADMINISTRATOR_STAFFING" ? { ...assignment, ...ADMINISTRATOR_STAFFING_AUDIT } : assignment,
+        });
+        return assignment;
+    });
+}
+// ════════════════════ SECURITY ROLE ASSIGNMENT SCOPE (lane SC) ════════════════════
+/**
+ * The governed values this scope type may take in this tenant, or null when there is no governed source.
+ *
+ * Only a TENANT-SCOPED governed source counts (lane GA): operatingCompany -> ACTIVE tenant_operating_companies;
+ * location -> ACTIVE eos_ops.warehouses; salesChannel -> ACTIVE tenant_sales_channels. businessUnit has none (FIN-002
+ * BUSINESS_UNITS is a platform constant, not this tenant's Administration data), so it is null -- never a hard-coded
+ * list offered as though it were governed.
+ */
+async function governedAssignmentScopeValues(repo, tenantId, scopeType) {
+    if (scopeType === "businessUnit")
+        return null;
+    if (typeof repo.listAssignmentScopeValues !== "function")
+        return null;
+    return repo.listAssignmentScopeValues(tenantId, scopeType);
+}
+/** Every capability a Role's grants reach, conditioned ones included (a scoped holding carries its condition). */
+async function roleGrantCapabilityKeys(repo, tenantId, roleId) {
+    const [catalog, grants] = await Promise.all([repo.listCapabilities(), repo.listRoleCapabilities(tenantId, [roleId])]);
+    const keyById = new Map(catalog.map((c) => [c.id, c.key]));
+    return new Set(grants.filter((g) => g.roleId === roleId).map((g) => keyById.get(g.capabilityId)).filter((k) => !!k));
+}
+/**
+ * Refuse any scope the runtime would ignore. `global` must carry no value. A non-global scope must be a scope type
+ * with a runtime consumer, name a governed value of THIS tenant, and target a Role that carries at least one
+ * capability evaluable at that scope (R-32 "some-binding" rule) and no `admin.*` capability.
+ */
+async function refuseUnsupportedAssignmentScope(repo, tenantId, role, scopeType, scopeValue) {
+    if (scopeType === "global") {
+        if (scopeValue !== null && scopeValue !== "") {
+            throw new AdministrationRefusal("SCOPE_VALUE_INVALID", "a global assignment carries no scope value");
+        }
+        return;
+    }
+    if (!(0, assignmentScopeRuntime_1.isRuntimeSupportedScopeType)(scopeType)) {
+        throw new AdministrationRefusal("SCOPE_TYPE_UNSUPPORTED", `scope type '${scopeType}' is not decided by the runtime: ${assignmentScopeRuntime_1.UNSUPPORTED_SCOPE_REASONS[scopeType] ?? "unknown scope type"}`);
+    }
+    if (typeof scopeValue !== "string" || scopeValue === "" || scopeValue.trim() !== scopeValue) {
+        throw new AdministrationRefusal("SCOPE_VALUE_INVALID", `a ${scopeType} assignment names exactly one governed value`);
+    }
+    const values = await governedAssignmentScopeValues(repo, tenantId, scopeType);
+    if (!values || !values.some((v) => v.value === scopeValue)) {
+        throw new AdministrationRefusal("SCOPE_VALUE_INVALID", `'${scopeValue}' is not a governed ${assignmentScopeRuntime_1.ASSIGNMENT_SCOPE_DIMENSIONS[scopeType].label} of this tenant (${assignmentScopeRuntime_1.ASSIGNMENT_SCOPE_DIMENSIONS[scopeType].valueSource})`);
+    }
+    const carried = await roleGrantCapabilityKeys(repo, tenantId, role.id);
+    const admin = [...carried].filter(assignmentScopeRuntime_1.isAdministrationCapability).sort();
+    if (role.protected || admin.length > 0) {
+        throw new AdministrationRefusal("SCOPE_AMBIGUOUS_ADMINISTRATION", `${role.key} carries Administration authority${admin.length ? ` (${admin.join(", ")})` : ""}, which every gate decides tenant-wide; it may only be assigned globally`);
+    }
+    const evaluable = [...carried].filter((k) => (0, assignmentScopeRuntime_1.scopeEvaluableCapabilities)(scopeType).has(k)).sort();
+    if (evaluable.length === 0) {
+        throw new AdministrationRefusal("SCOPE_NOT_EVALUABLE_FOR_ROLE", `${role.key} carries no capability the runtime decides at ${scopeType} scope `
+            + `(evaluable: ${[...(0, assignmentScopeRuntime_1.scopeEvaluableCapabilities)(scopeType)].sort().join(", ")}); the assignment would grant nothing`);
+    }
+}
+/**
+ * THE SCOPE VOCABULARY THE RUNTIME ENFORCES, served so the Security Roles picker offers nothing else. Every scope
+ * type is listed -- unsupported ones with their reason, never silently absent -- and each Role says which scopes it
+ * may be assigned at, what that would confer, and what would stay inert. Values are this tenant's governed values.
+ */
+async function listSupportedAssignmentScopes(repo, tenantId, input = {}) {
+    const types = ["global", ...assignmentScopeRuntime_1.ASSIGNMENT_SCOPE_RUNTIME_TYPES, "domain", "tenant", "ownAssignment"];
+    const scopeTypes = [];
+    for (const scopeType of types) {
+        const supported = scopeType === "global" || (0, assignmentScopeRuntime_1.isRuntimeSupportedScopeType)(scopeType);
+        const dim = (0, assignmentScopeRuntime_1.isAssignmentScopeRuntimeType)(scopeType) ? assignmentScopeRuntime_1.ASSIGNMENT_SCOPE_DIMENSIONS[scopeType] : null;
+        scopeTypes.push(Object.freeze({
+            scopeType,
+            label: scopeType === "global" ? "All (global)" : dim?.label ?? scopeType,
+            supported,
+            reason: supported ? null : assignmentScopeRuntime_1.UNSUPPORTED_SCOPE_REASONS[scopeType] ?? "unknown scope type",
+            contextKey: dim?.contextKey ?? null,
+            valueSource: dim?.valueSource ?? null,
+            values: supported && scopeType !== "global" ? (await governedAssignmentScopeValues(repo, tenantId, scopeType)) ?? [] : [],
+            capabilities: assignmentScopeRuntime_1.SCOPE_EVALUABLE_GRANTS.filter((g) => g.scopeType === scopeType)
+                .map((g) => Object.freeze({ capabilityKey: g.capabilityKey, consumers: g.consumers })),
+        }));
+    }
+    const wanted = typeof input.roleKey === "string" && input.roleKey !== "" ? input.roleKey : null;
+    const roles = (await repo.listRoles(tenantId)).filter((r) => !wanted || r.key === wanted);
+    if (wanted && roles.length === 0)
+        throw new PolicyValidationError("role not found");
+    const out = [];
+    for (const role of [...roles].sort((a, b) => a.key.localeCompare(b.key))) {
+        const carried = [...(await roleGrantCapabilityKeys(repo, tenantId, role.id))].sort();
+        const assignableScopes = [];
+        for (const scopeType of assignmentScopeRuntime_1.ASSIGNMENT_SCOPE_RUNTIME_TYPES.filter((t) => (0, assignmentScopeRuntime_1.isRuntimeSupportedScopeType)(t))) {
+            const evaluable = (0, assignmentScopeRuntime_1.scopeEvaluableCapabilities)(scopeType);
+            const admin = carried.filter(assignmentScopeRuntime_1.isAdministrationCapability);
+            const scopedCapabilities = carried.filter((k) => evaluable.has(k));
+            const refusal = role.protected || admin.length > 0 ? "SCOPE_AMBIGUOUS_ADMINISTRATION"
+                : scopedCapabilities.length === 0 ? "SCOPE_NOT_EVALUABLE_FOR_ROLE" : null;
+            assignableScopes.push(Object.freeze({
+                scopeType, assignable: refusal === null, refusal,
+                scopedCapabilities: Object.freeze(refusal ? [] : scopedCapabilities),
+                inertCapabilities: Object.freeze(carried.filter((k) => !evaluable.has(k))),
+            }));
+        }
+        out.push(Object.freeze({ roleKey: role.key, roleId: role.id, assignableScopes: Object.freeze(assignableScopes) }));
+    }
+    return Object.freeze({ scopeTypes: Object.freeze(scopeTypes), roles: Object.freeze(out) });
+}
+/**
+ * Activate or deactivate ONE sales channel for this tenant -- the governed value source of the salesChannel
+ * assignment scope. Gate: admin.securityPolicy.write (it defines which scope values exist; it assigns nothing).
+ *
+ * Under the tenant governance lock, so it serializes with assignRole's scope-value check: a channel cannot be
+ * deactivated between that check and the assignment's insert. Deactivation FAILS CLOSED while any ACTIVE assignment
+ * is scoped to the channel -- nothing is revoked implicitly. Exactly one audit event per change; NO_CHANGE writes none.
+ * The vocabulary is the Commercial record enum (SALES_CHANNELS = eos_commercial.commercial_sales_channel).
+ */
+async function setTenantSalesChannelStatus(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const salesChannel = nonEmpty(input.salesChannel, "salesChannel");
+    if (!opportunityLifecycle_1.SALES_CHANNELS.includes(salesChannel)) {
+        throw new AdministrationRefusal("SALES_CHANNEL_INVALID", `salesChannel must be one of ${opportunityLifecycle_1.SALES_CHANNELS.join(", ")}`);
+    }
+    const status = input.status;
+    if (status !== "ACTIVE" && status !== "INACTIVE") {
+        throw new AdministrationRefusal("SALES_CHANNEL_INVALID", "status must be ACTIVE or INACTIVE");
+    }
+    if (!input.reason)
+        throw new AdministrationRefusal("REASON_REQUIRED", "a stated reason is required to change a tenant sales channel");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        if (typeof tx.readTenantSalesChannel !== "function" || typeof tx.writeTenantSalesChannel !== "function"
+            || typeof tx.activeScopedAssignmentCount !== "function") {
+            throw new AdministrationRefusal("SALES_CHANNEL_STORE_UNAVAILABLE", "this policy store has no tenant sales channel authority");
+        }
+        const before = await tx.readTenantSalesChannel(salesChannel);
+        const current = before?.status ?? "INACTIVE";
+        if (current === status)
+            return Object.freeze({ outcome: "NO_CHANGE", salesChannel, status });
+        if (status === "INACTIVE") {
+            const held = await tx.activeScopedAssignmentCount("salesChannel", salesChannel);
+            if (held > 0) {
+                throw new AdministrationRefusal("SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS", `${held} active Security Role assignment(s) are scoped to ${salesChannel}; revoke them first -- deactivation never revokes implicitly`);
+            }
+        }
+        const after = await tx.writeTenantSalesChannel(salesChannel, status, "administration");
+        await tx.appendAudit({
+            ...auditBase(actor, "setTenantSalesChannelStatus", "tenantSalesChannel", salesChannel, input.reason),
+            before: before ?? null,
+            after,
+        });
+        return Object.freeze({ outcome: status === "ACTIVE" ? "ACTIVATED" : "DEACTIVATED", salesChannel, status });
+    });
+}
+/** Recorded on the ONE audit event of a change the R1 staffing capability authorized. */
+const ADMINISTRATOR_STAFFING_AUDIT = Object.freeze({
+    authorizedBy: Object.freeze({ capabilityKey: administrationAuthority_1.ADMINISTRATOR_STAFFING_CAPABILITY, ownerRuling: "R1 (2026-09-26)" }),
+});
+/**
+ * Pass 8 D5(b), both directions, with the Owner ruling R1 exception.
+ *
+ * A Role that carries admin.securityPolicy.write (by any grant, conditioned included -- stricter, never wider) may be
+ * assigned or removed only by an actor holding admin.securityPolicy.write. The ONE exception (R1): the DESIGNATED
+ * Administrator Role (protected, key ADMIN_ROLE_KEY), GLOBAL, for a Principal OTHER than the actor, by an actor that
+ * holds admin.administratorRole.assign -- global, unconditioned, unexpired (the flat set). Nothing else widens: a
+ * custom Role carrying admin.securityPolicy.write, a scoped Administrator, a self-assignment or self-removal, a direct
+ * grant and every definition edit still require admin.securityPolicy.write.
+ *
+ * `fresh`: resolve the actor's capabilities from the STORE (qualifying global Roles + unexpired direct grants), not
+ * from the request-resolved set -- used under the governance lock so a concurrent revoke of the staffing capability
+ * is honoured. The admin.securityPolicy.write path keeps the request-resolved set (unchanged behaviour); the R1 path
+ * must hold in BOTH.
+ */
+async function authorizeSecurityPolicyStaffing(repo, actor, role, targetPrincipalId, scopeType, verb, options = {}) {
+    const carried = await (0, administrationCapabilityGate_1.capabilityKeysFor)(repo, actor.tenantId, [role.key], null, { includeConditioned: true });
+    if (!carried.has(SECURITY_POLICY_WRITE))
+        return "NOT_REQUIRED";
+    const held = await (0, administrationCapabilityGate_1.actorCapabilities)(repo, actor);
+    if (held.has(SECURITY_POLICY_WRITE))
+        return "SECURITY_POLICY_WRITE";
+    const act = verb === "assign" ? "assigning" : "removing";
+    const refuse = () => {
+        throw new AdministrationRefusal("PRIVILEGE_ESCALATION", `${act} ${role.key} concerns ${SECURITY_POLICY_WRITE}, which the acting principal does not hold`
+            + ((0, administrationAuthority_1.isDesignatedAdministratorRole)(role)
+                ? ` (${administrationAuthority_1.ADMINISTRATOR_STAFFING_CAPABILITY} admits only the designated Administrator Role, globally, for another principal)`
+                : ""));
+    };
+    if (!(0, administrationAuthority_1.isDesignatedAdministratorRole)(role) || !held.has(administrationAuthority_1.ADMINISTRATOR_STAFFING_CAPABILITY))
+        refuse();
+    if (targetPrincipalId === actor.uid) {
+        throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not ${verb === "assign" ? "assign the Administrator Role to" : "remove the Administrator Role from"} itself`);
+    }
+    if (scopeType !== "global")
+        refuse();
+    if (options.fresh === true) {
+        const stored = await (0, administrationCapabilityGate_1.capabilityKeysFor)(repo, actor.tenantId, await qualifyingRoleKeys(repo, actor.tenantId, actor.uid), actor.uid);
+        if (!stored.has(administrationAuthority_1.ADMINISTRATOR_STAFFING_CAPABILITY))
+            refuse();
+    }
+    return "ADMINISTRATOR_STAFFING";
+}
+/**
+ * Revoke ONE EXACT assignment.
+ *
+ * By assignment id, never by (principal, role): a principal may legitimately hold the same Role at
+ * two scopes, and revoking "their salesperson role" would silently remove both. The caller names
+ * the one they mean.
+ *
+ * REFUSES to remove the LAST administering assignment in the tenant, and the last path the gate
+ * would admit to a governing Administration capability. Both counts are taken INSIDE the
+ * transaction, under the tenant governance lock (Pass 8 D2): two administrators revoking each other
+ * concurrently serialize, and the second sees the first's revoke.
+ */
+async function revokeRole(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "assignRole");
+    if (input.requireStatedReason === true)
+        requireReason(input.reason, "removing a Security Role");
+    const assignmentId = nonEmpty(input.assignmentId, "assignmentId");
+    const target = await findAssignment(repo, actor.tenantId, assignmentId);
+    if (!target)
+        throw new PolicyValidationError("assignment not found");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        const current = await tx.readAssignment(assignmentId);
+        if (!current)
+            throw new PolicyValidationError("assignment not found");
+        let staffing = "NOT_REQUIRED";
+        const assignmentRoles = await repo.listRoles(actor.tenantId);
+        const currentRole = assignmentRoles.find((r) => r.id === current.roleId);
+        if ((0, administrationAuthority_1.isProtectedOwnerRole)(currentRole)) {
+            // PROTECTED OWNER (Controller ruling 2026-09-27), under the governance lock. The per-role last-Owner
+            // invariant first (its own code, so the reason is exact), then the membership rule, which refuses every
+            // ordinary removal of a protected Owner -- the Owner's own included -- whatever authority the actor holds.
+            if (current.status === "active")
+                await refuseIfLastProtectedOwner(tx, current.roleId, assignmentId);
+            refuseProtectedOwnerMembership(currentRole, "revoke");
+        }
+        if (current.status === "active") {
+            const roles = assignmentRoles;
+            // D5(b) for REMOVAL (Owner ruling R1): removing a Role that carries admin.securityPolicy.write needs that
+            // capability, or -- for the designated Administrator Role only, from another Principal -- the R1 staffing
+            // capability. Decided under the governance lock, against the store.
+            const assignedRole = roles.find((r) => r.id === current.roleId);
+            if (assignedRole) {
+                staffing = await authorizeSecurityPolicyStaffing(repo, actor, assignedRole, current.principalId, current.scopeType ?? "global", "revoke", { fresh: true });
+            }
+            if (roles.some((r) => r.protected && r.id === current.roleId)
+                && (await tx.protectedRoleAssignmentCount(assignmentId)) === 0) {
+                throw new PolicyValidationError("this is the last active administering assignment -- revoking it would leave the tenant unadministrable");
+            }
+            await refuseIfLastAdministrationPath(tx, { assignmentId });
+        }
+        const updated = await tx.setAssignmentStatus(assignmentId, "disabled");
+        await tx.bumpAccessVersion(current.principalId);
+        await tx.appendAudit({
+            ...auditBase(actor, "revokeRole", "roleAssignment", assignmentId, input.reason ?? null),
+            before: current,
+            after: staffing === "ADMINISTRATOR_STAFFING" ? { ...updated, ...ADMINISTRATOR_STAFFING_AUDIT } : updated,
+        });
+        return updated;
+    });
+}
+// ════════════════════ WORKFLOWS ════════════════════
+//
+// publishWorkflowVersion moved to workflowLifecycle.ts (2026-09-26, workflow control plane): it is
+// now capability-gated (workflowDefinition.publish), validated fail-closed with stable codes, and
+// moves the workflow's ACTIVE version pointer in the same transaction. It is not re-exported from
+// here because workflowLifecycle imports this module (PolicyValidationError).
+// ════════════════════ helpers ════════════════════
+/** Every principal currently holding a Role, so a permission change can invalidate their caches. */
+async function principalsHolding(repo, tenantId, roleId) {
+    const uids = new Set();
+    for (const uid of await allPrincipals(repo, tenantId)) {
+        const assignments = await repo.listAssignmentsForPrincipal(tenantId, uid);
+        if (assignments.some((a) => a.roleId === roleId && a.status === "active"))
+            uids.add(uid);
+    }
+    return [...uids];
+}
+/**
+ * Every principal who could hold a Role in this tenant.
+ *
+ * MEMBERSHIP FIRST, and that is a correctness fix rather than a tidy-up. This used to be derived
+ * ONLY by walking audit events for an `after.principalId`, which is true of an assignment written
+ * by `assignRole` and NOT true of one written by the tenant bootstrap -- so the initial
+ * administrator was invisible here, and the "you may not revoke the last administering assignment"
+ * guard would have counted zero and let it go.
+ *
+ * The audit-derived set is still unioned in, deliberately: a principal may hold an assignment
+ * without a membership row in the foundation's own resolver proofs, which construct assignments
+ * directly to test staleness and union arithmetic. A superset is the safe direction here -- this
+ * feeds a guard that REFUSES, so including a principal who does not exist costs nothing and
+ * excluding one who does costs the recovery invariant.
+ */
+async function allPrincipals(repo, tenantId) {
+    const uids = new Set(await repo.listTenantPrincipalIds(tenantId));
+    const events = await repo.listAuditEvents(tenantId, 10_000);
+    for (const e of events) {
+        const after = e.after;
+        if (after && typeof after.principalId === "string")
+            uids.add(after.principalId);
+    }
+    return [...uids];
+}
+async function findAssignment(repo, tenantId, assignmentId) {
+    for (const uid of await allPrincipals(repo, tenantId)) {
+        const found = (await repo.listAssignmentsForPrincipal(tenantId, uid)).find((a) => a.id === assignmentId);
+        if (found)
+            return found;
+    }
+    return null;
+}
+async function countActiveAdministeringAssignments(repo, tenantId, adminRoleIds) {
+    let count = 0;
+    for (const uid of await allPrincipals(repo, tenantId)) {
+        for (const a of await repo.listAssignmentsForPrincipal(tenantId, uid)) {
+            if (a.status === "active" && adminRoleIds.has(a.roleId))
+                count += 1;
+        }
+    }
+    return count;
+}
+const SECURITY_POLICY_WRITE = "admin.securityPolicy.write";
+/** Resolve (objectKey, actionKey) against the canonical catalog, and prove the Object is governed. */
+async function resolveGrantTarget(repo, tenantId, objectKey, actionKey) {
+    const capabilities = await repo.listCapabilities();
+    let capability;
+    try {
+        capability = (0, objectSecurityAuthority_1.resolveObjectAction)(capabilities, objectKey, actionKey);
+    }
+    catch (err) {
+        throw new PolicyValidationError(err.message);
+    }
+    // THE OBJECT MUST EXIST IN THIS TENANT'S CATALOG, not only in the capability metadata.
+    const object = await repo.getObjectByKey(tenantId, capability.objectKey);
+    if (!object)
+        throw new PolicyValidationError(`this tenant has no governed Object "${capability.objectKey}"`);
+    return capability;
+}
+const requireReason = (reason, what) => {
+    if (typeof reason !== "string" || reason.trim() === "") {
+        throw new AdministrationRefusal("REASON_REQUIRED", `${what} requires a reason`);
+    }
+    return reason.trim();
+};
+/**
+ * Validate one condition exactly as the RUNTIME will read it -- the evaluator's catalog builder and
+ * withheld-cell guard -- and against the CONDITIONABLE_GRANTS allow-list: only a capability whose every
+ * consuming gate evaluates entitlements, only its listed record kinds, only governed parameters.
+ */
+function validateRoleCondition(roleKey, capabilityKey, condition) {
+    validateGrantCondition("ROLE", roleKey, capabilityKey, condition);
+}
+/** The same validation for either grant scope: a direct exception's condition obeys exactly the Role rules. */
+function validateGrantCondition(grantScope, grantorKey, capabilityKey, condition) {
+    const allowed = roleCapabilityAdministration_1.CONDITIONABLE_GRANTS.find((g) => g.capabilityKey === capabilityKey);
+    if (!allowed) {
+        throw new AdministrationRefusal("CONDITION_NOT_SUPPORTED", `${capabilityKey} may not carry a condition: a gate that reads it cannot evaluate one (see listSupportedConditionKinds)`);
+    }
+    let catalog;
+    try {
+        catalog = (0, conditionalEntitlement_1.grantConditionCatalogFromRows)([{ grantScope, grantorKey, capabilityKey, condition }]);
+        (0, conditionalEntitlement_1.assertNoWithheldGrantConditions)(catalog);
+    }
+    catch (err) {
+        throw new AdministrationRefusal("CONDITION_INVALID", err.message);
+    }
+    const parsed = [...catalog.values()][0];
+    if (parsed.recordKind !== undefined && !allowed.recordKinds.includes(parsed.recordKind)) {
+        throw new AdministrationRefusal("CONDITION_NOT_SUPPORTED", `${capabilityKey} does not support recordKind ${parsed.recordKind}`);
+    }
+    for (const path of parsed.paths) {
+        for (const predicate of path) {
+            if (!allowed.kinds.includes(predicate.kind)) {
+                throw new AdministrationRefusal("CONDITION_NOT_SUPPORTED", `${capabilityKey} does not support ${predicate.kind}`);
+            }
+            if (predicate.kind === "WORK_ELIGIBILITY" && !contextualAuthorization_1.GOVERNED_QUALIFICATION_CODES.has(predicate.qualificationCode)) {
+                throw new AdministrationRefusal("CONDITION_INVALID", `"${predicate.qualificationCode}" is not a governed qualification code`);
+            }
+            if (predicate.kind === "OPERATIONAL_SCOPE"
+                && !roleCapabilityAdministration_1.CONDITION_OPERATIONAL_SCOPE_TYPES.includes(predicate.scopeType)) {
+                throw new AdministrationRefusal("CONDITION_INVALID", `"${predicate.scopeType}" is not an Operational Scope type`);
+            }
+        }
+    }
+}
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** The GLOBAL Role keys a principal qualifies for now (shared rule with the runtime resolver). */
+async function qualifyingRoleKeys(repo, tenantId, principalId) {
+    const policy = await (0, effectiveObjectAccess_1.loadPrincipalPolicy)(repo, tenantId, principalId);
+    const roles = await repo.listRoles(tenantId);
+    const keyById = new Map(roles.map((r) => [r.id, r.key]));
+    return [...new Set(policy.qualifyingRoleIds.map((id) => keyById.get(id)).filter((k) => Boolean(k)))];
+}
+/**
+ * OWNER GOVERNANCE AT THE PRINCIPAL (ruling A): refuse if, after adding `extraRoleKeys` / `extraDirect`,
+ * a principal holding the owner Role would reach an excluded capability by ANY path.
+ */
+async function refuseOwnerPrincipalViolation(repo, tenantId, principalId, extraRoleKeys, extraDirect) {
+    const roleKeys = [...new Set([...(await qualifyingRoleKeys(repo, tenantId, principalId)), ...extraRoleKeys])];
+    if (!roleKeys.includes("owner"))
+        return;
+    // BY ANY PATH: a conditioned grant (Role or direct) still HOLDS the key, so it counts here -- unlike a gate, which
+    // must withhold it because it cannot evaluate the condition.
+    const effective = new Set([
+        ...(await (0, administrationCapabilityGate_1.capabilityKeysFor)(repo, tenantId, roleKeys, principalId, { includeConditioned: true })), ...extraDirect
+    ]);
+    const violations = (0, roleCapabilityAdministration_1.ownerPrincipalViolations)(roleKeys, effective);
+    if (violations.length > 0) {
+        throw new AdministrationRefusal("SYSTEM_INVARIANT", `a principal holding the owner Role may never hold ${violations.join(", ")} (Owner ruling A), by any Role or direct grant`);
+    }
+}
+/** Principals holding this Role through an ACTIVE assignment. */
+/** ACTIVE non-global assignments of this Role, across the tenant's principals. */
+async function scopedHoldersOfRole(repo, tenantId, roleId) {
+    let n = 0;
+    for (const principalId of await repo.listTenantPrincipalIds(tenantId)) {
+        for (const a of await repo.listAssignmentsForPrincipal(tenantId, principalId)) {
+            if (a.status === "active" && a.roleId === roleId && typeof a.scopeType === "string" && a.scopeType !== "" && a.scopeType !== "global")
+                n += 1;
+        }
+    }
+    return n;
+}
+async function principalsHoldingRole(repo, tenantId, roleId) {
+    const out = [];
+    for (const principalId of await repo.listTenantPrincipalIds(tenantId)) {
+        const assignments = await repo.listAssignmentsForPrincipal(tenantId, principalId);
+        if (assignments.some((a) => a.status === "active" && a.roleId === roleId))
+            out.push(principalId);
+    }
+    return out;
+}
+/**
+ * THE ANTI-LOCKOUT SET: the governing Administration capabilities PLUS the R1 staffing capability
+ * (Controller ruling 2026-09-27). R1 governs no policy, so it stays out of ADMINISTRATION_GOVERNING_CAPABILITIES,
+ * but losing its last holder strands the tenant's governed way to recover Administrator staffing -- so no
+ * mutation may remove it.
+ */
+exports.ANTI_LOCKOUT_CAPABILITIES = Object.freeze([
+    ...roleCapabilityAdministration_1.ADMINISTRATION_GOVERNING_CAPABILITIES,
+    administrationAuthority_1.ADMINISTRATOR_STAFFING_CAPABILITY,
+]);
+/**
+ * PROTECTED OWNER MEMBERSHIP (Controller ruling 2026-09-27): the protected Owner is not an ordinary Security Role
+ * assignment. Ordinary role administration may neither appoint nor remove it. Owner succession / transfer is a
+ * separate governed lifecycle operation that does not exist yet -- this refuses; it does not route anywhere.
+ */
+function refuseProtectedOwnerMembership(role, verb) {
+    if (!(0, administrationAuthority_1.isProtectedOwnerRole)(role))
+        return;
+    throw new AdministrationRefusal("PROTECTED_OWNER_MEMBERSHIP", `the protected Owner is not ${verb === "assign" ? "appointed" : "removed"} through ordinary role administration `
+        + "(admin.roleAssignment.write, admin.securityPolicy.write and admin.administratorRole.assign are all insufficient); "
+        + "Owner succession is a separate governed lifecycle operation");
+}
+/**
+ * THE LAST-OWNER INVARIANT (per role), inside the transaction and under the governance lock: refuse a change
+ * after which the tenant has ZERO active global assignments of the protected Owner Role. Assignments of any
+ * other protected Role -- the Administrator included -- never substitute for an Owner.
+ */
+async function refuseIfLastProtectedOwner(tx, ownerRoleId, excludeAssignmentId) {
+    if ((await tx.activeGlobalAssignmentCountForRole(ownerRoleId, excludeAssignmentId)) === 0) {
+        throw new AdministrationRefusal("LAST_PROTECTED_OWNER", "this is the tenant's last active protected Owner assignment; no ordinary role-assignment command may leave a tenant without an Owner");
+    }
+}
+/**
+ * ANTI-LOCKOUT (PLATFORM_SAFETY), inside the transaction and under the governance lock: refuse a
+ * change after which NO principal the gate would admit holds a capability of ANTI_LOCKOUT_CAPABILITIES.
+ */
+async function refuseIfLastAdministrationPath(tx, exclude, onlyCapability) {
+    for (const key of exports.ANTI_LOCKOUT_CAPABILITIES) {
+        if (onlyCapability !== undefined && onlyCapability !== key)
+            continue;
+        const before = await tx.administrationHolderCount(key, {});
+        if (before === 0)
+            continue; // nothing to lose; the tenant was not administered this way
+        const after = await tx.administrationHolderCount(key, exclude);
+        if (after === 0) {
+            throw new AdministrationRefusal("WOULD_REMOVE_LAST_ADMINISTRATION_PATH", `no principal the gate would admit would still hold ${key}; the tenant would become unadministrable`);
+        }
+    }
+}
+/**
+ * Grant an Object action to a Security Role, THROUGH ADMINISTRATION.
+ *
+ * ONE transaction, under the tenant governance lock and the grant-cell lock: the optional condition,
+ * the effective row, ONE audit event and ONE ADMIN_GRANTED decision. Every state-dependent check --
+ * the no-op test, the condition still being ACTIVE, requiresCondition -- is made INSIDE it (Pass 8
+ * D3/D6/D11), so a concurrent retire, revoke or identical grant cannot slip between check and act.
+ */
+async function grantObjectActionToRole(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, "a Role grant");
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    const invariant = (0, roleCapabilityAdministration_1.forbiddenPair)(role.key, capability.key);
+    if (invariant) {
+        throw new AdministrationRefusal("SYSTEM_INVARIANT", `${role.key} may never hold ${capability.key} (${invariant.ruling})`);
+    }
+    // NOBODY WIDENS A ROLE THEY HOLD (self-grant, Pass 8 D5a) -- globally OR through a scoped assignment (Pass 9 S2:
+    // heldRoleKeys is global-only, so a scoped holder would otherwise widen its own Role).
+    if ((Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : []).includes(role.key)
+        || (await repo.listAssignmentsForPrincipal(actor.tenantId, actor.uid)).some((a) => a.status === "active" && a.roleId === role.id)) {
+        throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not grant a capability to a Role it holds (${role.key})`);
+    }
+    // OWNER GOVERNANCE AT THE PRINCIPAL: no holder of this Role who also holds owner may gain an excluded key.
+    if (roleCapabilityAdministration_1.OWNER_EXCLUDED_CAPABILITIES.includes(capability.key)) {
+        for (const principalId of await principalsHoldingRole(repo, actor.tenantId, role.id)) {
+            await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [], [capability.key]);
+        }
+    }
+    const condition = input.condition === undefined || input.condition === null ? null : input.condition;
+    if (condition !== null)
+        validateRoleCondition(role.key, capability.key, condition);
+    const requiresCondition = input.requiresCondition === true;
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(role.key, capability.key);
+        // NO ADMINISTRATION AUTHORITY FOR A SCOPED ROLE (Pass 9 S2), under the governance lock: every Administration
+        // gate is tenant-wide, so granting one of its keys to a Role that has an ACTIVE scoped holder would silently
+        // turn "Role @ Company X" into tenant-wide Administration. Refused; assignRole refuses the reverse order.
+        if ((0, assignmentScopeRuntime_1.isAdministrationCapability)(capability.key)) {
+            const scopedHolders = await scopedHoldersOfRole(repo, actor.tenantId, role.id);
+            if (scopedHolders > 0) {
+                throw new AdministrationRefusal("SCOPE_AMBIGUOUS_ADMINISTRATION", `${role.key} has ${scopedHolders} scoped assignment(s); ${capability.key} is Administration authority, decided tenant-wide, and may not be granted to a scoped Role`);
+            }
+        }
+        const cell = await tx.readGrantCell(role.key, capability.key);
+        if (requiresCondition && condition === null && !cell.condition) {
+            throw new AdministrationRefusal("CONDITION_REQUIRED", `${role.key}/${capability.key} is marked as requiring a condition and none is supplied or active`);
+        }
+        const conditionChanges = condition !== null && !sameJson(cell.condition?.condition, condition);
+        // NO-OP, decided under the locks: held, not administratively revoked, no condition change, and no
+        // new requirement. A concurrent identical grant therefore returns the committed row, cleanly.
+        if (cell.grant && cell.decision?.decision !== "ADMIN_REVOKED" && !conditionChanges
+            && (!requiresCondition || cell.decision?.requiresCondition === true)) {
+            return cell.grant;
+        }
+        // Condition FIRST, then the grant: the grant is never visible unconditioned.
+        const storedCondition = conditionChanges
+            ? await tx.upsertGrantCondition({ grantScope: "ROLE", grantorKey: role.key, capabilityKey: capability.key, condition })
+            : cell.condition;
+        const grant = await tx.grantRoleCapability({
+            roleId: role.id,
+            capabilityId: capability.id,
+            grantedBy: actor.uid,
+            grantedAt: new Date().toISOString(),
+        });
+        const auditEventId = await tx.appendAudit({
+            ...auditBase(actor, "grantObjectActionToRole", "roleCapability", grant.id, reason),
+            before: {
+                objectKey: capability.objectKey, actionKey: capability.actionKey, capabilityKey: capability.key,
+                granteeType: "ROLE", granteeKey: role.key, held: Boolean(cell.grant),
+                decision: cell.decision?.decision ?? null, condition: cell.condition?.condition ?? null,
+            },
+            after: {
+                objectKey: capability.objectKey, actionKey: capability.actionKey,
+                capabilityKey: capability.key, granteeType: "ROLE", granteeKey: role.key, grant, held: true,
+                decision: "ADMIN_GRANTED", requiresCondition, condition: storedCondition?.condition ?? null,
+            },
+        });
+        await tx.recordRoleCapabilityDecision({
+            roleKey: role.key, capabilityKey: capability.key, decision: "ADMIN_GRANTED", requiresCondition,
+            reason, actorPrincipalId: actor.uid, auditEventId,
+        });
+        return grant;
+    });
+}
+/**
+ * Revoke an Object action from a Security Role, THROUGH ADMINISTRATION.
+ *
+ * ONE transaction under the governance and cell locks: the effective row removed, ONE audit event, ONE
+ * ADMIN_REVOKED decision. The decision keeps the revoke -- no default writer re-inserts it (the
+ * reconcile skips it; the database refuses a raw insert). Anti-lockout is checked inside the lock.
+ * Revoking something not held is a no-op.
+ */
+async function revokeObjectActionFromRole(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, "a Role revoke");
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(role.key, capability.key);
+        const cell = await tx.readGrantCell(role.key, capability.key);
+        if (!cell.grant)
+            return null; // nothing was granted; nothing happened; nothing to audit
+        if (exports.ANTI_LOCKOUT_CAPABILITIES.includes(capability.key)) {
+            await refuseIfLastAdministrationPath(tx, { roleId: role.id }, capability.key);
+        }
+        const removed = await tx.revokeRoleCapability(role.id, capability.id);
+        if (!removed)
+            return null;
+        const auditEventId = await tx.appendAudit({
+            ...auditBase(actor, "revokeObjectActionFromRole", "roleCapability", removed.id, reason),
+            before: {
+                objectKey: capability.objectKey, actionKey: capability.actionKey,
+                capabilityKey: capability.key, granteeType: "ROLE", granteeKey: role.key, grant: removed, held: true,
+                decision: cell.decision?.decision ?? null, condition: cell.condition?.condition ?? null,
+            },
+            after: {
+                objectKey: capability.objectKey, actionKey: capability.actionKey, capabilityKey: capability.key,
+                granteeType: "ROLE", granteeKey: role.key, held: false, decision: "ADMIN_REVOKED",
+                condition: cell.condition?.condition ?? null,
+            },
+        });
+        await tx.recordRoleCapabilityDecision({
+            roleKey: role.key, capabilityKey: capability.key, decision: "ADMIN_REVOKED", requiresCondition: false,
+            reason, actorPrincipalId: actor.uid, auditEventId,
+        });
+        return removed;
+    });
+}
+/** Which cell a condition command names. Exactly one grantee, or the command is refused. */
+function conditionCell(input) {
+    const hasRole = typeof input.roleKey === "string" && input.roleKey.trim() !== "";
+    const hasPrincipal = typeof input.principalId === "string" && input.principalId.trim() !== "";
+    if (hasRole === hasPrincipal) {
+        throw new PolicyValidationError("name exactly one grantee: roleKey (a Role grant) or principalId (a direct exception)");
+    }
+    return hasRole ? { scope: "ROLE", roleKey: nonEmpty(input.roleKey, "roleKey") }
+        : { scope: "PRINCIPAL", principalId: nonEmpty(input.principalId, "principalId") };
+}
+/**
+ * Establish or replace the condition on one Role grant cell. Setting a condition on a HELD grant
+ * narrows it (safe); on an un-held cell it is inert until the grant exists, and then it binds.
+ */
+async function setGrantCondition(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, "a grant condition");
+    const cellRef = conditionCell(input);
+    if (cellRef.scope === "PRINCIPAL")
+        return setDirectExceptionCondition(repo, actor, input, cellRef.principalId, reason);
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    if (input.condition === undefined || input.condition === null) {
+        throw new AdministrationRefusal("CONDITION_INVALID", "a condition is required; retire a condition with retireGrantCondition");
+    }
+    validateRoleCondition(role.key, capability.key, input.condition);
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(role.key, capability.key);
+        const existing = (await tx.readGrantCell(role.key, capability.key)).condition;
+        if (existing && sameJson(existing.condition, input.condition))
+            return existing;
+        const stored = await tx.upsertGrantCondition({
+            grantScope: "ROLE", grantorKey: role.key, capabilityKey: capability.key, condition: input.condition,
+        });
+        await tx.appendAudit({
+            ...auditBase(actor, "setGrantCondition", "grantCondition", stored.id, reason),
+            before: existing ? { grantScope: "ROLE", granteeKey: role.key, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: existing.condition, status: "ACTIVE" } : null,
+            after: { grantScope: "ROLE", granteeKey: role.key, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: stored.condition, status: stored.status },
+        });
+        return stored;
+    });
+}
+/**
+ * Retire the condition on one Role grant cell. REFUSED while the grant is held -- lifting it would
+ * widen the grant to every record -- decided INSIDE the cell lock the grant path also takes, and
+ * re-enforced by the database trigger. Revoke first, then retire, then re-grant if an unconditional
+ * grant is truly intended: three audited decisions, never an accident.
+ */
+async function retireGrantCondition(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, "retiring a grant condition");
+    const cellRef = conditionCell(input);
+    if (cellRef.scope === "PRINCIPAL")
+        return retireDirectExceptionCondition(repo, actor, input, cellRef.principalId, reason);
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(role.key, capability.key);
+        const cell = await tx.readGrantCell(role.key, capability.key);
+        if (!cell.condition)
+            return null;
+        if (cell.grant) {
+            throw new AdministrationRefusal("CONDITION_RETIREMENT_WOULD_WIDEN", `${role.key} still holds ${capability.key}; retiring its condition would widen it to every record -- revoke the grant first`);
+        }
+        const retired = await tx.retireGrantCondition("ROLE", role.key, capability.key);
+        if (!retired)
+            return null;
+        await tx.appendAudit({
+            ...auditBase(actor, "retireGrantCondition", "grantCondition", retired.id, reason),
+            before: { grantScope: "ROLE", granteeKey: role.key, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: cell.condition.condition, status: "ACTIVE" },
+            after: { grantScope: "ROLE", granteeKey: role.key, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: retired.condition, status: retired.status },
+        });
+        return retired;
+    });
+}
+// ════════════════════ DIRECT PRINCIPAL GRANTS (governed exceptions) ════════════════════
+//
+// COMPLETE SUPPORT (lane DX). A direct grant is a capability SOURCE of the one runtime resolution
+// (capabilityAuthority.resolveOperationalCapabilities), with a Role grant's semantics on every gate: unconditioned it
+// is flat; with an ACTIVE PRINCIPAL-cell condition it is conditionallyHeld, decided per record, never flat; it has NO
+// scope (a scope is refused by name); an EXPIRED one confers nothing and is not read. The commands below mirror the
+// Role commands: one transaction under the tenant governance lock AND the (PRINCIPAL, principal, capability) cell
+// lock the condition-retire trigger also takes; every state-dependent check inside it; exactly ONE audit event per
+// effective change and none for a no-op; a reason always.
+//
+// Pass 8/9 invariants, at the Principal:
+//   no self-grant                    a principal may not grant, condition or retire a condition on ITSELF
+//   Owner ruling A                   a holder of the owner Role may not reach an excluded key directly, conditioned
+//                                    or not (checked inside the lock)
+//   admin.* not conditionable        the CONDITIONABLE_GRANTS allow-list (no admin.* key is on it)
+//   anti-lockout                     a revoke is refused if it would leave no UNEXPIRED, UNCONDITIONED, global holder
+//   never widen on retire            retiring a direct exception's condition is refused while the grant is held
+//   no scope                         scopeType / scopeValue refused (DIRECT_GRANT_SCOPE_UNSUPPORTED)
+const refuseDirectScope = (input) => {
+    const named = (v) => v !== undefined && v !== null && !(typeof v === "string" && (v.trim() === "" || v.trim() === "global"));
+    if (named(input.scopeType) || named(input.scopeValue)) {
+        throw new AdministrationRefusal("DIRECT_GRANT_SCOPE_UNSUPPORTED", "a direct exception carries no scope: principal_capabilities has no scope model, so a scoped direct grant would be read tenant-wide. Grant a scoped Security Role assignment instead");
+    }
+};
+/** The direct-exception grantee must be an ACTIVE member of this tenant and never the actor itself. */
+async function requireDirectGrantee(repo, actor, principalId, what) {
+    // A PRINCIPAL, NEVER AN EMPLOYEE, and a MEMBER of this tenant (tenant consistency).
+    const membership = await repo.getMembership(actor.tenantId, principalId);
+    if (!membership || membership.status !== "active") {
+        throw new PolicyValidationError("that principal is not an active member of this tenant");
+    }
+    if (principalId === actor.uid) {
+        throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not ${what} itself`);
+    }
+}
+const directAuditState = (capability, principalId, grant, held, condition) => ({
+    objectKey: capability.objectKey, actionKey: capability.actionKey, capabilityKey: capability.key,
+    granteeType: "PRINCIPAL", granteeKey: principalId, source: "DIRECT_EXCEPTION", held,
+    ...(grant ? { grant, exceptionReason: grant.exceptionReason ?? null, expiresAt: grant.expiresAt ?? null } : {}),
+    condition: condition ?? null,
+});
+async function grantObjectActionToPrincipal(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, "a direct Principal grant (a governed exception)");
+    refuseDirectScope(input);
+    let expiresAt = null;
+    if (input.expiresAt !== undefined && input.expiresAt !== null) {
+        const at = Date.parse(String(input.expiresAt));
+        if (!Number.isFinite(at))
+            throw new PolicyValidationError("expiresAt must be an ISO timestamp");
+        if (at <= Date.now())
+            throw new PolicyValidationError("expiresAt must be in the future");
+        expiresAt = new Date(at).toISOString();
+    }
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    const principalId = nonEmpty(input.principalId, "principalId");
+    await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
+    const condition = input.condition === undefined || input.condition === null ? null : input.condition;
+    if (condition !== null)
+        validateGrantCondition("PRINCIPAL", principalId, capability.key, condition);
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+        // OWNER GOVERNANCE AT THE PRINCIPAL, under the governance lock (no assignment can slip in between).
+        await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [], [capability.key]);
+        const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
+        const conditionChanges = condition !== null && !sameJson(cell.condition?.condition, condition);
+        // Unexpired and no condition change -> an idempotent no-op, decided under the locks. Expired -> REFRESHED (new
+        // reason and expiry), audited as such; never "granted" while it stays expired (Pass 8 D9).
+        if (cell.grant && !cell.expired && !conditionChanges)
+            return cell.grant;
+        // Condition FIRST, then the grant: the exception is never visible unconditioned.
+        const storedCondition = conditionChanges
+            ? await tx.upsertGrantCondition({ grantScope: "PRINCIPAL", grantorKey: principalId, capabilityKey: capability.key, condition })
+            : cell.condition;
+        const grant = cell.grant && !cell.expired ? cell.grant : await tx.grantPrincipalCapability({
+            principalId,
+            capabilityId: capability.id,
+            grantedBy: actor.uid,
+            grantedAt: new Date().toISOString(),
+            exceptionReason: reason,
+            expiresAt,
+        });
+        if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now()) {
+            throw new policyRepository_1.PolicyStoreError("the direct grant could not be refreshed");
+        }
+        await tx.appendAudit({
+            ...auditBase(actor, "grantObjectActionToPrincipal", "principalCapability", grant.id, reason),
+            before: cell.grant ? directAuditState(capability, principalId, cell.grant, !cell.expired, cell.condition?.condition) : null,
+            after: { ...directAuditState(capability, principalId, grant, true, storedCondition?.condition), exceptionReason: grant.exceptionReason ?? reason,
+                expiresAt: grant.expiresAt ?? null },
+        });
+        return grant;
+    });
+}
+async function revokeObjectActionFromPrincipal(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, "revoking a direct Principal grant");
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    const principalId = nonEmpty(input.principalId, "principalId");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+        const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
+        if (!cell.grant)
+            return null; // nothing was granted; nothing happened; nothing to audit
+        if (exports.ANTI_LOCKOUT_CAPABILITIES.includes(capability.key)) {
+            await refuseIfLastAdministrationPath(tx, { principalId }, capability.key);
+        }
+        const removed = await tx.revokePrincipalCapability(principalId, capability.id);
+        if (!removed)
+            return null;
+        // The condition row stays ACTIVE and inert (as for a Role revoke), so a re-grant is conditioned again.
+        await tx.appendAudit({
+            ...auditBase(actor, "revokeObjectActionFromPrincipal", "principalCapability", removed.id, reason),
+            before: directAuditState(capability, principalId, removed, !cell.expired, cell.condition?.condition),
+            after: { ...directAuditState(capability, principalId, null, false, cell.condition?.condition) },
+        });
+        return removed;
+    });
+}
+/** Establish or replace the condition on one DIRECT-EXCEPTION cell (setGrantCondition with `principalId`). */
+async function setDirectExceptionCondition(repo, actor, input, principalId, reason) {
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    await requireDirectGrantee(repo, actor, principalId, "change the condition on a direct exception held by");
+    if (input.condition === undefined || input.condition === null) {
+        throw new AdministrationRefusal("CONDITION_INVALID", "a condition is required; retire a condition with retireGrantCondition");
+    }
+    validateGrantCondition("PRINCIPAL", principalId, capability.key, input.condition);
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+        const existing = (await tx.readPrincipalGrantCell(principalId, capability.key)).condition;
+        if (existing && sameJson(existing.condition, input.condition))
+            return existing;
+        const stored = await tx.upsertGrantCondition({
+            grantScope: "PRINCIPAL", grantorKey: principalId, capabilityKey: capability.key, condition: input.condition,
+        });
+        await tx.appendAudit({
+            ...auditBase(actor, "setGrantCondition", "grantCondition", stored.id, reason),
+            before: existing ? { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: existing.condition, status: "ACTIVE" } : null,
+            after: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: stored.condition, status: stored.status },
+        });
+        return stored;
+    });
+}
+/** Retire the condition on one DIRECT-EXCEPTION cell. REFUSED while the direct grant is held (it would widen). */
+async function retireDirectExceptionCondition(repo, actor, input, principalId, reason) {
+    const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+    await requireDirectGrantee(repo, actor, principalId, "retire the condition on a direct exception held by");
+    return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+        await tx.beginAdministrationCommand();
+        await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+        const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
+        if (!cell.condition)
+            return null;
+        // Held means the ROW exists (an expired row too: a refresh would re-activate it unconditioned) -- the same rule
+        // the capability_grant_conditions_never_widen trigger enforces.
+        if (cell.grant) {
+            throw new AdministrationRefusal("CONDITION_RETIREMENT_WOULD_WIDEN", `${principalId} still holds the direct exception ${capability.key}; retiring its condition would widen it to every record -- revoke the direct grant first`);
+        }
+        const retired = await tx.retireGrantCondition("PRINCIPAL", principalId, capability.key);
+        if (!retired)
+            return null;
+        await tx.appendAudit({
+            ...auditBase(actor, "retireGrantCondition", "grantCondition", retired.id, reason),
+            before: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: cell.condition.condition, status: "ACTIVE" },
+            after: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+                objectKey: capability.objectKey, actionKey: capability.actionKey, condition: retired.condition, status: retired.status },
+        });
+        return retired;
+    });
+}
+/**
+ * WHOLE-OBJECT AUTHORITY, expanded deterministically into the governed capability model -- never a wildcard.
+ *
+ * "Grant Work Order to Service Manager" is exactly the set of the Object's registered actions (optionally only some action
+ * kinds), each granted through `grantObjectActionToRole` -- the same command a single-action grant uses, with its SAME
+ * checks (system invariants, self-administration, Owner exclusions, scoped-role Administration), its own transaction, its own
+ * audit event and its own ADMIN_GRANTED decision. Nothing new is stored: the runtime resolver reads the resulting per-capability
+ * rows as it always has, so there is no object-level grant for it to expand and none that could drift. A refused action is
+ * reported with its refusal and the others proceed; the result says exactly what changed.
+ */
+async function applyObjectWideRoleAuthority(repo, actor, input) {
+    await (0, administrationCapabilityGate_1.requireSecurityAdministrationCapability)(repo, actor, "editSecurityPolicy");
+    const reason = requireReason(input.reason, input.mode === "GRANT" ? "an object-wide grant" : "an object-wide revoke");
+    const objectKey = nonEmpty(input.objectKey, "objectKey");
+    const roleKey = nonEmpty(input.roleKey, "roleKey");
+    const role = await repo.getRoleByKey(actor.tenantId, roleKey);
+    if (!role)
+        throw new PolicyValidationError("role not found");
+    const kinds = input.actionKinds && input.actionKinds.length > 0 ? new Set(input.actionKinds) : null;
+    const actions = (0, objectSecurityAuthority_1.actionsForObject)(await repo.listCapabilities(), objectKey).filter((c) => !kinds || kinds.has(c.actionKind));
+    if (actions.length === 0)
+        throw new PolicyValidationError(`${objectKey} has no registered action${kinds ? " of those kinds" : ""}`);
+    const heldIds = new Set((await repo.listRoleCapabilities(actor.tenantId, [role.id])).map((g) => g.capabilityId));
+    const results = [];
+    for (const c of actions) {
+        const base = { actionKey: c.actionKey, actionKind: c.actionKind, capabilityKey: c.key };
+        const held = heldIds.has(c.id);
+        try {
+            if (input.mode === "GRANT") {
+                if (held) {
+                    results.push({ ...base, outcome: "ALREADY_HELD", refusal: null });
+                    continue;
+                }
+                await grantObjectActionToRole(repo, actor, { objectKey, actionKey: c.actionKey, roleKey, reason });
+                results.push({ ...base, outcome: "GRANTED", refusal: null });
+            }
+            else {
+                if (!held) {
+                    results.push({ ...base, outcome: "NOT_HELD", refusal: null });
+                    continue;
+                }
+                const removed = await revokeObjectActionFromRole(repo, actor, { objectKey, actionKey: c.actionKey, roleKey, reason });
+                results.push({ ...base, outcome: removed ? "REVOKED" : "NOT_HELD", refusal: null });
+            }
+        }
+        catch (err) {
+            const e = err;
+            // Authorization failures are the caller's, not the action's: stop rather than report N identical refusals.
+            if (err instanceof administrationAuthority_1.AdministrationDeniedError)
+                throw err;
+            results.push({ ...base, outcome: "REFUSED", refusal: `${e.code ?? e.name}: ${e.message}` });
+        }
+    }
+    return Object.freeze({ objectKey, roleKey, mode: input.mode, actions: Object.freeze(results) });
+}
+//# sourceMappingURL=policyCommands.js.map

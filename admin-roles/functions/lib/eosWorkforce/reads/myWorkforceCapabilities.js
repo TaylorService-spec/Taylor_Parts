@@ -1,0 +1,48 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WORKFORCE_CAPABILITY_IDS = void 0;
+exports.readMyWorkforceCapabilities = readMyWorkforceCapabilities;
+// readMyWorkforceCapabilities -- which Workforce controls the CALLER may be offered, answered by the same PostgreSQL
+// authority that authorizes the Workforce commands and reads (Workforce census finding #17).
+//
+// ════════════════════ ONE SOURCE OF TRUTH: THE RESOLVED CONTEXT ════════════════════
+//
+// The transport has already resolved the caller through resolveOperationalContext (EOS Principal, ACTIVE tenant
+// membership, qualifying Roles, eos_policy.role_capabilities) and hands this read that actor. This read does NOT
+// query role_capabilities again and does not resolve anything of its own: it answers from `actor.capabilities`, the
+// exact set every Workforce command re-checks. So an offer and an authorization can no longer disagree.
+//
+// It runs through the read kernel like every other Employee read, so an inactive Principal or membership refuses inside
+// the read-only transaction exactly as a governed read does, and the answer is never a partial or default grant.
+//
+// ════════════════════ WHAT IT RETURNS, AND WHAT IT NEVER RETURNS ════════════════════
+//
+//   { capabilities: [...] }  the caller's held capabilities INTERSECTED with the closed Workforce list below, in that
+//                            list's order. Nothing else: no Role key, no Principal id, no tenant, no subject, and no
+//                            capability outside the list (a Commercial, Inventory or Administration grant the same
+//                            Role holds is never disclosed here).
+//
+// CAPABILITY. None beyond an active Principal with an active membership: it only tells a caller about themselves, and
+// accepts no selector, so it cannot describe anyone else. It confers nothing -- every command still re-checks.
+//
+// NO NEW CAPABILITY. The list names seven EXISTING ids only; none is invented and none is granted here.
+const employeeReadKernel_1 = require("./employeeReadKernel");
+/** The closed list of Workforce capability ids a caller may learn it holds. Existing ids only. */
+exports.WORKFORCE_CAPABILITY_IDS = Object.freeze([
+    "employee.record.read",
+    "admin.principalAccess.read",
+    "admin.employeeProfile.write",
+    "admin.employeeJobRole.write",
+    // Step C. Listed so the Administration Employee pages can OFFER the qualification and scope controls to a caller who
+    // actually holds each capability. Being offerable is not being authorized: every command re-checks its own capability.
+    "admin.employeeWorkEligibility.write",
+    "admin.employeeOperationalScope.write",
+    // Functional Role (migration 1762819200000): offered to its holders only; every command re-checks it.
+    "admin.employeeFunctionalRole.write",
+]);
+function readMyWorkforceCapabilities(deps, actor, input) {
+    return (0, employeeReadKernel_1.runEmployeeRead)(deps, actor, () => (0, employeeReadKernel_1.acceptOnly)(input, []), () => [], 
+    // The body runs only after the kernel has confirmed the active Principal + active membership in the snapshot.
+    async () => ({ capabilities: exports.WORKFORCE_CAPABILITY_IDS.filter((id) => actor.capabilities.has(id)) }));
+}
+//# sourceMappingURL=myWorkforceCapabilities.js.map

@@ -1,0 +1,504 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GRANT_CONDITION_SCHEMA_MIGRATION = exports.GRANT_CONDITION_RELATION_SCHEMA = exports.ENTITLED_ACTION_OUTCOMES = exports.hasUnconditionalEntitlement = exports.SHIPPED_GRANT_CONDITIONS = exports.conditionNeedsRecord = exports.GRANTOR_KINDS = void 0;
+exports.grantorKey = grantorKey;
+exports.grantCellKey = grantCellKey;
+exports.grantConditionCatalog = grantConditionCatalog;
+exports.assertNoWithheldGrantConditions = assertNoWithheldGrantConditions;
+exports.entitlementsFrom = entitlementsFrom;
+exports.capabilityKeysOf = capabilityKeysOf;
+exports.entitlementsFor = entitlementsFor;
+exports.authorizeEntitledAction = authorizeEntitledAction;
+exports.hasResolvedEntitlements = hasResolvedEntitlements;
+exports.grantConditionCatalogFromRows = grantConditionCatalogFromRows;
+// CONDITIONAL ENTITLEMENT — "Role A holds capability X unconditionally, Role B holds the SAME
+// capability only when predicate P holds."
+//
+// ════════════════════ THE SENTENCE THE PREVIOUS MODEL COULD NOT SAY ════════════════════
+//
+// `contextualActionAuthority` attaches predicates to an ACTION. That is the right home for a rule
+// about the action itself ("completing a Work Order requires being its assignee"), and the wrong
+// home for a rule about ONE Role's grant: registering
+// WORK_ELIGIBILITY(PARTS_OPERATIONS) on `reorder.purchaseOrder.read` would impose the technician's
+// condition on the ELEVEN Roles the Owner left unconditioned, which is a narrowing of grants nobody
+// asked to narrow. Measured, from migration 1761696000000: `.read` is granted to accountingManager,
+// admin, controller, dispatcher, financeManager, generalManager, operationsManager, owner,
+// purchasingManager, warehouseAssociate and warehouseManager with no condition at all; `.create` to
+// admin, dispatcher, generalManager, owner and purchasingManager. Only `technician` carries a
+// condition, and it carries it in the TypeScript catalog
+// (compatibilityRoles.TECHNICIAN_ROLE.conditionsByPermission).
+//
+// The unit of authorization here is therefore not the action and not the capability. It is the
+// ENTITLEMENT: the triple (GRANTOR, capability, condition). One capability key can be reached by
+// several entitlements at once, each with its own condition or with none, and effective access is
+// the UNION over them.
+//
+// ════════════════════ THIS IS THE ESTABLISHED EOS SHAPE, NOT A NEW ONE ════════════════════
+//
+// `adminPolicy/conditionedCapability.ts` already decides exactly this way for the LEGACY catalog
+// Condition vocabulary: "allowed when AT LEAST ONE held Role grants the capability with EVERY
+// condition on THAT Role's grant satisfied; an unconditioned grant on any held Role therefore
+// allows." This module is that same rule for the GOVERNED authorities — Work Eligibility,
+// Operational Scope, Record Assignment, read from PostgreSQL — rather than for `isOwnAssignment`
+// evaluated against a record's assignee field. Two evaluators, one semantics, deliberately.
+//
+// ════════════════════ WHAT THIS MODULE MAY NEVER DO ════════════════════
+//
+//   WIDEN.      A conditional entitlement can only ever REFUSE a caller the flat capability set
+//               already admitted. The decision requires BOTH the runtime-resolved capability set
+//               (capabilityAuthority.capabilitiesForRoleKeys, unchanged) AND a matching
+//               entitlement. If the two resolvers ever disagree, the stricter answer wins.
+//   PUT SCOPE ON THE GRANT ROW. `eos_policy.role_capabilities` and `eos_policy.principal_capabilities`
+//               keep answering WHAT, never WHICH. The condition lives in a SEPARATE relation keyed
+//               by (grantor, capability) — see PROPOSED_GRANT_CONDITION_SCHEMA — so an
+//               Administration screen still reads a grant row as one plain fact.
+//   ACTIVATE.   SHIPPED_GRANT_CONDITIONS is EMPTY and frozen. Composing this model changes no
+//               deployed permission. The two Purchase Order cells are WITHHELD by Owner ruling and
+//               the production entry point refuses to run with a catalog that names either one.
+//   DROP A CONDITION IT CANNOT PARSE. Silently discarding an unreadable condition turns a
+//               conditioned grant into an unconditional one — a widening. Every malformed condition
+//               THROWS at catalog-build time instead.
+//
+// No SQL lives here. The two grant relations and the condition relation are read by
+// `capabilityAuthority`, which is the single permitted reader of the eos_policy schema in eosOps.
+const contextualAuthorization_1 = require("./contextualAuthorization");
+// THE ONLY OTHER MODULE THIS FILE TOUCHES. `grantConditionPolicy` is a leaf: the withheld-cell
+// ruling, the outcome vocabulary and the deployed relation's identity, depending on nothing but the
+// evaluator's reason type. It exists because these three facts used to live inside the ACTION-level
+// seam, and importing a 271-line authorization design to reach a two-element array is what made this
+// model impossible to cherry-pick onto the migration lineage. See grantConditionPolicy.ts.
+const grantConditionPolicy_1 = require("./grantConditionPolicy");
+// Assignment scope (lane SC): the pure scope model. No SQL, no pool, no Firebase.
+const assignmentScopeRuntime_1 = require("../adminPolicy/assignmentScopeRuntime");
+exports.GRANTOR_KINDS = Object.freeze(["ROLE", "PRINCIPAL"]);
+/** The stable key for one grantor. Also the first half of the condition relation's business key. */
+function grantorKey(grantor) {
+    return grantor.kind === "ROLE" ? `ROLE:${grantor.roleKey}` : `PRINCIPAL:${grantor.principalId}`;
+}
+/** (grantor, capability) — the cell a condition is attached to. Never (capability) alone. */
+function grantCellKey(grantor, capabilityKey) {
+    return `${grantorKey(grantor)}|${capabilityKey}`;
+}
+const RECORD_KINDS = grantConditionPolicy_1.GRANT_CONDITION_RECORD_KINDS;
+const nonEmpty = (v) => typeof v === "string" && v.trim() !== "";
+function validatePredicate(p, where) {
+    if (!p || !contextualAuthorization_1.CONTEXT_PREDICATE_KINDS.includes(p.kind)) {
+        throw new Error(`${where}: unsupported predicate kind ${JSON.stringify(p?.kind)}`);
+    }
+    if (p.kind === "WORK_ELIGIBILITY" && !nonEmpty(p.qualificationCode)) {
+        throw new Error(`${where}: WORK_ELIGIBILITY needs a qualificationCode`);
+    }
+    if (p.kind === "OPERATIONAL_SCOPE" && !nonEmpty(p.scopeType)) {
+        throw new Error(`${where}: OPERATIONAL_SCOPE needs a scopeType`);
+    }
+    if (p.kind === "RECORD_ASSIGNMENT" && p.relation !== "ASSIGNED_EMPLOYEE") {
+        throw new Error(`${where}: RECORD_ASSIGNMENT supports only ASSIGNED_EMPLOYEE`);
+    }
+}
+/** Does this condition ask a question about a specific record? */
+const conditionNeedsRecord = (condition) => condition.paths.some((path) => path.some((p) => p.kind === "RECORD_ASSIGNMENT"));
+exports.conditionNeedsRecord = conditionNeedsRecord;
+/**
+ * Build a condition catalog, refusing anything it cannot evaluate.
+ *
+ * Every refusal here is a FAIL-CLOSED refusal: the alternative to throwing is producing a catalog
+ * in which a conditioned cell looks unconditioned, and that is a silent grant widening.
+ */
+function grantConditionCatalog(rows) {
+    const map = new Map();
+    for (const row of rows) {
+        if (!row?.grantor || !exports.GRANTOR_KINDS.includes(row.grantor.kind)) {
+            throw new Error(`grant condition: unknown grantor kind ${JSON.stringify(row?.grantor?.kind)}`);
+        }
+        const who = grantorKey(row.grantor);
+        if (who === "ROLE:" || who === "PRINCIPAL:")
+            throw new Error("grant condition: grantor has no identity");
+        if (!nonEmpty(row.capabilityKey))
+            throw new Error(`grant condition on ${who}: no capability key`);
+        const where = `grant condition ${grantCellKey(row.grantor, row.capabilityKey)}`;
+        const paths = row.condition?.paths;
+        if (!Array.isArray(paths) || paths.length === 0)
+            throw new Error(`${where}: a condition with no path is not a condition`);
+        for (const path of paths) {
+            if (!Array.isArray(path) || path.length === 0)
+                throw new Error(`${where}: an empty path would allow every holder`);
+            for (const p of path)
+                validatePredicate(p, where);
+        }
+        const needsRecord = (0, exports.conditionNeedsRecord)(row.condition);
+        if (needsRecord && !RECORD_KINDS.includes(row.condition.recordKind)) {
+            throw new Error(`${where}: RECORD_ASSIGNMENT needs a governed recordKind`);
+        }
+        if (!needsRecord && row.condition.recordKind !== undefined) {
+            throw new Error(`${where}: a recordKind without a RECORD_ASSIGNMENT predicate decides nothing`);
+        }
+        const key = grantCellKey(row.grantor, row.capabilityKey);
+        if (map.has(key))
+            throw new Error(`${where}: duplicate condition for one grant cell`);
+        map.set(key, Object.freeze({
+            paths: Object.freeze(paths.map((p) => Object.freeze([...p]))),
+            ...(row.condition.recordKind ? { recordKind: row.condition.recordKind } : {}),
+        }));
+    }
+    return Object.freeze(map);
+}
+/**
+ * THE ACTIVATION BOUNDARY, and it is EMPTY.
+ *
+ * Every deployed composition resolves entitlements against this catalog, finds no condition for any
+ * grant cell, and therefore produces entitlements that are all UNCONDITIONAL — byte-identical
+ * effective access to `capabilitiesForRoleKeys` on its own. Conditioning a real business grant is a
+ * governed data change with its own evidence, and for the two Purchase Order cells it is FORBIDDEN
+ * this Wave; `assertNoWithheldGrantConditions` enforces that on the production path.
+ */
+exports.SHIPPED_GRANT_CONDITIONS = grantConditionCatalog([]);
+/**
+ * The Owner's withheld cells, enforced where activation would actually happen.
+ *
+ * `actionContextRegistry` throws for these keys in ANY registry, because an action-level predicate
+ * is wrong for them in any registry — it would condition all eleven and all five holders. A
+ * GRANT-level condition on `ROLE:technician` narrows nobody else, so it is not wrong in the same
+ * way; it is simply not activated yet. The guard therefore sits on the PRODUCTION entry point: a
+ * catalog naming a withheld cell can never reach a deployed decision, while a test may still model
+ * the cell and prove the shape. That is the whole distinction between expressing and activating.
+ */
+function assertNoWithheldGrantConditions(conditions) {
+    for (const key of conditions.keys()) {
+        const capabilityKey = key.slice(key.indexOf("|") + 1);
+        if ((0, grantConditionPolicy_1.isWithheldConditionedCell)(capabilityKey)) {
+            throw new Error(`${capabilityKey} is a WITHHELD conditioned cell and may not be activated as a grant condition`);
+        }
+    }
+}
+/**
+ * Compose grants with conditions. Pure, ordered, and total: every grant produces exactly one
+ * entitlement, conditioned or not — a grant is never dropped, and a condition for a cell nobody
+ * grants is simply inert.
+ */
+function entitlementsFrom(grants, conditions = exports.SHIPPED_GRANT_CONDITIONS) {
+    return Object.freeze(grants.map((g) => Object.freeze({
+        capabilityKey: g.capabilityKey,
+        grantor: Object.freeze({ ...g.grantor }),
+        condition: conditions.get(grantCellKey(g.grantor, g.capabilityKey)) ?? null,
+    })));
+}
+/**
+ * The flat capability set, derived.
+ *
+ * This is what makes the model adoptable: every surface that today takes
+ * `ReadonlySet<string>` keeps working, and a test can prove this set is EQUAL to what
+ * `capabilitiesForRoleKeys` returns for the same Roles. Provenance is added beside the old answer,
+ * never instead of it.
+ */
+function capabilityKeysOf(entitlements) {
+    return new Set(entitlements.map((e) => e.capabilityKey));
+}
+/** The entitlements reaching one capability, in resolution order. */
+function entitlementsFor(entitlements, capabilityKey) {
+    return Object.freeze(entitlements.filter((e) => e.capabilityKey === capabilityKey));
+}
+/** Is this capability reachable by at least one UNCONDITIONAL entitlement? */
+const hasUnconditionalEntitlement = (entitlements, capabilityKey) => entitlements.some((e) => e.capabilityKey === capabilityKey && e.condition === null);
+exports.hasUnconditionalEntitlement = hasUnconditionalEntitlement;
+/**
+ * SPECIFICITY, for choosing which refusal to report when several conditional entitlements fail.
+ *
+ * Higher is more specific, where "specific" means "says more about THIS caller and THIS record".
+ * NOT_ASSIGNED is about one record; OUTSIDE_OPERATIONAL_SCOPE about where they may work;
+ * WORK_ELIGIBILITY_MISSING about what work they may be given; EMPLOYEE_LINK_REQUIRED only that they
+ * are not an Employee at all. WORK_ELIGIBILITY_UNMAPPED ranks LAST because it is not a statement
+ * about the caller at all — it is the platform admitting it cannot decide — and it would otherwise
+ * mask an actionable refusal. It is never lost: every refusal is carried in `denials`.
+ */
+const DENIAL_SPECIFICITY = Object.freeze({
+    NOT_ASSIGNED: 5,
+    OUTSIDE_OPERATIONAL_SCOPE: 4,
+    // Assignment scope (lane SC): "your Role applies, but to a different company/unit/warehouse" is as specific as
+    // operational scope; "the gate gave me no record context" is not a statement about the caller.
+    OUTSIDE_ASSIGNMENT_SCOPE: 4,
+    SCOPE_CONTEXT_REQUIRED: 1,
+    SCOPE_NOT_EVALUABLE: 0.5,
+    WORK_ELIGIBILITY_MISSING: 3,
+    EMPLOYEE_LINK_REQUIRED: 2,
+    WORK_ELIGIBILITY_UNMAPPED: 1,
+    CAPABILITY_MISSING: 0,
+});
+const decide = (d) => Object.freeze({ ...d, denials: Object.freeze(d.denials ?? []) });
+/**
+ * Decide one action for one entitled actor.
+ *
+ * ORDER — the Owner's lazy order, and every step observable in the returned decision:
+ *
+ *   0  CAPABILITY, from the flat set the runtime authority resolved — unchanged, first, and on its
+ *      own. A caller who does not hold the key is refused CAPABILITY_MISSING having read NOTHING:
+ *      the entitlement resolver is not invoked, so no grant row and no condition row is touched.
+ *   1  THE OBLIGATION, discharged. The resolver is invoked exactly once here and its result
+ *      memoized by whoever built it. A resolver that is absent, that is not a function, or that
+ *      cannot answer is CONTEXT_AUTHORITY_UNAVAILABLE — never a fall back to the flat set, and
+ *      never "then there are no conditions". Then the entitlement list must AGREE with the flat
+ *      set; a disagreement between the two resolvers refuses, never allows.
+ *   2  ANY UNCONDITIONAL ENTITLEMENT ALLOWS, before any conditional one is considered, so an
+ *      unconditioned holder costs ZERO context reads — the property that keeps the other eleven
+ *      Purchase Order Roles exactly as they are.
+ *   3  CONDITIONAL ENTITLEMENTS, each evaluated fail-closed against the governed authorities. The
+ *      FIRST one that succeeds allows; the capability is checked once, not once per entitlement.
+ *   4  NO PATH VALID -> the most specific contextual denial, with every refusal kept in `denials`.
+ *      If any conditional entitlement could not be ANSWERED, that dominates: an outage must never
+ *      be reported as a business denial, and must never be treated as a decision either.
+ */
+async function authorizeEntitledAction(reader, request) {
+    const { actor, capabilityKey } = request;
+    const scoped = scopedHoldingsFor(actor, capabilityKey);
+    const globallyHeld = actor?.capabilities instanceof Set
+        && (actor.capabilities.has(capabilityKey) || (actor.conditionallyHeld instanceof Set && actor.conditionallyHeld.has(capabilityKey)));
+    // A key held ONLY through scoped holdings never enters the global path below: that path would read it as missing.
+    if (!globallyHeld && scoped.length > 0 && actor?.capabilities instanceof Set) {
+        if (typeof actor.entitlements !== "function") {
+            return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+                detail: "a resolved entitlement provider is required", contextEvaluated: false,
+                viaGrantor: null, viaCondition: false });
+        }
+        return decideScoped(reader, request, scoped, null);
+    }
+    const global = await decideGlobal(reader, request);
+    // GLOBAL BEHAVIOUR UNCHANGED: with no scoped holding for this key the global decision IS the decision.
+    if (global.allowed || scoped.length === 0)
+        return global;
+    return decideScoped(reader, request, scoped, global);
+}
+/** The scoped holdings this actor carries for this key. Tolerates an actor built before the field existed. */
+function scopedHoldingsFor(actor, capabilityKey) {
+    const held = actor?.scopedHeld;
+    return Array.isArray(held) ? held.filter((h) => h && h.capabilityKey === capabilityKey) : [];
+}
+/**
+ * Decide a key through its SCOPED holdings. Each holding is admitted only when the record's business context names
+ * its exact scope value (assignmentScopeRuntime.holdingAdmits); then its grant condition, if any, is evaluated
+ * exactly as a global conditional entitlement is. Missing context, another value, or an unconsumed scope type is a
+ * refusal. `prior` is the global decision when the key is ALSO held globally and that decision refused.
+ */
+async function decideScoped(reader, request, holdings, prior) {
+    const { actor, capabilityKey } = request;
+    // A global path that could not even be CONSULTED (outage, resolver disagreement) is not overridden by a scope.
+    if (prior && prior.denials.length === 0)
+        return prior;
+    const denials = [...(prior?.denials ?? [])];
+    let unavailable;
+    let contextEvaluated = prior?.contextEvaluated ?? false;
+    for (const holding of holdings) {
+        const grantor = { kind: "ROLE", roleKey: holding.sourceRole };
+        const admission = (0, assignmentScopeRuntime_1.holdingAdmits)(holding, request.businessContext);
+        if (admission !== "ADMITTED") {
+            denials.push({ grantor, outcome: admission, detail: `${holding.scopeType}:${holding.scopeValue}` });
+            continue;
+        }
+        const viaScope = Object.freeze({ scopeType: holding.scopeType, scopeValue: holding.scopeValue });
+        if (holding.condition === null) {
+            return Object.freeze({ ...decide({ allowed: true, outcome: "ALLOWED", contextEvaluated,
+                    viaGrantor: grantor, viaCondition: false, denials }), viaScope });
+        }
+        const condition = holding.condition;
+        let record;
+        if ((0, exports.conditionNeedsRecord)(condition)) {
+            if (!condition.recordKind || typeof request.recordId !== "string" || request.recordId.trim() === "") {
+                denials.push({ grantor, outcome: "NOT_ASSIGNED", predicate: "RECORD_ASSIGNMENT",
+                    detail: condition.recordKind ? "no record supplied" : "condition declares no record kind" });
+                continue;
+            }
+            record = { recordKind: condition.recordKind, recordId: request.recordId };
+        }
+        let decision;
+        try {
+            contextEvaluated = true;
+            // The key is absent from the flat set by design (it is scoped); the evaluator is handed it for THIS
+            // evaluation only, exactly as a conditionally-held key is.
+            decision = await (0, contextualAuthorization_1.authorizeAnyPath)(reader, {
+                actor: { ...actor, capabilities: new Set([...actor.capabilities, capabilityKey]) },
+                capabilityKey, paths: condition.paths, record,
+            });
+        }
+        catch {
+            unavailable ??= { grantor, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE", detail: "the contextual authority could not be consulted" };
+            continue;
+        }
+        if (decision.allowed) {
+            return Object.freeze({ ...decide({ allowed: true, outcome: "ALLOWED", contextEvaluated: true,
+                    viaGrantor: grantor, viaCondition: true, denials }), viaScope });
+        }
+        denials.push({ grantor, outcome: decision.reason, predicate: decision.predicate, detail: decision.detail });
+    }
+    if (unavailable || prior?.outcome === "CONTEXT_AUTHORITY_UNAVAILABLE") {
+        const u = unavailable ?? { grantor: denials[0]?.grantor ?? { kind: "ROLE", roleKey: holdings[0].sourceRole },
+            outcome: "CONTEXT_AUTHORITY_UNAVAILABLE", detail: prior?.detail };
+        return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE", detail: u.detail,
+            contextEvaluated, viaGrantor: null, viaCondition: false, denials: unavailable ? [...denials, unavailable] : denials });
+    }
+    const worst = denials.reduce((best, d) => (DENIAL_SPECIFICITY[d.outcome] ?? 0) > (DENIAL_SPECIFICITY[best.outcome] ?? 0) ? d : best, denials[0]);
+    return decide({ allowed: false, outcome: worst.outcome, predicate: worst.predicate, detail: worst.detail,
+        contextEvaluated, viaGrantor: null, viaCondition: false, denials });
+}
+/** Steps 0-4 for the GLOBAL holdings: byte-for-byte the decision this seam made before assignment scope existed. */
+async function decideGlobal(reader, request) {
+    const { actor, capabilityKey } = request;
+    // 0. CAPABILITY FIRST — byte-identical to the seam's refusal, BEFORE the entitlement resolver is
+    //    invoked, so a caller without authority learns only that they lack the capability AND costs
+    //    the platform nothing. This is step 1 of the Owner's evaluation order.
+    const conditionallyHeld = actor?.conditionallyHeld instanceof Set && actor.conditionallyHeld.has(capabilityKey);
+    if (!actor || !(actor.capabilities instanceof Set) || (!actor.capabilities.has(capabilityKey) && !conditionallyHeld)) {
+        return decide({ allowed: false, outcome: "CAPABILITY_MISSING", detail: capabilityKey,
+            contextEvaluated: false, viaGrantor: null, viaCondition: false });
+    }
+    // 1. THE OBLIGATION. Deferring the WORK never defers the DUTY: an actor that cannot produce its
+    //    entitlements is refused, never decided on the flat capability set alone.
+    if (typeof actor.entitlements !== "function") {
+        return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+            detail: "a resolved entitlement provider is required", contextEvaluated: false,
+            viaGrantor: null, viaCondition: false });
+    }
+    let resolvedEntitlements;
+    try {
+        resolvedEntitlements = await actor.entitlements();
+    }
+    catch {
+        // The grant store or the condition store could not be read. That is an OUTAGE, and an outage is
+        // not the fact "this grant carries no condition".
+        return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+            detail: "entitlements could not be resolved", contextEvaluated: false,
+            viaGrantor: null, viaCondition: false });
+    }
+    if (!Array.isArray(resolvedEntitlements)) {
+        return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+            detail: "the entitlement provider did not return an entitlement set", contextEvaluated: false,
+            viaGrantor: null, viaCondition: false });
+    }
+    const reaching = entitlementsFor(resolvedEntitlements, capabilityKey);
+    if (reaching.length === 0) {
+        // The runtime capability set says held, the provenance resolver says nobody granted it. Two
+        // authorities disagreeing is not a licence to pick the permissive one.
+        return decide({ allowed: false, outcome: "CAPABILITY_MISSING", detail: `${capabilityKey}: no entitlement`,
+            contextEvaluated: false, viaGrantor: null, viaCondition: false });
+    }
+    // 2. UNCONDITIONAL WINS, AND COSTS NOTHING.
+    const unconditional = reaching.find((e) => e.condition === null);
+    if (unconditional) {
+        return decide({ allowed: true, outcome: "ALLOWED", contextEvaluated: false,
+            viaGrantor: unconditional.grantor, viaCondition: false });
+    }
+    // 3. ONLY CONDITIONAL PATHS REMAIN. Each is a separate grant with its own condition.
+    const denials = [];
+    let unavailable;
+    let contextEvaluated = false;
+    for (const entitlement of reaching) {
+        const condition = entitlement.condition;
+        let record;
+        if ((0, exports.conditionNeedsRecord)(condition)) {
+            if (!condition.recordKind) {
+                denials.push({ grantor: entitlement.grantor, outcome: "NOT_ASSIGNED",
+                    predicate: "RECORD_ASSIGNMENT", detail: "condition declares no record kind" });
+                continue;
+            }
+            if (typeof request.recordId !== "string" || request.recordId.trim() === "") {
+                denials.push({ grantor: entitlement.grantor, outcome: "NOT_ASSIGNED",
+                    predicate: "RECORD_ASSIGNMENT", detail: "no record supplied" });
+                continue;
+            }
+            record = { recordKind: condition.recordKind, recordId: request.recordId };
+        }
+        let decision;
+        try {
+            contextEvaluated = true;
+            // The contextual evaluator re-checks the flat set first. A key reached ONLY through conditioned
+            // grants is absent from it by design (conditionallyHeld), and this entitlement is exactly such a
+            // grant -- so the evaluator is handed the key for THIS evaluation only, and decides the condition.
+            decision = await (0, contextualAuthorization_1.authorizeAnyPath)(reader, {
+                actor: conditionallyHeld ? { ...actor, capabilities: new Set([...actor.capabilities, capabilityKey]) } : actor,
+                capabilityKey, paths: condition.paths, record,
+            });
+        }
+        catch {
+            unavailable ??= { grantor: entitlement.grantor, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+                detail: "the contextual authority could not be consulted" };
+            continue;
+        }
+        if (decision.allowed) {
+            return decide({ allowed: true, outcome: "ALLOWED", contextEvaluated: true,
+                viaGrantor: entitlement.grantor, viaCondition: true, denials });
+        }
+        denials.push({ grantor: entitlement.grantor, outcome: decision.reason,
+            predicate: decision.predicate, detail: decision.detail });
+    }
+    // 4. REFUSED. An unanswerable authority dominates a business denial.
+    if (unavailable) {
+        return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE", detail: unavailable.detail,
+            contextEvaluated, viaGrantor: null, viaCondition: false, denials: [...denials, unavailable] });
+    }
+    const worst = denials.reduce((best, d) => (DENIAL_SPECIFICITY[d.outcome] ?? 0) > (DENIAL_SPECIFICITY[best.outcome] ?? 0) ? d : best, denials[0]);
+    return decide({ allowed: false, outcome: worst.outcome, predicate: worst.predicate, detail: worst.detail,
+        contextEvaluated, viaGrantor: null, viaCondition: false, denials });
+}
+/**
+ * Is this actor carrying the conditional-entitlement OBLIGATION at all?
+ *
+ * A gate site must REFUSE an actor without it rather than fall back to the flat capability set.
+ * Falling back would mean any caller that omitted the field escaped every condition -- the
+ * caller-controlled bypass shape this repository has already paid for once. Absent metadata is an
+ * unresolved actor, and an unresolved actor is refused.
+ *
+ * STRICTER THAN THE CHECK IT REPLACES. It used to accept any ARRAY, so an actor carrying
+ * `entitlements: []` -- a hand-built, stale or deliberately emptied list -- passed this gate and was
+ * only caught one step later. It now accepts only a PROVIDER, which nothing but a resolution
+ * against the live grant and condition stores can satisfy: a value, of any shape, is refused here.
+ *
+ * It lives HERE, in the pure model, rather than beside the PostgreSQL composition, so that a domain
+ * kernel adopting the seam imports no SQL, no connection pool factory and no `pg` -- which is a
+ * boundary several Workforce and Commercial guards already pin.
+ */
+function hasResolvedEntitlements(actor) {
+    return typeof actor?.entitlements === "function";
+}
+/** Every reason this module can report. The evaluator's vocabulary, plus the seam's outage outcome. */
+exports.ENTITLED_ACTION_OUTCOMES = Object.freeze([
+    "ALLOWED", "CAPABILITY_MISSING", "EMPLOYEE_LINK_REQUIRED", "WORK_ELIGIBILITY_MISSING",
+    "OUTSIDE_OPERATIONAL_SCOPE", "NOT_ASSIGNED", "WORK_ELIGIBILITY_UNMAPPED", "CONTEXT_AUTHORITY_UNAVAILABLE",
+    "OUTSIDE_ASSIGNMENT_SCOPE", "SCOPE_CONTEXT_REQUIRED", "SCOPE_NOT_EVALUABLE",
+]);
+// ════════════════════ PERSISTENCE — DESIGNED, NOT MIGRATED ════════════════════
+/**
+ * The relation a conditioned grant needs — MIGRATED, NOT PROPOSED.
+ *
+ * This constant was `PROPOSED_GRANT_CONDITION_SCHEMA` while Lane AA owned the migration slot. The
+ * slot is spent: migration 1762214400000 was written from this DDL character for character and
+ * applied to nonprod on 2026-09-24, where the relation is LIVE and holds ZERO rows. THIS LANE ADDS
+ * NO MIGRATION; it makes the repository understand the one that shipped.
+ *
+ * The text itself, the deployed shape it must match, and the reasoning for a separate relation now
+ * live in `grantConditionPolicy.ts`; the name is kept here because the model's own tests and the
+ * schema-parity harness both read it, and because a reader arriving at the model should not have to
+ * go looking for what it persists to.
+ */
+exports.GRANT_CONDITION_RELATION_SCHEMA = grantConditionPolicy_1.GRANT_CONDITION_RELATION_DDL;
+/** The applied migration that created it. Stated so a parity failure names the migration to look at. */
+exports.GRANT_CONDITION_SCHEMA_MIGRATION = grantConditionPolicy_1.GRANT_CONDITION_RELATION_MIGRATION;
+/**
+ * Turn stored rows into a catalog, refusing anything unreadable.
+ *
+ * A stored condition that cannot be parsed must NOT become "no condition": that would convert a
+ * conditioned grant into an unconditional one at read time, which is the parity defect shape this
+ * repository has already paid for once. It throws, the caller fails closed.
+ */
+function grantConditionCatalogFromRows(rows) {
+    return grantConditionCatalog(rows.map((row) => {
+        const condition = row.condition;
+        if (!condition || typeof condition !== "object" || !Array.isArray(condition.paths)) {
+            throw new Error(`stored grant condition ${row.grantScope}:${row.grantorKey}|${row.capabilityKey} is unreadable`);
+        }
+        return {
+            grantor: row.grantScope === "ROLE"
+                ? { kind: "ROLE", roleKey: row.grantorKey }
+                : { kind: "PRINCIPAL", principalId: row.grantorKey },
+            capabilityKey: row.capabilityKey,
+            condition,
+        };
+    }));
+}
+//# sourceMappingURL=conditionalEntitlement.js.map

@@ -1,0 +1,155 @@
+"use strict";
+// The bridge between "a technician recorded usage" and "stock left a governed location".
+//
+// It performs the READS the resolution needs and returns the movements to STAGE — it never writes.
+// That split is deliberate: `updateWorkOrderExecutionData` owns one transaction with a strict
+// reads-before-writes discipline, and a helper that wrote directly would either break that ordering
+// or hide it. Here the caller keeps both the ordering and the commit.
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.planPhysicalConsumption = planPhysicalConsumption;
+const https_1 = require("firebase-functions/v2/https");
+const consumptionSource_js_1 = require("./consumptionSource.js");
+const consumptionMovement_js_1 = require("./consumptionMovement.js");
+const consumptionSourceService_js_1 = require("./consumptionSourceService.js");
+const collections_js_1 = require("../constants/collections.js");
+const consumptionPartTracking_js_1 = require("./consumptionPartTracking.js");
+/** The canonical Part id for a planned line. Legacy snapshot items carry only `sku`; that fallback
+ *  is unchanged here — this file resolves identity the way it always did, and only the TRACKING MODE
+ *  moved to the Part. */
+function partIdFor(snapshot, sku) {
+    return snapshot.find((i) => i.sku === sku)?.partId ?? sku;
+}
+/** Prior physical consumption for this Work Order, used to target corrections at the original source. */
+async function readPriorConsumption(tx, db, workOrderId) {
+    const snap = await tx.get(db.collection(collections_js_1.INVENTORY_TRANSACTIONS_COLLECTION).where("sourceObject.id", "==", workOrderId));
+    return snap.docs.map((d) => d.data() ?? {}).filter((r) => r.type === consumptionMovement_js_1.WORK_ORDER_CONSUMPTION_TYPE);
+}
+/**
+ * Decide every physical movement this execution update implies.
+ *
+ * POSITIVE delta → resolve a governed source, or REFUSE.
+ * NEGATIVE delta → reverse against the original lineage. No source is asked for, and none is accepted.
+ */
+async function planPhysicalConsumption(tx, db, input) {
+    const positives = input.qtyUsedUpdates.filter((u) => u.delta > 0);
+    const negatives = input.qtyUsedUpdates.filter((u) => u.delta < 0);
+    if (positives.length === 0 && negatives.length === 0)
+        return [];
+    // ALL READS FIRST — the enclosing transaction has not written yet, and must not while these run.
+    const priorRows = await readPriorConsumption(tx, db, input.workOrderId);
+    const needsSourceResolution = positives.length > 0;
+    // The PART decides how each added line is counted. Read here, with the other reads, because the
+    // enclosing transaction has not written yet — and read only for the POSITIVE lines, since a
+    // correction reverses the lineage that already exists rather than establishing a new one.
+    const trackingModes = needsSourceResolution
+        ? await (0, consumptionSourceService_js_1.readConsumptionTrackingModes)(db, positives.map((u) => partIdFor(input.snapshot, u.sku)), tx)
+        : new Map();
+    const [warehouses, mobileResult, placements] = needsSourceResolution
+        ? await Promise.all([
+            (0, consumptionSourceService_js_1.readActiveWarehouses)(db, tx),
+            (0, consumptionSourceService_js_1.readAssignedMobileLocation)(db, input.technicianId, tx),
+            (0, consumptionSourceService_js_1.readPlacementsForWorkOrder)(db, input.workOrderId, tx),
+        ])
+        : [[], { mobile: null, ambiguous: false }, []];
+    // The permitted set, re-derived at SUBMIT. A stale picker option is not authority: a warehouse
+    // deactivated between render and submit is refused here, not honoured because it was offered.
+    const governedLocations = [
+        ...warehouses.map((w) => ({ type: "WAREHOUSE", locationId: w.warehouseId })),
+        ...(mobileResult.mobile === null ? [] : [{ type: "MOBILE", locationId: mobileResult.mobile.locationId }]),
+    ];
+    const explicitBySku = new Map();
+    for (const entry of input.consumptionSources ?? []) {
+        const sku = typeof entry?.sku === "string" ? entry.sku : null;
+        const locationId = typeof entry?.locationId === "string" ? entry.locationId : null;
+        if (sku !== null && locationId !== null)
+            explicitBySku.set(sku, locationId);
+    }
+    // Each movement travels WITH its Part authority: the validator takes trackingMode from the Part,
+    // never from the event, so the two must arrive together.
+    const movements = [];
+    // ---------------------------------------------------------------- POSITIVE: stock leaves
+    for (const update of positives) {
+        const partId = partIdFor(input.snapshot, update.sku);
+        // WAS `const trackingMode = "NONE"`. A hardcoded mode is an answer to a question the Part owns,
+        // and posting it made a SERIALIZED part's usage arrive in the ledger as ordinary countable
+        // stock while serialized_assets still held the unit — see consumptionPartTracking.ts.
+        const trackingMode = (0, consumptionPartTracking_js_1.consumptionTrackingModeFor)(trackingModes, partId);
+        if (!(0, consumptionPartTracking_js_1.isQuantityTracked)(trackingMode)) {
+            throw new https_1.HttpsError("failed-precondition", (0, consumptionPartTracking_js_1.partNotQuantityTrackedMessage)(trackingMode), {
+                code: consumptionPartTracking_js_1.PART_NOT_QUANTITY_TRACKED,
+                sku: update.sku,
+                trackingMode,
+            });
+        }
+        const resolved = (0, consumptionSource_js_1.resolveConsumptionSource)({
+            workOrderId: input.workOrderId,
+            partId,
+            requestedQuantity: update.delta,
+            trackingMode,
+            explicitSourceLocationId: explicitBySku.get(update.sku),
+            governedLocations,
+            placements,
+        });
+        if (!resolved.resolved) {
+            // The refusal a technician sees. Concrete, actionable, and never a code.
+            throw new https_1.HttpsError("failed-precondition", consumptionSource_js_1.CONSUMPTION_SOURCE_MESSAGE[resolved.reason], {
+                code: resolved.reason,
+                sku: update.sku,
+            });
+        }
+        movements.push({ part: { partId, trackingMode }, event: (0, consumptionMovement_js_1.buildConsumptionMovement)({
+                workOrderId: input.workOrderId,
+                partId,
+                trackingMode,
+                quantity: update.delta,
+                locationType: resolved.source.locationType,
+                locationId: resolved.source.locationId,
+                actorId: input.actorId,
+                occurredAt: input.occurredAt,
+                direction: "CONSUME",
+                commandKey: input.commandKey,
+            }) });
+    }
+    // ---------------------------------------------------------------- NEGATIVE: a correction
+    for (const update of negatives) {
+        const partId = partIdFor(input.snapshot, update.sku);
+        const outstanding = (0, consumptionMovement_js_1.outstandingConsumptionByLocation)(priorRows, input.workOrderId, partId);
+        const totalOutstanding = outstanding.reduce((n, e) => n + e.outstanding, 0);
+        // A DECREMENT IS CAPPED AT WHAT WAS PHYSICALLY CONSUMED, NOT REFUSED WHEN IT EXCEEDS IT.
+        //
+        // The two situations that look identical here are not. `qtyUsed` may have been recorded BEFORE
+        // this authority existed, in which case there is no physical consumption to reverse — and
+        // refusing the correction would make historical usage uneditable, which is exactly the
+        // reinterpretation of pre-authority records the ruling forbids.
+        //
+        // So: reverse what physically exists, and let the rest be an ordinary qtyUsed correction of a
+        // pre-authority record. The invariant that actually matters is preserved either way — NEVER
+        // restore more than was physically consumed, so a decrement can never conjure stock.
+        const reversible = Math.min(Math.abs(update.delta), totalOutstanding);
+        if (reversible <= 0)
+            continue; // nothing physical to reverse; qtyUsed still corrects below
+        const plan = (0, consumptionMovement_js_1.planConsumptionCorrection)(outstanding, reversible);
+        if (!plan.ok) {
+            throw new https_1.HttpsError("failed-precondition", "That is more than has been recorded as used for this part, so it cannot be given back.", { code: plan.reason, sku: update.sku });
+        }
+        for (const target of plan.plan) {
+            // The mode of the rows being REVERSED, which is what this lineage actually holds. A correction
+            // must match the movements it undoes, not re-derive a mode from a Part that may have been
+            // reclassified since — see the pre-authority ruling above.
+            movements.push({ part: { partId, trackingMode: consumptionPartTracking_js_1.WORK_ORDER_CONSUMPTION_TRACKING_MODE }, event: (0, consumptionMovement_js_1.buildConsumptionMovement)({
+                    workOrderId: input.workOrderId,
+                    partId,
+                    trackingMode: consumptionPartTracking_js_1.WORK_ORDER_CONSUMPTION_TRACKING_MODE,
+                    quantity: target.quantity,
+                    locationType: target.locationType,
+                    locationId: target.locationId,
+                    actorId: input.actorId,
+                    occurredAt: input.occurredAt,
+                    direction: "CORRECT",
+                    commandKey: input.commandKey,
+                }) });
+        }
+    }
+    return movements;
+}
+//# sourceMappingURL=planPhysicalConsumption.js.map

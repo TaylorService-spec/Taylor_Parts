@@ -1,0 +1,360 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PolicyStoreError = exports.FIRST_OWNER_BOOTSTRAP_ACTION = exports.FIRST_OWNER_BOOTSTRAP_SOURCE = exports.TenantBootstrapError = void 0;
+exports.bootstrapTenant = bootstrapTenant;
+exports.bootstrapAdministrator = bootstrapAdministrator;
+exports.bootstrapFirstOwner = bootstrapFirstOwner;
+exports.ensureTenantPrincipal = ensureTenantPrincipal;
+// Standing a tenant up — the tenant, its policy, and its first administrator.
+//
+// ════════════════════ WHAT WAS MISSING ════════════════════
+//
+// Migration 001 gave the policy model a `tenants` table and nothing created a row in it: the tests
+// inserted one with raw SQL and moved on. Every other part of the subsystem assumed a tenant that
+// nothing brought into existence. This file is that missing step, and it is deliberately two
+// separate operations rather than one convenient one:
+//
+//   bootstrapTenant          creates the tenant and applies the policy seed
+//   bootstrapAdministrator   gives ONE principal the Admin Role, ONCE
+//
+// They are separate because they are separately dangerous. Creating a tenant is ordinary
+// provisioning. Creating an administrator is creating authority, and an authority-creating step
+// that happens implicitly as part of provisioning is the definition of a backdoor.
+//
+// ════════════════════ IDEMPOTENCE, AND WHAT IT DOES NOT MEAN ════════════════════
+//
+// Rerunning `bootstrapTenant` is safe: it finds the tenant by KEY, and the seed itself never
+// deletes, never overwrites an administrator's edit and never re-grants a permission somebody has
+// since removed. "Idempotent" here means a second run changes nothing -- NOT that it resets the
+// tenant to a known state. A bootstrap that reset policy on every deploy would silently undo
+// configuration, which is the worst kind of "safe".
+const administrationAuthority_1 = require("./administrationAuthority");
+const administrationCapabilityGate_1 = require("./administrationCapabilityGate");
+const administrationAuthority_2 = require("./administrationAuthority");
+const roleCapabilityAdministration_1 = require("./roleCapabilityAdministration");
+const policySeed_1 = require("./seed/policySeed");
+const policyRepository_1 = require("./policyRepository");
+Object.defineProperty(exports, "PolicyStoreError", { enumerable: true, get: function () { return policyRepository_1.PolicyStoreError; } });
+const principalContext_1 = require("./principalContext");
+class TenantBootstrapError extends Error {
+}
+exports.TenantBootstrapError = TenantBootstrapError;
+/**
+ * Create the tenant if it does not exist, then apply the policy seed.
+ *
+ * ONE TRANSACTION when the tenant is new, and the reason is the same one the seed gives for its own
+ * atomicity: a tenant that exists with no Objects, no Roles and no workflows is worse than no
+ * tenant, because an administrator opening it sees a configured platform with nothing in it and no
+ * way to tell which half failed.
+ */
+async function bootstrapTenant(repo, input) {
+    const key = requireText(input.key, "tenant key");
+    const name = requireText(input.name, "tenant name");
+    const actorUid = requireText(input.actorUid, "actor uid");
+    const existing = await repo.getTenantByKey(key);
+    const tenantId = existing?.id ?? requireText(input.tenantId ?? randomTenantId(), "tenant id");
+    let tenant = existing;
+    let created = false;
+    if (!existing) {
+        tenant = await repo.transact({ tenantId, uid: actorUid }, async (tx) => {
+            const row = await tx.createTenant({ key, name });
+            await tx.appendAudit({
+                action: "tenant.bootstrap",
+                actorUid,
+                targetKind: "tenant",
+                targetId: tenantId,
+                before: null,
+                after: { key, name, status: row.status },
+                occurredAt: new Date().toISOString(),
+                reason: "tenant provisioned",
+            });
+            return row;
+        });
+        created = true;
+    }
+    // The seed runs in its own transaction, and rerunning it on an existing tenant is the idempotent
+    // path this function's contract promises. It reports `alreadySeeded` rather than pretending it
+    // did work.
+    const seed = await (0, policySeed_1.seedTenantPolicy)(repo, tenantId, actorUid);
+    // Record WHICH seed produced this tenant's configuration. The audit event says it too, but an
+    // audit event is subject to retention and this column is not.
+    if (tenant && tenant.configurationVersion !== policySeed_1.SEED_VERSION) {
+        tenant = await repo.transact({ tenantId, uid: actorUid }, (tx) => tx.setTenantConfigurationVersion(tenantId, policySeed_1.SEED_VERSION));
+    }
+    if (!tenant)
+        throw new TenantBootstrapError("tenant was not created");
+    return { tenant, created, seed };
+}
+/**
+ * Give one principal the Admin Role in one tenant, once.
+ *
+ * ════════════════════ WHY THIS IS NOT A BACKDOOR ════════════════════
+ *
+ * A new tenant has no administrator, and nobody can be granted a Role because granting Roles
+ * requires an administrator. Something has to break that circle. The danger is that the thing which
+ * breaks it stays available afterwards as a permanent way to mint authority, so every property
+ * below is about closing it again:
+ *
+ *   EXPLICITLY INVOKED   never runs as a side effect of provisioning, a deploy or a first login
+ *   TENANT-BOUND         one tenant, named by the caller; it cannot reach another
+ *   PRINCIPAL-BOUND      one subject, named by the caller
+ *   ONE-TIME             `tenant_admin_bootstraps` has the tenant as its PRIMARY KEY, so the
+ *                        SECOND call is refused by the database rather than by a check that could
+ *                        be raced or skipped
+ *   NON-OVERWRITING      refuses outright if the tenant already has an active Admin assignment,
+ *                        even if no bootstrap was recorded -- an existing administrator is never
+ *                        silently replaced
+ *   AUDITED              one event, with the tenant, the principal and who ran it
+ *
+ * It is NOT reachable from arbitrary browser input: nothing in the trusted API exposes it, and the
+ * only caller is an operator-run script. Recovery of a tenant that has LOST its administrators is a
+ * separate, deliberately manual procedure -- see the activation document -- and not this function,
+ * because a recovery path that runs itself is the backdoor this one avoids being.
+ */
+async function bootstrapAdministrator(repo, input) {
+    const tenantId = requireText(input.tenantId, "tenant id");
+    const subject = requireText(input.externalSubject, "external subject");
+    const performedBy = requireText(input.performedBy, "performedBy");
+    const identityProvider = input.identityProvider ?? principalContext_1.FIREBASE_IDENTITY_PROVIDER;
+    const tenant = await repo.getTenant(tenantId);
+    if (!tenant)
+        throw new TenantBootstrapError("tenant does not exist -- run the tenant bootstrap first");
+    const alreadyBootstrapped = await repo.getAdminBootstrap(tenantId);
+    if (alreadyBootstrapped) {
+        throw new TenantBootstrapError("this tenant has already been bootstrapped; assign Roles through the trusted Admin API");
+    }
+    const adminRole = await repo.getRoleByKey(tenantId, administrationAuthority_2.ADMIN_ROLE_KEY);
+    if (!adminRole)
+        throw new TenantBootstrapError("the tenant has no Admin Role -- seed it first");
+    // NON-OVERWRITING, and the bootstrap record above is what makes it sufficient. The seed assigns
+    // nobody, so the ONLY route to an Admin assignment that leaves no bootstrap record is the trusted
+    // API -- which already requires an administrator. An existing administrator therefore implies a
+    // recorded bootstrap, and the refusal above has already fired. This second check covers the
+    // remaining case: the same principal being bootstrapped twice through different subjects.
+    const existingPrincipal = await repo.getPrincipalBySubject(identityProvider, subject);
+    if (existingPrincipal) {
+        const held = await repo.listAssignmentsForPrincipal(tenantId, existingPrincipal.id);
+        if (held.some((a) => a.roleId === adminRole.id && a.status === "active")) {
+            throw new TenantBootstrapError("that principal already administers this tenant");
+        }
+    }
+    // THE GOVERNING CAPABILITIES COME WITH THE FIRST ADMINISTRATOR. Security administration is
+    // authorized by admin.securityPolicy.write / admin.roleAssignment.write, never by the Role name, so
+    // a tenant whose Roles were seeded after those grant migrations ran would otherwise have an Admin
+    // who can administer nothing. Only pairs whose Role and capability both exist are written.
+    const [catalog, roles, existingGrants] = await Promise.all([
+        repo.listCapabilities(), repo.listRoles(tenantId), repo.listRoleCapabilities(tenantId),
+    ]);
+    const capabilityIdByKey = new Map(catalog.map((c) => [c.key, c.id]));
+    const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
+    const bootstrapGrants = administrationAuthority_2.ADMINISTRATION_BOOTSTRAP_GRANTS
+        .map((g) => ({ ...g, roleId: roleIdByKey.get(g.roleKey), capabilityId: capabilityIdByKey.get(g.capabilityKey) }))
+        .filter((g) => Boolean(g.roleId && g.capabilityId))
+        .filter((g) => !existingGrants.some((e) => e.roleId === g.roleId && e.capabilityId === g.capabilityId));
+    return repo.transact({ tenantId, uid: performedBy }, async (tx) => {
+        for (const g of bootstrapGrants) {
+            await tx.grantRoleCapability({
+                roleId: g.roleId, capabilityId: g.capabilityId,
+                grantedBy: `bootstrap:${performedBy}`, grantedAt: new Date().toISOString(),
+            });
+        }
+        const principal = existingPrincipal ??
+            (await tx.createPrincipal({
+                externalSubject: subject,
+                identityProvider,
+                displayName: input.displayName ?? null,
+            }));
+        // Membership first: a principal with an assignment but no membership would resolve to no tenant
+        // and hold a Role nobody could use, which reads as a broken grant rather than as a missing row.
+        const membership = await repo.getMembership(tenantId, principal.id);
+        if (!membership)
+            await tx.createTenantMembership(principal.id);
+        const accessVersion = await tx.bumpAccessVersion(principal.id);
+        const assignment = await tx.createAssignment({
+            principalId: principal.id,
+            roleId: adminRole.id,
+            scopeType: "global",
+            scopeValue: null,
+            status: "active",
+            grantedBy: performedBy,
+            grantedAt: new Date().toISOString(),
+            accessVersionAtGrant: accessVersion,
+        });
+        const bootstrap = await tx.recordAdminBootstrap({
+            principalId: principal.id,
+            performedBy,
+            reason: input.reason ?? null,
+        });
+        await tx.appendAudit({
+            action: "tenant.bootstrapAdministrator",
+            actorUid: performedBy,
+            targetKind: "principal",
+            targetId: principal.id,
+            before: null,
+            after: {
+                roleKey: administrationAuthority_2.ADMIN_ROLE_KEY, assignmentId: assignment.id, identityProvider, externalSubject: subject,
+                administrationGrants: bootstrapGrants.map((g) => `${g.roleKey}/${g.capabilityKey}`),
+            },
+            occurredAt: new Date().toISOString(),
+            reason: input.reason ?? "initial administrator",
+        });
+        return { principal, bootstrap, assignmentId: assignment.id, accessVersion };
+    });
+}
+/**
+ * Ordinary membership: make an authenticated subject known to a tenant, with NO Roles.
+ *
+ * This is what onboarding looks like after the bootstrap. It creates a principal and a membership
+ * and grants nothing -- the resulting context can read no policy and mutate nothing until an
+ * administrator assigns a Role, which is the correct default for somebody who has merely signed in.
+ */
+// ════════════════════ FIRST OWNER BOOTSTRAP (Controller/Owner ruling 2026-09-27, option A) ════════════════════
+/** The provenance stamped on the assignment a first-Owner bootstrap writes: `bootstrap:first-owner:<operator>`. */
+exports.FIRST_OWNER_BOOTSTRAP_SOURCE = "bootstrap:first-owner";
+/** The audit action of a first-Owner bootstrap. Never an Administration action. */
+exports.FIRST_OWNER_BOOTSTRAP_ACTION = "tenant.bootstrapFirstOwner";
+/**
+ * Establish a tenant's FIRST protected Owner -- once, and only while the tenant has NO active protected Owner.
+ *
+ * ════════════════════ WHAT THIS IS, AND IS NOT ════════════════════
+ *
+ * Ordinary role administration may never appoint or remove the protected Owner (Controller ruling 2026-09-27:
+ * assignRole refuses PROTECTED_OWNER_MEMBERSHIP). A new tenant therefore needs one place that establishes its first
+ * Owner -- exactly as bootstrapAdministrator establishes its first Administrator. That is this, and ONLY this:
+ *
+ *   NOT OWNER LIFECYCLE    it never adds a second Owner, never replaces, transfers or removes one. The moment ANY
+ *                          active protected Owner exists it refuses, whoever the target -- including the principal
+ *                          who already holds it (an exact replay is the CALLER's read-first NO_CHANGE, never this
+ *                          primitive's; see provisionOwnerPersona). Succession is a separate lifecycle, not built.
+ *   NOT ADMINISTRATION     no capability authorizes it and none is checked: no Administration endpoint, button,
+ *                          Security Role, direct exception or role-assignment command reaches it. Its only callers
+ *                          are operator-run scripts, which pass the operator as `performedBy`.
+ *   TENANT/PRINCIPAL-BOUND one tenant and one EXISTING principal with an ACTIVE membership of that tenant; the
+ *                          canonical `owner` Role must exist AND carry the stored protected flag.
+ *   OWNER RULING A         the target may not thereby reach an owner-excluded capability.
+ *   RACE-FREE              the zero-Owner count and the insert run inside ONE transaction under the tenant
+ *                          governance lock every Administration command takes, so two concurrent bootstraps
+ *                          serialize and the second sees the first's Owner and refuses.
+ *   AUDITED                one `tenant.bootstrapFirstOwner` event, actor = the operator, and the assignment's
+ *                          grantedBy = `bootstrap:first-owner:<operator>` -- distinguishable from Administration.
+ */
+async function bootstrapFirstOwner(repo, input) {
+    const tenantId = requireText(input.tenantId, "tenant id");
+    const principalId = requireText(input.principalId, "principal id");
+    const performedBy = requireText(input.performedBy, "performedBy");
+    const reason = requireText(input.reason, "reason");
+    const tenant = await repo.getTenant(tenantId);
+    if (!tenant)
+        throw new TenantBootstrapError("FIRST_OWNER_TENANT_MISSING: tenant does not exist");
+    const ownerRole = await repo.getRoleByKey(tenantId, administrationAuthority_2.PROTECTED_OWNER_ROLE_KEY);
+    if (!ownerRole)
+        throw new TenantBootstrapError("FIRST_OWNER_ROLE_MISSING: the tenant has no canonical owner Role -- seed it first");
+    if (!(0, administrationAuthority_2.isProtectedOwnerRole)(ownerRole)) {
+        throw new TenantBootstrapError("FIRST_OWNER_ROLE_NOT_PROTECTED: the tenant's owner Role is not the protected Owner Role");
+    }
+    const principal = await repo.getPrincipal(principalId);
+    if (!principal)
+        throw new TenantBootstrapError("FIRST_OWNER_PRINCIPAL_MISSING: that principal does not exist");
+    const membership = await repo.getMembership(tenantId, principalId);
+    if (!membership || membership.status !== "active") {
+        throw new TenantBootstrapError("FIRST_OWNER_NOT_A_MEMBER: that principal is not an active member of this tenant");
+    }
+    // Owner ruling A at the principal: holding owner may never bring an owner-excluded capability with it.
+    const roles = await repo.listRoles(tenantId);
+    const heldRoleKeys = (await repo.listAssignmentsForPrincipal(tenantId, principalId))
+        .filter((a) => a.status === "active")
+        .map((a) => roles.find((r) => r.id === a.roleId)?.key)
+        .filter((k) => typeof k === "string");
+    const withOwner = [...new Set([...heldRoleKeys, administrationAuthority_2.PROTECTED_OWNER_ROLE_KEY])];
+    const violations = (0, roleCapabilityAdministration_1.ownerPrincipalViolations)(withOwner, await (0, administrationCapabilityGate_1.capabilityKeysFor)(repo, tenantId, withOwner, principalId, { includeConditioned: true }));
+    if (violations.length > 0) {
+        throw new TenantBootstrapError(`FIRST_OWNER_RULING_A: a principal holding the owner Role may never hold ${violations.join(", ")}`);
+    }
+    return repo.transact({ tenantId, uid: performedBy }, async (tx) => {
+        // THE ZERO-OWNER PRECONDITION, decided under the tenant governance lock (serializes concurrent bootstraps).
+        await tx.beginAdministrationCommand();
+        const owners = await tx.activeGlobalAssignmentCountForRole(ownerRole.id, null);
+        if (owners > 0) {
+            throw new TenantBootstrapError("FIRST_OWNER_ALREADY_ESTABLISHED: this tenant already has an active protected Owner; the first-Owner bootstrap "
+                + "never adds, replaces or transfers an Owner (Owner succession is a separate lifecycle)");
+        }
+        const accessVersion = await tx.bumpAccessVersion(principalId);
+        const grantedAt = new Date().toISOString();
+        const assignment = await tx.createAssignment({
+            principalId,
+            roleId: ownerRole.id,
+            scopeType: "global",
+            scopeValue: null,
+            status: "active",
+            grantedBy: `${exports.FIRST_OWNER_BOOTSTRAP_SOURCE}:${performedBy}`,
+            grantedAt,
+            accessVersionAtGrant: accessVersion,
+        });
+        await tx.appendAudit({
+            action: exports.FIRST_OWNER_BOOTSTRAP_ACTION,
+            actorUid: performedBy,
+            targetKind: "roleAssignment",
+            targetId: assignment.id,
+            before: null,
+            after: {
+                source: "FIRST_OWNER_BOOTSTRAP", tenantId, principalId, roleKey: administrationAuthority_2.PROTECTED_OWNER_ROLE_KEY, roleId: ownerRole.id,
+                assignmentId: assignment.id, scopeType: "global", performedBy, grantedAt, accessVersion,
+            },
+            reason,
+            occurredAt: grantedAt,
+        });
+        return { principalId, assignmentId: assignment.id, roleId: ownerRole.id, accessVersion };
+    });
+}
+async function ensureTenantPrincipal(repo, input) {
+    const tenantId = requireText(input.tenantId, "tenant id");
+    const subject = requireText(input.externalSubject, "external subject");
+    const identityProvider = input.identityProvider ?? principalContext_1.FIREBASE_IDENTITY_PROVIDER;
+    // Admitting somebody to a tenant is an assignment-shaped act, so it takes the assignment
+    // authority: Owner, General Manager or Admin.
+    // Admitting a Principal is assignment-shaped authority: admin.roleAssignment.write, resolved from the
+    // governed grants of the actor's Roles -- never the Role names themselves.
+    const actorCapabilities = await (0, administrationCapabilityGate_1.capabilityKeysFor)(repo, tenantId, input.actorRoleKeys ?? [], null);
+    if (!(0, administrationAuthority_1.hasSecurityAdministrationCapability)(actorCapabilities, "assignRole")) {
+        throw new administrationAuthority_1.AdministrationCapabilityDeniedError("assignRole");
+    }
+    const existing = await repo.getPrincipalBySubject(identityProvider, subject);
+    const membership = existing ? await repo.getMembership(tenantId, existing.id) : null;
+    if (existing && membership && membership.status === "active")
+        return existing;
+    return repo.transact({ tenantId, uid: input.actorUid }, async (tx) => {
+        const principal = existing ??
+            (await tx.createPrincipal({
+                externalSubject: subject,
+                identityProvider,
+                displayName: input.displayName ?? null,
+            }));
+        if (membership)
+            await tx.setTenantMembershipStatus(membership.id, "active");
+        else
+            await tx.createTenantMembership(principal.id);
+        await tx.appendAudit({
+            action: "tenant.addPrincipal",
+            actorUid: input.actorUid,
+            targetKind: "principal",
+            targetId: principal.id,
+            before: membership ? { status: membership.status } : null,
+            after: { status: "active", identityProvider, externalSubject: subject },
+            occurredAt: new Date().toISOString(),
+            reason: input.reason ?? null,
+        });
+        return principal;
+    });
+}
+function requireText(value, what) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        throw new TenantBootstrapError(`${what} is required`);
+    }
+    return value.trim();
+}
+/** Opaque above the port; a random identifier is the cheapest opaque thing. */
+function randomTenantId() {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return `tenant-${require("node:crypto").randomUUID()}`;
+}
+//# sourceMappingURL=tenantBootstrap.js.map

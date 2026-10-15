@@ -1,0 +1,230 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.InvoiceCommandError = void 0;
+exports.verifySalesOrderMatch = verifySalesOrderMatch;
+exports.applyBilledQuantities = applyBilledQuantities;
+exports.buildInvoiceRecord = buildInvoiceRecord;
+// Finance — PURE invoice command core (governed issuance). Given a validated issuance input, it RE-COMPUTES
+// the authoritative invoice amounts server-side (exact integer minor units, never float — Owner §8) from the
+// committed Sales Order unitPrice snapshot (§3) and the INJECTED tax determination (§2), and produces the
+// immutable invoice record. The trusted layer is the money authority: it does not blindly persist client
+// arithmetic; it derives subtotals/totals itself and fails closed on any inconsistency, missing price, or
+// missing tax. No Firestore here — the callable owns the transaction (numbering + write + audit).
+//
+// Ratified semantics preserved: SO unitPrice snapshot = basis (no re-pricing / no price book); tax injected,
+// missing ⇒ REQUIRES_REVIEW (reject issuance); invoice lifecycle (ISSUED) separate from AR; AR age begins at
+// dueDate (carried, not computed here); an issued invoice is immutable (this only CREATES the issued record).
+//
+// P1.8 (lifecycle-audit `issueinvoice-unverified-so-pricing-and-qty`): issuance must be checked against the
+// GOVERNED Sales Order, never trusted from the client. `verifySalesOrderMatch` is the pure cross-check the
+// callable runs (inside its transaction, against a tx.get'd SO doc) before recomputing amounts: commercial
+// facts (accountId/currency/per-line committed unitPrice/billing-eligible qty) must match the SO or issuance
+// is rejected. It reuses computeBillingEligibility (billingEligibility.ts) — the fulfillment→finance seam —
+// rather than re-deriving eligibility rules here.
+//
+// P-INV (invoice-authority packet, migration 008): the per-line arithmetic and the header
+// aggregates are NO LONGER computed here. They come from the ONE shared derivation,
+// eosOps/invoiceTotals.ts, which the Postgres authority's GENERATED ALWAYS columns and the
+// `invoice_totals` view express in SQL. financialReconciliation.ts's `reconcileInvoiceTotals`
+// re-uses that same derivation to prove a stored header against its own lines — but NOTHING IN
+// PRODUCTION CALLS IT (P2-K, 2026-09-12: financialReconciliation.ts has no importer under
+// functions/src; its only importers are functions/test/*). Do not read that reconciler as a live
+// guard on this path: the guarantee here comes from the single derivation below, not from a check
+// that runs after it. Four inline `out.reduce(...)` calls and a duplicated
+// per-line formula lived here; a second copy of an arithmetic rule is how two layers come to
+// disagree about the same invoice's money. The refusal CODES are unchanged (LINE_INVALID /
+// UNPRICED / TAX_REQUIRES_REVIEW), re-thrown as InvoiceCommandError so every existing caller and
+// error mapping is untouched.
+const billingEligibility_1 = require("../fulfillment/billingEligibility");
+const financialAttribution_1 = require("./financialAttribution");
+const invoiceTotals_1 = require("../eosOps/invoiceTotals");
+class InvoiceCommandError extends Error {
+    code;
+    constructor(code, message) { super(message); this.name = "InvoiceCommandError"; this.code = code; }
+}
+exports.InvoiceCommandError = InvoiceCommandError;
+const isInt = (v) => typeof v === "number" && Number.isSafeInteger(v);
+// The shared derivation refuses with its own error type. Translating rather than letting it escape
+// keeps this module's contract exactly what it was: callers (and invoiceCallables.ts's
+// mapCommandError) see InvoiceCommandError with the same codes they always did.
+function deriveLineAmountsOrRefuse(line, index) {
+    try {
+        return (0, invoiceTotals_1.deriveInvoiceLineAmounts)(line, `line ${index}`);
+    }
+    catch (err) {
+        if (err instanceof invoiceTotals_1.InvoiceTotalsError)
+            throw new InvoiceCommandError(err.code, err.message);
+        throw err;
+    }
+}
+const billingEligibleQty = (l) => {
+    const ordered = typeof l.orderedQty === "number" && Number.isFinite(l.orderedQty) && l.orderedQty > 0 ? l.orderedQty : 0;
+    const fulfilled = typeof l.fulfilledQty === "number" && Number.isFinite(l.fulfilledQty) && l.fulfilledQty > 0 ? l.fulfilledQty : 0;
+    return Math.min(ordered, fulfilled);
+};
+// Cross-check the client-supplied issuance input against the GOVERNED Sales Order — fail closed on any
+// mismatch rather than trusting the client. Basis: SO unitPrice snapshot (no re-pricing); billable qty capped
+// at the billing-eligible qty per line (min(orderedQty, fulfilledQty), same rule computeBillingEligibility
+// applies); accountId/currency must match the SO's committed values.
+function verifySalesOrderMatch(input, so) {
+    if (!so || typeof so !== "object")
+        throw new InvoiceCommandError("SALES_ORDER_NOT_FOUND", "sales order not found");
+    if (input.accountId !== so.accountId) {
+        throw new InvoiceCommandError("ACCOUNT_MISMATCH", "accountId does not match the sales order's committed account");
+    }
+    if (input.currency !== so.currency) {
+        throw new InvoiceCommandError("CURRENCY_MISMATCH", "currency does not match the sales order's committed currency");
+    }
+    // ═══════════ COMPANY AUTHORITY (company-authority correction, 2026-09-01) ═══════════
+    // ONE company authority for a Sales-Order-derived invoice: the governed Sales Order's
+    // operatingCompanyId. The caller does NOT choose the company — `input.companyId` survives only
+    // as an ASSERTION for compatibility, and a caller asserting a different company than the order's
+    // is refused HERE, before any counter allocation, write, or audit. A Sales Order with no company
+    // (pre-correction data) cannot be invoiced until its company is resolved by governed means.
+    if (typeof so.operatingCompanyId !== "string" || so.operatingCompanyId.trim().length === 0) {
+        throw new InvoiceCommandError("COMPANY_REQUIRED", "the sales order has no resolved operatingCompanyId; an invoice is a reportable financial event and cannot be issued without its governed company");
+    }
+    if (typeof input.companyId === "string" && input.companyId.trim().length > 0 && input.companyId !== so.operatingCompanyId) {
+        throw new InvoiceCommandError("COMPANY_MISMATCH", `companyId "${input.companyId}" does not match the sales order's governed operatingCompanyId "${so.operatingCompanyId}" — the caller does not choose the invoice's company`);
+    }
+    const eligibilityInput = {
+        salesOrderState: so.state,
+        operationalBlocked: so.operationalBlocked,
+        additionalWorkPending: so.additionalWorkPending,
+        lines: (Array.isArray(so.lines) ? so.lines : []).map((l) => ({ ref: l.ref, orderedQty: l.orderedQty, fulfilledQty: l.fulfilledQty })),
+    };
+    const eligibility = (0, billingEligibility_1.computeBillingEligibility)(eligibilityInput);
+    if (eligibility.eligibility !== "ELIGIBLE" && eligibility.eligibility !== "PARTIALLY_ELIGIBLE") {
+        throw new InvoiceCommandError("NOT_BILLABLE", `sales order is not billing-eligible (${eligibility.eligibility}: ${eligibility.reasons.join("; ")})`);
+    }
+    const soLinesById = new Map((Array.isArray(so.lines) ? so.lines : []).map((l) => [l.lineId, l]));
+    const requestedById = new Map();
+    const lines = Array.isArray(input.lines) ? input.lines : [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (typeof line?.salesOrderLineId !== "string" || line.salesOrderLineId.trim().length === 0)
+            throw new InvoiceCommandError("LINE_INVALID", `line ${i} salesOrderLineId required`);
+        if (typeof line?.kind !== "string" || line.kind.trim().length === 0)
+            throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
+        const soLine = soLinesById.get(line.salesOrderLineId);
+        if (!soLine)
+            throw new InvoiceCommandError("SALES_ORDER_LINE_NOT_FOUND", `line ${i} (${line?.ref}) has no matching sales order line`);
+        if (line.kind !== soLine.kind || line.ref !== soLine.ref)
+            throw new InvoiceCommandError("SALES_ORDER_LINE_NOT_FOUND", `line ${i} does not match its governed sales order line identity`);
+        if (typeof soLine.unitPrice !== "number" || !Number.isFinite(soLine.unitPrice)) {
+            throw new InvoiceCommandError("UNPRICED", `sales order line ${line?.ref} has no committed unit price`);
+        }
+        if (line.unitPriceMinor !== soLine.unitPrice) {
+            throw new InvoiceCommandError("PRICE_MISMATCH", `line ${i} (${line?.ref}) unitPriceMinor does not match the sales order's committed unit price`);
+        }
+        const requested = (requestedById.get(line.salesOrderLineId) ?? 0) + line.billableQty;
+        requestedById.set(line.salesOrderLineId, requested);
+        const billedQty = typeof soLine.billedQty === "number" && Number.isFinite(soLine.billedQty) && soLine.billedQty >= 0 ? soLine.billedQty : 0;
+        const availableQty = billingEligibleQty(soLine) - billedQty;
+        if (requested > availableQty) {
+            throw new InvoiceCommandError("QTY_EXCEEDS_ELIGIBLE", `line ${i} (${line?.ref}) cumulative billableQty ${requested} exceeds remaining billing-eligible qty ${availableQty}`);
+        }
+    }
+}
+function applyBilledQuantities(input, so) {
+    verifySalesOrderMatch(input, so);
+    const increments = new Map();
+    for (const line of input.lines) {
+        increments.set(line.salesOrderLineId, (increments.get(line.salesOrderLineId) ?? 0) + line.billableQty);
+    }
+    return so.lines.map((line) => {
+        const increment = increments.get(line.lineId) ?? 0;
+        return increment === 0 ? line : { ...line, billedQty: (line.billedQty ?? 0) + increment };
+    });
+}
+// Build the immutable ISSUED invoice record. `deps` carries the trusted sequence/number (from the counter, in
+// the caller's transaction) + now. Pure + fail-closed. Recomputes every amount with exact integer arithmetic.
+function buildInvoiceRecord(input, 
+// `so` is the SAME governed snapshot verifySalesOrderMatch already reads (tx.get, never client
+// claims). REQUIRED since the company-authority correction: it supplies the line business units,
+// the frozen attribution snapshot, and THE company — the caller's `companyId` is assertion-only.
+deps) {
+    if (!input || typeof input !== "object")
+        throw new InvoiceCommandError("INVALID_INPUT", "invoice input required");
+    for (const [field, v] of [["accountId", input.accountId], ["salesOrderId", input.salesOrderId], ["currency", input.currency]]) {
+        if (typeof v !== "string" || v.trim().length === 0)
+            throw new InvoiceCommandError("REQUIRED", `${field} is required`);
+    }
+    // COMPANY: from the governed Sales Order, never the caller. verifySalesOrderMatch enforced
+    // presence and the assertion-match before numbering; re-asserted here so this builder is safe
+    // even for a caller that skipped the verify (a defect, but not one that may mint a company).
+    const soCompany = deps.so?.operatingCompanyId;
+    if (typeof soCompany !== "string" || soCompany.trim().length === 0) {
+        throw new InvoiceCommandError("COMPANY_REQUIRED", "the sales order snapshot carries no operatingCompanyId; the invoice's company comes from the governed order, never the caller");
+    }
+    if (typeof input.companyId === "string" && input.companyId.trim().length > 0 && input.companyId !== soCompany) {
+        throw new InvoiceCommandError("COMPANY_MISMATCH", "companyId assertion does not match the sales order's governed operatingCompanyId");
+    }
+    if (!isInt(input.dueDate))
+        throw new InvoiceCommandError("DUE_DATE_INVALID", "dueDate (ms epoch) is required for AR aging");
+    // Eligibility ≠ policy: only an explicit BILL_NOW decision may be issued here (§5). PARTIALLY_ELIGIBLE that
+    // was merely eligible (HOLD_FOR_POLICY) must NOT auto-issue.
+    if (input.billingAction !== "BILL_NOW")
+        throw new InvoiceCommandError("NOT_BILLABLE", "invoice issuance requires an explicit BILL_NOW billing decision");
+    const lines = Array.isArray(input.lines) ? input.lines : [];
+    if (lines.length === 0)
+        throw new InvoiceCommandError("NO_LINES", "an invoice must have at least one line");
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (typeof l?.salesOrderLineId !== "string" || l.salesOrderLineId.trim().length === 0)
+            throw new InvoiceCommandError("LINE_INVALID", `line ${i} salesOrderLineId required`);
+        if (typeof l?.kind !== "string" || l.kind.trim().length === 0)
+            throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
+        if (typeof l?.ref !== "string" || l.ref.trim().length === 0)
+            throw new InvoiceCommandError("LINE_INVALID", `line ${i} ref required`);
+        // AUTHORITATIVE amounts — recomputed by the ONE shared derivation, never trusted from the
+        // client. Tax is the INJECTED determination (§2): absent ⇒ TAX_REQUIRES_REVIEW, never invented.
+        const amounts = deriveLineAmountsOrRefuse(l, i);
+        const { subtotalMinor, discountMinor, taxableBaseMinor, lineTotalMinor } = amounts;
+        // Business unit comes from the GOVERNED SO line, matched by lineId — a client cannot label its
+        // own billing. Absent snapshot / absent stamp ⇒ null, honestly.
+        const soLine = deps.so?.lines?.find((s) => s.lineId === l.salesOrderLineId);
+        const businessUnitId = typeof soLine?.businessUnitId === "string" && soLine.businessUnitId.length > 0
+            ? soLine.businessUnitId : null;
+        out.push({ salesOrderLineId: l.salesOrderLineId, kind: l.kind, ref: l.ref, businessUnitId, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: amounts.taxMinor, lineTotalMinor });
+    }
+    // The header aggregates, from the SAME summation the Postgres `invoice_totals` view performs.
+    const { subtotalMinor, discountMinor, taxMinor, totalMinor } = (0, invoiceTotals_1.sumInvoiceLineAmounts)(out);
+    return {
+        invoiceNumber: deps.invoiceNumber,
+        sequence: deps.sequence,
+        // STRUCTURAL INVARIANT: invoice.companyId === invoice.attribution.operatingCompanyId, always —
+        // both read the same governed Sales Order fact; neither is caller-chosen.
+        companyId: soCompany,
+        accountId: input.accountId,
+        salesOrderId: input.salesOrderId,
+        currency: input.currency,
+        state: "ISSUED",
+        issuedAtMillis: deps.nowMillis,
+        dueDate: input.dueDate,
+        lines: out,
+        subtotalMinor,
+        discountMinor,
+        taxMinor,
+        totalMinor,
+        outstandingMinor: totalMinor, // AR open balance at issuance; payments/adjustments reduce it later
+        taxProvenance: typeof input.taxProvenance === "string" ? input.taxProvenance : null,
+        // The ONE canonical snapshot (FIN-002 / company correction). Composed from the governed SO
+        // facts; company is REQUIRED (the snapshot builder refuses without it) and identical to the
+        // header companyId above by construction. The header's businessUnitId is deliberately null —
+        // a mixed order bills mixed units, and the truthful unit lives on each line. Company is
+        // different: an invoice cannot span operating companies under this Sales Order authority.
+        attribution: (0, financialAttribution_1.buildFinancialAttributionSnapshot)({
+            operatingCompanyId: soCompany,
+            businessUnitId: null,
+            creditedSalespersonId: deps.so.creditedSalespersonId ?? null,
+            customerId: input.accountId,
+            sourceType: "SALES_ORDER",
+            sourceRecordId: input.salesOrderId,
+            eventAtMillis: deps.nowMillis,
+            currency: input.currency,
+        }),
+    };
+}
+//# sourceMappingURL=invoiceCommands.js.map

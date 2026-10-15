@@ -1,0 +1,344 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LEGACY_CONSUMER_LEDGER = exports.LEGACY_TERMS = exports.LEGACY_VALUE_TERMS = exports.LEGACY_FIELD_TERMS = exports.CONSUMER_STATUSES = exports.CONSUMER_CLASSIFICATIONS = void 0;
+exports.retirementReadiness = retirementReadiness;
+// The LEGACY operationalRoles RETIREMENT LEDGER -- the fan-in evidence that gates steps I-M.
+//
+// It lives beside the other migration/retirement evidence (the assignment census, the ConditionKind inventory, the
+// effective-access parity proof) rather than under eosWorkforce, because it is not a Workforce runtime concern: it
+// spans the Workforce layer, the access catalog and the client, and it must never be imported by any of them.
+//
+// Pure: no database, no Firebase, no I/O, no scanning. It records one entry per CODE-LEVEL consumer of the three
+// legacy fields, and its companion suite derives the real set from the repository and asserts the two correspond in
+// BOTH directions. A consumer that appears in the code and not here fails the build; an entry whose file no longer
+// contains the term fails it too. The ledger therefore cannot quietly go stale, which is the only property that
+// makes it worth having.
+//
+// ════════════════════ IT EXISTS TO ANSWER ONE QUESTION ════════════════════
+//
+//   is legacy authority safe to REMOVE yet?
+//
+// Not to track work. J (retire operationalRoleActive), K (remove Firestore operationalRoles reads) and L (remove the
+// Rules dependencies) are each blocked while any consumer they would break is still NOT_STARTED or BLOCKED. That
+// computation is `retirementReadiness()` below, and it is the gate -- not a status anybody types.
+//
+// ════════════════════ WHY 1838 BECAME 28 ════════════════════
+//
+// The 2026-09-17 census counted 1838 textual references across 267 files. Most are PROSE: the decomposition modules
+// say "never inferred from operationalRoles" precisely because they must not read it. Stripping comments leaves the
+// consumers that actually execute, which is the only population a retirement gate can reason about. The census is
+// not re-run; this is a narrower, mechanically-checked view of the same evidence.
+//
+// ════════════════════ THE CLASSIFICATIONS ════════════════════
+//
+// The first five are the Owner's: what the consumer is really asking.
+//
+//   SECURITY_AUTHORIZATION   "may this Principal invoke this?"     -> capability. The only one that is security.
+//   WORK_ELIGIBILITY         "is this Employee qualified?"         -> eos_workforce.employee_work_eligibility
+//   OPERATIONAL_SCOPE        "where may this Employee work?"       -> eos_workforce.employee_operational_scopes
+//   DISPLAY_PERSONA          presentation only, grants nothing     -> Job Role, plus capabilities for visibility
+//   DEAD_LEGACY              reachable by nothing; delete it
+//
+// MIGRATION_EVIDENCE is a SIXTH, and it is not an Owner classification -- it is the distinction the retirement gate
+// needs. Those modules do not consume legacy AUTHORITY; they read the legacy field as EVIDENCE, which is exactly
+// what steps D/E were built to do. They must SURVIVE J and K and are removed only when the legacy field itself is
+// finally dropped. Classifying them as consumers would block retirement on the very tooling that enables it.
+exports.CONSUMER_CLASSIFICATIONS = Object.freeze([
+    "SECURITY_AUTHORIZATION", "WORK_ELIGIBILITY", "OPERATIONAL_SCOPE", "DISPLAY_PERSONA", "DEAD_LEGACY",
+    "MIGRATION_EVIDENCE",
+]);
+exports.CONSUMER_STATUSES = Object.freeze(["NOT_STARTED", "CONVERTED", "DEAD", "BLOCKED"]);
+/**
+ * What makes a file a consumer.
+ *
+ * TWO kinds of dependency, because tracking only the first under-reports the surface. A consumer can depend on the
+ * legacy VALUES without ever naming the FIELD -- it receives `PARTS_ASSOCIATE` through a parameter and filters on
+ * it. The entire live assignable-Employee path does exactly that, so a field-name-only ledger would have missed the
+ * very family step G converts.
+ *
+ *   FIELD names   the stored legacy data itself. These block K (removing the Firestore reads).
+ *   VALUE names   the legacy vocabulary and its constants. These outlive the reads and retire with the vocabulary.
+ *
+ * Matched on WORD BOUNDARIES, never as substrings: `OPERATIONAL_ROLE_VALUES` is its own identifier and must not be
+ * counted as a use of `OPERATIONAL_ROLE`, or the ledger would attribute a dependency the file does not have.
+ */
+exports.LEGACY_FIELD_TERMS = Object.freeze(["operationalRoles", "operationalRoleActive", "assignedWarehouseIds"]);
+exports.LEGACY_VALUE_TERMS = Object.freeze(["OPERATIONAL_ROLES", "OPERATIONAL_ROLE", "operationalRoleLabel"]);
+exports.LEGACY_TERMS = Object.freeze([...exports.LEGACY_FIELD_TERMS, ...exports.LEGACY_VALUE_TERMS]);
+const FIELD_TERMS = new Set(exports.LEGACY_FIELD_TERMS);
+const entry = (e) => Object.freeze(e);
+const CAPABILITY = "eos_policy capability (security capability remains the FIRST boundary)";
+const ELIGIBILITY = "eos_workforce.employee_work_eligibility (step A/C)";
+const SCOPE = "eos_workforce.employee_operational_scopes (step B/C)";
+const JOB_ROLE = "eos_workforce.job_roles (EMP-RT-08) for persona; capabilities for action visibility";
+/**
+ * Every code-level consumer, comments excluded.
+ *
+ * Ordered by path so a diff is readable. Status is the CURRENT truth: almost everything is NOT_STARTED, because
+ * steps A-E built authorities and tooling and converted no consumer. Claiming otherwise is the failure mode this
+ * ledger exists to prevent.
+ */
+exports.LEGACY_CONSUMER_LEDGER = Object.freeze([
+    // ── the Condition plumbing: step J retires this whole family together ──
+    entry({
+        path: "functions/src/types/access.ts", consumer: "declares the operationalRoleActive ConditionKind",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "the Kind is still carried by technician's seven Reorder grants; removing it first would fail them closed",
+    }),
+    entry({
+        path: "field-ops-app-vite/src/types/access.ts", consumer: "the client mirror of the ConditionKind union",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "mirrors functions/src/types/access.ts and retires with it",
+    }),
+    entry({
+        path: "functions/src/access/resolveEffectivePermission.ts", consumer: "evaluates the operationalRoleActive branch",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "the evaluator must keep answering while any Role still carries the Kind",
+    }),
+    entry({
+        path: "field-ops-app-vite/src/access/resolveEffectivePermission.ts", consumer: "the client mirror of the evaluator",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "mirrors the server evaluator and retires with it",
+    }),
+    entry({
+        path: "functions/src/access/compatibilityRoles.ts",
+        consumer: "attaches operationalRoleActive(PARTS_ASSOCIATE) to technician's seven Reorder grants",
+        terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
+        // The target CODE is undetermined, so this no longer claims WAREHOUSE_OPERATIONS. Measured in
+        // the contextual-authorization slice: the evaluator refuses PARTS_ASSOCIATE with
+        // WORK_ELIGIBILITY_UNMAPPED rather than guessing, and that refusal is what blocks the Kind.
+        // TARGET NOW DETERMINED, by Owner ruling: PARTS_ASSOCIATE is its own governed Work Eligibility
+        // code, registered by migration 1761696000000. Still BLOCKED, and the reason has MOVED: the
+        // vocabulary exists, the ASSIGNMENTS do not. The five legacy holders live in the Firestore
+        // employees collection and none is a governed Employee, so there is nothing to migrate until
+        // the real employee migration lands.
+        replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (PARTS_OPERATIONS)`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "the PARTS_OPERATIONS Work Eligibility code now exists (not the legacy label: the vocabulary refuses to reproduce a legacy operationalRole value), but no governed Employee holds it: the five legacy holders (cw-emp-025..028, sbx-partsassoc) are Firestore employees and eos_workforce.employees is a disjoint synthetic population, so the eligibility assignments migrate with the real employee migration, not before",
+    }),
+    entry({
+        path: "field-ops-app-vite/src/access/compatibilityRoles.ts", consumer: "the client mirror of those grants",
+        terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
+        replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (PARTS_OPERATIONS)`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "mirrors functions/src/access/compatibilityRoles.ts and is blocked by the same missing eligibility assignments",
+    }),
+    entry({
+        path: "functions/src/access/operationalRoleContext.ts",
+        consumer: "builds the operationalRoleActive resolver from an Employee's operationalRoles",
+        terms: ["operationalRoles"], classification: "WORK_ELIGIBILITY",
+        replacementAuthority: ELIGIBILITY, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/access/effectiveAccessFeed.ts", consumer: "supplies the resolver to the effective-access feed",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY}`, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/finance/financeReadCallables.ts",
+        consumer: "supplies the resolver to resolveEffectivePermission for Finance reads",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: CAPABILITY, replacementPr: null, status: "NOT_STARTED",
+        blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/reorderRequest/reorderWarehouseAuthority.ts",
+        // R-32, CONFIRMED MECHANICALLY: this file names assignedWarehouseIds only in prose, to record that it is NOT
+        // read. The derivation strips comments, so the absence is evidence rather than a claim -- the warehouse question
+        // is already answered by a location-scoped assignment, and only the PARTS_ASSOCIATE eligibility arm is legacy.
+        consumer: "supplies the operationalRoleActive resolver; the WAREHOUSE question is already location-scoped assignment (R-32)",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${CAPABILITY} with location-scoped assignment + ${ELIGIBILITY} for the PARTS_ASSOCIATE arm`,
+        replacementPr: null, status: "NOT_STARTED",
+        blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/access/parityFixtures.ts", consumer: "parity fixtures exercising the Condition",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "fixtures must keep proving current behaviour until the Condition itself retires",
+    }),
+    entry({
+        path: "field-ops-app-vite/src/access/parityFixtures.ts", consumer: "the client mirror of those fixtures",
+        terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
+        blockedReason: "mirrors the server fixtures and retires with them",
+    }),
+    // ── the client session carrying the legacy claim: step K ──
+    entry({
+        path: "field-ops-app-vite/src/auth/employeeSessionResult.js", consumer: "carries operationalRoles into the session result",
+        terms: ["operationalRoles"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${CAPABILITY} via readMyWorkforceCapabilities; ${ELIGIBILITY} for qualification`,
+        replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/auth/AuthContext.jsx", consumer: "holds operationalRoles in React auth state",
+        terms: ["operationalRoles"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: `${CAPABILITY} via readMyWorkforceCapabilities; ${ELIGIBILITY} for qualification`,
+        replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/App.jsx", consumer: "builds operationalContext from the session for navigation gating",
+        terms: ["operationalRoles"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: CAPABILITY, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/navigation/navConfig.js",
+        consumer: "gates navigation entries on operationalRoles membership, against the OPERATIONAL_ROLE constants",
+        terms: ["operationalRoles", "OPERATIONAL_ROLE"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: CAPABILITY, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/shared/inventory/RequestReorderControl.jsx",
+        consumer: "shows the reorder control when operationalRoles holds PARTS_MANAGER or WAREHOUSE_MANAGER",
+        terms: ["operationalRoles", "OPERATIONAL_ROLE"], classification: "SECURITY_AUTHORIZATION",
+        replacementAuthority: CAPABILITY, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    // ── the assignable-Employee query: step G ──
+    entry({
+        path: "field-ops-app-vite/src/domain/employees.js",
+        consumer: "buildAssignableEmployeesQuery filters Firestore employees by array-contains operationalRoles",
+        terms: ["operationalRoles"], classification: "WORK_ELIGIBILITY",
+        replacementAuthority: `${ELIGIBILITY} + eligible employment status, read from PostgreSQL`,
+        replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/shared/assignment/EmployeeAssignmentPicker.jsx",
+        consumer: "renders each candidate's operationalRoles and passes the required one through",
+        terms: ["operationalRoles"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    // ── presentation only: step H ──
+    entry({
+        path: "field-ops-app-vite/src/domain/dashboardComposition.js", consumer: "hasOperationalRole() composes dashboard cards",
+        terms: ["operationalRoles"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/modules/dashboard/MyDashboard.jsx", consumer: "passes operationalRoles into dashboard composition",
+        terms: ["operationalRoles"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/modules/technicianDashboard/TechnicianDashboard.jsx",
+        consumer: "reads operationalRoles for the technician persona view",
+        terms: ["operationalRoles"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/domain/employeeProfile.js",
+        consumer: "legacy Employee profile field list, OPERATIONAL_ROLES vocabulary and operationalRoleLabel rendering",
+        terms: ["operationalRoles", "OPERATIONAL_ROLES", "operationalRoleLabel"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "field-ops-app-vite/src/metadata/definitions/employee.js",
+        consumer: "Employee metadata definition naming the legacy field and its OPERATIONAL_ROLES vocabulary",
+        terms: ["operationalRoles", "OPERATIONAL_ROLES"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/access/employeeProfileCommands.ts",
+        consumer: "declares OPERATIONAL_ROLE_VALUES and the OPERATIONAL_ROLES field-kind used to validate legacy writes",
+        terms: ["operationalRoles", "OPERATIONAL_ROLES"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "BLOCKED",
+        blockedReason: "the vocabulary is still the census's and the ledger's own reference list; it retires last",
+    }),
+    // ── the legacy VALUE vocabulary and the assignable-Employee path that consumes it ──
+    //
+    // These name the legacy VALUES without naming the field. The whole live assignable-Employee surface is here, and
+    // every live caller asks for PARTS_ASSOCIATE -- there is NO live SERVICE_TECHNICIAN eligibility consumer, which
+    // is why the Parts/warehouse family is the first real conversion target and the Service family is persona only.
+    entry({
+        path: "field-ops-app-vite/src/domain/constants.js", consumer: "declares the OPERATIONAL_ROLE value constants",
+        terms: ["OPERATIONAL_ROLE"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "BLOCKED",
+        blockedReason: "the value constants are what every unconverted consumer below still imports; they retire last",
+    }),
+    entry({
+        path: "field-ops-app-vite/src/domain/employeeVocabulary.js",
+        consumer: "declares OPERATIONAL_ROLES and their display labels for the legacy Employee record",
+        terms: ["OPERATIONAL_ROLES", "operationalRoleLabel"], classification: "DISPLAY_PERSONA",
+        replacementAuthority: JOB_ROLE, replacementPr: null, status: "BLOCKED",
+        blockedReason: "the write-time vocabulary and its labels retire with the legacy field, after K",
+    }),
+    entry({
+        path: "field-ops-app-vite/src/hooks/useAssignableEmployees.js",
+        consumer: "the assignable-Employee hook, filtered by requiredOperationalRole",
+        terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
+        replacementAuthority: `${ELIGIBILITY} + eligible employment status, read from PostgreSQL`,
+        replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    // THE NEXT THREE ENTRIES ARE ONE FILTER, AND THEIR TARGET CODE IS PARTS_OPERATIONS.
+    //
+    // All three pass the legacy operationalRole PARTS_ASSOCIATE to the assignable-Employee picker. They previously
+    // named WAREHOUSE_OPERATIONS as the replacement authority, which contradicted the compatibilityRoles.ts entry
+    // above -- the same legacy label, resolved to PARTS_OPERATIONS by the Owner ruling behind migration
+    // 1761696000000, which says in its own words "NOT WAREHOUSE_OPERATIONS". Reorder assignment is Parts/Reorder
+    // operational work; a Warehouse employee performs it only when independently assigned PARTS_OPERATIONS. The two
+    // codes stay distinct and neither is inferred from the other.
+    // ── migration EVIDENCE: survives J and K by design ──
+    entry({
+        path: "functions/src/eosWorkforce/migration/partsAssignabilityExclusion.ts",
+        // The Owner RULED the securityRole == technician predicate retired
+        // (APPROVED_LEGACY_UI_RESTRICTION_RETIREMENT), so this no longer blocks the Parts/Warehouse conversion on
+        // policy grounds. It remains as evidence worth collecting when operator access exists.
+        consumer: "measures what the RETIRED securityRole == technician picker filter used to exclude",
+        terms: ["operationalRoles"], classification: "MIGRATION_EVIDENCE",
+        replacementAuthority: null, replacementPr: null, status: "NOT_STARTED",
+        blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/adminPolicy/migration/conditionKindInventory.ts",
+        // Both names appear in its RULING STRINGS -- the dispositions cite the decomposition by name. Strings are code
+        // to the derivation, correctly: a rationale is shipped text, not a comment, so the ledger must account for it.
+        consumer: "classifies the live ConditionKinds, naming them as vocabulary rather than reading either field",
+        terms: ["operationalRoles", "operationalRoleActive"], classification: "MIGRATION_EVIDENCE",
+        replacementAuthority: null, replacementPr: "#1950", status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/eosWorkforce/migration/employeeProfileSnapshot.ts",
+        consumer: "counts operationalRoles in the export census and never copies it",
+        terms: ["operationalRoles"], classification: "MIGRATION_EVIDENCE",
+        replacementAuthority: null, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/eosWorkforce/migration/legacyWorkforceEvidence.ts",
+        consumer: "classifies legacy operationalRoles values for the step D/E dry-run plan",
+        terms: ["operationalRoles"], classification: "MIGRATION_EVIDENCE",
+        replacementAuthority: null, replacementPr: "#1949", status: "NOT_STARTED", blockedReason: null,
+    }),
+    entry({
+        path: "functions/src/eosWorkforce/operationalScopeVocabulary.ts",
+        consumer: "names assignedWarehouseIds as the sole admissible scope evidence",
+        terms: ["assignedWarehouseIds"], classification: "MIGRATION_EVIDENCE",
+        replacementAuthority: null, replacementPr: "#1947", status: "NOT_STARTED", blockedReason: null,
+    }),
+]);
+const settled = (e) => e.status === "CONVERTED" || e.status === "DEAD";
+/**
+ * Which retirement steps the evidence currently permits.
+ *
+ * I  delete dead consumers      -- always available, but only for entries actually proven DEAD.
+ * J  retire operationalRoleActive -- every consumer of that Kind must be settled first.
+ * K  remove Firestore operationalRoles reads -- every consumer of that FIELD must be settled, EXCEPT the migration
+ *    evidence, which reads the legacy export rather than the live path and is removed with the field itself.
+ *
+ * L (Firestore Rules) and M (the Firebase Exit baseline) are not computed here: Rules are not a code consumer this
+ * ledger can scan, and M is a whole-repository proof. They remain gated behind K.
+ */
+function retirementReadiness(ledger = exports.LEGACY_CONSUMER_LEDGER) {
+    const blocking = (predicate) => ledger.filter((e) => predicate(e) && e.classification !== "MIGRATION_EVIDENCE" && !settled(e)).map((e) => e.path).sort();
+    const j = blocking((e) => e.terms.includes("operationalRoleActive"));
+    // K removes the Firestore READS, so only a FIELD-name consumer blocks it. A file that merely knows the legacy
+    // vocabulary reads nothing and retires with the vocabulary, after K.
+    const k = blocking((e) => e.terms.includes("operationalRoles") && FIELD_TERMS.has("operationalRoles"));
+    return Object.freeze([
+        Object.freeze({ step: "I", ready: true, blockedBy: Object.freeze([]) }),
+        Object.freeze({ step: "J", ready: j.length === 0, blockedBy: Object.freeze(j) }),
+        Object.freeze({ step: "K", ready: k.length === 0, blockedBy: Object.freeze(k) }),
+    ]);
+}
+//# sourceMappingURL=legacyConsumerLedger.js.map
