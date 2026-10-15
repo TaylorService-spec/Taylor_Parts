@@ -15,6 +15,9 @@ import {
   CATALOG_AUTHORITY_MOVED,
   CATALOG_IMPORT_REFUSAL_MESSAGE,
   importRefusedByCatalogAuthority,
+  EQUIPMENT_AUTHORITY_MOVED,
+  EQUIPMENT_IMPORT_REFUSAL_MESSAGE,
+  importRefusedByEquipmentAuthority,
 } from "../config/catalogAuthority.js";
 
 const STAGE_CALLABLE = "stageDataImport";
@@ -67,6 +70,12 @@ export function catalogImportRefusal(entityType) {
   };
 }
 
+/** The client-side Equipment-register refusal for an import of `entityType`, or null when it may proceed. */
+export function equipmentImportRefusal(entityType) {
+  if (!importRefusedByEquipmentAuthority(entityType)) return null;
+  return { ok: false, code: EQUIPMENT_AUTHORITY_MOVED, message: EQUIPMENT_IMPORT_REFUSAL_MESSAGE, details: null };
+}
+
 /**
  * Execute a staged job. `approved: true` is sent explicitly and is required by the backend:
  * an execute request that merely names a job is not an approval of it.
@@ -76,10 +85,11 @@ export function catalogImportRefusal(entityType) {
  * resolve an INVENTORY job's Part references against that frozen snapshot as if it were current. The
  * refusal that stops it (CATALOG_AUTHORITY_MOVED) exists only in undeployed code, and Firebase is
  * retirement-only. So the job's entity type is REQUIRED here and a catalog-bound (or unknown) one is refused
- * without the callable ever being invoked.
+ * without the callable ever being invoked. An EQUIPMENT job is refused the same way under the Equipment register
+ * freeze (equipmentImportRefusal).
  */
 export function executeDataImport(jobId, entityType) {
-  const refusal = catalogImportRefusal(entityType);
+  const refusal = catalogImportRefusal(entityType) ?? equipmentImportRefusal(entityType);
   if (refusal) return Promise.resolve(refusal);
   return call(EXECUTE_CALLABLE, { jobId, approved: true });
 }
