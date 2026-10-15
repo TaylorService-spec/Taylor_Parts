@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
+- Agent/session:       Claude Code Lane A session · Role: builder
+- Branch / worktree:   `fix/mywork-172-frontend-dual-shape` · `D:/eos-lane-a` (frontend, merges FIRST); `fix/mywork-count-totals-172` · `D:/Taylor_Parts-wt-mywork` (API, #2099, merges only after the frontend is verified on nonprod Vercel)
+- Base commit:         `e86fbfeb4`
+- Owned paths:         `field-ops-app-vite/src/modules/workspace/MyWorkspace.jsx` · `functions/src/eosExperience/myWork.ts` · their tests; Lane A reservations: My Work / navigation / employee home UI
+- Shared paths req'd:  this registry
+- Dependencies:        none (separate from Lane B #2098, Lane C, the Firebase exit)
+- Expected outcome:    sections carry a `hasMore` boolean, never a count; the UI renders both API shapes with no number and no "undefined"
+- Protected boundaries:no merge or deploy without Owner authorization; merging to main auto-deploys nonprod (= activation)
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
 - Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`

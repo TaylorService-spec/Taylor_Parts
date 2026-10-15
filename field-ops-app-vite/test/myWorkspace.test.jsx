@@ -37,12 +37,41 @@ describe("MyWorkspace", () => {
     expect(container.textContent).toMatch(/Owner: Riley Retail · Accountable: Morgan Manager/);
     expect(container.textContent).toMatch(/Assignee: Tech A/);
     expect(container.textContent).toMatch(/Not available to you — requires workOrder.lifecycle.schedule/);
-    expect(container.textContent).toMatch(/Showing 1 of 30/);
+    // The CURRENT API shape (page-derived count 30): never shown, read only as "more exist" (#172).
+    expect(container.textContent).not.toMatch(/Showing|\b30\b|undefined/);
+    expect(container.textContent).toMatch(/More items available\./);
     expect(container.textContent).toMatch(/\+25% vs prior/);
     expect(container.textContent).toMatch(/Not available to you — requires salesOrder.cost.read/);
     expect(screen.queryByLabelText("Company")).toBeNull();
     expect(callApi).toHaveBeenCalledWith("readMyWork", {});
   });
+
+  // DECISIONS #172 + API version skew: the frontend ships FIRST, so it must render both the current API shape (a page-derived
+  // `count`, never shown) and the corrected one (`hasMore`) -- never a number, never "undefined".
+  const page = Array.from({ length: 25 }, (_, n) => ({ id: `w${n}`, kind: "workOrder", label: `WO-${n}`, detail: null, status: "SCHEDULED", path: null }));
+  const one = (n) => [{ id: `r${n}`, kind: "workOrder", label: `ROW-${n}`, detail: null, status: "SCHEDULED", path: null }];
+  const shapes = {
+    "current API (count)": [
+      { key: "attention", title: "Needs attention", status: "READY", reason: null, count: 9137, items: [WORK.sections[0].items[0]] },
+      { key: "assignedWork", title: "Work assigned to me", status: "READY", reason: null, count: 25, items: page },
+      { key: "ownedRecords", title: "Records I own", status: "READY", reason: null, count: 1, items: one(1) },
+    ],
+    "corrected API (hasMore)": [
+      { key: "attention", title: "Needs attention", status: "READY", reason: null, hasMore: true, items: [WORK.sections[0].items[0]] },
+      { key: "assignedWork", title: "Work assigned to me", status: "READY", reason: null, hasMore: true, items: page },
+      { key: "ownedRecords", title: "Records I own", status: "READY", reason: null, hasMore: false, items: one(1) },
+    ],
+  };
+  for (const [shape, sections] of Object.entries(shapes)) {
+    it(`never shows a page count as a total, and says only that more exist -- ${shape}`, async () => {
+      const { container } = renderIn(<MyWorkspace callApi={vi.fn(async () => ({ ok: true, result: { ...WORK, sections } }))} />);
+      await screen.findByText("WO-24");
+      expect(container.textContent).not.toMatch(/Showing \d+ of|\bof 25\b|9137|undefined/);
+      expect(container.querySelector(".ns-section__meta")).toBeNull();
+      expect(screen.getAllByText("More items available.")).toHaveLength(1);   // the full 25-row page only; ROW-1 alone is not "more"
+      expect(screen.getByText("More items need attention than are shown here.")).toBeTruthy();
+    });
+  }
 
   it("offers the company projection to an executive and re-reads under it", async () => {
     const exec = { ...WORK, persona: { ...WORK.persona, key: "owner-executive", label: "Owner / Executive", analysisArea: "executive" }, operatingCompanyId: "consolidated" };

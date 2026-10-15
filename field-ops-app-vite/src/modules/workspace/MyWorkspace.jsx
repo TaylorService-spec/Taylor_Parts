@@ -79,6 +79,12 @@ function SectionItemsTable({ items }) {
   );
 }
 
+// DECISIONS #172: a section is a BOUNDED preview, so no number is ever shown for it -- only that more exist. Both API shapes:
+// the new server sends `hasMore`; the old one sends a page-derived `count` (never rendered), which reaches the 25-row preview
+// size exactly when the preview may have been cut. This fallback goes when every deployed API sends `hasMore`.
+const PREVIEW_ROWS = 25;
+const moreExist = (section) => section.hasMore === true || (typeof section.count === "number" && section.count >= PREVIEW_ROWS);
+
 function SectionBody({ section }) {
   if (section.status === "NOT_AUTHORIZED") return <HonestState state={HONEST_STATE.DENIED} subject={section.title} detail={`Not available to you — ${section.reason}.`} />;
   if (section.status === "UNAVAILABLE") return <HonestState state={HONEST_STATE.UNAVAILABLE} subject={section.title} detail={section.reason} />;
@@ -90,7 +96,7 @@ function SectionBody({ section }) {
         <ContextBand items={Object.entries(section.summary.counts).map(([k, v]) => ({ key: k, label: titleCase(k), value: String(v) }))} />
       )}
       <SectionItemsTable items={section.items} />
-      {section.count > section.items.length && <p className="fo-muted">Showing {section.items.length} of {section.count}.</p>}
+      {moreExist(section) && <p className="fo-muted">More items available.</p>}
       {section.summary?.notReadable?.length > 0 && <p className="fo-muted">Not readable with your access: {section.summary.notReadable.join(", ")}.</p>}
     </>
   );
@@ -178,8 +184,9 @@ export default function MyWorkspace({ callApi = callWorkspaceApi, preview = fals
         <RuledSection title={attention.title}><SectionBody section={attention} /></RuledSection>
       )}
       {attention?.status === "READY" && attention.items.length === 0 && <p className="fo-muted">Nothing governed needs your attention right now.</p>}
+      {attention?.status === "READY" && moreExist(attention) && <p className="fo-muted">More items need attention than are shown here.</p>}
       {others.map((s) => (
-        <RuledSection key={s.key} title={s.title} meta={s.status === "READY" ? String(s.count) : null}>
+        <RuledSection key={s.key} title={s.title}>
           <SectionBody section={s} />
         </RuledSection>
       ))}
