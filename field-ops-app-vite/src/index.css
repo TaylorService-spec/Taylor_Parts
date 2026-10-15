@@ -1,0 +1,853 @@
+html, body { margin: 0; padding: 0; }
+body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F4F6F5; }
+
+.fo-app { min-height: 100vh; }
+
+.fo-demo-banner {
+  background: #F5A623;
+  color: #1B2A2E;
+  text-align: center;
+  padding: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fo-header { background: #1B2A2E; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 32px; }
+.fo-header h1 { font-size: 18px; margin: 0; }
+.fo-nav { display: flex; gap: 8px; }
+.fo-nav-btn { background: transparent; border: none; color: #B9C7C9; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.fo-nav-btn:hover { background: rgba(255,255,255,0.08); }
+.fo-nav-btn-active { background: #2E4A50; color: #fff; }
+
+/* Epic 9 follow-up -- the second-row secondary domain nav
+   (AppShell.jsx's `<nav className="fo-nav fo-subnav">`) renders
+   OUTSIDE .fo-header, directly against the light page background, but
+   was reusing .fo-nav-btn/.fo-nav-btn-active unmodified -- the exact
+   same "class tuned for the dark header, reused on a light
+   background" issue already fixed for the in-workspace filter bar
+   (fo-filter-btn below), just in a different, platform-wide location.
+   AppShell.jsx is the actual owner of this second row across every
+   domain (Dashboard, Customers, Service, Inventory, Purchasing,
+   Reporting, Administration) -- fixing it here applies everywhere at
+   once. .fo-header's own primary nav (the dark top row) is untouched;
+   this override only applies inside .fo-subnav. Same color language
+   as fo-filter-btn below, so the two secondary-navigation patterns
+   read consistently. */
+.fo-subnav .fo-nav-btn { color: #445559; }
+.fo-subnav .fo-nav-btn:hover { background: #E1E7E6; color: #1B2A2E; }
+.fo-subnav .fo-nav-btn:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-subnav .fo-nav-btn-active { background: #2E4A50; color: #fff; }
+.fo-subnav .fo-nav-btn-active:hover { background: #263D42; }
+
+.fo-main { padding: 24px; max-width: 960px; margin: 0 auto; }
+.fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
+.fo-panel h2 { margin-top: 0; }
+
+/* Administration > Integrations FAQ */
+.integration-faq-page { display: flex; flex-direction: column; gap: 18px; }
+.integration-faq-hero { background: linear-gradient(135deg, #17383d 0%, #2e5b60 100%); color: #fff; border-radius: 14px; padding: 30px 32px; display: flex; justify-content: space-between; align-items: flex-end; gap: 28px; box-shadow: 0 8px 24px rgba(27,42,46,0.16); }
+.integration-faq-hero h2 { max-width: 650px; margin: 7px 0 10px; font-size: clamp(26px, 4vw, 38px); line-height: 1.12; letter-spacing: -0.02em; }
+.integration-faq-hero p { max-width: 650px; margin: 0; color: #d8e6e5; line-height: 1.6; }
+.integration-faq-eyebrow { color: #b8d5d2; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.integration-faq-status { flex: 0 0 220px; display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; background: rgba(255,255,255,0.08); }
+.integration-faq-status-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; background: #6ed69a; box-shadow: 0 0 0 4px rgba(110,214,154,0.14); }
+.integration-faq-status strong, .integration-faq-status span { display: block; }
+.integration-faq-status strong { font-size: 13px; }
+.integration-faq-status span { color: #c6d9d7; font-size: 12px; margin-top: 3px; line-height: 1.35; }
+.integration-faq-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; border: 1px solid #d8dedd; border-radius: 10px; background: #d8dedd; }
+.integration-faq-summary div { background: #fff; padding: 16px 18px; }
+.integration-faq-summary strong, .integration-faq-summary span { display: block; }
+.integration-faq-summary strong { color: #1b2a2e; font-size: 14px; }
+.integration-faq-summary span { color: #667477; font-size: 12px; margin-top: 4px; line-height: 1.4; }
+.integration-faq-layout { display: grid; grid-template-columns: minmax(220px, 0.72fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+.integration-readiness { position: sticky; top: 16px; }
+.integration-readiness .integration-faq-eyebrow, .integration-faq-content .integration-faq-eyebrow { color: #557277; }
+.integration-readiness h3, .integration-faq-heading h3 { margin: 7px 0 14px; color: #1b2a2e; }
+.integration-readiness ul { margin: 0; padding: 0; list-style: none; }
+.integration-readiness li { position: relative; padding: 8px 0 8px 27px; color: #445559; font-size: 13px; border-bottom: 1px solid #eef1f0; }
+.integration-readiness li::before { content: "✓"; position: absolute; left: 0; top: 7px; width: 18px; height: 18px; border-radius: 50%; background: #e6f6ec; color: #237a45; text-align: center; line-height: 18px; font-weight: 700; font-size: 11px; }
+.integration-readiness-note { margin: 16px 0 0; padding: 12px; border-radius: 8px; background: #fff7e8; color: #735612; font-size: 12px; line-height: 1.45; }
+.integration-faq-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.integration-faq-search input { width: 210px; padding: 9px 11px; border: 1px solid #cbd4d2; border-radius: 7px; color: #1b2a2e; font: inherit; font-size: 13px; }
+.integration-faq-search input:focus { outline: 2px solid #2e4a50; outline-offset: 2px; }
+.integration-faq-filters { display: flex; gap: 7px; flex-wrap: wrap; margin: 3px 0 15px; }
+.integration-faq-filters .fo-filter-btn { padding: 6px 10px; font-size: 12px; }
+.integration-faq-list { border-top: 1px solid #e4e9e8; }
+.integration-faq-item { border-bottom: 1px solid #e4e9e8; }
+.integration-faq-item summary { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 17px 2px; color: #1b2a2e; cursor: pointer; font-size: 14px; font-weight: 650; list-style: none; }
+.integration-faq-item summary::-webkit-details-marker { display: none; }
+.integration-faq-item summary:focus-visible { outline: 2px solid #2e4a50; outline-offset: 2px; border-radius: 3px; }
+.integration-faq-chevron { flex: 0 0 25px; width: 25px; height: 25px; border-radius: 50%; background: #eef1f0; color: #2e4a50; text-align: center; line-height: 24px; font-size: 19px; font-weight: 400; transition: transform 0.18s ease, background 0.18s ease; }
+.integration-faq-item[open] .integration-faq-chevron { transform: rotate(45deg); background: #2e4a50; color: #fff; }
+.integration-faq-answer { padding: 0 42px 18px 2px; }
+.integration-faq-answer p { margin: 7px 0 0; color: #526164; font-size: 13px; line-height: 1.65; }
+.integration-faq-category { color: #557277; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.integration-faq-empty { padding: 32px 0; text-align: center; color: #526164; }
+.integration-faq-empty p { margin: 5px 0 0; font-size: 13px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+@media (max-width: 760px) {
+  .integration-faq-hero { align-items: flex-start; flex-direction: column; padding: 24px 22px; }
+  .integration-faq-status { box-sizing: border-box; flex-basis: auto; width: 100%; }
+  .integration-faq-summary { grid-template-columns: 1fr; }
+  .integration-faq-layout { grid-template-columns: 1fr; }
+  .integration-readiness { position: static; }
+  .integration-faq-heading { align-items: stretch; flex-direction: column; }
+  .integration-faq-search input { box-sizing: border-box; width: 100%; }
+}
+
+/* Epic 9 -- Platform Workspace Framework. Shared workspace header/
+   toolbar (WorkspaceHeader.jsx), replacing the identical
+   `disp-board-toolbar` + inline `style={{justifyContent:"space-between"}}`/
+   `style={{margin:0}}` pair duplicated across AccountsList.jsx/
+   WorkOrdersList.jsx/PartsList.jsx. Same layout those inline styles
+   already produced -- now a real class instead of a per-screen override. */
+.fo-workspace-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.fo-workspace-header-title { margin: 0; }
+
+/* Epic 9 -- Platform Workspace Framework. Shared filter bar
+   (FilterBar.jsx). Deliberately NOT fo-nav-btn/fo-nav-btn-active
+   (above) -- those are tuned for the dark .fo-header nav bar
+   (light-gray text, white-tinted hover, on a dark background).
+   WorkOrdersList.jsx and PartsList.jsx had been reusing that same
+   class on a white .fo-panel background, which is exactly why nav
+   contrast, active-state, and hover visibility were flagged as weak
+   during Sprint 2.1.1's validation: light-gray-on-white and a
+   white-tinted hover overlay are both close to invisible on a light
+   background. These are separate, light-panel-appropriate colors. */
+.fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.fo-filter-btn { background: #EEF1F0; border: 1px solid #D8DEDD; color: #445559; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.fo-filter-btn:hover { background: #E1E7E6; border-color: #C3CDCC; }
+.fo-filter-btn:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-filter-btn-active { background: #2E4A50; border-color: #2E4A50; color: #fff; }
+.fo-filter-btn-active:hover { background: #263D42; border-color: #263D42; }
+
+/* Sprint 2.1.3 -- Reorder Request & Notification Foundation. Minimal
+   (Version 0.1) header notification dropdown -- AppHeader.jsx's own
+   background is white (inline styles.header), so this reuses the same
+   fo-filter-btn contrast/hover language rather than fo-nav-btn (which
+   is tuned for the dark .fo-header nav bar and would have the same
+   low-contrast problem already fixed elsewhere in this file). */
+.fo-notification-panel { position: relative; }
+.fo-notification-panel > button { background: #EEF1F0; border: 1px solid #D8DEDD; color: #445559; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.fo-notification-panel > button:hover { background: #E1E7E6; border-color: #C3CDCC; }
+.fo-notification-panel-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: #fff; border: 1px solid #D8DEDD; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 240px; max-width: 320px; padding: 8px; z-index: 20; }
+.fo-notification-panel-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; text-decoration: none; color: #1B2A2E; font-size: 14px; }
+.fo-notification-panel-item:hover { background: #F4F6F5; }
+/* Sprint 2.1.5: section heading for the Notification Panel's two
+   groups (Pending Review, Ready for Parts Manager). */
+.fo-notification-panel-section { margin: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #6B7B7E; }
+
+/* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
+   logic changes. The nav bar scrolls horizontally instead of wrapping
+   (six tabs no longer fit one row on a phone), and padding shrinks so
+   content isn't cramped against the screen edge. */
+@media (max-width: 640px) {
+  .fo-header { padding: 12px 16px; gap: 16px; }
+  .fo-nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  .fo-nav-btn { flex: 0 0 auto; white-space: nowrap; }
+  .fo-main { padding: 12px; }
+  .fo-panel { padding: 16px; }
+  .fo-btn-row { flex-direction: column; }
+
+  /* AppHeader.jsx's top bar (Field Ops Platform / Home / Refresh /
+     email / Logout) uses an inline flex layout with no wrapping --
+     on a phone-width viewport it overflows horizontally. Wrapping it
+     is a pure CSS override of the inline styles, no logic change. */
+  .fo-appheader { flex-wrap: wrap; gap: 8px; }
+  .fo-appheader-right { flex-wrap: wrap; }
+  .fo-appheader-email { display: none; }
+}
+
+.fo-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.fo-form input { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+.fo-form button { padding: 8px 16px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
+.fo-form button:hover { background: #23383D; }
+/* Sprint 2.1.4 -- Reorder Review & Decision. Reject-notes textarea in
+   PartDetail.jsx's review form -- fo-form previously only styled
+   <input>; a rejection reason needs a multi-line field. */
+.fo-form label { flex-basis: 100%; font-size: 14px; color: #445559; }
+.fo-form textarea { flex-basis: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; font-family: inherit; }
+
+/* Zero-history reorder behavior sprint, PR 3 --
+   shared/inventory/RequestReorderControl.jsx's manual-quantity entry,
+   compact enough to sit inline in a table action cell -- fo-form is
+   too wide (flex: 1 input, flex-basis: 100% label/textarea) for that. */
+.fo-inline-form { display: inline-flex; gap: 6px; align-items: center; }
+.fo-inline-form input { width: 64px; padding: 6px 8px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+.fo-inline-form button { padding: 6px 12px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
+.fo-inline-form button:hover { background: #23383D; }
+.fo-inline-form button:disabled { background: #B7C2C0; cursor: not-allowed; }
+
+.fo-table { width: 100%; border-collapse: collapse; }
+.fo-table th, .fo-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #EEF1F0; font-size: 14px; }
+.fo-table select { padding: 6px 8px; border-radius: 6px; border: 1px solid #D8DEDD; }
+
+.fo-muted { color: #8A9694; font-size: 14px; }
+
+.fo-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #EEF1F0; color: #445; }
+.fo-badge-pending { background: #FDECEC; color: #B23B3B; }
+.fo-badge-on_job { background: #FFF4DE; color: #A9740D; }
+.fo-badge-in_progress { background: #FFF4DE; color: #A9740D; }
+.fo-badge-completed { background: #E6F6EC; color: #237A45; }
+.fo-badge-available { background: #E6F6EC; color: #237A45; }
+.fo-badge-off_shift { background: #EEF1F0; color: #667; }
+.fo-badge-low-stock { background: #FDECEC; color: #B23B3B; }
+
+/* Operations dashboard -- severity/urgency levels shared by the
+   Inventory Health, Warehouse reconciliation, and Procurement panels
+   (Epics 3/4/5). */
+.fo-badge-critical { background: #FDECEC; color: #B23B3B; }
+.fo-badge-high { background: #FFEADB; color: #B2591F; }
+.fo-badge-medium { background: #FFF4DE; color: #A9740D; }
+.fo-badge-low { background: #E6F6EC; color: #237A45; }
+
+/* Sprint 2.0.2 -- Account status (ACCOUNT_STATUS, domain/constants.js) */
+.fo-badge-active { background: #E6F6EC; color: #237A45; }
+.fo-badge-inactive { background: #EEF1F0; color: #667; }
+.fo-badge-prospect { background: #FFF4DE; color: #A9740D; }
+.fo-badge-archived { background: #EEF1F0; color: #889; }
+
+/* Customer/Account Business Model -- Customer PR 2. Relationship-type
+   badges, sectioned-page helpers, and the relationship fieldset. No tab
+   styles here -- the tab shell is intentionally not part of this page. */
+.fo-badge-relationship-customer { background: #E6F0FB; color: #1F5FA9; }
+.fo-badge-relationship-vendor { background: #F3EAFB; color: #6B3FA0; }
+.fo-badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.fo-account-summary { margin-bottom: 8px; }
+.fo-warning { color: #B23B3B; font-size: 14px; }
+.fo-fieldset { border: 1px solid #E1E6E5; border-radius: 8px; padding: 8px 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+.fo-fieldset legend { font-size: 13px; color: #667; padding: 0 4px; }
+.fo-account-collapsible { margin-top: 12px; }
+.fo-account-collapsible summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+
+/* Customer/Account Business Model -- Customer PR 3, Service Activity. */
+.fo-service-activity-counts { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.fo-activity-list { list-style: none; margin: 0; padding: 0; }
+
+.fo-link-btn { background: none; border: none; color: #2E4A50; text-decoration: underline; cursor: pointer; padding: 0; font-size: 13px; text-align: left; }
+.fo-checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+
+.fo-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
+.fo-stat { background: #F4F6F5; border-radius: 8px; padding: 16px; text-align: center; }
+.fo-stat-value { font-size: 28px; font-weight: 600; color: #1B2A2E; }
+.fo-stat-label { font-size: 13px; color: #667; margin-top: 4px; }
+
+.fo-card { margin-bottom: 12px; }
+.fo-card h3 { margin: 0 0 6px 0; }
+.fo-card p { margin: 0 0 12px; color: #445; font-size: 14px; }
+
+.fo-card--field {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.fo-card--field button { padding: 8px 16px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
+.fo-card--field button:hover { background: #23383D; }
+
+.fo-card--field-active {
+  border: 2px solid #2E4A50;
+}
+
+.fo-btn-large {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  background: #2E4A50;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.fo-btn-large:hover { background: #23383D; }
+
+.fo-btn-secondary {
+  background: #EEF1F0;
+  color: #2E4A50;
+}
+.fo-btn-secondary:hover { background: #D8DEDD; }
+
+.fo-btn-row {
+  display: flex;
+  gap: 8px;
+}
+.fo-btn-row .fo-btn-large { margin-top: 8px; }
+
+.fo-part-picker {
+  margin-top: 8px;
+  border-top: 1px solid #eef1f0;
+  padding-top: 8px;
+}
+
+.fo-part-picker-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid #d8dedd;
+  border-radius: 6px;
+  background: #fff;
+  color: #1B2A2E;
+  cursor: pointer;
+}
+.fo-part-picker-row:hover:not(:disabled) { background: #f4f6f5; }
+.fo-part-picker-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fo-upnext-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #eef1f0;
+  font-size: 14px;
+  color: #445;
+}
+.fo-upnext-row:last-child { border-bottom: none; }
+
+.fo-card--dispatch {
+  border: 1px solid #EEF1F0;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 10px;
+  border-left-width: 4px;
+}
+
+.fo-card--dispatch-emergency { border-left-color: #B23B3B; }
+.fo-card--dispatch-scheduled { border-left-color: #A9740D; }
+.fo-card--dispatch-in-progress { border-left-color: #2E4A50; }
+.fo-card--dispatch-completed { border-left-color: #237A45; }
+
+.fo-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fo-chip-emergency { background: #FDECEC; color: #B23B3B; }
+.fo-chip-scheduled { background: #FFF4DE; color: #A9740D; }
+.fo-chip-in-progress { background: #EAF1F2; color: #2E4A50; }
+.fo-chip-completed { background: #E6F6EC; color: #237A45; }
+.fo-chip-hero { background: #2E4A50; color: #fff; margin-left: 8px; }
+
+.fo-card--hero {
+  box-shadow: 0 0 0 2px #2E4A50, 0 2px 8px rgba(46,74,80,0.25);
+}
+
+.fo-table td {
+  transition: background-color 0.6s ease-out;
+}
+
+.fo-qty-flash {
+  background-color: #FFF4DE;
+}
+
+.work-order-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.work-order-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.warning {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #2E4A50;
+  color: white;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #23383D;
+}
+
+.wo-status {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.wo-ready {
+  background: #e0f7e9;
+  color: #166534;
+}
+
+.wo-in_progress {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.wo-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.wo-completed {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* Epic 2 Phase 2B -- badge colors for the raw workOrder.status values
+   (WorkOrderActions.jsx), distinct from the derived signal `state`
+   classes above (wo-ready/wo-blocked/wo-in_progress/wo-completed).
+   Epic 2 Phase 2C's status color audit found wo-dispatched and
+   wo-work_in_progress sharing one color, and wo-accepted/wo-en_route/
+   wo-arrived sharing another -- all 11 below are now visually
+   distinct (verified: 11 unique background/color pairs). Color is
+   never the sole indicator anywhere this renders -- every chip also
+   shows the status name as text. */
+.wo-created { background: #EEF1F0; color: #445; }
+.wo-ready_to_dispatch { background: #e0f7e9; color: #166534; }
+.wo-scheduled { background: #FFF4DE; color: #A9740D; }
+.wo-dispatched { background: #FDEBD3; color: #B2591F; }
+.wo-accepted { background: #E3F0FF; color: #1D5A9E; }
+.wo-en_route { background: #D6E8FF; color: #1B4B85; }
+.wo-arrived { background: #C7DCFF; color: #163E70; }
+.wo-work_in_progress { background: #fff7ed; color: #9a3412; }
+.wo-completed { background: #e0e7ff; color: #3730a3; } /* same as the pre-existing derived-state .wo-completed above -- same meaning, intentionally identical */
+.wo-closed { background: #EDE4F7; color: #5B2A86; }
+.wo-cancelled { background: #fee2e2; color: #991b1b; }
+
+.wo-actions { margin-top: 10px; }
+
+/* Epic 2 Phase 2C -- Dispatcher Operations Board (DispatcherBoard.jsx
+   and its 3 panes). Plain CSS, no framework, matching this project's
+   existing convention. */
+.disp-board-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.disp-workspace { --disp-ink: #172b30; --disp-teal: #285b60; --disp-line: #dce7e6; --disp-soft: #f4f8f7; padding: 0; overflow: hidden; }
+.disp-workspace-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; padding: 26px 28px 22px; color: #fff; background: linear-gradient(120deg, #16353a, #285b60); }
+.disp-workspace-header h2 { margin: 3px 0 5px; color: #fff; font-size: clamp(26px, 3.5vw, 34px); letter-spacing: -.03em; }
+.disp-workspace-header p { margin: 0; color: #d5e5e3; font-size: 14px; }
+.disp-eyebrow { margin: 0; color: #66898a; font-size: 11px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.disp-workspace-header .disp-eyebrow { color: #a8c7c6; }
+.disp-status-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #d9e9e7; }
+.disp-status-legend span { display: inline-flex; gap: 6px; align-items: center; }.disp-status-legend i { width: 8px; height: 8px; border-radius: 50%; }.disp-legend-scheduled { background:#f3b34d; }.disp-legend-active { background:#6ab0e5; }.disp-legend-complete { background:#72c796; }
+.disp-workspace > .disp-board-toolbar, .disp-workspace > .disp-activity-feed, .disp-workspace > .warning { margin-left: 28px; margin-right: 28px; }.disp-workspace > .disp-board-toolbar { margin-top: 18px; }
+.disp-schedule, .disp-ready-section { padding: 22px 28px; }.disp-schedule { background: var(--disp-soft); border-top: 1px solid rgba(255,255,255,.12); }.disp-ready-section { border-top: 1px solid var(--disp-line); }
+.disp-section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: end; margin-bottom: 14px; }.disp-section-heading h3 { margin: 3px 0 0; color: var(--disp-ink); font-size: 18px; }.disp-section-heading > p { margin: 0; color: #617477; font-size: 12px; }
+.disp-schedule-grid { display: grid; gap: 8px; }.disp-schedule-row { display: grid; grid-template-columns: 160px minmax(0, 1fr); min-height: 62px; border: 1px solid var(--disp-line); border-radius: 9px; overflow: hidden; background: #fff; }.disp-schedule-row header { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: #eef5f4; color: var(--disp-ink); font-size: 13px; }.disp-schedule-row .fo-badge { width: max-content; }.disp-schedule-slots { display: flex; align-items: stretch; gap: 8px; padding: 7px; overflow-x: auto; }.disp-schedule-card { min-width: 170px; padding: 7px 10px; border-radius: 7px; border: 1px solid #e4c176; background: #fff7e5; color: #5b4819; text-align: left; cursor: grab; }.disp-schedule-card:active { cursor: grabbing; }.disp-schedule-card:hover { background: #ffedbf; }.disp-schedule-card span, .disp-schedule-card strong, .disp-schedule-card small { display: block; }.disp-schedule-card span, .disp-schedule-card small { font-size: 11px; }.disp-schedule-card strong { margin: 2px 0; font-size: 12px; }.disp-schedule-open { align-self: center; padding: 0 8px; color: #728486; font-size: 12px; }.disp-schedule-empty { padding: 16px; border: 1px dashed #b9cccc; border-radius: 8px; color: #617477; font-size: 13px; }
+@media (max-width: 760px) { .disp-workspace-header, .disp-section-heading { align-items: flex-start; flex-direction: column; }.disp-workspace-header, .disp-schedule, .disp-ready-section { padding-left: 16px; padding-right: 16px; }.disp-workspace > .disp-board-toolbar, .disp-workspace > .disp-activity-feed, .disp-workspace > .warning { margin-left: 16px; margin-right: 16px; }.disp-schedule-row { grid-template-columns: 1fr; }.disp-schedule-row header { flex-direction: row; align-items: center; justify-content: space-between; } }
+.disp-board-toolbar input { flex: 1; min-width: 200px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+.disp-board-toolbar select { padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+
+/* Dispatcher Activity Panel -- visually distinct dashed-border strip
+   (not one of the 3 core panes), so it reads as a separate,
+   secondary, session-only feature. */
+.disp-activity-feed {
+  border: 1px dashed #D8DEDD;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #FAFBFB;
+}
+.disp-activity-feed-header { display: flex; justify-content: space-between; align-items: center; }
+.disp-activity-feed-header h4 { margin: 0; font-size: 13px; }
+.disp-activity-feed-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; max-height: 120px; overflow-y: auto; }
+.disp-activity-feed-list li { padding: 3px 0; }
+
+.disp-board-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .disp-board-layout { grid-template-columns: 1fr; }
+}
+
+.disp-pane {
+  background: #fff;
+  border: 1px solid #EEF1F0;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.disp-wo-card {
+  border: 1px solid #EEF1F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: grab;
+  font-size: 13px;
+}
+.disp-wo-card:active { cursor: grabbing; }
+.disp-wo-card--selected { border-color: #2E4A50; box-shadow: 0 0 0 1px #2E4A50; }
+.disp-wo-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+
+.disp-rec-row { margin-bottom: 6px; }
+.disp-rec-row--top { font-weight: 600; }
+.disp-rec-score-btn {
+  background: #EEF1F0;
+  color: #1B2A2E;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.disp-rec-row--top .disp-rec-score-btn { background: #E6F6EC; color: #166534; }
+.disp-score-breakdown {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #F4F6F5;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #445;
+}
+
+.disp-tech-column {
+  border: 1px solid #EEF1F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  transition: background-color 0.15s ease;
+}
+.disp-tech-column--top3 { border-color: #237A45; }
+.disp-tech-column--dragover { background: #E6F6EC; }
+.disp-tech-column-header { display: flex; justify-content: space-between; align-items: center; }
+
+.disp-capacity-card { margin: 6px 0; }
+.disp-capacity-bar-track {
+  height: 6px;
+  background: #EEF1F0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.disp-capacity-bar-fill {
+  height: 100%;
+  background: #2E4A50;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.disp-capacity-counts { margin-top: 4px; font-size: 12px; }
+
+/* Priority 4 accessibility -- visible focus indicators on every
+   interactive element this board introduces (draggable cards,
+   recommendation buttons, technician drop-target groups). Color is
+   never the sole indicator anywhere in this board -- status/badge
+   text always accompanies the color. */
+.disp-wo-card:focus-visible,
+.disp-rec-score-btn:focus-visible,
+.disp-tech-column:focus-visible {
+  outline: 2px solid #2E4A50;
+  outline-offset: 2px;
+}
+
+/* Priority 5 mobile/tablet audit -- panes must never overflow
+   horizontally or hide controls at narrower widths. */
+@media (max-width: 640px) {
+  .disp-board-toolbar input { min-width: 0; }
+  .disp-pane { max-height: none; }
+}
+
+.tech-overview {
+  margin-top: 20px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+}
+
+/* Sprint 3.3.5: one shared severity badge, used for both job risk and
+   technician workload signals (see shared/ui/SignalBadge.jsx). Visual
+   hierarchy is fixed across the app: CRITICAL=red, HIGH=orange,
+   MEDIUM=yellow, LOW=neutral gray -- "HIGH" and "CRITICAL" always mean
+   the same thing visually regardless of which panel is rendering them. */
+.fo-signal-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.fo-signal-badge--low {
+  background: #eef1f0;
+  color: #445;
+}
+
+.fo-signal-badge--medium {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.fo-signal-badge--high {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.fo-signal-badge--critical {
+  background: #fee2e2;
+  color: #991b1b;
+  border-left: 3px solid #991b1b;
+}
+
+/* Denser layout for the dispatch-intelligence panels, which can have
+   many rows -- smaller type/padding than the primary work-order cards
+   above them. */
+.tech-overview--compact {
+  font-size: 13px;
+}
+
+.tech-overview--compact .work-order-card,
+.tech-overview--compact .fo-card {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.tech-overview--compact h3 {
+  font-size: 13px;
+}
+
+.wo-history {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eef1f0;
+}
+
+.wo-history h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #667;
+}
+
+/* Sprint 2.0.2 -- Global Search (shared/search/GlobalSearch.jsx) */
+.fo-global-search {
+  position: relative;
+  display: inline-block;
+}
+
+.fo-global-search input {
+  padding: 6px 10px;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 220px;
+}
+
+.fo-global-search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.fo-global-search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.fo-global-search-result:hover {
+  background: #f4f6f5;
+}
+
+.fo-global-search-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* Phase 3 -- Employee Assignment Picker (shared/assignment/EmployeeAssignmentPicker.jsx) */
+.fo-employee-picker {
+  position: relative;
+  display: inline-block;
+}
+
+.fo-employee-picker input {
+  padding: 6px 10px;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 220px;
+}
+
+.fo-employee-picker-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.fo-employee-picker-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.fo-employee-picker-result:hover,
+.fo-employee-picker-result-highlighted {
+  background: #f4f6f5;
+}
+
+.fo-employee-picker-status {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.fo-employee-picker-warning {
+  margin: 4px 0 0;
+  font-size: 12px;
+  max-width: 260px;
+}
+
+/* Inventory Operational Queue, PR A (docs/specifications/inventory-
+   operational-queue.md, "Responsive behavior") -- a per-table
+   horizontal-scroll container for wide tables that gain columns beyond
+   this page's narrower ones, so scrolling one wide table on a narrow
+   viewport doesn't drag the rest of the page's other tables sideways
+   with it (the page-level .fo-panel overflow-x:auto above still exists
+   as the outer fallback, but this scopes the scroll to just the table
+   that actually needs it). */
+.fo-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Inventory Operational Queue, PR A, Final Review correction -- a
+   standard visually-hidden-but-screen-reader-accessible utility, for
+   role="status" live regions that must announce a concise state summary
+   without also being visibly displayed (the equivalent visible text
+   already exists elsewhere, e.g. LoadingEmptyState's own loading/empty
+   text, or the visible error paragraph next to this). Not previously
+   needed in this codebase -- every prior role="status"/role="alert" use
+   (EmployeeAssignmentPicker.jsx) was itself the only/visible copy of its
+   own message. */
+.fo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.wo-history-row {
+  font-size: 13px;
+  padding: 2px 0;
+}
+
+/* Mobile parts scanner */
+.scan-workspace { max-width: 780px; margin: 0 auto; color: #172326; }
+.scan-hero { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin: -24px -24px 18px; padding: 28px 28px 24px; background: linear-gradient(125deg, #132b31, #244c52); color: white; }
+.scan-hero h2 { margin: 5px 0 2px; font-size: clamp(26px, 5vw, 38px); letter-spacing: -.04em; }
+.scan-hero p { margin: 0; color: #b9d0d2; }
+.scan-eyebrow { font-size: 11px; letter-spacing: .13em; font-weight: 800; color: #6da5a9; }
+.scan-location { background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14); padding: 10px 13px; border-radius: 9px; min-width: 190px; }
+.scan-location span, .scan-location strong { display: block; }
+.scan-location span { color: #a9c2c4; font-size: 11px; margin-bottom: 3px; }
+.scan-location strong { font-size: 13px; }
+.scan-card { position: relative; background: white; border: 1px solid #dfe6e5; border-radius: 14px; padding: 20px; margin-bottom: 14px; box-shadow: 0 2px 9px rgba(25,50,54,.05); }
+.scan-card-primary { display: flex; gap: 15px; border-color: #9fc6c6; }
+.scan-step { flex: 0 0 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #dff3f0; color: #17625e; font-weight: 800; }
+.scan-card-body { min-width: 0; flex: 1; }
+.scan-card h3 { margin: 1px 0 3px; font-size: 18px; }
+.scan-card p { margin: 0 0 14px; color: #657477; }
+.scan-entry { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; }
+.scan-entry input, .scan-field select, .scan-field input { min-width: 0; border: 1px solid #cbd7d6; border-radius: 8px; padding: 12px; font: inherit; background: white; color: #172326; }
+.scan-entry > button { border-radius: 8px; font-weight: 700; }
+.scan-camera { background: #e3f2f0; color: #155c58; display: flex; gap: 7px; align-items: center; }
+.scan-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: #839092; font-size: 11px; margin-top: 10px; }
+.scan-quick button { background: transparent; color: #397276; padding: 2px 4px; text-decoration: underline; font-size: 11px; }
+.scan-notice { padding: 11px 14px; border-radius: 9px; margin-bottom: 14px; background: #eaf6f0; color: #236a49; font-size: 13px; font-weight: 650; }
+.scan-result { display: flex; gap: 15px; align-items: center; }
+.scan-part-icon { display: grid; place-items: center; flex: 0 0 62px; height: 62px; border-radius: 13px; background: #eff3f2; color: #2e5f64; font-size: 28px; font-weight: 800; }
+.scan-part-info { flex: 1; }
+.scan-part-info h3 { font-size: 20px; }
+.scan-part-info p { font-size: 12px; margin-bottom: 8px; }
+.scan-stock { display: flex; gap: 8px; }
+.scan-stock span { background: #f2f5f4; border-radius: 7px; padding: 6px 9px; font-size: 12px; }
+.scan-action-card { display: flex; gap: 15px; }
+.scan-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 14px 0; }
+.scan-actions button { text-align: left; background: #f5f7f6; color: #314447; border: 1px solid #dfe5e4; padding: 12px; }
+.scan-actions button.active { background: #e0f2ef; color: #145d59; border: 2px solid #4f9996; padding: 11px; }
+.scan-actions strong, .scan-actions span { display: block; }
+.scan-actions span { margin-top: 3px; font-size: 11px; color: #748183; font-weight: 400; }
+.scan-field { display: grid; gap: 6px; margin-top: 11px; color: #44575a; font-size: 12px; font-weight: 750; }
+.scan-quantity { display: grid; grid-template-columns: 46px 76px 46px; }
+.scan-quantity button { border-radius: 8px; font-size: 20px; }
+.scan-quantity input { text-align: center; margin: 0 5px; }
+.scan-confirm { width: 100%; margin-top: 16px; padding: 14px; border-radius: 9px; font-weight: 800; background: #e27b32; }
+.scan-confirm:hover { background: #c96522; }
+.scan-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 0; }
+.scan-summary div { background: #edf2f1; border-radius: 10px; padding: 13px; }
+.scan-summary span, .scan-summary strong { display: block; }
+.scan-summary span { font-size: 11px; color: #6d7b7d; margin-bottom: 5px; }
+.scan-summary strong { font-size: 17px; }
+.scan-activity > div { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; padding: 10px 0; border-top: 1px solid #edf0ef; }
+.scan-activity-mark { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: #e5f5eb; color: #287247; font-size: 11px; }
+.scan-activity b, .scan-activity small { display: block; }
+.scan-activity small, .scan-activity time { color: #7b888a; font-size: 11px; }
+.scan-camera-modal { position: fixed; inset: 0; z-index: 100; background: rgba(7,18,20,.92); display: grid; place-items: center; padding: 20px; }
+.scan-camera-modal > div { position: relative; max-width: 520px; width: 100%; text-align: center; color: white; }
+.scan-camera-modal video { width: 100%; border-radius: 14px; background: #111; }
+.scan-camera-modal p { color: white; }
+.scan-reticle { position: absolute; top: 25%; left: 12%; right: 12%; height: 34%; border: 2px solid #72ddd3; border-radius: 10px; box-shadow: 0 0 0 999px rgba(0,0,0,.18); }
+
+@media (max-width: 640px) {
+  .scan-hero { margin: -16px -16px 14px; padding: 22px 18px; display: block; }
+  .scan-location { margin-top: 15px; }
+  .scan-card { padding: 15px; }
+  .scan-entry { grid-template-columns: 1fr auto; }
+  .scan-camera { grid-column: 1 / -1; justify-content: center; padding: 13px; }
+  .scan-actions { grid-template-columns: 1fr; }
+  .scan-summary { grid-template-columns: 1fr 1fr; }
+  .scan-summary div:first-child { grid-column: 1 / -1; }
+}
