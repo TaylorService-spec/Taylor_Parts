@@ -1,4 +1,0 @@
-# Byte-exact preservation of the imported Gate E4 backend-verification evidence (no CRLF/LF
-# normalization), so the committed verification-report.json keeps its published SHA-256 and
-# SHA256SUMS.txt verifies.
-* -text

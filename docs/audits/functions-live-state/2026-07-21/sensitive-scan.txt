@@ -1,1 +1,0 @@
-clean -- no secret-shaped values detected in captured metadata.
