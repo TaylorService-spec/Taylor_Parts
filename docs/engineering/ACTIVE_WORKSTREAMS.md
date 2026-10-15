@@ -38,6 +38,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:no merge or deploy without Owner authorization; merging to main auto-deploys nonprod (= activation)
 - Lifecycle stage:     SANDBOX BUILD
 
+- Capability:          Lane UX — Site-wide Compact UX Standard (Owner direction 2026-10-15), presentation only
+- Agent/session:       Claude Code Lane UX session · Role: builder
+- Branch / worktree:   `work/eos-ux-compact-standard` · `D:/eos-ux-compact`
+- Base commit:         `a1261486`
+- Owned paths:         `docs/design/compact-ux-standard.md` · `docs/design/compact-ux-page-inventory.md` · `field-ops-app-vite/src/shared/ui/primitives/{InfoTip,Toolbar,PageHeader}.jsx` + `primitives/index.js` · `shared/ui/form/Field.jsx` (additive `help` prop) · `shared/ui/{WorkspaceShell,WorkspaceHeader}.jsx` (`help` pass-through) · `modules/administration/AdministrationOverview.jsx` · `modules/scan/ScanWorkspace.jsx` · `test/compactUxStandard.test.jsx` · `test/__visual__/renderCompactUx.test.jsx` · `docs/design/compact-ux/frames/` · one tip in `docs/user-guide/getting-started/navigating-field-ops.md`
+- Shared paths req'd:  `field-ops-app-vite/src/index.css` (one Compact UX block + `.fo-page-header` margin) · `.github/workflows/composition-conformance-tests.yml` (registers the new suite) · this registry. Not touched: My Work / navigation / AppRail / navConfig (Lane A + reservations), AdminWorkflows, WorkOrderDetailPage (Lane B), data-import and equipment (Lane C), anything under `functions/`. Lane A's A2 shared/ui primitives (chips, crumb) are different files
+- Dependencies:        none
+- Expected outcome:    page inventory + Compact UX Standard + reusable components, proved on Administration Overview and Scan (Service; = Warehouse Workspace on desktop) with before/after frames
+- Protected boundaries:no merge or deploy without Owner approval; merging to main auto-deploys nonprod
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
 - Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`
