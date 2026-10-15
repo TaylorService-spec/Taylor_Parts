@@ -8393,7 +8393,7 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 ## #235 — OWNER: EOS Core Company Authority V1 — Analysis and My Work company isolation (2026-10-15)
 
-**Status: OWNER APPROVED (security ruling, 2026-10-15).** Applied to Analysis and My Work only. Commercial reads need a separate decision.
+**Status: OWNER APPROVED (security ruling, 2026-10-15).** Applied to Analysis and My Work only. These need separate decisions: Commercial reads, the `/operations/rental` reads and site search (`searchEos`).
 
 **Why.** Lane D's authenticated UAT of #2099 at `a1261486` found that Analysis and My Work Key figures defaulted to a consolidated view of **every active company**, whatever the caller's assignment. `eosAnalysis/analysis.ts` `companyScope` took no actor. As a result, real Ventana figures reached Taylor-only office, retail and national-accounts staff. #2099 is merged and deployed, with security acceptance OPEN until this correction passes authenticated runtime tests.
 
@@ -8408,7 +8408,12 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
    - No role-name exceptions.
 5. **Result.** The union of 2 and 3. Empty means no company data.
 
-**Applied to (Owner Q2).** `readAnalysisWorkspace` and `readMeasureAnalysis`, and through them My Work's attention, insights, Key figures and rental exceptions.
+**Applied to (Owner Q2).**
+- `readAnalysisWorkspace` and `readMeasureAnalysis`, and through them My Work's attention, insights, Key figures and the Analysis rental exceptions.
+- **My Work's `rental` section.**
+  - It passes the caller's authorized company keys to `readRentalWorkspace` through a server-only parameter, never request input. Fleet units are narrowed by owner company; everything agreement-borne is narrowed by the agreement's company.
+  - The capability check comes first. With the capability but no company authority, the section is NOT_AUTHORIZED.
+  - The `/operations/rental` route itself is unchanged.
 - **Consolidated or omitted.** The authorized union, never every active company.
 - **An explicit company outside the union.** Refused exactly like an unknown one (`OPERATING_COMPANY_UNKNOWN`), so out of scope == unknown.
 - **No authority.** `COMPANY_AUTHORITY_REQUIRED` (403). My Work shows the affected sections as NOT_AUTHORIZED and still answers.
@@ -8420,7 +8425,9 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 **Supersedes** #232's "non-finance Analysis measures … are unchanged" **only** for company visibility.
 
-**Not changed (and not authorized here):** role assignments, grants, identities, employee records; Commercial reads; production or Functions deployment.
+**Not changed (and not authorized here):** role assignments, grants, identities, employee records; Commercial reads; the `/operations/rental` route; `searchEos`; production or Functions deployment.
+
+**Known residuals (Lane D R-1a / R-1b; separate Owner decision).** The `/operations/rental` reads and `searchEos` are still filtered by tenant only. Search covers rental agreements, sales orders and opportunities; only Reorders are company-keyed.
 
 **Effect.**
 - Callers whose only authority is a Taylor home company see Taylor only.
@@ -8435,6 +8442,8 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 - a disabled assignment is ignored;
 - a global Role without an Employee, with or without assignments, is refused;
 - an ineligible Employee and an absent Principal have no authority;
+- another tenant, a stale assignment, an assignment to an INACTIVE company and an INACTIVE home company confer nothing;
+- the rental company filter, with the capability checked first;
 - duplicate active links cannot be represented.
 
 **Gate.** Lane D independently reviews the exact PR head and runs an authenticated runtime verification. No merge or deploy without a further Owner authorization.

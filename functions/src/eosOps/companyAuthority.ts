@@ -24,11 +24,13 @@ export type CompanyAuthorityGap = "PRINCIPAL_NOT_ACTIVE" | "EMPLOYEE_LINK_REQUIR
 export interface CompanyAuthority {
   /** The ACTIVE operating companies this Principal is authorized for, sorted. Empty = none. */
   readonly companies: readonly string[];
+  /** The ACTIVE operating-company keys of those companies (record tables carry a key, not an id), sorted. */
+  readonly companyKeys: readonly string[];
   /** Why there is no authority at all, when identity fails; null when identity resolved (companies may still be empty). */
   readonly gap: CompanyAuthorityGap | null;
 }
 
-const NONE = (gap: CompanyAuthorityGap): CompanyAuthority => Object.freeze({ companies: Object.freeze([]), gap });
+const NONE = (gap: CompanyAuthorityGap): CompanyAuthority => Object.freeze({ companies: Object.freeze([]), companyKeys: Object.freeze([]), gap });
 
 export async function resolveCompanyAuthority(db: Db, tenantId: string, principalId: string): Promise<CompanyAuthority> {
   const standing = await db.query(
@@ -61,5 +63,9 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
                            AND a.scope_type = 'operatingCompany' AND a.scope_value = c.operating_company_id
                            AND a.access_version_at_grant <= coalesce(v.access_version, 0)))
       ORDER BY 1`, [tenantId, principalId, employee.operating_company_id]);
-  return Object.freeze({ companies: Object.freeze(rows.map((r) => String(r.id))), gap: null });
+  const companies = rows.map((r) => String(r.id));
+  const keys = companies.length === 0 ? [] : (await db.query<{ key: string }>(
+    `SELECT DISTINCT operating_company_key AS key FROM eos_policy.tenant_operating_company_keys
+      WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id = ANY($2::text[]) ORDER BY 1`, [tenantId, companies])).rows.map((r) => String(r.key));
+  return Object.freeze({ companies: Object.freeze(companies), companyKeys: Object.freeze(keys), gap: null });
 }

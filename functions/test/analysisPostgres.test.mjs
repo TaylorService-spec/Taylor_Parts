@@ -352,18 +352,39 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     await assignFinanceCompanies({ admin, q, tenant: TENANT }, [unlinked]);
     refused(await ws(unlinked, { area: "executive", operatingCompanyId: "taylor" }), 403, "COMPANY_AUTHORITY_REQUIRED", "no Employee, no authority");
     refused(await an(unlinked, "readMeasureAnalysis", { measureId: "service.workOrders.open" }), 403, "COMPANY_AUTHORITY_REQUIRED");
-    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, unlinked.principalId), { companies: [], gap: "EMPLOYEE_LINK_REQUIRED" });
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, unlinked.principalId), { companies: [], companyKeys: [], gap: "EMPLOYEE_LINK_REQUIRED" });
     // An access-INELIGIBLE Employee confers nothing (resolver-level: principal resolution refuses such a caller before analysis).
     const leave = await person("uid-leave", ["dispatcher"], { id: "e-leave", name: "Lee On-Leave" });
     await q(`UPDATE eos_workforce.employees SET employment_status = 'ON_LEAVE' WHERE tenant_id = $1 AND id = 'e-leave'`, [TENANT]);
-    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, leave.principalId), { companies: [], gap: "EMPLOYEE_NOT_ACCESS_ELIGIBLE" });
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, leave.principalId), { companies: [], companyKeys: [], gap: "EMPLOYEE_NOT_ACCESS_ELIGIBLE" });
     // IDENTITY AMBIGUITY is unrepresentable (one active link per Principal); the resolver also refuses it if it ever appears.
     await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name) VALUES ('e-dispatch-2',$1,'ACTIVE','ventana','Second')`, [TENANT]);
     await assert.rejects(q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
       VALUES ('lnk-dup',$1,$2,'e-dispatch-2','ventana','OPERATOR_ASSERTED','active','fixture','fixture')`, [TENANT, dispatcher.principalId]), /unique|duplicate/i);
     // A disabled Principal has no authority.
     assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, "no-such-principal")).gap, "PRINCIPAL_NOT_ACTIVE");
+    // ANOTHER TENANT: the same Principal resolved against a tenant it is not a member of has no authority there.
+    assert.equal((await resolveCompanyAuthority(pool, "t-analysis-other", dispatcher.principalId)).gap, "PRINCIPAL_NOT_ACTIVE");
+    // STALE: an assignment granted at an access version the Principal has not reached confers nothing.
+    const stale = await person("uid-dispatch-stale", ["dispatcher"], { id: "e-dispatch-stale", name: "Stu Stale" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [stale], ["ventana"]);
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, stale.principalId)).companies, ["taylor", "ventana"]);
+    await q(`UPDATE eos_policy.user_role_assignments SET access_version_at_grant = access_version_at_grant + 1000 WHERE tenant_id = $1 AND principal_id = $2 AND scope_type = 'operatingCompany'`, [TENANT, stale.principalId]);
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, stale.principalId)).companies, ["taylor"], "a stale assignment is no authority");
+    // INACTIVE COMPANY: neither an assignment to, nor a home in, an INACTIVE company confers it.
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,'dormant','INACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    await q(`UPDATE eos_policy.user_role_assignments SET access_version_at_grant = 0, scope_value = 'dormant' WHERE tenant_id = $1 AND principal_id = $2 AND scope_type = 'operatingCompany'`, [TENANT, stale.principalId]);
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, stale.principalId)).companies, ["taylor"], "an assignment to an INACTIVE company is no authority");
+    const dormantHome = await person("uid-dispatch-dormant", ["dispatcher"], { id: "e-dispatch-dormant", name: "Dot Dormant", company: "dormant" });
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, dormantHome.principalId), { companies: [], companyKeys: [], gap: null });
+    refused(await svc(dormantHome), 403, "COMPANY_AUTHORITY_REQUIRED", "an INACTIVE home company is no authority");
+    // RENTAL (My Work's rental section, DECISIONS #235): the server-only company filter narrows fleet and agreements; omitted = unchanged.
+    const { readRentalWorkspace } = require("../lib/eosRental/rental.js");
+    const reader = { tenantId: TENANT, principalId: "rental-reader", capabilities: new Set(["rental.agreement.read"]) };
+    assert.deepEqual([(await readRentalWorkspace(pool, reader, {})).counts.fleet, (await readRentalWorkspace(pool, reader, {}, ["taylor"])).counts.fleet,
+      (await readRentalWorkspace(pool, reader, {}, ["ventana"])).counts.fleet], [1, 1, 0], "the Taylor fleet unit is invisible to a Ventana-only scope");
+    await assert.rejects(readRentalWorkspace(pool, { ...reader, capabilities: new Set() }, {}, ["taylor"]), /rental.agreement.read/, "capability first, always");
     // Analysis wrote nothing while deciding any of this.
-    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, dispatcher.principalId), { companies: ["taylor"], gap: null });
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, dispatcher.principalId), { companies: ["taylor"], companyKeys: ["taylor"], gap: null });
   });
 });
