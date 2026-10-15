@@ -282,31 +282,109 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlT], ["taylor"]);
     const ctrlNone = await person("uid-ctrl-none", ["controller"], { id: "e-ctrl-none", name: "Nell Unassigned-Controller" });
     const recv = (w) => measureIn(w, "finance.receivables.open");
-    // Taylor-only: Taylor computes (the same figure the assigned Controller sees); Ventana and Consolidated are refused.
+    // Taylor-only: Taylor computes (the same figure the assigned Controller sees). Ventana is outside its company authority
+    // and refused like an unknown company (DECISIONS #235); Consolidated (= its authorized union) still refuses every finance
+    // figure, because the Finance rule keeps requiring EVERY active company for a consolidated finance figure.
     const full = recv(ok(await ws(ctrl, { area: "finance", operatingCompanyId: "taylor" })));
     const mine = recv(ok(await ws(ctrlT, { area: "finance", operatingCompanyId: "taylor" })));
     assert.deepEqual([mine.status, mine.value.value], ["COMPUTED", full.value.value]);
-    for (const c of ["ventana", "consolidated"]) {
-      const w = ok(await ws(ctrlT, { area: "finance", operatingCompanyId: c }));
-      assert.equal(recv(w).status, "REFUSED", c);
+    refused(await ws(ctrlT, { area: "finance", operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN", "outside company authority == unknown");
+    refused(await an(ctrlT, "readMeasureAnalysis", { measureId: "finance.receivables.open", operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN");
+    {
+      const w = ok(await ws(ctrlT, { area: "finance", operatingCompanyId: "consolidated" }));
+      assert.deepEqual(w.scope.companies, ["taylor"], "consolidated is the authorized union");
+      assert.equal(recv(w).status, "REFUSED");
       assert.match(recv(w).reason, REASON);
-      assert.equal(w.measures.filter((m) => m.id.startsWith("finance.")).every((m) => m.status !== "COMPUTED"), true, `no finance figure for ${c}`);
-      assert.equal(w.exceptions.some((e) => /finance\./.test(String(e.measureId ?? ""))), false, `no finance exception for ${c}`);
-      refused(await an(ctrlT, "readMeasureAnalysis", { measureId: "finance.receivables.open", operatingCompanyId: c }), 403, "MEASURE_NOT_AUTHORIZED");
+      assert.equal(w.measures.filter((m) => m.id.startsWith("finance.")).every((m) => m.status !== "COMPUTED"), true, "no consolidated finance figure");
+      assert.equal(w.exceptions.some((e) => /finance\./.test(String(e.measureId ?? ""))), false, "no consolidated finance exception");
+      refused(await an(ctrlT, "readMeasureAnalysis", { measureId: "finance.receivables.open", operatingCompanyId: "consolidated" }), 403, "MEASURE_NOT_AUTHORIZED");
     }
-    // Unassigned: every finance measure is refused everywhere -- the global Controller Role alone reaches no company.
-    for (const c of ["taylor", "ventana", "consolidated"]) {
+    // Unassigned: every finance measure is refused -- the global Controller Role alone reaches no company for Finance.
+    for (const c of ["taylor", "consolidated"]) {
       const w = ok(await ws(ctrlNone, { area: "finance", operatingCompanyId: c }));
       assert.equal(w.measures.filter((m) => m.id.startsWith("finance.") && m.status === "COMPUTED").length, 0, `unassigned: ${c}`);
     }
+    refused(await ws(ctrlNone, { area: "finance", operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN", "a global Role implies no company");
     // A company-scoped holding ALONE (no global finance Role) is the key and the assignment at once: Taylor computes, Ventana
-    // is refused (review finding 2).
+    // is outside its company authority (review finding 2).
     const scopedOnly = await person("uid-fin-scoped", [], { id: "e-fin-scoped", name: "Sol Scoped-Viewer" });
     await assignFinanceCompanies({ admin, q, tenant: TENANT }, [scopedOnly], ["taylor"]);
-    assert.deepEqual([recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "taylor" }))).status,
-      recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "ventana" }))).status], ["COMPUTED", "REFUSED"]);
+    assert.equal(recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "taylor" }))).status, "COMPUTED");
+    refused(await ws(scopedOnly, { area: "finance", operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN");
     // A non-finance measure is not governed by the Financials assignment (unchanged by this correction).
-    const service = measureIn(ok(await ws(ctrlNone, { area: "executive", operatingCompanyId: "ventana" })), "service.workOrders.completed");
+    const service = measureIn(ok(await ws(ctrlNone, { area: "executive", operatingCompanyId: "taylor" })), "service.workOrders.completed");
     assert.notEqual(service.reason ?? "", "requires a Financials company assignment for every company in scope");
+  });
+
+  // ── EOS CORE COMPANY AUTHORITY V1 (Owner decision 2026-10-15, DECISIONS #235) ──
+  await t.test("COMPANY-AUTHORITY: home company + operatingCompany assignments; consolidated = that union; outside == unknown; none = refused", async () => {
+    const { resolveCompanyAuthority } = require("../lib/eosOps/companyAuthority.js");
+    const svc = (who, input = {}) => ws(who, { area: "service", ...input });
+    // HOME ONLY (Taylor): the Dispatcher's consolidated view is Taylor alone, and Ventana answers exactly like an unknown company.
+    assert.deepEqual(ok(await svc(dispatcher)).scope.companies, ["taylor"], "consolidated is the authorized union, not every active company");
+    assert.deepEqual(ok(await svc(dispatcher, { operatingCompanyId: "consolidated" })).scope.companies, ["taylor"]);
+    refused(await svc(dispatcher, { operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN", "Taylor-only cannot read Ventana");
+    refused(await an(dispatcher, "readMeasureAnalysis", { measureId: "service.workOrders.completed", operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN");
+    // The non-finance figures Taylor-only callers see carry no Ventana contribution.
+    const done = ok(await an(dispatcher, "readMeasureAnalysis", { measureId: "service.workOrders.completed", operatingCompanyId: "consolidated" }));
+    assert.deepEqual(done.scope.companies, ["taylor"]);
+    assert.equal((done.measure.drivers?.byCompany ?? []).some((d) => d.key === "ventana"), false, "no Ventana driver for a Taylor-only caller");
+    // HOME ONLY (Ventana): the mirror image.
+    const vDsp = await person("uid-dispatch-v", ["dispatcher"], { id: "e-dispatch-v", name: "Vera Ventana-Dispatch", company: "ventana" });
+    assert.deepEqual(ok(await svc(vDsp)).scope.companies, ["ventana"]);
+    refused(await svc(vDsp, { operatingCompanyId: "taylor" }), 400, "OPERATING_COMPANY_UNKNOWN", "Ventana-only cannot read Taylor");
+    // EXPANSION: an active operatingCompany-scoped assignment adds its company (reach only -- the Dispatcher gains no measure).
+    const xDsp = await person("uid-dispatch-x", ["dispatcher"], { id: "e-dispatch-x", name: "Xan Cross-Dispatch" });
+    const before = ok(await svc(dispatcher, { operatingCompanyId: "taylor" })).measures.filter((m) => m.status !== "REFUSED").map((m) => m.id).sort();
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [xDsp], ["ventana"]);
+    assert.deepEqual(ok(await svc(xDsp)).scope.companies, ["taylor", "ventana"]);
+    const xv = ok(await svc(xDsp, { operatingCompanyId: "ventana" }));
+    assert.equal(xv.scope.operatingCompanyId, "ventana");
+    assert.deepEqual(ok(await svc(xDsp, { operatingCompanyId: "taylor" })).measures.filter((m) => m.status !== "REFUSED").map((m) => m.id).sort(), before,
+      "the assignment widens WHERE, never WHAT");
+    // A DISABLED assignment is no authority.
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE tenant_id = $1 AND principal_id = $2 AND scope_type = 'operatingCompany'`, [TENANT, xDsp.principalId]);
+    refused(await svc(xDsp, { operatingCompanyId: "ventana" }), 400, "OPERATING_COMPANY_UNKNOWN", "a disabled assignment confers nothing");
+    // NO COMPANY AUTHORITY: a global Role without a linked Employee reaches nothing -- even with operatingCompany assignments,
+    // because identity must resolve to exactly one access-eligible Employee first.
+    const unlinked = await person("uid-gm-unlinked", ["generalManager"]);
+    refused(await ws(unlinked, { area: "executive" }), 403, "COMPANY_AUTHORITY_REQUIRED", "a global Role alone implies no company");
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [unlinked]);
+    refused(await ws(unlinked, { area: "executive", operatingCompanyId: "taylor" }), 403, "COMPANY_AUTHORITY_REQUIRED", "no Employee, no authority");
+    refused(await an(unlinked, "readMeasureAnalysis", { measureId: "service.workOrders.open" }), 403, "COMPANY_AUTHORITY_REQUIRED");
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, unlinked.principalId), { companies: [], companyKeys: [], gap: "EMPLOYEE_LINK_REQUIRED" });
+    // An access-INELIGIBLE Employee confers nothing (resolver-level: principal resolution refuses such a caller before analysis).
+    const leave = await person("uid-leave", ["dispatcher"], { id: "e-leave", name: "Lee On-Leave" });
+    await q(`UPDATE eos_workforce.employees SET employment_status = 'ON_LEAVE' WHERE tenant_id = $1 AND id = 'e-leave'`, [TENANT]);
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, leave.principalId), { companies: [], companyKeys: [], gap: "EMPLOYEE_NOT_ACCESS_ELIGIBLE" });
+    // IDENTITY AMBIGUITY is unrepresentable (one active link per Principal); the resolver also refuses it if it ever appears.
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name) VALUES ('e-dispatch-2',$1,'ACTIVE','ventana','Second')`, [TENANT]);
+    await assert.rejects(q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+      VALUES ('lnk-dup',$1,$2,'e-dispatch-2','ventana','OPERATOR_ASSERTED','active','fixture','fixture')`, [TENANT, dispatcher.principalId]), /unique|duplicate/i);
+    // A disabled Principal has no authority.
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, "no-such-principal")).gap, "PRINCIPAL_NOT_ACTIVE");
+    // ANOTHER TENANT: the same Principal resolved against a tenant it is not a member of has no authority there.
+    assert.equal((await resolveCompanyAuthority(pool, "t-analysis-other", dispatcher.principalId)).gap, "PRINCIPAL_NOT_ACTIVE");
+    // STALE: an assignment granted at an access version the Principal has not reached confers nothing.
+    const stale = await person("uid-dispatch-stale", ["dispatcher"], { id: "e-dispatch-stale", name: "Stu Stale" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [stale], ["ventana"]);
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, stale.principalId)).companies, ["taylor", "ventana"]);
+    await q(`UPDATE eos_policy.user_role_assignments SET access_version_at_grant = access_version_at_grant + 1000 WHERE tenant_id = $1 AND principal_id = $2 AND scope_type = 'operatingCompany'`, [TENANT, stale.principalId]);
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, stale.principalId)).companies, ["taylor"], "a stale assignment is no authority");
+    // INACTIVE COMPANY: neither an assignment to, nor a home in, an INACTIVE company confers it.
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,'dormant','INACTIVE','fixture','fixture','fixture')`, [TENANT]);
+    await q(`UPDATE eos_policy.user_role_assignments SET access_version_at_grant = 0, scope_value = 'dormant' WHERE tenant_id = $1 AND principal_id = $2 AND scope_type = 'operatingCompany'`, [TENANT, stale.principalId]);
+    assert.deepEqual((await resolveCompanyAuthority(pool, TENANT, stale.principalId)).companies, ["taylor"], "an assignment to an INACTIVE company is no authority");
+    const dormantHome = await person("uid-dispatch-dormant", ["dispatcher"], { id: "e-dispatch-dormant", name: "Dot Dormant", company: "dormant" });
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, dormantHome.principalId), { companies: [], companyKeys: [], gap: null });
+    refused(await svc(dormantHome), 403, "COMPANY_AUTHORITY_REQUIRED", "an INACTIVE home company is no authority");
+    // RENTAL (My Work's rental section, DECISIONS #235): the server-only company filter narrows fleet and agreements; omitted = unchanged.
+    const { readRentalWorkspace } = require("../lib/eosRental/rental.js");
+    const reader = { tenantId: TENANT, principalId: "rental-reader", capabilities: new Set(["rental.agreement.read"]) };
+    assert.deepEqual([(await readRentalWorkspace(pool, reader, {})).counts.fleet, (await readRentalWorkspace(pool, reader, {}, ["taylor"])).counts.fleet,
+      (await readRentalWorkspace(pool, reader, {}, ["ventana"])).counts.fleet], [1, 1, 0], "the Taylor fleet unit is invisible to a Ventana-only scope");
+    await assert.rejects(readRentalWorkspace(pool, { ...reader, capabilities: new Set() }, {}, ["taylor"]), /rental.agreement.read/, "capability first, always");
+    // Analysis wrote nothing while deciding any of this.
+    assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, dispatcher.principalId), { companies: ["taylor"], companyKeys: ["taylor"], gap: null });
   });
 });

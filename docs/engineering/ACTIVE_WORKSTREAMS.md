@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          EOS Core Company Authority V1 — Analysis / My Work company isolation (Owner security ruling 2026-10-15, DECISIONS #235)
+- Agent/session:       Claude Code EOS controller / Lane B session · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-analysis-company-isolation` · `D:/eos-sec-isolation`
+- Base commit:         `a1261486`
+- Owned paths:         `functions/src/eosOps/companyAuthority.ts` (new) · `functions/src/eosAnalysis/analysis.ts` (companyScope / finance consolidated rule) · `functions/test/analysisPostgres.test.mjs` · `functions/test/myWorkPostgres.test.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json`
+- Dependencies:        #2099 (merged; security acceptance OPEN until this passes authenticated runtime tests)
+- Expected outcome:    Analysis and My Work show only the caller's authorized companies; none = refused; Finance's stricter rule unchanged
+- Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
 - Agent/session:       Claude Code Lane A session · Role: builder
 - Branch / worktree:   `fix/mywork-172-frontend-dual-shape` · `D:/eos-lane-a` (frontend, merges FIRST); `fix/mywork-count-totals-172` · `D:/Taylor_Parts-wt-mywork` (API, #2099, merges only after the frontend is verified on nonprod Vercel)

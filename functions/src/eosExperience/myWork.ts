@@ -25,7 +25,8 @@ import { listTransferOrders } from "../eosOps/partsReads";
 import { postgresPrincipalDimensionReader } from "../eosOps/contextualAuthorization";
 import { admittedScopeValues } from "../adminPolicy/assignmentScopeRuntime";
 import { readAnalysisCatalog, readAnalysisWorkspace, type AnalysisArea } from "../eosAnalysis/analysis";
-import { readRentalWorkspace } from "../eosRental/rental";
+import { readRentalWorkspace, RENTAL_READ } from "../eosRental/rental";
+import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -234,7 +235,11 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
             path: pathFor("transferOrder", String(t.id ?? "")) })), undefined, r.items.length >= TRANSFER_READ_ROWS);
         }
         case "rental": {
-          const ws = await readRentalWorkspace(pool, actor, {});
+          // COMPANY ISOLATION (DECISIONS #235): only the caller's authorized companies' fleet and agreements; none = not authorized.
+          // CAPABILITY FIRST: without rental.agreement.read the read itself refuses, before any company fact is consulted.
+          const authority = actor.capabilities.has(RENTAL_READ) ? await resolveCompanyAuthority(pool, actor.tenantId, actor.principalId) : null;
+          if (authority !== null && authority.companyKeys.length === 0) return notAuthorized(key, "no operating-company authority");
+          const ws = await readRentalWorkspace(pool, actor, {}, authority?.companyKeys ?? []);
           const items: Item[] = [
             ...ws.dueBack.map((d) => ({ id: d.agreementId, kind: "rentalAgreement", label: d.number, detail: d.overdue ? `overdue by ${-d.daysUntilDue} day(s)` : `due back in ${d.daysUntilDue} day(s)`,
               status: d.overdue ? "OVERDUE" : "DUE_BACK", severity: "ATTENTION", path: "/rental" })),

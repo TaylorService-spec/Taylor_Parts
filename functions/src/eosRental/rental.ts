@@ -730,14 +730,19 @@ export async function listFleetUnits(pool: Pool, actor: RentalActor, input: Reco
  * THE RENTAL WORKSPACE -- exception-first answers to: what is available, reserved, going out, on rent (where, who holds it),
  * needs service, due back, being returned, awaiting inspection, and what has a billing exception. Dates are the owning
  * company's business date (the governed resolver), never a UTC cut.
+ *
+ * `companyKeys` (SERVER-ONLY, never from request input -- the /operations/rental route passes three arguments): when given,
+ * every row is narrowed to those operating companies (a fleet unit by its OWNER company, everything agreement-borne by the
+ * agreement's company). My Work passes the caller's EOS Core company authority (DECISIONS #235); omitted = unchanged.
  */
-export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
+export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input: Record<string, unknown>, companyKeys: readonly string[] | null = null) {
   requireCapability(actor, RENTAL_READ);
   only(input, ["dueWithinDays"]);
   const within = input.dueWithinDays === undefined ? 7 : Number(input.dueWithinDays);
   if (!Number.isInteger(within) || within < 0 || within > 90) refuse("DUE_WINDOW_INVALID", "INVALID_INPUT", "dueWithinDays is 0..90");
   const t = actor.tenantId;
-  const { rows: units } = await pool.query(`SELECT id FROM eos_rental.fleet_units WHERE tenant_id = $1 ORDER BY display_name, id LIMIT 1000`, [t]);
+  const ck = companyKeys === null ? null : [...companyKeys];
+  const { rows: units } = await pool.query(`SELECT id FROM eos_rental.fleet_units WHERE tenant_id = $1 AND ($2::text[] IS NULL OR owner_operating_company_key = ANY($2::text[])) ORDER BY display_name, id LIMIT 1000`, [t, ck]);
   const fleet: ReturnType<typeof fleetUnitSummary>[] = [];
   for (const u of units) {
     const { events: _e, inspections: _i, ...summary } = await readFleetUnitOn(pool, t, String(u.id));
@@ -749,7 +754,8 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
     `SELECT s.fleet_unit_id, w.id AS work_order_id, w.work_order_number, w.status::text AS status FROM eos_rental.rental_assignments s
        JOIN eos_ops.work_orders w ON w.tenant_id = s.tenant_id AND w.rental_agreement_id = s.agreement_id AND w.work_order_type = 'INSTALL'
                                  AND w.equipment_id IS NULL AND w.status::text NOT IN ('COMPLETED', 'CANCELLED', 'CLOSED')
-      WHERE s.tenant_id = $1 AND s.status = 'RESERVED'`, [t]);
+      WHERE s.tenant_id = $1 AND s.status = 'RESERVED'
+        AND ($2::text[] IS NULL OR EXISTS (SELECT 1 FROM eos_rental.rental_agreements g WHERE g.tenant_id = s.tenant_id AND g.id = s.agreement_id AND g.operating_company_key = ANY($2::text[])))`, [t, ck]);
   const { rows: due } = await pool.query(
     `SELECT g.id, g.rental_agreement_number, g.operating_company_key, te.expected_end_date,
             eos_policy.operating_company_business_date(g.tenant_id, oc.operating_company_id, now()) AS today,
@@ -757,7 +763,7 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
        FROM eos_rental.rental_agreements g
        JOIN LATERAL (SELECT expected_end_date FROM eos_rental.rental_agreement_terms x WHERE x.agreement_id = g.id ORDER BY version DESC LIMIT 1) te ON TRUE
        JOIN eos_policy.tenant_operating_company_keys oc ON oc.tenant_id = g.tenant_id AND oc.operating_company_key = g.operating_company_key AND oc.status = 'ACTIVE'
-      WHERE g.tenant_id = $1 AND g.status = 'ACTIVE'`, [t]);
+      WHERE g.tenant_id = $1 AND g.status = 'ACTIVE' AND ($2::text[] IS NULL OR g.operating_company_key = ANY($2::text[]))`, [t, ck]);
   const dueBack = due.filter((d) => Number(d.units_out) > 0).map((d) => {
     const end = dateText(d.expected_end_date) as string, today = dateText(d.today) as string;
     const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
@@ -767,16 +773,16 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
   const { rows: held } = await pool.query(
     `SELECT p.id, p.rental_agreement_id, p.rental_charge_id, p.readiness_exceptions, g.rental_agreement_number FROM eos_finance.billing_packages p
        JOIN eos_rental.rental_agreements g ON g.id = p.rental_agreement_id
-      WHERE p.tenant_id = $1 AND p.source_kind = 'RENTAL_CHARGE' AND p.status = 'HELD'`, [t]);
+      WHERE p.tenant_id = $1 AND p.source_kind = 'RENTAL_CHARGE' AND p.status = 'HELD' AND ($2::text[] IS NULL OR g.operating_company_key = ANY($2::text[]))`, [t, ck]);
   const { rows: uncharged } = await pool.query(
     `SELECT g.id, g.rental_agreement_number, max(c.period_end) AS charged_through,
             eos_policy.operating_company_business_date(g.tenant_id, oc.operating_company_id, now()) AS today
        FROM eos_rental.rental_agreements g
        JOIN eos_policy.tenant_operating_company_keys oc ON oc.tenant_id = g.tenant_id AND oc.operating_company_key = g.operating_company_key AND oc.status = 'ACTIVE'
        LEFT JOIN eos_rental.rental_charges c ON c.agreement_id = g.id AND c.kind = 'PERIOD'
-      WHERE g.tenant_id = $1 AND g.status = 'ACTIVE'
+      WHERE g.tenant_id = $1 AND g.status = 'ACTIVE' AND ($2::text[] IS NULL OR g.operating_company_key = ANY($2::text[]))
         AND EXISTS (SELECT 1 FROM eos_rental.rental_assignments s WHERE s.agreement_id = g.id AND s.status IN ('DEPLOYED', 'RETURN_PENDING'))
-      GROUP BY g.id, g.rental_agreement_number, oc.operating_company_id, g.tenant_id`, [t]);
+      GROUP BY g.id, g.rental_agreement_number, oc.operating_company_id, g.tenant_id`, [t, ck]);
   const billingExceptions = [
     ...held.map((h) => ({ kind: "RENTAL_PACKAGE_HELD", agreementId: String(h.rental_agreement_id), number: String(h.rental_agreement_number),
       chargeId: String(h.rental_charge_id), packageId: String(h.id), reasons: [...(h.readiness_exceptions ?? [])] })),
