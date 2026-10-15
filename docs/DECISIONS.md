@@ -8428,7 +8428,7 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 **Not changed (and not authorized here):** role assignments, grants, identities, employee records; Commercial reads; the `/operations/rental` route; `searchEos`; production or Functions deployment.
 
 **Known residuals: NOT covered here, each tracked as a separate security acceptance gap (Owner direction 2026-10-15).**
-- **P0, `/operations/rental`:** reads and COMMANDS, including cross-company mutations and idempotency replays.
+- **P0, `/operations/rental`:** reads and COMMANDS, including cross-company mutations and idempotency replays. Addressed by **#236**, except the Work Order install flow, which is a separate track (D7).
 - **P1, Commercial reads:** salesChannel reach only.
 - **P1, `searchEos`:** no company authority on any kind.
 - **P1, the other My Work sections:**
@@ -8459,3 +8459,55 @@ This PR isolates only the Analysis-backed My Work sections and the `rental` sect
 - duplicate active links cannot be represented.
 
 **Gate.** Lane D independently reviews the exact PR head and runs an authenticated runtime verification. No merge or deploy without a further Owner authorization.
+
+## #236 — OWNER: P0 rental company security — all 18 `/operations/rental` operations enforce EOS Core company authority (2026-10-15)
+
+**Status: OWNER APPROVED (D1–D8, 2026-10-15).** It extends #235 to the public rental route. Merging needs separate Owner authorization.
+
+**Why.** #235's residual: every rental read and command filtered by tenant and capability only. Concretely:
+- a Taylor-only holder could read, mutate and replay Ventana's units, agreements, assignments and charges by id;
+- `createRentalAgreement` accepted any company from input.
+
+**Rule.**
+- The route (`eosRental/rentalOperations.ts`) resolves `resolveCompanyAuthority` (#235) **once per request, server-side**, and attaches it to the actor. Request input can never supply or widen it.
+- Every one of the 18 operations (5 reads, 13 commands) checks **its existing rental capability first**, then company authority.
+
+**The eight rulings:**
+- **D1:** no company authority → `COMPANY_AUTHORITY_REQUIRED` (403). It fails closed.
+- **D2:** an out-of-company record is answered **exactly** like a nonexistent one (same status, code and message). There is no existence oracle.
+- **D3:** a fleet unit follows its **owner** company. An agreement and its terms, assignments, charges and tax evidence follow the **agreement's** company. A reservation needs both, and the existing rule unit owner = agreement company still applies.
+  - Enforced at the choke points: `lockUnit`, `lockAgreement`, `lockAssignment`, the scoped readers and the list SQL. **Every refusal precedes any write.**
+- **D4:** charge and tax mutations need company authority plus the existing `rental.charge.record`.
+- **D5:** a record whose company key binding is retired or invalid is hidden from everyone (fail closed) and is kept: nothing is deleted or rewritten.
+  - There is no governed in-app alert surface. The data-quality alert is the read-only operator check `functions/scripts/rentalCompanyBindingIntegrity.mjs`, which exits 2 when affected records exist. An in-app alert would be a separate decision.
+- **D6:** a new read-only `readMyCompanyAuthority` (`/operations/workspace`) returns only the caller's authorized companies (id and key). The Rental create form uses it; the server refuses any other company regardless.
+- **D7:** the Work Order install flow (`rentalInstallContextOn`) is a **separate tracked security workstream**, unchanged here.
+- **D8:** each charge's `receivable` (obligation status and outstanding balance) is returned only with Finance's **existing** per-company authority (`financeReachesCompany`, `finance.payment.read`). Otherwise it is omitted and the agreement says `financeWithheld: true`.
+  - This applies to every agreement projection, including command responses.
+
+**Idempotency replays** are re-authorized before any stored result is returned:
+- charge replay: the key's agreement must be in authority, otherwise `IDEMPOTENCY_KEY_REUSED` with no content;
+- designation replay: `UNIT_NOT_FOUND`;
+- reservation, return and receipt replays: through the scoped locks and readers;
+- inspection replay: returns only the stored inspection's own unit. A key reused for another unit is `IDEMPOTENCY_KEY_REUSED` (closes the old "any id once a key is used" quirk).
+
+**Unchanged.**
+- All six rental capabilities and their holders.
+- Business rules: owner = agreement company, return warehouse = owner company, plus the WAREHOUSE scope.
+- History.
+- No role, grant, identity or employee change.
+
+**Proof** (`functions/test/rentalPostgres.test.mjs` COMPANY SECURITY, plus the updated FLEET, RESERVE and WORKSPACE tests, with synthetic personas only). It covers:
+- every by-id operation on a Ventana record by a Taylor-only holder of every capability ≡ the nonexistent-id answer;
+- a create for another company ≡ an unknown company;
+- **no cross-company mutation** (snapshot unchanged);
+- per-company lists and workspace;
+- no authority refused on all 18 operations, after the capability check;
+- replays (charge, inspection, designation);
+- Finance fields shown and withheld, including command responses;
+- cross-tenant: the same keys from another tenant reach nothing;
+- `readMyCompanyAuthority`.
+
+Plus `field-ops-app-vite/test/rentalWorkspace.test.jsx`: authorized company options only, no create without authority, Finance-only rendering.
+
+**Coverage still open** (#235 acceptance): Ventana-only and Taylor-only Finance personas, and Ventana rental data in nonprod, for live runtime negatives. Creating them needs separate approval.
