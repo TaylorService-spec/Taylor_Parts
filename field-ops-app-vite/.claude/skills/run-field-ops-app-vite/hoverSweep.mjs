@@ -117,7 +117,7 @@ async function main() {
   const manifest = await fetch(`${ORIGIN}/version.json?cb=${Math.random()}`).then((r) => r.json());
   console.log(`EOS HOVER CONTRACT SWEEP — ${manifest.environmentId} @ ${manifest.commit}\n`);
 
-  const session = await signInPersona("admin");
+  const session = await signInPersona("administrator");
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];

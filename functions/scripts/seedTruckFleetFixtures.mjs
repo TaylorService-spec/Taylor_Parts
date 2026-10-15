@@ -109,7 +109,7 @@ async function seedWarehouse(id, name, location) {
 async function seedTruck({ truckId, vehicleNumber, displayLabel, locationId, homeWarehouseId, status }) {
   const existing = await db.collection("trucks").doc(truckId).get();
   if (existing.exists) { console.log(`truck ${truckId}: already exists, skipping`); return; }
-  const r = await call("createTruckCallable", "admin", {
+  const r = await call("createTruckCallable", "administrator", {
     idempotencyKey: key(truckId),
     truckId, locationId, homeWarehouseId, status,
     assignedDriverEmployeeId: null,

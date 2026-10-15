@@ -348,7 +348,7 @@ async function main() {
     process.exit(2);
   }
 
-  const session = await signInPersona("admin");
+  const session = await signInPersona("administrator");
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 
@@ -366,7 +366,7 @@ async function main() {
   await page.goto(`${ORIGIN}/`, { waitUntil: "domcontentloaded" });
   await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 25000 })
     .catch(() => {});
-  await assertSignedIn(page, "admin");
+  await assertSignedIn(page, "administrator");
 
   let recordUrl = "(not reached)";
   let availableTerminalState = "(not reached)";
