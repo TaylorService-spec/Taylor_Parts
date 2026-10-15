@@ -1,0 +1,411 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PARTS_CATALOG } from "../../data/partsCatalog";
+import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory } from "../../domain/warehouseManagerCatalogView";
+import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } from "../../domain/partsCatalogView";
+import { useAuth } from "../../auth/AuthContext";
+import { useUrlState, useUrlNumber } from "../../hooks/useUrlState";
+import { useInventoryLedger } from "../../hooks/useInventoryLedger";
+import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
+import { INVENTORY_ACTION_TYPE } from "../../domain/constants";
+import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
+import FilterBar from "../../shared/ui/FilterBar";
+import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
+
+// Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
+// docs/implementation-plans/inventory-nav-access-alignment.md) -- the
+// dedicated /inventory-role/warehouse surface for an ACTIVE, reciprocally
+// linked WAREHOUSE_MANAGER technician. Route/nav gating (App.jsx,
+// navConfig.js's operationalRoleAccess) already keeps this component from
+// ever mounting for admin/dispatcher or an ineligible technician, so no
+// role check is repeated here -- same convention every other role-gated
+// screen in this app follows (e.g. TechnicianDashboard.jsx).
+//
+// Parts Catalog source (INV-CONVERGENCE-E cutover): this surface reads the LIVE
+// canonical `parts` Part Master as its PRIMARY identity/metadata source, via the
+// SAME canonical-first composition PartsList (C1) and PartDetail (C2) use
+// (services/partMasterQueries.fetchPartMasterList -> domain/warehouseManagerCatalogView
+// -> the shared domain/partsCatalogView.buildPartsCatalogRows). The static
+// PARTS_CATALOG remains ONLY the governed STATIC_FALLBACK input to that
+// composition -- NOT a parallel source of truth, and it is NOT retired here.
+// Fail-closed: a denied/unavailable/incomplete canonical read renders a blocked
+// banner, NEVER the static 200 presented as canonical (canonical read access for
+// WAREHOUSE_MANAGER is the deployed Issue #100 Rules grant). The WAREHOUSE_MANAGER
+// canonical `parts` read Rule is already merged AND deployed; this is a
+// repository-only UI cutover with no Rules/permission/deploy change.
+//
+// Reuses, unchanged: useInventoryLedger() (PR 1a's inventory_transactions
+// read), InventoryHealthPanel.jsx (Operations/PartsList's own renderer),
+// RequestReorderControl.jsx (via InventoryHealthPanel's existing
+// onRequestReorder prop -- already recognizes WAREHOUSE_MANAGER
+// eligibility for the NEEDS_PLANNING manual-quantity path), and
+// useInventoryActionsForPart(partId) (PR 2a's inventory_actions read).
+//
+// Inventory Health is rendered TWICE, deliberately: a read-only "Inventory
+// Health" view of every entry (satisfies "Catalog and inventory-health
+// visibility"), and a separate, filtered "Needs Planning" section with
+// onRequestReorder wired (satisfies "RequestReorderControl reuse for the
+// Needs Planning/manual-reorder path" -- and ONLY that path). This is not
+// cosmetic: firestore.rules' reorder_requests create rule requires
+// isAdminOrDispatcher() for the READY branch (analytics-computed,
+// urgency-based) and canSubmitManualZeroHistoryQuantity() -- which
+// WAREHOUSE_MANAGER satisfies -- only for the NEEDS_PLANNING branch.
+// Wiring onRequestReorder across ALL entries (as PartsList.jsx's own
+// "Inventory Operational Queue" does for admin/dispatcher) would render a
+// "Request Reorder" button on READY/urgency rows that always fails with
+// permission-denied for this role -- a real bug, not just noise, caught in
+// this PR's own review pass before merge.
+// Not reused: PartsList.jsx / PartDetail.jsx themselves (admin/dispatcher
+// surfaces, explicitly out of scope) and useReorderRequests() -- this
+// role has no reorder_requests read grant (Rules impact section of the
+// Specification lists only PARTS_MANAGER/PARTS_ASSOCIATE branches), so
+// "already requested" tracking below is local-session-only, same
+// UX-nicety-not-enforcement posture RequestReorderControl.jsx's own
+// header comment already documents for the READY/NEEDS_PLANNING split.
+//
+// Part Activity's "By" column is deliberately omitted: the Specification
+// states useEmployeeDirectory() is not imported by any new surface, and
+// every inventory_actions entry a WAREHOUSE_MANAGER can read was created
+// by an admin/dispatcher (Rules: `allow create: if isAdminOrDispatcher()`)
+// -- there's no directory-free way to show a real name, and a raw uid
+// would violate this app's "no raw IDs in human-facing flows" convention.
+
+const PAGE_SIZE = 25;
+
+const INVENTORY_ACTION_LABEL = {
+  [INVENTORY_ACTION_TYPE.RECEIVE_STOCK]: "Stock Received (log only)",
+  [INVENTORY_ACTION_TYPE.ADJUST_STOCK]: "Stock Adjustment (log only)",
+  [INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]: "Correction Note (log only)",
+};
+
+function PartActivityPanel({ partId, resolveName, onClose }) {
+  const { data: actions, loading, error: actionsError } = useInventoryActionsForPart(partId);
+  const partName = resolveName(partId);
+
+  return (
+    <div className="fo-card">
+      <div className="fo-workspace-header">
+        <h3 className="fo-workspace-header-title">Part Activity -- {partName}</h3>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!actionsError}
+        isEmpty={actions.length === 0}
+        loadingText="Loading part activity..."
+        failedText="Unable to load part activity right now. Try again shortly."
+        emptyText="No logged activity yet for this part."
+      >
+        <div className="fo-table-scroll">
+          <table className="fo-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Qty</th>
+                <th>Reason</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {actions.map((action) => (
+                <tr key={action.id}>
+                  <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? action.transactionType}</td>
+                  <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
+                  <td className="fo-muted">{action.reason ?? "—"}</td>
+                  <td className="fo-muted">{formatTimestamp(action.createdAt, { unknown: "—" })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </LoadingEmptyState>
+    </div>
+  );
+}
+
+export default function WarehouseManagerHome({ accessVersion } = {}) {
+  const { user } = useAuth();
+  const { healthEntries, loading, error } = useInventoryLedger();
+
+  // INV-CONVERGENCE-E cutover -- live canonical `parts` read (one-shot, the same
+  // fetchPartMasterList PartsList/PartDetail use; no new query surface). Stored TAGGED with
+  // the (uid, accessVersion) boundary key it was produced under; `null` read until the first
+  // resolve. Mapped to the canonicalRead status contract the shared buildPartsCatalogRows()
+  // consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
+  //
+  // OD-3 access-version boundary guard: a same-UID role/claims/accessVersion change must not
+  // leave prior canonical names (catalog or health panel) on screen. The effect is keyed on
+  // the boundary key (so it re-reads on any access change) with a request token + cancel flag
+  // (stale completions dropped), and at render the stored read is selected ONLY on an exact
+  // key match -- otherwise `null` (LOADING) synchronously, so stale-boundary data never paints.
+  const currentKey = partNamesBoundaryKey(user?.uid, accessVersion);
+  const [stored, setStored] = useState({ key: currentKey, read: null });
+  const tokenRef = useRef(0);
+  useEffect(() => {
+    const token = ++tokenRef.current;
+    let cancelled = false;
+    setStored({ key: currentKey, read: null });
+    fetchPartMasterList().then((result) => {
+      if (cancelled || token !== tokenRef.current) return;
+      // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
+      // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
+      const read = result.ok
+        ? { status: "OK", rows: result.parts, invalid: result.invalid }
+        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+      setStored({ key: currentKey, read });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentKey]);
+  const canonicalRead = selectCanonicalReadForKey(stored, currentKey, null);
+
+  // Canonical-first catalog composition (pure). Static PARTS_CATALOG is only the
+  // STATIC_FALLBACK input; a denied/unavailable/incomplete canonical read => blocked
+  // (rows:[]), never the static 200 shown as canonical.
+  const catalog = useMemo(
+    () => buildWarehouseCatalog({ canonicalRead, staticCatalog: PARTS_CATALOG }),
+    [canonicalRead]
+  );
+  const catalogRows = catalog.rows;
+  const categories = useMemo(() => catalogCategories(catalogRows), [catalogRows]);
+  // OD-3 (Owner decision, 2026-07-30): canonical name only (CANONICAL_MATCH rows), else the
+  // raw partId -- NEVER a static-catalog name. Derived from the already-composed catalog rows
+  // (no second read, no second compose). Empty under LOADING/BLOCKED -> everything degrades to
+  // the raw partId.
+  const resolveName = useMemo(() => {
+    const map = canonicalNameBySku(catalogRows);
+    return (partId) => map.get(partId) ?? partId;
+  }, [catalogRows]);
+
+  // View state that belongs in the URL (Owner: "back and forward should be on
+  // all pages") -- the active category filter, the catalog page number, and
+  // which part's activity panel is open. All three are shareable/bookmarkable
+  // and none of them are destructive, in-flight, or per-mount-only, so they
+  // follow useUrlState's PUT-IN-THE-URL guidance. Absence == default (ALL /
+  // page 0 / no panel open); a hand-edited or stale value degrades safely --
+  // an unrecognized category filters to an empty catalog list (no crash, see
+  // filterCatalogRowsByCategory), an out-of-range page is clamped below via
+  // `currentPage`, and an unrecognized part id simply resolves to an empty
+  // Part Activity panel for that raw id.
+  const [category, setCategory] = useUrlState("category", "ALL");
+  const [page, setPage] = useUrlNumber("page", 0);
+  const [selectedPartId, setSelectedPartId] = useUrlState("part", null);
+  // Deliberately KEPT LOCAL (not URL state): this is transient "just
+  // submitted" UI feedback for the current session, not reproducible view
+  // state -- a shared/reloaded link should not claim a reorder was "just
+  // requested" for parts nobody here actually just requested.
+  const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
+  // Deliberately KEPT LOCAL: in-flight submit flag and its resulting
+  // validation/transport error -- both are per-attempt, not view state, and
+  // must not survive or replay via a shared/reloaded URL.
+  const [submittingPartId, setSubmittingPartId] = useState(null);
+  const [reorderError, setReorderError] = useState(null);
+  // Focus restoration: the triggering "View Activity" button that opened
+  // the inline Part Activity panel, so closing it (button or keyboard)
+  // returns focus there instead of dropping it to <body> -- same
+  // trigger-restore convention this app's ConfirmDialog/Modal flows
+  // already establish, applied here even though this panel isn't a modal.
+  const lastTriggerRef = useRef(null);
+
+  function handleClosePartActivity() {
+    setSelectedPartId(null);
+    lastTriggerRef.current?.focus();
+  }
+
+  async function handleRequestReorder(partId, recommendation, manualQty) {
+    setSubmittingPartId(partId);
+    setReorderError(null);
+    try {
+      await requestReorderForRecommendation({ partId, recommendation, manualQty });
+      setJustRequestedPartIds((prev) => new Set(prev).add(partId));
+    } catch (err) {
+      setReorderError(`Could not request reorder for ${resolveName(partId)}: ${err.message}`);
+    } finally {
+      setSubmittingPartId(null);
+    }
+  }
+
+  const healthByPartId = useMemo(() => {
+    const map = new Map();
+    for (const entry of healthEntries) map.set(entry.partId, entry);
+    return map;
+  }, [healthEntries]);
+
+  const needsPlanningEntries = useMemo(
+    () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),
+    [healthEntries]
+  );
+
+  const filteredParts = useMemo(
+    () => filterCatalogRowsByCategory(catalogRows, category),
+    [catalogRows, category]
+  );
+
+  const pageCount = Math.max(1, Math.ceil(filteredParts.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pagedParts = filteredParts.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+
+  function handleCategoryChange(value) {
+    setCategory(value);
+    setPage(0);
+  }
+
+  const filterOptions = categories.map((cat) => ({
+    key: cat,
+    label: cat === "ALL" ? "All Categories" : cat,
+    count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
+  }));
+
+  const context = (
+    <ContextBand
+      items={[
+        { key: "catalog", label: "Catalog", value: catalogRows.length },
+        { key: "needsPlanning", label: "Needs Planning", value: needsPlanningEntries.length },
+      ]}
+    />
+  );
+
+  return (
+    <WorkspaceShell title="Warehouse Manager" context={context}>
+      <p className="fo-muted">
+        Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
+        Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
+        here.
+      </p>
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={false}
+        loadingText="Loading inventory health..."
+        failedText="Unable to load inventory health right now. Try again shortly."
+        emptyText=""
+      >
+        <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
+      </LoadingEmptyState>
+
+      <p className="fo-muted">
+        Parts with no usage history yet -- enter a manual reorder quantity to submit a Reorder Request.
+      </p>
+      {reorderError && <p className="fo-muted" role="alert">{reorderError}</p>}
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={needsPlanningEntries.length === 0}
+        loadingText="Loading Needs Planning..."
+        failedText="Unable to load Needs Planning right now. Try again shortly."
+        emptyText="No parts currently need planning."
+      >
+        <InventoryHealthPanel
+          healthEntries={needsPlanningEntries}
+          title="Needs Planning"
+          resolveName={resolveName}
+          onRequestReorder={handleRequestReorder}
+          requestedPartIds={justRequestedPartIds}
+          submittingPartId={submittingPartId}
+          emptyText="No parts currently need planning."
+        />
+      </LoadingEmptyState>
+
+      <h3>Parts Catalog</h3>
+      {catalog.blocked ? (
+        // Fail-closed: canonical `parts` read denied/unavailable/incomplete -- surfaced, never the static
+        // 200 shown as canonical, never a silent fallback.
+        <p className="fo-muted">
+          Parts catalog is unavailable right now (canonical Parts could not be read). Try again shortly.
+        </p>
+      ) : (
+        <>
+          <p className="fo-muted">
+            {catalog.loading ? "Loading canonical parts..." : `${catalogRows.length} parts in catalog.`} Select a part
+            to view its read-only activity log.
+          </p>
+
+          <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
+
+          <LoadingEmptyState
+            loading={catalog.loading}
+            isEmpty={!catalog.loading && catalogRows.length === 0}
+            loadingText="Loading canonical parts..."
+            emptyText="No parts in the canonical catalog."
+          >
+            <>
+              <div className="fo-table-scroll">
+                <table className="fo-table">
+                  <thead>
+                    <tr>
+                      <th>Part</th>
+                      <th>SKU</th>
+                      <th>Category</th>
+                      <th>Available</th>
+                      <th>Risk</th>
+                      <th>Activity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedParts.map((part) => {
+                      const health = healthByPartId.get(part.sku);
+                      return (
+                        <tr key={part.sku}>
+                          <td>{part.name}</td>
+                          <td className="fo-muted">{part.sku}</td>
+                          <td className="fo-muted">{part.category}</td>
+                          <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
+                          <td>
+                            {!health ? (
+                              <span className="fo-muted">No ledger activity</span>
+                            ) : health.recommendation.urgency ? (
+                              <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={health.recommendation.urgency} />
+                            ) : (
+                              <StatusPill tone="unknown" label="Needs planning" />
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              aria-label={`View Activity for ${part.name}`}
+                              onClick={(e) => {
+                                lastTriggerRef.current = e.currentTarget;
+                                setSelectedPartId(part.sku);
+                              }}
+                            >
+                              View Activity
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
+                <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+                  Previous
+                </button>
+                <span className="fo-muted">
+                  Page {currentPage + 1} of {pageCount}
+                </span>
+                <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)}>
+                  Next
+                </button>
+              </div>
+            </>
+          </LoadingEmptyState>
+        </>
+      )}
+
+      {selectedPartId && (
+        <PartActivityPanel partId={selectedPartId} resolveName={resolveName} onClose={handleClosePartActivity} />
+      )}
+    </WorkspaceShell>
+  );
+}

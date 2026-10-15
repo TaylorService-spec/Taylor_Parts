@@ -1,0 +1,42 @@
+[
+ {
+  "route": "/service-operations",
+  "label": "Service Operations — Service Operations"
+ },
+ {
+  "route": "/service",
+  "label": "Service — Work Orders"
+ },
+ {
+  "route": "/service/dispatcher-board",
+  "label": "Service — Dispatcher Board"
+ },
+ {
+  "route": "/service/job-assignments",
+  "label": "Service — Job Assignments"
+ },
+ {
+  "route": "/service/dispatch",
+  "label": "Service — Jobs"
+ },
+ {
+  "route": "/customers",
+  "label": "CRM/Sales — Customers"
+ },
+ {
+  "route": "/customers/opportunities",
+  "label": "CRM/Sales — Opportunities"
+ },
+ {
+  "route": "/customers/sales-orders",
+  "label": "CRM/Sales — Sales Orders"
+ },
+ {
+  "route": "/inventory",
+  "label": "Inventory — Parts Catalog"
+ },
+ {
+  "route": "/equipment",
+  "label": "Equipment — Equipment"
+ }
+]
