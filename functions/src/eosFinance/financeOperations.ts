@@ -17,6 +17,11 @@
 // THE WORKSPACE is exception-first and company-scoped: Taylor, Ventana, or the CONSOLIDATED reporting PROJECTION (a read
 // across companies -- it owns nothing and is never written). Overdue is DERIVED from each obligation's governed due date and
 // its company's business date; missing data is never zero.
+//
+// COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; Financials Workspace P0 correction 2026-10-14). Every read and
+// settlement command is decided against the caller's EXPLICIT operatingCompany-scoped assignments (financeCompanyAccess.ts):
+// the key AND a company assignment; a global Role or Administrator standing alone reaches no company; CONSOLIDATED only when
+// every active company is reached; a record or company outside the caller's companies answers like a missing / unknown one.
 import type { Pool } from "pg";
 import { FinanceFoundationError } from "./financeFoundation";
 import {
@@ -26,6 +31,8 @@ import { supplyReceiptCostEvidence } from "../eosOps/costEvidenceSupplyCommand";
 import { relieveIntercompanySaleInventory } from "../eosOps/intercompanyInventoryRelief";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "../eosOps/workOrderOperationTypes";
 import { EOS_FINANCIAL_POLICY_OPERATIONS } from "./financialPolicy";
+import { decideFinanceScope, financeCompanyReach, financeReachesCompany } from "./financeCompanyAccess";
+import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority";
 
 export const FINANCE_ROUTE = "/operations/finance";
 export const FINANCE_VIEW_CAPABILITY = "finance.payment.read";
@@ -48,13 +55,46 @@ const requireCapability = (caller: WorkOrderCaller, key: string): void => {
 };
 const actorOf = (caller: WorkOrderCaller) => ({ tenantId: caller.actor.tenantId, principalId: caller.actor.principalId });
 
-/** The company selector: one operating company, or the CONSOLIDATED projection (read-only). */
-async function companyScope(pool: Pool, tenantId: string, raw: unknown): Promise<{ consolidated: boolean; companies: string[] }> {
+async function activeCompanies(pool: Pool, tenantId: string): Promise<string[]> {
   const { rows } = await pool.query(`SELECT operating_company_id FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY 1`, [tenantId]);
-  const all = rows.map((r) => String(r.operating_company_id));
-  if (raw === undefined || raw === null || raw === "consolidated" || raw === "CONSOLIDATED") return { consolidated: true, companies: all };
-  if (typeof raw !== "string" || !all.includes(raw)) refuse("OPERATING_COMPANY_UNKNOWN", "INVALID_INPUT", "operatingCompanyId is an active operating company, or consolidated");
-  return { consolidated: false, companies: [raw as string] };
+  return rows.map((r) => String(r.operating_company_id));
+}
+const reachActor = (caller: WorkOrderCaller) => ({ capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld });
+/**
+ * The Finance view gate: finance.payment.read held FLAT or through a company-scoped assignment (a scoped holding IS the key
+ * and the company assignment at once). Held nowhere: CAPABILITY_REQUIRED. Where it applies is decided per company after.
+ */
+const requireView = (caller: WorkOrderCaller): void => {
+  if (financeCompanyReach(reachActor(caller), FINANCE_VIEW_CAPABILITY) === null) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${FINANCE_VIEW_CAPABILITY}`);
+};
+const outsideScope = (key: string): never => refuse("OUTSIDE_OPERATING_COMPANY_SCOPE", "FORBIDDEN",
+  `${key} is not held for the requested operating company (the consolidated view needs every company)`);
+
+/**
+ * The company selector: one operating company, or the CONSOLIDATED projection (read-only) -- decided against the caller's
+ * COMPANY ASSIGNMENTS (financeCompanyAccess.ts): capability AND an explicit operatingCompany-scoped assignment; consolidated
+ * only when every active company is reached. Out of scope == unknown == inactive: the same refusal.
+ */
+async function companyScope(pool: Pool, caller: WorkOrderCaller, key: string, raw: unknown): Promise<{ consolidated: boolean; companies: string[] }> {
+  const d = decideFinanceScope(reachActor(caller), key, await activeCompanies(pool, caller.actor.tenantId), raw);
+  if (!d.ok) return d.code === "CAPABILITY_REQUIRED" ? refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`) : outsideScope(key);
+  return { consolidated: d.consolidated, companies: [...d.companies] };
+}
+/** The active companies `key` reaches for the caller (never consolidated): the reach of a read or command that names a record. */
+async function reachedCompanies(pool: Pool, caller: WorkOrderCaller, key: string): Promise<string[]> {
+  const reach = financeCompanyReach(reachActor(caller), key) ?? refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
+  return (await activeCompanies(pool, caller.actor.tenantId)).filter((c) => reach.includes(c));
+}
+/** A settlement's company, or null; a record outside the caller's reach answers exactly like a missing one. */
+async function settlementCompany(pool: Pool, tenantId: string, settlementId: unknown): Promise<string | null> {
+  if (typeof settlementId !== "string" || settlementId.trim() === "") return null;
+  const { rows } = await pool.query(`SELECT operating_company_id FROM eos_finance.settlements WHERE tenant_id = $1 AND id = $2`, [tenantId, settlementId]);
+  return rows[0] ? String(rows[0].operating_company_id) : null;
+}
+async function requireSettlementInReach(pool: Pool, caller: WorkOrderCaller, key: string, settlementId: unknown): Promise<void> {
+  const company = await settlementCompany(pool, caller.actor.tenantId, settlementId);
+  if (company === null) return; // the command's own SETTLEMENT_NOT_FOUND / input refusal answers
+  if (!financeReachesCompany(reachActor(caller), key, company)) refuse("SETTLEMENT_NOT_FOUND", "NOT_FOUND", "no settlement with that id");
 }
 
 const OPEN_KINDS = ["RECEIVABLE", "FUNDING_RECEIVABLE", "PAYABLE", "INTERCOMPANY_RECEIVABLE", "INTERCOMPANY_PAYABLE"];
@@ -88,8 +128,8 @@ async function obligationRows(pool: Pool, tenantId: string, companies: string[],
 type Op = (deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) => Promise<unknown>;
 
 async function readFinanceWorkspace(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
-  requireCapability(caller, FINANCE_VIEW_CAPABILITY);
-  const scope = await companyScope(deps.pool, caller.actor.tenantId, input.operatingCompanyId);
+  requireView(caller);
+  const scope = await companyScope(deps.pool, caller, FINANCE_VIEW_CAPABILITY, input.operatingCompanyId);
   const t = caller.actor.tenantId;
   const open = await obligationRows(deps.pool, t, scope.companies, `o.status IN ('OPEN','PARTIAL')`, [], 500);
   const summarize = (kind: string) => {
@@ -160,8 +200,8 @@ async function readFinanceWorkspace(deps: WorkOrderOperationDeps, caller: WorkOr
 }
 
 async function listObligations(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
-  requireCapability(caller, FINANCE_VIEW_CAPABILITY);
-  const scope = await companyScope(deps.pool, caller.actor.tenantId, input.operatingCompanyId);
+  requireView(caller);
+  const scope = await companyScope(deps.pool, caller, FINANCE_VIEW_CAPABILITY, input.operatingCompanyId);
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (input.kind !== undefined) {
@@ -177,10 +217,10 @@ async function listObligations(deps: WorkOrderOperationDeps, caller: WorkOrderCa
 }
 
 async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
-  requireCapability(caller, FINANCE_VIEW_CAPABILITY);
+  requireView(caller);
   if (typeof input.obligationId !== "string" || input.obligationId.trim() === "") refuse("OBLIGATION_REQUIRED", "INVALID_INPUT", "obligationId is required");
-  const scope = await companyScope(deps.pool, caller.actor.tenantId, undefined);
-  const [o] = await obligationRows(deps.pool, caller.actor.tenantId, scope.companies, `o.id = $3`, [input.obligationId], 1);
+  // Only the companies the caller is assigned to: an obligation of another company answers exactly like a missing one.
+  const [o] = await obligationRows(deps.pool, caller.actor.tenantId, await reachedCompanies(deps.pool, caller, FINANCE_VIEW_CAPABILITY), `o.id = $3`, [input.obligationId], 1);
   if (!o) return refuse("OBLIGATION_NOT_FOUND", "NOT_FOUND", "no obligation with that id");
   const t = caller.actor.tenantId;
   const { rows: facts } = await deps.pool.query(`SELECT id, fact_class, fact_type, amount_minor, effective_at, source_domain, source_record_id, reverses_fact_id, reason
@@ -200,13 +240,33 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
 }
 
 async function listSettlements(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
-  requireCapability(caller, FINANCE_VIEW_CAPABILITY);
-  const scope = await companyScope(deps.pool, caller.actor.tenantId, input.operatingCompanyId);
+  requireView(caller);
+  const scope = await companyScope(deps.pool, caller, FINANCE_VIEW_CAPABILITY, input.operatingCompanyId);
   const { rows } = await deps.pool.query(
     `SELECT s.id FROM eos_finance.settlements s WHERE s.tenant_id = $1 AND s.operating_company_id = ANY($2) ORDER BY s.business_date DESC, s.recorded_at DESC, s.id LIMIT 100`,
     [caller.actor.tenantId, scope.companies]);
   return Object.freeze({ scope: scope.consolidated ? "consolidated" : scope.companies[0],
     items: await Promise.all(rows.map((r) => readSettlement(deps.pool, caller.actor.tenantId, String(r.id)))) });
+}
+
+/**
+ * readMyFinanceCompanyAccess -- the companies this caller may open in the Financials workspace, whether the Consolidated
+ * reporting view is available, and per company which actions its keys reach. Read-only advice for the screen; every read
+ * and command re-decides. An unassigned company is never named.
+ */
+async function readMyFinanceCompanyAccess(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
+  requireView(caller);
+  if (Object.keys(input ?? {}).length > 0) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", "readMyFinanceCompanyAccess takes no input");
+  const active = await activeCompanies(deps.pool, caller.actor.tenantId);
+  const actor = reachActor(caller);
+  const reaches = (key: string, company: string) => financeReachesCompany(actor, key, company);
+  const companies = active.filter((c) => reaches(FINANCE_VIEW_CAPABILITY, c)).map((c) => Object.freeze({
+    operatingCompanyId: c, name: operatingCompanyDisplayName(c) ?? c,
+    actions: Object.freeze({ view: true, record: reaches(SETTLEMENT_RECORD_CAPABILITY, c), apply: reaches(SETTLEMENT_APPLY_CAPABILITY, c),
+      correct: reaches(SETTLEMENT_CORRECT_CAPABILITY, c), reconcile: reaches(RECONCILIATION_RECORD_CAPABILITY, c) }),
+  }));
+  return Object.freeze({ principalId: caller.actor.principalId, companies: Object.freeze(companies),
+    consolidated: active.length > 0 && companies.length === active.length });
 }
 
 const consolidatedRefused = (input: Record<string, unknown>) => {
@@ -220,29 +280,53 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
   listObligations,
   readObligation,
   listSettlements,
+  readMyFinanceCompanyAccess,
   readSettlement: async (deps, caller, input) => {
-    requireCapability(caller, FINANCE_VIEW_CAPABILITY);
+    requireView(caller);
+    await requireSettlementInReach(deps.pool, caller, FINANCE_VIEW_CAPABILITY, input.settlementId);
     return readSettlement(deps.pool, caller.actor.tenantId, input.settlementId);
   },
+  // COMMANDS: each is decided against the company of what it writes (company assignment is mandatory). A record outside the
+  // caller's companies answers exactly like a missing one; a requested company outside them like an unknown one.
   recordSettlement: async (deps, caller, input) => {
     requireCapability(caller, SETTLEMENT_RECORD_CAPABILITY);
     consolidatedRefused(input);
+    if (typeof input.operatingCompanyId === "string" && !(await reachedCompanies(deps.pool, caller, SETTLEMENT_RECORD_CAPABILITY)).includes(input.operatingCompanyId)) {
+      outsideScope(SETTLEMENT_RECORD_CAPABILITY);
+    }
     return recordFinancialSettlement(deps.pool, actorOf(caller), input as never);
   },
   applySettlement: async (deps, caller, input) => {
     requireCapability(caller, SETTLEMENT_APPLY_CAPABILITY);
+    await requireSettlementInReach(deps.pool, caller, SETTLEMENT_APPLY_CAPABILITY, input.settlementId);
+    // Every obligation it settles must be in the caller's companies too (defence in depth over the settlement's own checks).
+    const ids = Array.isArray(input.applications) ? input.applications.map((a) => (a as Record<string, unknown> | null)?.obligationId).filter((x): x is string => typeof x === "string") : [];
+    if (ids.length > 0) {
+      const { rows } = await deps.pool.query(`SELECT id, operating_company_id FROM eos_finance.obligations WHERE tenant_id = $1 AND id = ANY($2)`, [caller.actor.tenantId, ids]);
+      const reach = await reachedCompanies(deps.pool, caller, SETTLEMENT_APPLY_CAPABILITY);
+      if (rows.some((r) => !reach.includes(String(r.operating_company_id)))) refuse("OBLIGATION_NOT_FOUND", "NOT_FOUND", "no obligation with that id");
+    }
     return applyFinancialSettlement(deps.pool, actorOf(caller), input as never);
   },
   reverseSettlementApplication: async (deps, caller, input) => {
     requireCapability(caller, SETTLEMENT_CORRECT_CAPABILITY);
+    if (typeof input.applicationId === "string") {
+      const { rows } = await deps.pool.query(`SELECT s.operating_company_id FROM eos_finance.settlement_applications a
+        JOIN eos_finance.settlements s ON s.tenant_id = a.tenant_id AND s.id = a.settlement_id WHERE a.tenant_id = $1 AND a.id = $2`, [caller.actor.tenantId, input.applicationId]);
+      if (rows[0] && !financeReachesCompany(reachActor(caller), SETTLEMENT_CORRECT_CAPABILITY, String(rows[0].operating_company_id))) {
+        refuse("APPLICATION_NOT_FOUND", "NOT_FOUND", "no settlement application with that id");
+      }
+    }
     return reverseSettlementApplication(deps.pool, actorOf(caller), input as never);
   },
   voidSettlement: async (deps, caller, input) => {
     requireCapability(caller, SETTLEMENT_CORRECT_CAPABILITY);
+    await requireSettlementInReach(deps.pool, caller, SETTLEMENT_CORRECT_CAPABILITY, input.settlementId);
     return voidFinancialSettlement(deps.pool, actorOf(caller), input as never);
   },
   reconcileSettlement: async (deps, caller, input) => {
     requireCapability(caller, RECONCILIATION_RECORD_CAPABILITY);
+    await requireSettlementInReach(deps.pool, caller, RECONCILIATION_RECORD_CAPABILITY, input.settlementId);
     return reconcileFinancialSettlement(deps.pool, actorOf(caller), input as never);
   },
   supplyReceiptCostEvidence: async (deps, caller, input) => supplyReceiptCostEvidence({ pool: deps.pool }, caller.actor, input),

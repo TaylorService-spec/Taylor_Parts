@@ -15,6 +15,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
+import { assignFinanceCompanies } from "./support/financeCompanyAccess.mjs";
 
 const require = createRequire(import.meta.url);
 const fin = require("../lib/eosFinance/financeFoundation.js");
@@ -72,6 +73,9 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const r = await admin("assignRole", { principalId: retail.principalId, roleId: (await repo.getRoleByKey(TENANT, "salesperson")).id,
     scopeType: "salesChannel", scopeValue: "RETAIL", reason: "retail seller" });
   assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+  // Company assignment is mandatory for the finance measures (Financials Workspace P0 correction): the GM and the Controller
+  // are explicitly assigned to Taylor and Ventana. The FIN-SCOPE test proves partial and missing assignments.
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [gm, ctrl]);
 
   // ── facts (governed records, SAMPLE) ──
   const lastMonth = new Date(); lastMonth.setUTCDate(1); lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1); lastMonth.setUTCHours(19, 0, 0, 0);
@@ -248,6 +252,11 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.deepEqual([od.recordId, od.drill.operation, od.action.operation, od.action.capability, od.action.available], [overdue, "readObligation", "recordSettlement", "finance.settlement.record", true]);
     const p = ok(await ws(pm, { area: "purchasing", operatingCompanyId: "taylor" }));
     assert.equal(p.exceptions.find((e) => e.kind === "OVERDUE_RECEIVABLE"), undefined, "the purchasing area raises no finance exception");
+    // Without a Financials company assignment, partsManager's flat payments read raises no finance exception at all...
+    assert.equal(ok(await ws(pm, { area: "finance", operatingCompanyId: "taylor" })).exceptions.find((e) => e.kind === "OVERDUE_RECEIVABLE"), undefined,
+      "no company assignment, no finance exception");
+    // ...and once assigned to Taylor it sees the exception, but is still offered no settlement action.
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [pm], ["taylor"]);
     const pmFinance = ok(await ws(pm, { area: "finance", operatingCompanyId: "taylor" }));
     const pmOd = pmFinance.exceptions.find((e) => e.kind === "OVERDUE_RECEIVABLE");
     assert.equal(pmOd.action.available, false, "partsManager reads payments but holds no settlement authority -- the action is not offered");
@@ -264,5 +273,40 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     refused(await ws(gm, { area: "finance", periodType: "WEEK" }), 400, "PERIOD_TYPE_INVALID");
     refused(await an(gm, "readMeasureAnalysis", { measureId: "nope" }), 404, "MEASURE_UNKNOWN");
     refused(await ws(gm, { area: "finance", sql: "x" }), 400, "FIELD_NOT_ACCEPTED");
+  });
+
+  // ── COMPANY ASSIGNMENT IS MANDATORY for finance measures (Financials Workspace P0 correction, 2026-10-14) ──
+  await t.test("FIN-SCOPE: a finance measure needs a Financials company assignment for every company in scope; other measures are unchanged", async () => {
+    const REASON = /Financials company assignment/;
+    const ctrlT = await person("uid-ctrl-t", ["controller"], { id: "e-ctrl-t", name: "Tia Taylor-Controller" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlT], ["taylor"]);
+    const ctrlNone = await person("uid-ctrl-none", ["controller"], { id: "e-ctrl-none", name: "Nell Unassigned-Controller" });
+    const recv = (w) => measureIn(w, "finance.receivables.open");
+    // Taylor-only: Taylor computes (the same figure the assigned Controller sees); Ventana and Consolidated are refused.
+    const full = recv(ok(await ws(ctrl, { area: "finance", operatingCompanyId: "taylor" })));
+    const mine = recv(ok(await ws(ctrlT, { area: "finance", operatingCompanyId: "taylor" })));
+    assert.deepEqual([mine.status, mine.value.value], ["COMPUTED", full.value.value]);
+    for (const c of ["ventana", "consolidated"]) {
+      const w = ok(await ws(ctrlT, { area: "finance", operatingCompanyId: c }));
+      assert.equal(recv(w).status, "REFUSED", c);
+      assert.match(recv(w).reason, REASON);
+      assert.equal(w.measures.filter((m) => m.id.startsWith("finance.")).every((m) => m.status !== "COMPUTED"), true, `no finance figure for ${c}`);
+      assert.equal(w.exceptions.some((e) => /finance\./.test(String(e.measureId ?? ""))), false, `no finance exception for ${c}`);
+      refused(await an(ctrlT, "readMeasureAnalysis", { measureId: "finance.receivables.open", operatingCompanyId: c }), 403, "MEASURE_NOT_AUTHORIZED");
+    }
+    // Unassigned: every finance measure is refused everywhere -- the global Controller Role alone reaches no company.
+    for (const c of ["taylor", "ventana", "consolidated"]) {
+      const w = ok(await ws(ctrlNone, { area: "finance", operatingCompanyId: c }));
+      assert.equal(w.measures.filter((m) => m.id.startsWith("finance.") && m.status === "COMPUTED").length, 0, `unassigned: ${c}`);
+    }
+    // A company-scoped holding ALONE (no global finance Role) is the key and the assignment at once: Taylor computes, Ventana
+    // is refused (review finding 2).
+    const scopedOnly = await person("uid-fin-scoped", [], { id: "e-fin-scoped", name: "Sol Scoped-Viewer" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [scopedOnly], ["taylor"]);
+    assert.deepEqual([recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "taylor" }))).status,
+      recv(ok(await ws(scopedOnly, { area: "finance", operatingCompanyId: "ventana" }))).status], ["COMPUTED", "REFUSED"]);
+    // A non-finance measure is not governed by the Financials assignment (unchanged by this correction).
+    const service = measureIn(ok(await ws(ctrlNone, { area: "executive", operatingCompanyId: "ventana" })), "service.workOrders.completed");
+    assert.notEqual(service.reason ?? "", "requires a Financials company assignment for every company in scope");
   });
 });

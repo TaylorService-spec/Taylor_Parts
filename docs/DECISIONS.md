@@ -8310,3 +8310,21 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 **Order.** R1–R4 are applied before this code deploys; deployed first, the Owner would lose Financial Policy access until assigned (fail closed).
 
 **Not changed.** The `finance.policy` navigation surface (earned by a flat or scoped read; the door confers nothing and the company selector lists only assigned companies), any other module, the EOS-wide company-membership model.
+
+### Financials Workspace P0 correction — reachability and company-scoped authorization (2026-10-14)
+
+(Owner direction 2026-10-14, applying the Owner ruling of 2026-10-13: business access requires BOTH a capability AND an explicit operating-company assignment. Finding from the Financials employee acceptance at 328c75c3: the PostgreSQL Finance workspace was unreachable for every persona, and every `finance.payment.read` holder read Taylor, Ventana and Consolidated.)
+
+**Rule (`functions/src/eosFinance/financeCompanyAccess.ts`).** A finance key applies at operating company C only with the key (flat, or company-scoped) AND an explicit, active operatingCompany-scoped assignment for C: a C-scoped holding of that key, or — for a key held flat — of `finance.payment.read` (the Finance view key), now registered in `SCOPE_EVALUABLE_GRANTS`. The same rule as Financial Policy (#2089).
+- A global Role (controller, accountingManager, generalManager, owner) or Administrator standing **alone reaches no company**.
+- The assignment confers **reach, never a key**: settlement / reconciliation still need their own keys.
+- **Consolidated** only when every active company is reached.
+- **Out of scope == unknown**: an unassigned, unknown or inactive company gets the same refusal (`OUTSIDE_OPERATING_COMPANY_SCOPE`); a record of an unassigned company answers like a missing one (`OBLIGATION_NOT_FOUND`, `SETTLEMENT_NOT_FOUND`, `APPLICATION_NOT_FOUND`).
+
+**Applied to.** Every `/operations/finance` read (workspace, obligations, settlements, drill-through) and settlement command (record, apply — including each applied obligation, reverse, void, reconcile); the new read `readMyFinanceCompanyAccess` (the workspace's company selector); every Analysis measure read only through `finance.*` keys (refused, with its exceptions withheld, unless the caller is assigned to every company in scope). PostgreSQL Finance business logic is unchanged. Non-finance Analysis measures, cost evidence supply and intercompany relief (warehouse-scoped) are unchanged.
+
+**Reachability.** The Financials Overview (which hosts the workspace) earns the `financials.payments` surface — the surface earned by the workspace's own key. Its legacy placeholder row STAYS, so the legacy navigation source (production) is byte-identical; the row changes kind from ungoverned to cutover — the `purchasing/suppliers` and `administration/financialPolicy` precedent — with ceilings cutover 22 → 23 and ungoverned 40 → 39, total unchanged at 62. **This ceiling move is recorded for Owner confirmation.**
+
+**Scoped-only holders.** A principal holding `finance.payment.read` only through a company-scoped assignment reads Finance and Analysis finance measures at that company; the `financials.payments` / `analysis.workspace` navigation doors remain flat-earned (the surface catalog admits a scoped door only on a list read), so such a principal has no menu entry. No such principal exists or is proposed.
+
+**Governance (proposed, NOT executed).** A `financeCompanyAccess` Role holding exactly `finance.payment.read`, assigned per company. Until assigned, every Finance user is refused (fail closed): the assignments must be applied before this deploys.
