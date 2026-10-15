@@ -309,7 +309,9 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // the fenced dependency together (29 -> 27).
   // Firebase exit F1 dead-code removal (2026-10-09): the unimported access/useGovernedCapabilities.js hook was DELETED,
   // leaving the shim AND the fenced dependency together (27 -> 26).
-  assert.equal(live.observed.alreadyFencedConsumers, 26,
+  // Firebase exit Lane B (2026-10-15): access/useWorkOrderPartsPlanCapability.js was DELETED (the parts-plan edit gate
+  // reads EOS readMyWorkOrderCapabilities), leaving the shim AND the fenced dependency together (26 -> 25).
+  assert.equal(live.observed.alreadyFencedConsumers, 25,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });
