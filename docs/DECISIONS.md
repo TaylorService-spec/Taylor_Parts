@@ -8427,7 +8427,19 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 
 **Not changed (and not authorized here):** role assignments, grants, identities, employee records; Commercial reads; the `/operations/rental` route; `searchEos`; production or Functions deployment.
 
-**Known residuals (Lane D R-1a / R-1b; separate Owner decision).** The `/operations/rental` reads and `searchEos` are still filtered by tenant only. Search covers rental agreements, sales orders and opportunities; only Reorders are company-keyed.
+**Known residuals: NOT covered here, each tracked as a separate security acceptance gap (Owner direction 2026-10-15).**
+- **P0, `/operations/rental`:** reads and COMMANDS, including cross-company mutations and idempotency replays.
+- **P1, Commercial reads:** salesChannel reach only.
+- **P1, `searchEos`:** no company authority on any kind.
+- **P1, the other My Work sections:**
+  - `ownedRecords` / `accountableRecords`: owner / accountable + channel only;
+  - `dispatchQueue`: tenant-wide;
+  - `reorderQueue` / `transfers`: queue and warehouse reach, including Administrator reach;
+  - `assignedReorders`: cross-company assignee by design;
+  - `assignedWork`: company drift after an Employee's company change;
+  - `administration`.
+
+This PR isolates only the Analysis-backed My Work sections and the `rental` section.
 
 **Effect.**
 - Callers whose only authority is a Taylor home company see Taylor only.
