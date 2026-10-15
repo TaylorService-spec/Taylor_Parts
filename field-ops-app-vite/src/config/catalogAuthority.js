@@ -49,6 +49,24 @@ export const CATALOG_IMPORT_REFUSAL_MESSAGE = Object.freeze({
     + "reference Parts that are not the current catalog.",
 });
 
+// THE EQUIPMENT REGISTER, which is NOT catalog-bound but has moved the same way (Owner ruling D-1). It mirrors the
+// committed server constant functions/src/eosOps/equipmentWriterState.ts EQUIPMENT_WRITER_AUTHORITY.firestore
+// (FROZEN: the register is eos_ops.equipment), pinned by test/catalogAuthorityClientGate.test.mjs. The deployed
+// Firebase executeDataImport pre-dates the server's own equipment guard and would still write Firestore `equipment`,
+// so the client refuses an EQUIPMENT execution before the callable is invoked.
+export const EQUIPMENT_FIRESTORE_WRITER_OPEN = false;
+
+export const EQUIPMENT_AUTHORITY_MOVED = "EQUIPMENT_AUTHORITY_MOVED";
+
+export const EQUIPMENT_IMPORT_REFUSAL_MESSAGE =
+  "Equipment Import is unavailable: the Equipment register authority has moved to PostgreSQL, and this import would "
+  + "write Equipment into the frozen Firestore register. Equipment import through the PostgreSQL register is not built yet.";
+
+/** Is executing an EQUIPMENT import refused under the current Equipment register authority? */
+export function importRefusedByEquipmentAuthority(entityType, firestoreOpen = EQUIPMENT_FIRESTORE_WRITER_OPEN) {
+  return entityType === "EQUIPMENT" && firestoreOpen !== true;
+}
+
 /**
  * Is executing (or offering) an import of this entity type refused under the current Catalog authority?
  * Fails CLOSED: an unknown or missing entity type is refused too.
