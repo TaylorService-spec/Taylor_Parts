@@ -35,8 +35,8 @@ const require = createRequire(import.meta.url);
 const baseline = require("../lib/adminPolicy/roleCapabilityAuthorityBaseline.js");
 const pa = require("../lib/adminPolicy/protectedAdministrator.js");
 
-/** sha256 of test/fixtures/removalMatrix.pinned.json (origin/main a360020d). Move ONLY with a deliberate re-pin. */
-export const REMOVAL_MATRIX_PIN_DIGEST = "99719d0b1976d88169fa70a64711cabe2dd0059ad7058e5a603cfb1a46d4515a";
+/** sha256 of test/fixtures/removalMatrix.pinned.json (D-2 PROPOSED re-pin: + financeExecutionAdminSeparationDelta source; no holder moves). Move ONLY with a deliberate re-pin. */
+export const REMOVAL_MATRIX_PIN_DIGEST = "70bcc0ab477811fbd917709a598c8294bf40ed9723e1cd212e1e3ee270cb60bb";
 
 const onDisk = readFileSync(PIN_PATH, "utf8");
 const real = { baseline, pa, deltas: loadRecordedDeltas() };
