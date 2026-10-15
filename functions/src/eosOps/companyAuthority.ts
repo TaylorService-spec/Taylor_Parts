@@ -7,7 +7,7 @@
 //   2. HOME COMPANY   that Employee's operating company (eos_workforce.employees.operating_company_id), when it is an
 //                     ACTIVE operating company of this tenant.
 //   3. EXPANSION      every company named by the Principal's ACTIVE, non-stale `operatingCompany`-scoped role
-//                     assignments in this tenant (the qualification rule of administrationReach.qualifyingGlobalRoles),
+//                     assignments in this tenant (the same qualification rule as qualifyingGlobalRoles),
 //                     when that company is ACTIVE for this tenant. An assignment confers REACH only, never a capability.
 //   4. NOTHING ELSE   a global Role, Administrator standing, a Firebase claim or a client-selected company never implies
 //                     any company. Empty = no company data.
