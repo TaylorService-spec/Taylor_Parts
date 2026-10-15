@@ -7,6 +7,10 @@ import MyWorkspace from "../src/modules/workspace/MyWorkspace.jsx";
 import SiteSearch from "../src/modules/search/SiteSearch.jsx";
 import AppHeader from "../src/shared/ui/AppHeader.jsx";
 
+// MyWorkspace mounts WorkflowWork with the REAL workflow client; unmocked, its request settles after jsdom is torn down
+// ("window is not defined" -- a CI flake). Answer it locally: no workflow work.
+vi.mock("../src/services/workflowRuntimeClient", () => ({ callWorkflowRuntimeApi: vi.fn(async () => ({ ok: true, result: { items: [], total: 0, truncated: false } })) }));
+
 const sec = (key, title, over = {}) => ({ key, title, status: "READY", reason: null, count: 0, items: [], ...over });
 const WORK = {
   me: { principalId: "p1", employeeId: "e1", displayName: "Riley Retail", jobRole: { id: "retail-sales", label: "Retail Sales" } },
