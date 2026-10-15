@@ -212,6 +212,12 @@ async function listObligations(deps: WorkOrderOperationDeps, caller: WorkOrderCa
     if (!["OPEN", "PARTIAL", "SETTLED", "VOID"].includes(String(input.status))) refuse("STATUS_INVALID", "INVALID_INPUT", "status is OPEN, PARTIAL, SETTLED or VOID");
     params.push(input.status); clauses.push(`o.status = $${params.length + 2}`);
   }
+  // One customer's obligations (an Account's receivables), still only inside the companies the caller reaches: a Taylor-only
+  // caller never sees the same Account's Ventana obligations. A narrowing filter on the same gate -- it grants nothing.
+  if (input.crmAccountId !== undefined) {
+    if (typeof input.crmAccountId !== "string" || input.crmAccountId.trim() === "") refuse("ACCOUNT_INVALID", "INVALID_INPUT", "crmAccountId is a non-empty account id");
+    params.push(input.crmAccountId); clauses.push(`cp.crm_account_id = $${params.length + 2}`);
+  }
   return Object.freeze({ scope: scope.consolidated ? "consolidated" : scope.companies[0],
     items: await obligationRows(deps.pool, caller.actor.tenantId, scope.companies, clauses.length ? clauses.join(" AND ") : "TRUE", params, 200) });
 }

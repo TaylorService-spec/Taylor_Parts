@@ -530,6 +530,25 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     void financed; void ic;
   });
 
+  await t.test("ACCOUNT: listObligations narrows to one CRM account inside the reached companies; a bad id is refused, an unknown one is empty", async () => {
+    const acctCount = async (companies, accountId, status = null) => Number((await one(`SELECT count(*)::int n FROM eos_finance.obligations o
+      JOIN eos_finance.financial_counterparties cp ON cp.tenant_id=o.tenant_id AND cp.id=o.counterparty_id
+      WHERE o.tenant_id=$1 AND o.operating_company_id = ANY($2) AND cp.crm_account_id=$3 AND ($4::text IS NULL OR o.status=$4)`, [TENANT, companies, accountId, status])).n);
+    const acct = (await one(`SELECT cp.crm_account_id FROM eos_finance.obligations o JOIN eos_finance.financial_counterparties cp ON cp.tenant_id=o.tenant_id AND cp.id=o.counterparty_id
+      WHERE o.tenant_id=$1 AND o.operating_company_id='taylor' AND cp.crm_account_id IS NOT NULL GROUP BY 1 ORDER BY count(*) DESC LIMIT 1`, [TENANT])).crm_account_id;
+    const taylor = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct })).items;
+    assert.ok(taylor.length >= 1 && taylor.length === await acctCount(["taylor"], acct), "exactly that account's Taylor obligations");
+    assert.ok(taylor.every((o) => o.operatingCompanyId === "taylor" && o.counterparty.crmAccountId === acct));
+    const cons = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "consolidated", crmAccountId: acct })).items;
+    assert.equal(cons.length, await acctCount(["taylor", "ventana"], acct), "the consolidated read is both companies' rows for the account, no more");
+    const open = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct, status: "OPEN" })).items;
+    assert.ok(open.length === await acctCount(["taylor"], acct, "OPEN") && open.every((o) => o.status === "OPEN"), "combined with status: the intersection");
+    assert.deepEqual(ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: "acct-does-not-exist" })).items, []);
+    for (const bad of ["", "   ", 5, null]) refused(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: bad }), 400, "ACCOUNT_INVALID", JSON.stringify(bad));
+    // The filter grants nothing: no key, no rows, whatever account is named.
+    refused(await fn(techP, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct }), 403, "CAPABILITY_REQUIRED");
+  });
+
   // ── COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; Financials Workspace P0 correction 2026-10-14) ──
   await t.test("SCOPE: Finance reads and settlement commands need the key AND an explicit company assignment; Consolidated needs every company", async () => {
     const OUT = "OUTSIDE_OPERATING_COMPANY_SCOPE";
@@ -576,6 +595,14 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.deepEqual(Object.keys(body).sort(), Object.keys(outside).sort(), "the same refusal shape: existence is not revealed");
     }
     refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "ventana" }), 403, OUT);
+    // Naming an Account does not widen reach: a Taylor-only caller still gets only Taylor rows for it, and Ventana stays refused.
+    const ventanaAcct = (await one(`SELECT cp.crm_account_id FROM eos_finance.obligations o JOIN eos_finance.financial_counterparties cp ON cp.tenant_id=o.tenant_id AND cp.id=o.counterparty_id
+      WHERE o.tenant_id=$1 AND o.operating_company_id='ventana' AND cp.crm_account_id IS NOT NULL LIMIT 1`, [TENANT]))?.crm_account_id;
+    if (ventanaAcct) {
+      refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "ventana", crmAccountId: ventanaAcct }), 403, OUT);
+      refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "consolidated", crmAccountId: ventanaAcct }), 403, OUT);
+      assert.ok(ok(await fn(ctrlT, "listObligations", { operatingCompanyId: "taylor", crmAccountId: ventanaAcct })).items.every((o) => o.operatingCompanyId === "taylor"));
+    }
     refused(await fn(ctrlT, "listSettlements", { operatingCompanyId: "consolidated" }), 403, OUT);
     refused(await fn(ctrlT, "readObligation", { obligationId: ventanaObligation }), 404, "OBLIGATION_NOT_FOUND");
     refused(await fn(ctrlT, "readObligation", { obligationId: "obl-does-not-exist" }), 404, "OBLIGATION_NOT_FOUND");
