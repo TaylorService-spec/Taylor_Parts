@@ -38,7 +38,7 @@ Product shape follows the SaaS readiness assessment (PR #2054, Scenario A): mana
 
 | Area | State |
 |---|---|
-| **Repository** | **PUBLIC, and `main` is unprotected.** Proprietary product source is visible to anyone. |
+| **Repository** | **PUBLIC** (and `main` unprotected per #2054). Privacy is deferred to the final delivery stage (O-0, DECISIONS #233); until then nothing sensitive may be committed. |
 | Production platform | The Render/PostgreSQL EOS API runs **nonproduction only**: it refuses a production label. Production is still Firebase. |
 | Exit baseline | 275 entries. Frontend: 19 Firestore, 22 callable, 2 Auth. Server: 166 admin-Firestore, 61 Functions, 3 Auth, 2 admin-app. |
 | Functions exports | 82. Live browser callers remain in Manufacturer, Finance reads, Access/Admin, Reporting, the Scanner set, CRM activity, Performance and Data import. |
@@ -58,7 +58,7 @@ Product shape follows the SaaS readiness assessment (PR #2054, Scenario A): mana
 ### Needed now
 | # | Ruling | Blocks | Recommendation |
 |---|---|---|---|
-| **O-0** | Make the repository private and protect `main` (required checks, CODEOWNERS). This is a repo-admin action. | Commercial use | **Do immediately** |
+| ~~O-0~~ | Repository privacy. **DEFERRED — OWNER DIRECTED (2026-10-15, DECISIONS #233):** visibility is not changed now; it is revisited as a final commercial-release readiness item. It blocks nothing listed here. Secret scanning and the no-credentials / no-sensitive-evidence rules stay in force. | — (final release item) | Deferred |
 | O-1 | End state is zero Firebase, **including identity**. This supersedes FX-AUTH-001. | Everything | Approve |
 | O-2 | Domain model: a **product domain** (not Taylor's corporate domain). Each deployment gets an app + api pair under one registrable domain: `<customer>.<product>` / `<customer>-api.<product>`, or the customer's own `app.` / `api.` (premium). | Phase 1, login UX | Approve |
 | O-9 | Launch model: Scenario A, managed dedicated deployment per customer (#2054 OD-1). | Phase 1 template | Approve |
@@ -268,6 +268,6 @@ Training and operator handoff are a **separate** go-live checklist.
   4. identity cutover readiness;
   5. UAT sign-off and v1.0.
 
-**Critical path:** O-0 → O-1/O-2/O-9 → 0.1/0.2 → 2.1/2.2 → 2.4 → UAT on EOS identity → 6.1 review → O-5 → 6.3/6.4 → v1.0 → 6.5 → 7.
+**Critical path:** O-1/O-2/O-9 → 0.1/0.2 → 2.1/2.2 → 2.4 → UAT on EOS identity → 6.1 review → O-5 → 6.3/6.4 → v1.0 → 6.5 → 7.
 
 Phases 2P, 3, 4 and §5 run in parallel with the critical path and gate criteria 8–11.
