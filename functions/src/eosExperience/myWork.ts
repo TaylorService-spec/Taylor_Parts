@@ -90,11 +90,15 @@ export const pathFor = (kind: string, id: string): string | null => (PATH[kind] 
 interface Item { readonly id: string; readonly kind: string; readonly label: string; readonly detail: string | null; readonly status: string | null;
   readonly severity?: string; readonly priority?: string; readonly path: string | null; readonly action?: unknown }
 interface Section { readonly key: SectionKey; readonly title: string; readonly status: "READY" | "NOT_AUTHORIZED" | "UNAVAILABLE"; readonly reason: string | null;
-  readonly count: number; readonly items: readonly Item[]; readonly summary?: unknown }
+  readonly hasMore: boolean; readonly items: readonly Item[]; readonly summary?: unknown }
 
-const ready = (key: SectionKey, items: Item[], summary?: unknown, count?: number): Section =>
-  ({ key, title: SECTION_TITLES[key], status: "READY", reason: null, count: count ?? items.length, items: items.slice(0, 25), ...(summary === undefined ? {} : { summary }) });
-const notAuthorized = (key: SectionKey, reason: string): Section => ({ key, title: SECTION_TITLES[key], status: "NOT_AUTHORIZED", reason, count: 0, items: [] });
+// DECISIONS #172: a section is a BOUNDED preview of a bounded read, so it carries NO count -- `rows.length` is never a total.
+// `hasMore` is a boolean: the preview was cut at PREVIEW_ROWS, or the source read itself said it stopped short (`sourceTruncated`).
+const PREVIEW_ROWS = 25;
+const ready = (key: SectionKey, items: Item[], summary?: unknown, sourceTruncated = false): Section =>
+  ({ key, title: SECTION_TITLES[key], status: "READY", reason: null, hasMore: sourceTruncated || items.length > PREVIEW_ROWS, items: items.slice(0, PREVIEW_ROWS),
+    ...(summary === undefined ? {} : { summary }) });
+const notAuthorized = (key: SectionKey, reason: string): Section => ({ key, title: SECTION_TITLES[key], status: "NOT_AUTHORIZED", reason, hasMore: false, items: [] });
 
 /** Refusals of the composed read become NOT_AUTHORIZED; anything else is a real fault and propagates. */
 async function guarded(key: SectionKey, fn: () => Promise<Section>): Promise<Section> {
@@ -143,7 +147,7 @@ async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, empl
          LEFT JOIN eos_workforce.employees ow ON ow.tenant_id = o.tenant_id AND ow.id = o.owner_employee_id
          LEFT JOIN eos_workforce.employees ac ON ac.tenant_id = o.tenant_id AND ac.id = o.accountable_employee_id
         WHERE o.tenant_id = $1 AND o.${column} = $2 AND ($3::text[] IS NULL OR ${f.channel} = ANY($3::text[]))
-        ORDER BY o.updated_at DESC LIMIT 25`, [caller.actor.tenantId, employeeId, channels]);
+        ORDER BY o.updated_at DESC LIMIT ${PREVIEW_ROWS + 1}`, [caller.actor.tenantId, employeeId, channels]);
     for (const r of rows) {
       items.push({ id: String(r.id), kind: f.kind, label: String(r.number ?? r.id), detail: r.account_name ?? null, status: r.state ?? null, path: pathFor(f.kind, String(r.id)),
         action: { responsibility: { owner: r.owner_name ?? r.owner_employee_id ?? null, accountable: r.accountable_name ?? r.accountable_employee_id ?? null } } });
@@ -156,6 +160,8 @@ async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, empl
 // ════════════════════ readMyWork ════════════════════
 
 const DISPATCH_CAPABILITIES = ["workOrder.lifecycle.schedule", "workOrder.lifecycle.dispatch", "workOrder.lifecycle.ready"];
+// Open transfers are filtered AFTER listTransferOrders' bounded page, so a full page means more may exist.
+const TRANSFER_READ_ROWS = 200;
 
 export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
   const extra = Object.keys(input ?? {}).filter((k) => !["operatingCompanyId"].includes(k));
@@ -182,7 +188,7 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
           return ready(key, analysis.exceptions.map((x) => ({ id: x.recordId, kind: x.recordKind, label: x.label ?? x.recordId, detail: x.rule, status: x.kind,
             // ONE severity vocabulary on the workspace (ATTENTION / BLOCKING, the AttentionBand's words). An Analysis exception is
             // never "blocking" -- nothing stops -- so it is ATTENTION, and the Analysis rank survives verbatim as `priority`.
-            severity: "ATTENTION", priority: x.severity, path: pathFor(x.recordKind, x.recordId), action: x.action })), undefined, analysis.exceptions.length);
+            severity: "ATTENTION", priority: x.severity, path: pathFor(x.recordKind, x.recordId), action: x.action })));
         }
         case "insights": {
           if (!analysis) return notAuthorized(key, analysisRefusal ?? "no analysis area for this persona");
@@ -196,7 +202,7 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
           if (!analysis) return notAuthorized(key, analysisRefusal ?? "no analysis area for this persona");
           return ready(key, [], { period: analysis.period, scope: analysis.scope, measures: analysis.measures.map((mm) => ({ id: mm.id, name: mm.name, basis: mm.basis, unit: mm.unit,
             status: mm.status, reason: mm.reason ?? null, value: (mm as Record<string, unknown>).value ?? null, aggregate: (mm as Record<string, unknown>).aggregate ?? null,
-            variance: ((mm as Record<string, any>).comparison?.variance) ?? null })) }, analysis.measures.filter((mm) => mm.status === "COMPUTED").length);
+            variance: ((mm as Record<string, any>).comparison?.variance) ?? null })) });
         }
         case "assignedWork": {
           const r = await EOS_WORK_ORDER_OPERATIONS.listMyAssignedWorkOrders(deps as never, caller as never, {}) as { items: readonly Record<string, any>[] };
@@ -206,10 +212,10 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
         }
         case "dispatchQueue": {
           if (!DISPATCH_CAPABILITIES.some((c) => actor.capabilities.has(c))) return notAuthorized(key, `requires ${DISPATCH_CAPABILITIES.join(" or ")}`);
-          const r = await EOS_WORK_ORDER_OPERATIONS.listWorkOrders(deps as never, caller as never, { statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] }) as { items: readonly Record<string, any>[] };
+          const r = await EOS_WORK_ORDER_OPERATIONS.listWorkOrders(deps as never, caller as never, { statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] }) as { items: readonly Record<string, any>[]; truncated?: boolean };
           return ready(key, r.items.map((w) => ({ id: String(w.workOrderId), kind: "workOrder", label: String(w.workOrderNumber ?? w.workOrderId),
             detail: [w.customerName, w.locationName].filter(Boolean).join(" · ") || null, status: String(w.status), path: pathFor("workOrder", String(w.workOrderId)),
-            severity: w.status === "CREATED" ? "ATTENTION" : undefined, action: { assignee: w.assigneeDisplayName ?? null, scheduledStart: w.scheduledStart ?? null } })));
+            severity: w.status === "CREATED" ? "ATTENTION" : undefined, action: { assignee: w.assigneeDisplayName ?? null, scheduledStart: w.scheduledStart ?? null } })), undefined, r.truncated === true);
         }
         case "assignedReorders": {
           const r = await readMyAssignedReorders({ pool }, actor);
@@ -222,10 +228,10 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
             detail: `${x.partId} × ${x.requestedQty}`, status: x.status, severity: x.status === "PENDING_REVIEW" ? "ATTENTION" : undefined, path: pathFor("reorderRequest", x.reorderRequestId) })));
         }
         case "transfers": {
-          const r = await listTransferOrders({ pool }, actor, {}) as { items: readonly Record<string, any>[] };
+          const r = await listTransferOrders({ pool }, actor, { limit: TRANSFER_READ_ROWS }) as { items: readonly Record<string, any>[] };
           return ready(key, r.items.filter((t) => !["COMPLETED", "CANCELLED"].includes(String(t.status))).map((t) => ({ id: String(t.transferOrderId ?? t.id),
             kind: "transferOrder", label: String(t.transferOrderNumber ?? t.transferOrderId ?? t.id), detail: `${t.partId ?? ""} × ${t.quantity ?? ""}`, status: String(t.status),
-            path: pathFor("transferOrder", String(t.id ?? "")) })));
+            path: pathFor("transferOrder", String(t.id ?? "")) })), undefined, r.items.length >= TRANSFER_READ_ROWS);
         }
         case "rental": {
           const ws = await readRentalWorkspace(pool, actor, {});
@@ -257,7 +263,7 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
             `SELECT e.id, e.display_name, e.employment_status FROM eos_workforce.employees e
               WHERE e.tenant_id = $1 AND e.employment_status IN ('ACTIVE', 'CONTRACTOR')
                 AND NOT EXISTS (SELECT 1 FROM eos_workforce.employee_job_role_assignments a WHERE a.tenant_id = e.tenant_id AND a.employee_id = e.id AND a.effective_to IS NULL)
-              ORDER BY e.display_name LIMIT 25`, [actor.tenantId]);
+              ORDER BY e.display_name LIMIT ${PREVIEW_ROWS + 1}`, [actor.tenantId]);
           return ready(key, rows.map((r) => ({ id: String(r.id), kind: "employee", label: String(r.display_name ?? r.id), detail: "active employee with no current Job Role",
             status: String(r.employment_status), severity: "ATTENTION", path: pathFor("employee", String(r.id)) })));
         }

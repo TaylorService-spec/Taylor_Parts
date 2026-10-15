@@ -33,6 +33,13 @@ test("static: every canonical Job Role has exactly one layout; the workspace is 
   }
 });
 
+test("static (DECISIONS #172): a My Work section is a bounded preview -- no count derived from its rows", () => {
+  const s = strip(readFileSync(join(SRC, "eosExperience", "myWork.ts"), "utf8"));
+  assert.doesNotMatch(s, /\bcount\s*[:?]/, "no Section.count");
+  assert.doesNotMatch(s, /exceptions\.length|items\.length\s*\)/, "no row length handed over as a total");
+  assert.match(s, /hasMore: sourceTruncated \|\| items\.length > PREVIEW_ROWS/, "hasMore is a boolean over the preview cut or the source's own truncation");
+});
+
 test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { q, admin, person, call, repo } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: TENANT, prefix: "myw" });
   const ok = (r, what = "") => { assert.equal(r.status, 200, `${what} ${JSON.stringify(r.body).slice(0, 700)}`); return r.body.result; };
@@ -125,11 +132,13 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     const a = ok(await mw(analyst));
     assert.equal(a.persona.key, "reporting-analyst");
     const cat = section(a, "analysisCatalog");
-    assert.equal(cat.count, 37, "the analyst sees the whole governed catalog (items are capped at 25 per section; count is the total)");
+    // DECISIONS #172: 37 governed measures, a 25-row preview -- the section says only that MORE exist, never a total.
+    assert.deepEqual([cat.items.length, cat.hasMore, "count" in cat], [25, true, false], "a paginated section carries hasMore, never a count");
     assert.ok(cat.items.filter((i) => !i.detail.includes("·")).every((i) => i.status === "NO_UNDERLYING_READ"), "and no computed business measure is readable to it");
     const g = ok(await mw(nobody));
     assert.deepEqual([g.persona.key, g.persona.fromJobRole], ["general-employee", false]);
     assert.ok(g.sections.every((s) => s.status !== "READY" || s.items.length === 0), "a person who holds nothing sees nothing of anyone's work");
+    assert.ok([...f.sections, ...a.sections, ...g.sections].every((s) => !("count" in s) && typeof s.hasMore === "boolean"), "no section carries a count (#172)");
   });
 
   await t.test("SEARCH: only what the caller can already read; channel scope and queue reach hold; unreadable kinds are named", async () => {
