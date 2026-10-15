@@ -29,7 +29,7 @@ vi.mock("../src/config/catalogAuthority.js", async (importOriginal) => {
   };
 });
 
-import { executeDataImport, catalogImportRefusal } from "../src/access/dataImportClient.js";
+import { executeDataImport, catalogImportRefusal, equipmentImportRefusal } from "../src/access/dataImportClient.js";
 import AdminDataImport from "../src/modules/administration/AdminDataImport.jsx";
 
 afterEach(() => {
@@ -56,7 +56,15 @@ describe("executeDataImport -- refused client-side before any callable", () => {
     expect(H.calls).toEqual([]);
   });
 
-  it.each(["CUSTOMERS", "EQUIPMENT", "SERVICE_HISTORY"])("%s still executes, with explicit approval", async (entityType) => {
+  it("EQUIPMENT is refused with EQUIPMENT_AUTHORITY_MOVED and no call (Equipment register freeze)", async () => {
+    const res = await executeDataImport("IMP-1", "EQUIPMENT");
+    expect(res).toMatchObject({ ok: false, code: "EQUIPMENT_AUTHORITY_MOVED" });
+    expect(res.message).toMatch(/Equipment Import is unavailable/);
+    expect(H.calls).toEqual([]);
+    expect(equipmentImportRefusal("CUSTOMERS")).toBe(null);
+  });
+
+  it.each(["CUSTOMERS", "SERVICE_HISTORY"])("%s still executes, with explicit approval", async (entityType) => {
     const res = await executeDataImport("IMP-1", entityType);
     expect(res.ok).toBe(true);
     expect(H.calls).toEqual([["executeDataImport", { jobId: "IMP-1", approved: true }]]);
@@ -92,6 +100,13 @@ describe("the screen does not offer what it would refuse", () => {
       expect(H.calls.some(([n]) => n === "executeDataImport")).toBe(false);
     },
   );
+
+  it("approving an EQUIPMENT file shows the register refusal and never invokes the callable", async () => {
+    await stageFile("EQUIPMENT");
+    fireEvent.click(await screen.findByText(/Approve and Import 1 Record/));
+    expect(await screen.findByText(/Equipment Import is unavailable/)).toBeTruthy();
+    expect(H.calls.some(([n]) => n === "executeDataImport")).toBe(false);
+  });
 
   it("a CUSTOMERS file still previews and can be approved", async () => {
     await stageFile("CUSTOMERS");
