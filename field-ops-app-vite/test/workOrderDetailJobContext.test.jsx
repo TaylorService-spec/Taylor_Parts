@@ -39,8 +39,8 @@ vi.mock("../src/hooks/useWorkOrderTechnicianDirectory.js", () => ({
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({
   useWorkOrderTechnicians: () => ({ data: [], loading: false, error: null, retry: () => {} }),
 }));
-vi.mock("../src/access/useWorkOrderPartsPlanCapability.js", () => ({
-  useWorkOrderPartsPlanCapability: () => ({ allowed: false, reason: "NOT_ENABLED" }),
+vi.mock("../src/hooks/useMyWorkOrderCapabilities.js", () => ({
+  useMyWorkOrderCapabilities: () => ({ status: "ready", has: () => false }),
 }));
 vi.mock("../src/hooks/useWorkOrderReadinessContext.js", () => ({ useWorkOrderReadinessContext: () => ({ context: null }) }));
 vi.mock("../src/modules/workOrders/WorkOrderPartsPlanEditor", () => ({ default: () => null }));

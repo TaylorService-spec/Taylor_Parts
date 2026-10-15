@@ -8328,3 +8328,65 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 **Scoped-only holders.** A principal holding `finance.payment.read` only through a company-scoped assignment reads Finance and Analysis finance measures at that company; the `financials.payments` / `analysis.workspace` navigation doors remain flat-earned (the surface catalog admits a scoped door only on a list read), so such a principal has no menu entry. No such principal exists or is proposed.
 
 **Governance (proposed, NOT executed).** A `financeCompanyAccess` Role holding exactly `finance.payment.read`, assigned per company. Until assigned, every Finance user is refused (fail closed): the assignments must be applied before this deploys.
+
+## #233 — OWNER: O-0 repository privacy is DEFERRED to the final delivery stage (2026-10-15)
+
+**Status: DEFERRED — OWNER DIRECTED.**
+
+**Decision.**
+1. Do not change the visibility of `TaylorService-spec/Taylor_Parts` now. Repository privacy (O-0 in the EOS product program plan, `docs/architecture/eos-product-program.md` §3) is revisited as a **final commercial-release readiness item**.
+2. O-0 is **not** a dependency or blocker for:
+   - the Firebase exit (O-1);
+   - EOS Core authority;
+   - the customer deployment architecture (O-9);
+   - the UX redesign;
+   - employee UAT;
+   - nonproduction development.
+
+   All previously authorized work continues.
+3. Strict protections stay in force while the repository is public:
+   - **Never commit** credentials, customer information or sensitive evidence.
+   - The existing secret-scanning and repository security controls stay active, including the `gitleaks` check on pull requests and the Firebase exit and equivalence guards.
+   - Sensitive local evidence stays outside git: the 2026-10-14 cleanup evidence is local only, credentials are in Keeper, and production and migration evidence is in the encrypted restricted-Drive archive.
+4. **Do not reopen this decision** unless a verified security exposure requires immediate action.
+
+**Context.**
+- The SaaS readiness assessment (PR #2054, OD-2) and the product program plan both recommended making the repository private. The Owner has sequenced that to the end of delivery.
+- A 2026-10-14 review classified the committed `executionModeToken` (`functions/authpr4/production-authorization.json`) as a non-secret execution marker; there is no exposure that requires reopening.
+
+## #234 — OWNER: Firebase exit, EOS Core authority, customer deployment model, and the D-1 / D-2 scoping (2026-10-15)
+
+**Status: DECIDED (O-1, O-2, O-9). AUTHORIZED WITH GATES (D-1, D-2).** These are established architectural decisions; do not treat them as open.
+
+**O-1 — Zero Firebase dependency: CONFIRMED target.**
+- EOS eliminates every Firebase dependency: authentication, navigation, business data, security rules and application access.
+- This supersedes the "IDENTITY_ONLY" end state recorded for FX-AUTH-001 in `firebase-exit-ratchet.md` and `firebase-exit-baseline.json`.
+- **Authorized:** read-only inventory, dependency analysis, migration design, and preparation of incremental implementation PRs.
+- **Not authorized:** identity or data cutovers. Each needs its required proof and a separate Owner authorization.
+
+**O-2 — EOS Core authority: CONFIRMED (correction of the product plan's earlier "domain model" wording).**
+- EOS Core owns the domain model **and all governed business authority**, enforced server-side:
+  - business entities and relationships;
+  - identity and the Employee association;
+  - effective permissions and authorization;
+  - record ownership, accountability and assignment;
+  - company and tenant boundaries;
+  - workflows, business rules and approvals;
+  - business data access;
+  - auditability and administrative configuration.
+- **Frontend navigation is not an authorization boundary.**
+- The plan's former O-2 (product domain / `app.` + `api.` hostnames) is renumbered **O-15** and remains open.
+
+**O-9 — Customer deployment model: CONFIRMED.**
+- A shared product codebase with dedicated customer deployments and governed customer/company isolation.
+- Taylor Freezer of Arizona and Ventana keep their distinct operating-company boundaries.
+
+**D-1 — Equipment import: AUTHORIZED to investigate and prepare a fail-closed guard.**
+- No writes to the Firebase (Firestore) equipment store are permitted.
+- Activating anything that affects live imports requires regression proof.
+
+**D-2 — Finance grants: AUTHORIZED for read-only examination only.**
+- Examine actual effective grants, historical provenance and intended role/company scope.
+- No revocation, expansion or change of Finance grants without the exact change set presented for Owner approval.
+
+**Still separately gated:** identity migration, permission/grant changes, financial grants, production deployment and destructive migrations. O-0 remains DEFERRED (#233).

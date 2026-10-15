@@ -12,7 +12,6 @@
       "firestore_client": [
         "field-ops-app-vite/src/access/parityFixtures.ts",
         "field-ops-app-vite/src/access/useReportCapabilities.js",
-        "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
         "field-ops-app-vite/src/auth/employeeSession.js",
         "field-ops-app-vite/src/domain/employees.js",
         "field-ops-app-vite/src/domain/jobActions.js",
@@ -36,7 +35,6 @@
         "field-ops-app-vite/src/access/dataImportClient.js",
         "field-ops-app-vite/src/access/importedServiceHistorySource.js",
         "field-ops-app-vite/src/access/useReportCapabilities.js",
-        "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
         "field-ops-app-vite/src/domain/reporting/reportExecutionSeam.js",
         "field-ops-app-vite/src/domain/reporting/savedReportService.js",
         "field-ops-app-vite/src/firebase/firebase.js",

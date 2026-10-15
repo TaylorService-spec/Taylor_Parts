@@ -265,12 +265,11 @@ export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps,
         </table>
       )}
 
-      {/* Gated on the trusted effective-access feed (access/useWorkOrderPartsPlanCapability), not just
-          on Work Order status: `workOrder.parts.plan` is registered active:false in permissionCatalog.ts
-          (fail-closed for every caller until a separate Owner grant), so rendering the edit affordance
-          on status alone let every admin/dispatcher run a full add/remove/quantity session that could
-          only ever be rejected at Save. This mirrors the fix already shipped for Opportunity write
-          (access/useOpportunityCapabilities.js / opportunityWriteReadiness.js). */}
+      {/* Gated on the caller's own EOS Work Order capabilities (WorkOrderDetailPage passes
+          readMyWorkOrderCapabilities as `capability`), not just on Work Order status: the Save command
+          (setWorkOrderPartsPlan) re-checks `workOrder.parts.plan` from PostgreSQL, so rendering the edit
+          affordance on status alone let a user run a full add/remove/quantity session that could only
+          ever be rejected at Save. Offering follows the same authority that decides the write. */}
       {!editing && editableStatus && !unresolved && canEdit && (
         <Button variant="secondary" onClick={beginEditing}>
           Edit Parts Plan
