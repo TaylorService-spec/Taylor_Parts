@@ -30,8 +30,8 @@ vi.mock("../src/hooks/useWorkOrderTechnicianDirectory.js", () => ({
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({
   useWorkOrderTechnicians: () => ({ data: state.technicians ?? [], loading: false, error: null, retry: () => {} }),
 }));
-vi.mock("../src/access/useWorkOrderPartsPlanCapability.js", () => ({
-  useWorkOrderPartsPlanCapability: () => state.capability,
+vi.mock("../src/hooks/useMyWorkOrderCapabilities.js", () => ({
+  useMyWorkOrderCapabilities: () => state.capability,
 }));
 vi.mock("../src/hooks/useWorkOrderReadinessContext.js", () => ({
   useWorkOrderReadinessContext: () => ({ context: state.readinessContext ?? null }),
@@ -77,7 +77,7 @@ beforeEach(() => {
   state.equipment = { id: "eq1", name: "Soft Serve Freezer 2", manufacturer: "Taylor", model: "C712", serialNumber: "K1122873" };
   state.technicians = [{ id: "techdocidaaaaaaaaaaa", name: "J. Barela" }];
   state.techniciansError = null;
-  state.capability = { allowed: false, reason: "NOT_ENABLED" };
+  state.capability = { status: "ready", has: () => false };
   // Readiness evidence is off by default: the environment where the projection is NOT active is
   // the one every honest-state assertion below is written against.
   state.readinessContext = null;
