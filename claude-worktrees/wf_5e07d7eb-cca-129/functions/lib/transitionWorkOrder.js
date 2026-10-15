@@ -1,0 +1,331 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.transitionWorkOrder = void 0;
+// Work Order Engine v1.2 -- transitionWorkOrder callable.
+//
+// Input is { workOrderId, action } -- action-based, never a raw target
+// status -- so a client can never smuggle an arbitrary transition by
+// naming a status directly; the server alone resolves action -> status
+// via transitionEngine.ts's ACTION_TO_STATUS.
+//
+// Epic 2D (see docs/architecture/ADR-003): after the transaction below
+// commits successfully, triggerInventoryEffects() runs as a strictly
+// post-commit side effect -- it never runs inside the transaction,
+// never blocks or delays the response beyond its own execution, and a
+// failure inside it is caught and logged (inventoryService.ts's own
+// job) rather than ever surfacing as a transitionWorkOrder failure.
+// The Work Order transition itself has already succeeded by the time
+// this runs; nothing about the state machine changes here.
+const https_1 = require("firebase-functions/v2/https");
+const firestore_1 = require("firebase-admin/firestore");
+const callerContext_1 = require("./callerContext");
+const transitionEngine_1 = require("./transitionEngine");
+const collections_1 = require("./constants/collections");
+const inventoryService_1 = require("./inventoryService");
+const workOrderAvailability_1 = require("./workOrderAvailability");
+const auditEventWriter_1 = require("./access/auditEventWriter");
+const workOrderTransitionMath_1 = require("./workOrderTransitionMath");
+const salesOrderFulfillmentWriteBack_1 = require("./salesOrder/salesOrderFulfillmentWriteBack");
+const salesOrderLifecycle_1 = require("./salesOrder/salesOrderLifecycle");
+// Same-technician concurrency guard (site-work r3 item M). The Schedule/Dispatch branches below read the
+// technician's OTHER Work Orders inside this transaction, then write only THIS Work Order doc -- Firestore only
+// conflict-detects on documents actually in a transaction's read/write set, so two concurrent transitions that
+// target two DIFFERENT Work Order docs for the SAME technician each see a pre-commit snapshot with no conflict
+// and both can commit, bypassing the double-booking/overlap guard entirely. A per-technician sentinel document,
+// deliberately read AND written inside the same transaction (mirrors inventoryService.ts's
+// reservationLockRef/RESERVATION_LOCKS_COLLECTION pattern), forces write-write contention: a second concurrent
+// transition for the same technician now collides on this doc and Firestore retries it, so it re-reads the
+// first transition's already-committed result instead of a stale snapshot. The doc carries no scheduling data
+// and is never read for availability -- it exists purely to serialize same-technician transitions.
+const TECH_LOCKS_COLLECTION = "work_order_tech_locks";
+const techLockRef = (db, technicianId) => db.collection(TECH_LOCKS_COLLECTION).doc(technicianId);
+function assertValidInput(data) {
+    const input = data;
+    if (!input || typeof input !== "object") {
+        throw new https_1.HttpsError("invalid-argument", "Request data must be an object.");
+    }
+    if (!input.workOrderId) {
+        throw new https_1.HttpsError("invalid-argument", "workOrderId is required.");
+    }
+    if (!input.action || !(input.action in transitionEngine_1.ACTION_TO_STATUS)) {
+        throw new https_1.HttpsError("invalid-argument", `Unknown action: ${String(input.action)}`);
+    }
+    if (input.action === "Schedule") {
+        if (!input.scheduledStart || !input.scheduledEnd || !input.scheduledTechId) {
+            throw new https_1.HttpsError("invalid-argument", "Schedule requires scheduledStart, scheduledEnd, and scheduledTechId.");
+        }
+        if (input.scheduledEnd <= input.scheduledStart) {
+            throw new https_1.HttpsError("invalid-argument", "scheduledEnd must be after scheduledStart.");
+        }
+    }
+    if (input.action === "Dispatch" && !input.assignedTechId) {
+        throw new https_1.HttpsError("invalid-argument", "Dispatch requires assignedTechId.");
+    }
+    if (input.fulfillmentAccepted !== undefined) {
+        if (input.action !== "Complete") {
+            throw new https_1.HttpsError("invalid-argument", "fulfillmentAccepted is only valid for the Complete action.");
+        }
+        if (!Array.isArray(input.fulfillmentAccepted)) {
+            throw new https_1.HttpsError("invalid-argument", "fulfillmentAccepted must be an array when present.");
+        }
+        for (const entry of input.fulfillmentAccepted) {
+            if (!entry ||
+                typeof entry !== "object" ||
+                typeof entry.ref !== "string" ||
+                entry.ref.trim().length === 0 ||
+                typeof entry.kind !== "string" ||
+                entry.kind.trim().length === 0 ||
+                typeof entry.qty !== "number" ||
+                !Number.isFinite(entry.qty) ||
+                entry.qty <= 0) {
+                throw new https_1.HttpsError("invalid-argument", "Each fulfillmentAccepted entry requires a non-empty ref, non-empty kind, and a positive qty.");
+            }
+            // pass4 B-2: lineId is OPTIONAL (legacy callers/tests omit it and fall back to (ref,kind) matching --
+            // see salesOrderFulfillmentWriteBack.ts) but must be a non-empty string when present.
+            if (entry.lineId !== undefined && (typeof entry.lineId !== "string" || entry.lineId.trim().length === 0)) {
+                throw new https_1.HttpsError("invalid-argument", "fulfillmentAccepted entry lineId must be a non-empty string when present.");
+            }
+            if (entry.kind === "PART") {
+                throw new https_1.HttpsError("invalid-argument", "fulfillmentAccepted cannot declare PART fulfillment; PART actuals are governed inventory usage.");
+            }
+        }
+    }
+}
+exports.transitionWorkOrder = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "Must be signed in.");
+    }
+    assertValidInput(request.data);
+    const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId, fulfillmentAccepted } = request.data;
+    const caller = await (0, callerContext_1.getCallerContext)(request.auth.uid);
+    const actorUid = request.auth.uid;
+    const db = (0, firestore_1.getFirestore)();
+    const woRef = db.collection(collections_1.WORK_ORDERS_COLLECTION).doc(workOrderId);
+    const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(woRef);
+        if (!snap.exists) {
+            throw new https_1.HttpsError("not-found", `No Work Order with id ${workOrderId}`);
+        }
+        const wo = snap.data();
+        const nextStatus = transitionEngine_1.ACTION_TO_STATUS[action];
+        if (!(0, transitionEngine_1.canTransition)(wo.status, nextStatus)) {
+            throw new https_1.HttpsError("failed-precondition", `Invalid transition: ${wo.status} -> ${nextStatus} (action ${action})`);
+        }
+        const isOwnAssignment = caller.role === "technician" && !!wo.assignedTechId && wo.assignedTechId === caller.technicianId;
+        const allowed = (0, transitionEngine_1.getAllowedActions)(wo.status, caller.role, isOwnAssignment);
+        if (!allowed.includes(action)) {
+            throw new https_1.HttpsError("permission-denied", `Role "${caller.role}" may not perform action "${action}" on this Work Order.`);
+        }
+        const payload = {
+            status: nextStatus,
+            updatedAt: firestore_1.FieldValue.serverTimestamp(),
+        };
+        // See this file's header comment on TECH_LOCKS_COLLECTION: read the same-technician sentinel doc up front
+        // (Firestore requires all reads before any write in a transaction) for Schedule/Dispatch so the write below
+        // puts it in this transaction's write set too, forcing contention with any other concurrent transition for
+        // this same technician.
+        let lockRef = null;
+        if (action === "Schedule") {
+            lockRef = techLockRef(db, scheduledTechId);
+            await tx.get(lockRef);
+        }
+        else if (action === "Dispatch") {
+            lockRef = techLockRef(db, assignedTechId);
+            await tx.get(lockRef);
+        }
+        if (action === "Schedule") {
+            const otherSnap = await tx.get(db.collection(collections_1.WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", scheduledTechId));
+            const others = otherSnap.docs.map((d) => {
+                const data = d.data();
+                return { id: d.id, scheduledTechId: data.scheduledTechId, scheduledStart: data.scheduledStart, scheduledEnd: data.scheduledEnd, status: data.status };
+            });
+            const conflict = (0, workOrderAvailability_1.findScheduleConflict)(scheduledTechId, workOrderId, scheduledStart, scheduledEnd, others);
+            if (conflict)
+                throw new https_1.HttpsError("failed-precondition", `Technician ${scheduledTechId} is already scheduled for overlapping Work Order ${conflict}.`);
+            payload.scheduledStart = firestore_1.Timestamp.fromMillis(scheduledStart);
+            payload.scheduledEnd = firestore_1.Timestamp.fromMillis(scheduledEnd);
+            payload.scheduledTechId = scheduledTechId;
+        }
+        else if (action === "Dispatch") {
+            // Double-booking guard: a technician actively assigned to another Work Order cannot be dispatched to this
+            // one. Read (inside the transaction, before the write) the technician's other Work Orders and reject if any
+            // is in an occupying status. This closes the availability gap the legacy dispatch path enforced.
+            const otherSnap = await tx.get(db.collection(collections_1.WORK_ORDERS_COLLECTION).where("assignedTechId", "==", assignedTechId));
+            const others = otherSnap.docs.map((d) => {
+                const data = d.data();
+                return { id: d.id, assignedTechId: data.assignedTechId, status: data.status };
+            });
+            const conflict = (0, workOrderAvailability_1.findDoubleBookingConflict)(assignedTechId, workOrderId, others);
+            if (conflict) {
+                throw new https_1.HttpsError("failed-precondition", `Technician ${assignedTechId} is already assigned to active Work Order ${conflict}; cannot double-book.`);
+            }
+            payload.assignedTechId = assignedTechId;
+            payload.dispatchedAt = firestore_1.FieldValue.serverTimestamp();
+        }
+        else {
+            const timestampField = transitionEngine_1.ACTION_TIMESTAMP_FIELD[action];
+            if (timestampField) {
+                payload[timestampField] = firestore_1.FieldValue.serverTimestamp();
+            }
+        }
+        // P1.1 (Sales->Cash fulfillment spine): Complete on a Sales-Order-linked Work Order writes back accepted
+        // fulfillment onto the SO's lines. Entirely NO-OP when salesOrderId is absent (most Work Orders). The SO
+        // read happens here, in the read phase, before any write below (Firestore transaction rule -- all reads
+        // before any write).
+        let soWriteBack = null;
+        // H19: when the linked Sales Order cannot be resolved, the write-back below is skipped -- Complete still
+        // proceeds (whether a missing SO should instead BLOCK completion is an Owner decision, out of this lane's
+        // scope). Captured here so the skip can be logged and staged as an Audit Event alongside the other writes,
+        // instead of vanishing with no trace (which is exactly what happened live for wo-c713-1,2,4,5 against the
+        // non-existent so-harbor-c713).
+        let soWriteBackSkipped = null;
+        if (action === "Complete" && wo.salesOrderId) {
+            const soRef = db.collection(collections_1.SALES_ORDERS_COLLECTION).doc(wo.salesOrderId);
+            const soSnap = await tx.get(soRef);
+            if (!soSnap.exists) {
+                soWriteBackSkipped = {
+                    salesOrderId: wo.salesOrderId,
+                    reason: `Sales Order ${wo.salesOrderId} does not exist.`,
+                };
+            }
+            else {
+                const so = soSnap.data();
+                const currentLines = Array.isArray(so.lines) ? so.lines : [];
+                // PART lines: derive acceptance exclusively from governed inventorySnapshot, matched by canonical
+                // partId<->SO ref (never sku<->ref). Completion is a role-gated, terminal, governed transition --
+                // reaching it IS the governed act that accepts planned usage as actual unless the tech recorded
+                // otherwise (Owner-ratified Option A). Recorded qtyUsed always overrides the planned quantity;
+                // consumeParts (inventoryService.ts) already consumes qtyUsed ?? qtyPlanned, so this keeps the SO
+                // write-back consistent with what was actually consumed from inventory -- closing the gap where a
+                // WO could complete (a terminal, non-backfillable transition), consume inventory, but credit zero
+                // fulfilledQty, wedging the Sales Order in IN_FULFILLMENT forever.
+                // pass4 B-2: keyed by the snapshot row's OWN lineId when present (so two rows sharing a partId --
+                // seeded from two distinct SO lines, e.g. duplicate-ref lines -- accumulate into SEPARATE acceptances
+                // instead of being merged into one and checked against only the first matching SO line's remainingQty,
+                // which is the false-OVERAGE deadlock this fix closes). Legacy snapshot rows without lineId fall back
+                // to the old partId-only key (unchanged behavior for Work Orders created before this field existed).
+                const derivedByKey = new Map();
+                for (const item of Array.isArray(wo.inventorySnapshot) ? wo.inventorySnapshot : []) {
+                    if (typeof item.partId !== "string" || item.partId.trim().length === 0)
+                        continue;
+                    const qty = Number.isFinite(item.qtyUsed)
+                        ? item.qtyUsed
+                        : Number.isFinite(item.qtyPlanned)
+                            ? item.qtyPlanned
+                            : 0;
+                    if (qty <= 0)
+                        continue;
+                    const lineId = typeof item.lineId === "string" && item.lineId.trim().length > 0 ? item.lineId : undefined;
+                    const key = lineId ? `LINE:${lineId}` : `PART:${item.partId}`;
+                    const existing = derivedByKey.get(key);
+                    derivedByKey.set(key, {
+                        ref: item.partId,
+                        kind: "PART",
+                        qty: (existing?.qty ?? 0) + qty,
+                        ...(lineId ? { lineId } : {}),
+                    });
+                }
+                // Explicit declarations are allowed only for non-PART lines that have no governed inventory actuals.
+                for (const entry of fulfillmentAccepted ?? []) {
+                    const key = typeof entry.lineId === "string" && entry.lineId.trim().length > 0
+                        ? `LINE:${entry.lineId}`
+                        : `${entry.kind}:${entry.ref}`;
+                    derivedByKey.set(key, entry);
+                }
+                const acceptances = [...derivedByKey.values()];
+                if (acceptances.length > 0) {
+                    try {
+                        const { nextLines, unmatched } = (0, salesOrderFulfillmentWriteBack_1.applyFulfillmentAcceptance)(currentLines, acceptances);
+                        // Same silent-skip shape as the missing-SO case above, one level down: applyFulfillmentAcceptance
+                        // (salesOrderFulfillmentWriteBack.ts) deliberately does NOT throw for an acceptance that matches no
+                        // SO line -- by design it returns it in `unmatched` for the caller to decide what that means (its
+                        // own header comment). Previously this caller discarded `unmatched` entirely, so a match-key miss
+                        // (e.g. a part consumed that isn't actually an SO line) vanished the same way the missing-SO case
+                        // did. Log + note it; it does not block Complete or the rest of the write-back.
+                        if (unmatched.length > 0) {
+                            console.error(`transitionWorkOrder: Complete on Work Order ${workOrderId} had ${unmatched.length} fulfillment ` +
+                                `acceptance(s) that matched no line on Sales Order ${wo.salesOrderId}: ` +
+                                unmatched.map((u) => `${u.kind}:${u.ref}${u.lineId ? ` (lineId ${u.lineId})` : ""}`).join(", "));
+                        }
+                        const autoAdvance = so.state === "IN_FULFILLMENT"
+                            ? (0, salesOrderLifecycle_1.checkTransition)(so.state, "ADVANCE", { allLinesFulfilled: (0, salesOrderLifecycle_1.allLinesFulfilled)(nextLines) })
+                            : null;
+                        soWriteBack = {
+                            soRef,
+                            nextLines,
+                            ...(autoAdvance?.ok ? { nextState: autoAdvance.to } : {}),
+                            ...(unmatched.length > 0
+                                ? {
+                                    unmatchedSummary: `${unmatched.length} acceptance(s) matched no SO line: ` +
+                                        unmatched.map((u) => `${u.kind}:${u.ref}${u.lineId ? ` (lineId ${u.lineId})` : ""}`).join(", "),
+                                }
+                                : {}),
+                        };
+                    }
+                    catch (err) {
+                        // Fail-closed (decision #2): never silently cap/clamp/fabricate an overage. Abort the WHOLE
+                        // Complete transaction -- the Work Order does not complete with an un-recorded fulfillment.
+                        const message = err instanceof Error ? err.message : "Sales Order fulfillment write-back failed.";
+                        throw new https_1.HttpsError("failed-precondition", message);
+                    }
+                }
+            }
+        }
+        if (lockRef) {
+            tx.set(lockRef, { technicianId: lockRef.id, touchedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+        }
+        tx.update(woRef, payload);
+        // M9/H19 remediation: EVERY applied transition gets its own Audit Event, staged in this SAME transaction
+        // as the status write above -- not only Complete-with-a-linked-Sales-Order (the salesOrderFulfillmentWriteBack
+        // event below is a separate, additional record about the SO write-back, not a substitute for this one).
+        // Deterministic id (workOrderId + action) -- see workOrderTransitionMath.ts's header comment for why this
+        // is collision-free without a caller-supplied idempotency key.
+        (0, auditEventWriter_1.stageAuditEventWithId)(tx, (0, workOrderTransitionMath_1.transitionWorkOrderAuditId)(workOrderId, action), {
+            actorUid,
+            action: "transitionWorkOrder",
+            targetType: "workOrder",
+            targetId: workOrderId,
+            outcome: "applied",
+            summary: `${caller.role ?? "unknown"} ${actorUid} performed ${action} on Work Order ${workOrderId} (${wo.status} -> ${nextStatus})`,
+        });
+        if (soWriteBack) {
+            tx.update(soWriteBack.soRef, {
+                lines: soWriteBack.nextLines,
+                ...(soWriteBack.nextState ? { state: soWriteBack.nextState } : {}),
+                updatedAt: firestore_1.FieldValue.serverTimestamp(),
+            });
+            (0, auditEventWriter_1.stageAuditEvent)(tx, {
+                actorUid,
+                action: "salesOrderFulfillmentWriteBack",
+                targetType: "salesOrder",
+                targetId: wo.salesOrderId,
+                outcome: "applied",
+                summary: `Work Order ${workOrderId} Complete wrote back fulfillment to Sales Order ${wo.salesOrderId}` +
+                    (soWriteBack.unmatchedSummary ? `; ${soWriteBack.unmatchedSummary}` : ""),
+            });
+        }
+        if (soWriteBackSkipped) {
+            // H19 fix: the write-back is still skipped (whether a missing SO should instead block Complete is an
+            // Owner decision, not this lane's to make) -- but the skip is now observable: a server-side log line
+            // naming both ids, plus a durable Audit Event so a query over auditEvents surfaces every occurrence
+            // instead of relying on someone noticing inventory moved with no matching SO fulfillment.
+            console.error(`transitionWorkOrder: Complete on Work Order ${workOrderId} could not write back fulfillment -- ` +
+                `linked Sales Order ${soWriteBackSkipped.salesOrderId} was not found. ${soWriteBackSkipped.reason}`);
+            (0, auditEventWriter_1.stageAuditEvent)(tx, {
+                actorUid,
+                action: "salesOrderFulfillmentWriteBack",
+                targetType: "salesOrder",
+                targetId: soWriteBackSkipped.salesOrderId,
+                outcome: "uncertain",
+                summary: `Work Order ${workOrderId} Complete skipped Sales Order fulfillment write-back: ${soWriteBackSkipped.reason} The Work Order still completed.`,
+            });
+        }
+        return { id: workOrderId, status: nextStatus };
+    });
+    // Post-commit only -- see header comment. Never throws: a failure
+    // here is inventoryService.ts's own concern (logged in
+    // inventory_sync_status for later retry), not this callable's.
+    await (0, inventoryService_1.triggerInventoryEffects)(result.id, result.status);
+    return result;
+});
+//# sourceMappingURL=transitionWorkOrder.js.map

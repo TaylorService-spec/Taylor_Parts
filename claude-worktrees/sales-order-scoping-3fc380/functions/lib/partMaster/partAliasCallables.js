@@ -1,0 +1,291 @@
+"use strict";
+// Part identifier administration -- thin onCall adapters for the existing trusted alias service
+// (partAliasCommands.ts). Same pattern as partMasterCallables.ts: derive actorUid ONLY from
+// request.auth.uid (NEVER request.data), forward request.data into the service, and map thrown
+// service errors to HttpsError through a sanitized taxonomy. ALL real logic -- capability
+// enforcement, validation, idempotency, versioning, conflict handling, audit, single-transaction --
+// lives INSIDE the command service. These adapters add NO authority.
+//
+// WHY THESE EXIST. partAliasCommands.ts has been written, unit-tested, and unreachable: no onCall
+// adapter was ever exported, so no browser could call it, and firestore.rules closes `part_aliases`
+// to every principal including admin. The Part Master "Barcodes & Identifiers" section rendered
+// UNAVAILABLE and named those exact gaps. This closes the transport gap. It does not open the Rules
+// one, and does not need to: a callable runs on the Admin SDK, which Rules do not govern.
+//
+// ================== NO NEW CAPABILITY ==================
+//
+// Identifier administration is governed by `inventory.catalog.manage` -- the capability the alias
+// commands ALREADY enforce, per the recorded O-gate direction ("reused per O-gate direction, no new
+// capability", partAliasCommands.ts header). It is registered ACTIVE and is already granted.
+//
+// The READ (listPartAliases) and the scan-to-test PROBE are gated on that same capability rather
+// than on a read capability, and that is a deliberate decision rather than an oversight:
+//
+//   - This is an ADMINISTRATION surface. The people who should see a Part's identifier list are the
+//     people who administer identifiers; there is no separate audience for it.
+//   - Seeing INACTIVE identifiers is load-bearing for the write path. Re-adding a deactivated
+//     identifier is rejected as a conflict, and an administrator who cannot see the inactive record
+//     cannot understand the refusal. Gating the list more loosely than the write would let someone
+//     see conflicts they cannot resolve; gating it more tightly would hide the reason for a refusal
+//     they just hit.
+//   - `inventory.catalog.read` exists but is scoped to the Manufacturer catalog projection and is
+//     registered INERT. Reusing it would be a synonym for something it does not mean.
+//
+// The alternative -- a dedicated `inventory.catalog.alias.read` -- is recorded here as the option
+// NOT taken, so the choice is visible if the audience ever splits.
+//
+// ================== NOT DEPLOYED, NOT ACTIVATED ==================
+//
+// Exporting a callable is not deployment, and this slice authorizes neither. The client transport
+// additionally fails closed behind PART_IDENTIFIER_TRANSPORT_READY, which is false in every
+// environment. Classification: RELEASE CANDIDATE -- NOT USER-OPERABLE.
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolveScannedPartIdentifierCallable = exports.probePartAliasCallable = exports.listPartAliasesCallable = exports.reactivatePartAliasCallable = exports.deactivatePartAliasCallable = exports.createPartAliasCallable = void 0;
+exports.mapError = mapError;
+const https_1 = require("firebase-functions/v2/https");
+const firestore_1 = require("firebase-admin/firestore");
+const partAliasCommands_js_1 = require("./partAliasCommands.js");
+const partMasterCommands_js_1 = require("./partMasterCommands.js");
+const partMasterRepository_js_1 = require("./partMasterRepository.js");
+const partAliasReadService_js_1 = require("./partAliasReadService.js");
+const partAliasScanResolver_js_1 = require("./partAliasScanResolver.js");
+const validation_js_1 = require("./validation.js");
+const effectiveAccessFeed_js_1 = require("../access/effectiveAccessFeed.js");
+const REGION = { region: "us-central1" };
+/**
+ * Sanitized error -> HttpsError, with the DOMAIN CODE carried in `details`.
+ *
+ * There are more distinct outcomes here than there are HttpsError codes to carry them, and three of
+ * them need different words in the UI: a version conflict is not a malformed request, an
+ * already-owned identifier is not a validation failure, and neither is a permission denial. Without
+ * the detail all three arrive as one generic message and the surface has to guess. `details` is the
+ * supported channel for exactly this.
+ *
+ * Messages stay GENERIC PER TYPE -- no internal ids, versions, or existence facts leak past the
+ * boundary, matching partMasterCallables.ts's taxonomy.
+ */
+function mapError(err) {
+    if (err instanceof https_1.HttpsError)
+        return err;
+    if (err instanceof partMasterCommands_js_1.InvalidInputError) {
+        return new https_1.HttpsError("invalid-argument", "The request is missing or has invalid fields.", "INVALID");
+    }
+    if (err instanceof partMasterCommands_js_1.UnauthorizedActorError) {
+        return new https_1.HttpsError("permission-denied", "You are not authorized to manage part identifiers.", "DENIED");
+    }
+    if (err instanceof partMasterCommands_js_1.NotFoundError) {
+        return new https_1.HttpsError("not-found", "That record no longer exists.", "NOT_FOUND");
+    }
+    if (err instanceof partMasterCommands_js_1.AlreadyExistsError) {
+        // The one the surface most needs to distinguish: the identifier is taken. The command
+        // distinguishes "inactive on this part" from "owned by another part" in its own message, which
+        // is not repeated here -- the client asks the list, which it is authorized to read.
+        return new https_1.HttpsError("already-exists", "That identifier is already recorded.", "ALIAS_CONFLICT");
+    }
+    if (err instanceof partMasterCommands_js_1.VersionConflictError) {
+        return new https_1.HttpsError("aborted", "This identifier changed since it was loaded. Reload and retry.", "VERSION_CONFLICT");
+    }
+    if (err instanceof partMasterCommands_js_1.IdempotencyConflictError) {
+        return new https_1.HttpsError("aborted", "That idempotency key was already used for a different request.", "IDEMPOTENCY_CONFLICT");
+    }
+    if (err instanceof partMasterRepository_js_1.MalformedStoredRecordError) {
+        return new https_1.HttpsError("internal", "The request could not be completed.", "INTERNAL");
+    }
+    return new https_1.HttpsError("internal", "The request could not be completed.", "INTERNAL");
+}
+function requireAuth(request) {
+    if (!request.auth || typeof request.auth.uid !== "string" || request.auth.uid.length === 0) {
+        throw new https_1.HttpsError("unauthenticated", "Must be signed in.");
+    }
+    return request.auth.uid;
+}
+function asObject(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new https_1.HttpsError("invalid-argument", "Request data must be an object.");
+    }
+    return data;
+}
+/**
+ * Capability gate for the two READ paths.
+ *
+ * The write commands enforce this themselves (and audit the denial); a read has no command behind
+ * it, so the adapter is where it has to happen. A THROWING resolver is a denial, never an allow --
+ * the same fail-closed posture requireOpportunityWrite uses.
+ */
+async function requireCatalogManage(uid) {
+    let allowed = false;
+    try {
+        const { decisions } = await (0, effectiveAccessFeed_js_1.resolveEffectiveAccess)({
+            principalUid: uid,
+            permissionIds: [partMasterCommands_js_1.CAP_CATALOG_MANAGE],
+        });
+        allowed = decisions[partMasterCommands_js_1.CAP_CATALOG_MANAGE] === true;
+    }
+    catch (err) {
+        console.error(`[requireCatalogManage] capability resolution failed for ${partMasterCommands_js_1.CAP_CATALOG_MANAGE}`, err);
+        allowed = false;
+    }
+    if (!allowed) {
+        throw new https_1.HttpsError("permission-denied", "You are not authorized to manage part identifiers.", "DENIED");
+    }
+}
+// Phase G. The SEPARATE, narrower gate for scan RESOLUTION.
+//
+// Deliberately NOT requireCatalogManage. Alias administration and alias lookup have different
+// audiences: a warehouse user scanning a box to see what a part is needs to resolve an identifier,
+// and gating that on `inventory.catalog.manage` would hand every scanning user the authority to
+// create, deactivate and reactivate identifiers. Broadening a write capability to serve a read is
+// exactly the widening the capability catalog exists to prevent.
+//
+// `inventory.catalog.alias.read` is registered INERT and granted to nobody, so this denies for
+// every principal today. That is the correct state until activation is separately authorized -- and
+// it denies as DENIED, which the client renders as a refusal rather than as "no such part".
+const CAP_ALIAS_READ = "inventory.catalog.alias.read";
+async function requireAliasRead(uid) {
+    let allowed = false;
+    try {
+        const { decisions } = await (0, effectiveAccessFeed_js_1.resolveEffectiveAccess)({
+            principalUid: uid,
+            permissionIds: [CAP_ALIAS_READ],
+        });
+        allowed = decisions[CAP_ALIAS_READ] === true;
+    }
+    catch (err) {
+        console.error(`[requireAliasRead] capability resolution failed for ${CAP_ALIAS_READ}`, err);
+        allowed = false;
+    }
+    if (!allowed) {
+        throw new https_1.HttpsError("permission-denied", "You are not authorized to look up part identifiers.", "DENIED");
+    }
+}
+function requirePartId(value) {
+    const parsed = (0, validation_js_1.parsePartId)(value);
+    if (!parsed.valid)
+        throw new https_1.HttpsError("invalid-argument", "A valid partId is required.", "INVALID");
+    return parsed.value;
+}
+// -------------------------------------------------------------------- writes
+exports.createPartAliasCallable = (0, https_1.onCall)(REGION, async (request) => {
+    const actorUid = requireAuth(request);
+    const d = asObject(request.data);
+    try {
+        // Every field is forwarded as-is: the command owns alias-type membership, value normalization,
+        // manufacturer parsing, and the effective-date ordering rule. Re-checking any of them here
+        // would create a second, drifting validator.
+        return await (0, partAliasCommands_js_1.createPartAlias)({
+            actorUid,
+            idempotencyKey: d.idempotencyKey,
+            partId: d.partId,
+            aliasType: d.aliasType,
+            rawValue: d.rawValue,
+            ...(d.source !== undefined ? { source: d.source } : {}),
+            ...(d.manufacturerId !== undefined ? { manufacturerId: d.manufacturerId } : {}),
+            ...(d.effectiveFrom !== undefined ? { effectiveFrom: d.effectiveFrom } : {}),
+            ...(d.effectiveTo !== undefined ? { effectiveTo: d.effectiveTo } : {}),
+        });
+    }
+    catch (err) {
+        throw mapError(err);
+    }
+});
+exports.deactivatePartAliasCallable = (0, https_1.onCall)(REGION, async (request) => {
+    const actorUid = requireAuth(request);
+    const d = asObject(request.data);
+    try {
+        return await (0, partAliasCommands_js_1.deactivatePartAlias)({
+            actorUid,
+            idempotencyKey: d.idempotencyKey,
+            aliasId: d.aliasId,
+            expectedVersion: d.expectedVersion,
+        });
+    }
+    catch (err) {
+        throw mapError(err);
+    }
+});
+// Reactivation is exposed because deactivation is not a delete. Without it, an identifier
+// deactivated in error is unrecoverable through the UI, and the create path deliberately refuses to
+// silently reactivate -- so the ONLY governed way back is this command.
+exports.reactivatePartAliasCallable = (0, https_1.onCall)(REGION, async (request) => {
+    const actorUid = requireAuth(request);
+    const d = asObject(request.data);
+    try {
+        return await (0, partAliasCommands_js_1.reactivatePartAlias)({
+            actorUid,
+            idempotencyKey: d.idempotencyKey,
+            aliasId: d.aliasId,
+            expectedVersion: d.expectedVersion,
+        });
+    }
+    catch (err) {
+        throw mapError(err);
+    }
+});
+// -------------------------------------------------------------------- reads
+exports.listPartAliasesCallable = (0, https_1.onCall)(REGION, async (request) => {
+    const actorUid = requireAuth(request);
+    const d = asObject(request.data);
+    await requireCatalogManage(actorUid);
+    try {
+        return await (0, partAliasReadService_js_1.listPartAliases)((0, firestore_1.getFirestore)(), requirePartId(d.partId));
+    }
+    catch (err) {
+        throw mapError(err);
+    }
+});
+/**
+ * SCAN-TO-TEST. Resolves a scanned or typed identifier exactly as the scanner would, and reports
+ * what the system sees -- without changing anything.
+ *
+ * It is the one honest way to answer "did I register this correctly?", and it uses the SAME
+ * resolver the real scan path uses (resolvePartAlias). A second, test-only matcher would be able to
+ * agree with the administrator and disagree with the scanner, which is the whole failure this
+ * exists to prevent.
+ *
+ * Returns the resolver's own outcome vocabulary unchanged: FOUND / INACTIVE / NOT_FOUND /
+ * MALFORMED / CONFLICT. INACTIVE is deliberately not collapsed into NOT_FOUND -- "registered but
+ * switched off" and "never registered" call for different fixes.
+ */
+exports.probePartAliasCallable = (0, https_1.onCall)(REGION, async (request) => {
+    const actorUid = requireAuth(request);
+    const d = asObject(request.data);
+    await requireCatalogManage(actorUid);
+    try {
+        return await (0, partAliasCommands_js_1.resolvePartAlias)({
+            aliasType: d.aliasType,
+            rawValue: d.rawValue,
+            ...(d.manufacturerId !== undefined ? { manufacturerId: d.manufacturerId } : {}),
+        });
+    }
+    catch (err) {
+        throw mapError(err);
+    }
+});
+/**
+ * BARCODE / ALIAS LOOKUP (Phase G). Resolve one scanned or typed identifier to the Part it points
+ * to, across every alias type the value could plausibly be.
+ *
+ * READ-ONLY: no transaction, no write, no lifecycle change, no audit event (reads are not audited
+ * anywhere in this platform's model). It returns the resolver's own vocabulary unchanged --
+ * FOUND / INACTIVE / AMBIGUOUS / NOT_FOUND / MALFORMED -- because each calls for a different fix
+ * and collapsing any pair of them would send an operator to the wrong person.
+ *
+ * It does NOT return the Part record. Reading the Part is separately governed by firestore.rules,
+ * and the client performs that read under its own authority; handing back Part fields here would
+ * launder one authority through another.
+ */
+exports.resolveScannedPartIdentifierCallable = (0, https_1.onCall)(REGION, async (request) => {
+    const actorUid = requireAuth(request);
+    const d = asObject(request.data);
+    await requireAliasRead(actorUid);
+    try {
+        return await (0, partAliasScanResolver_js_1.resolveScannedPartIdentifier)({
+            rawValue: d.rawValue,
+            ...(d.manufacturerId !== undefined ? { manufacturerId: d.manufacturerId } : {}),
+        });
+    }
+    catch (err) {
+        throw mapError(err);
+    }
+});
+//# sourceMappingURL=partAliasCallables.js.map

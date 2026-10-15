@@ -1,0 +1,85 @@
+"use strict";
+// Enterprise Inventory -- Cycle Count operating authority: pure, deterministic request-shape
+// validation. No Firebase, no persistence, no stock math (mirrors transferOrderValidation.ts).
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isPlainObject = isPlainObject;
+exports.isNonEmptyString = isNonEmptyString;
+exports.validateCycleCountLocationRef = validateCycleCountLocationRef;
+exports.validateCreateCycleCountInput = validateCreateCycleCountInput;
+exports.validateSubmitCycleCountInput = validateSubmitCycleCountInput;
+exports.validateReconcileCycleCountInput = validateReconcileCycleCountInput;
+const cycleCountTypes_js_1 = require("./cycleCountTypes.js");
+function isPlainObject(v) {
+    return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function isNonEmptyString(v) {
+    return typeof v === "string" && v.trim() !== "";
+}
+function validateCycleCountLocationRef(ref) {
+    if (!isPlainObject(ref))
+        return null;
+    const keys = Object.keys(ref);
+    if (keys.length !== 2 || !keys.every((k) => k === "type" || k === "locationId"))
+        return null;
+    if (typeof ref.type !== "string" || !cycleCountTypes_js_1.CYCLE_COUNT_LOCATION_TYPES.includes(ref.type))
+        return null;
+    if (!isNonEmptyString(ref.locationId))
+        return null;
+    return { type: ref.type, locationId: ref.locationId };
+}
+// Validates a createCycleCount request SHAPE, bound to the authoritative Part's identity/trackingMode.
+// expectedQuantity/expectedSerialNumbers are NEVER accepted from input -- the command computes them
+// server-side from the ledger/registry authority; this validator only shapes location/partId/idempotencyKey.
+function validateCreateCycleCountInput(input, authority) {
+    if (!isPlainObject(input))
+        return { valid: false, value: null, reason: "not_object" };
+    if (!isNonEmptyString(input.partId) || input.partId !== authority.part.partId) {
+        return { valid: false, value: null, reason: "part_mismatch" };
+    }
+    if (!cycleCountTypes_js_1.CYCLE_COUNT_SUPPORTED_TRACKING_MODES.includes(authority.part.trackingMode)) {
+        return { valid: false, value: null, reason: "tracking_mode_unsupported" };
+    }
+    const trackingMode = authority.part.trackingMode;
+    const location = validateCycleCountLocationRef(input.location);
+    if (location === null)
+        return { valid: false, value: null, reason: "location_invalid" };
+    if (!isNonEmptyString(input.idempotencyKey))
+        return { valid: false, value: null, reason: "idempotency_key_invalid" };
+    return {
+        valid: true,
+        value: { partId: authority.part.partId, trackingMode, location, idempotencyKey: input.idempotencyKey },
+        reason: null,
+    };
+}
+// Validates a submitCycleCount request against the authoritative stored order's trackingMode.
+function validateSubmitCycleCountInput(input, trackingMode) {
+    if (!isPlainObject(input))
+        return { valid: false, value: null, reason: "not_object" };
+    if (trackingMode === "NONE") {
+        if (input.countedSerialNumbers !== undefined)
+            return { valid: false, value: null, reason: "unknown_field" };
+        if (typeof input.countedQuantity !== "number" || !Number.isInteger(input.countedQuantity) || input.countedQuantity < 0) {
+            return { valid: false, value: null, reason: "counted_quantity_invalid" };
+        }
+        return { valid: true, value: { countedQuantity: input.countedQuantity }, reason: null };
+    }
+    // SERIAL
+    if (input.countedQuantity !== undefined)
+        return { valid: false, value: null, reason: "unknown_field" };
+    if (!Array.isArray(input.countedSerialNumbers) || !input.countedSerialNumbers.every((s) => isNonEmptyString(s))) {
+        return { valid: false, value: null, reason: "counted_serial_numbers_invalid" };
+    }
+    const serials = input.countedSerialNumbers;
+    if (new Set(serials).size !== serials.length)
+        return { valid: false, value: null, reason: "counted_serial_numbers_duplicate" };
+    return { valid: true, value: { countedSerialNumbers: [...serials] }, reason: null };
+}
+function validateReconcileCycleCountInput(input) {
+    if (!isPlainObject(input))
+        return { valid: false, value: null, reason: "not_object" };
+    if (input.reason !== undefined && !isNonEmptyString(input.reason)) {
+        return { valid: false, value: null, reason: "reason_invalid" };
+    }
+    return { valid: true, value: { reason: input.reason !== undefined ? input.reason : null }, reason: null };
+}
+//# sourceMappingURL=cycleCountValidation.js.map
