@@ -17,7 +17,6 @@ vi.mock("../src/hooks/useReorderRequests", () => {
     useReorderRequestById: () => ({ data: null, loading: false }),
   };
 });
-vi.mock("../src/hooks/useAssignableEmployees", () => ({ useAssignableEmployees: () => ({ employees: [] }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrders", () => ({ usePurchaseOrderForReorderRequest: () => ({ data: null, loading: false }) }));
 vi.mock("../src/hooks/useReorderPurchaseOrderVoids", () => ({ useReorderPurchaseOrderVoid: () => ({ data: null, loading: false }) }));
 vi.mock("../src/domain/inventoryReorderRequests", () => ({

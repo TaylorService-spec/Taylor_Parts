@@ -1,6 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useAssignableEmployees } from "../../hooks/useAssignableEmployees";
 import { Button } from "../ui/primitives";
+
+// Firebase exit (O-1, DECISIONS #234): the picker no longer has a Firestore default employee source
+// (the deleted Firestore-backed default hook read the `employees` collection directly). Every caller injects
+// its governed EOS source (today: useReorderAssignmentTargets). A caller that forgets to inject one gets an
+// honest, EMPTY, fail-closed picker -- never a silent Firestore read and never a guessed list.
+export const NO_EMPLOYEE_SOURCE_ERROR = "No governed employee source is configured for this picker.";
+function useNoEmployeeSource() {
+  return { employees: [], loading: false, error: NO_EMPLOYEE_SOURCE_ERROR, securityRoleWarningCount: 0 };
+}
 
 // Phase 3 -- Platform Assignment Foundation (docs/specifications/
 // employee-foundation.md, PR 4: EmployeeAssignmentPicker Foundation).
@@ -28,8 +36,8 @@ export function filterEmployeesBySearch(employees, searchText) {
 }
 
 // Props:
-//   requiredOperationalRole -- passed straight through to
-//     useAssignableEmployees(); an Employee only appears as selectable
+//   requiredOperationalRole -- passed straight through to the
+//     injected useEmployees source; an Employee only appears as selectable
 //     when their operationalRoles array-contains this value.
 //   requireLinkedUser -- passed straight through; defaults to true
 //     (matching the hook's own default) since every real assignment
@@ -41,13 +49,14 @@ export function filterEmployeesBySearch(employees, searchText) {
 //     exactly this shape, no department/companyId/job-title field,
 //     matching the Phase 3 schema this component is built against.
 //   disabled, label, placeholder -- standard form-field ergonomics.
-//   useEmployees -- OPTIONAL employee-source hook with useAssignableEmployees' result shape. A workflow whose
-//     command owns its own eligibility (Reorder assignment: hooks/useReorderAssignmentTargets.js, the governed EOS
-//     read) injects it; every other caller keeps useAssignableEmployees. Must be stable for the component's lifetime.
+//   useEmployees -- REQUIRED employee-source hook returning { employees, loading, error, securityRoleWarningCount }.
+//     The workflow whose command owns its own eligibility injects its governed EOS read (Reorder assignment:
+//     hooks/useReorderAssignmentTargets.js). Without one the picker is empty and says so (fail closed). Must be
+//     stable for the component's lifetime.
 export default function EmployeeAssignmentPicker({
   requiredOperationalRole,
   requireLinkedUser = true,
-  useEmployees = useAssignableEmployees,
+  useEmployees = useNoEmployeeSource,
   selectedEmployeeId,
   onSelect,
   disabled = false,

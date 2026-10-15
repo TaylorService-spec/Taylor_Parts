@@ -17,7 +17,6 @@
         "field-ops-app-vite/src/domain/jobActions.js",
         "field-ops-app-vite/src/firebase/collectionStore.js",
         "field-ops-app-vite/src/firebase/firebase.js",
-        "field-ops-app-vite/src/hooks/useAssignableEmployees.js",
         "field-ops-app-vite/src/hooks/useCurrentTechnician.js",
         "field-ops-app-vite/src/hooks/useEmployeeDirectory.js",
         "field-ops-app-vite/src/hooks/useFirestoreCollection.js",

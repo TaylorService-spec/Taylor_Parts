@@ -23,7 +23,6 @@ vi.mock("../src/hooks/useReorderRequests", () => {
     useReviewedRequestsHistory: () => ({ data: [], loading: false, error: null }),
   };
 });
-vi.mock("../src/hooks/useAssignableEmployees", () => ({ useAssignableEmployees: () => ({ employees: [] }) }));
 vi.mock("../src/domain/inventoryReorderRequests", () => ({ assignReorderRequest: vi.fn(), getDisplayQty: () => 3 }));
 // Spy: capture the resolveName PartsManagerHome passes into its Inventory Health panel.
 const capturedIHP = [];

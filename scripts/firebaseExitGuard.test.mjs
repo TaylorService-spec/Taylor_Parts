@@ -1013,7 +1013,9 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // Firebase exit F1 dead-code removal (2026-10-09): the unimported useGovernedCapabilities hook is deleted -- 20 -> 19.
     // Firebase exit Lane B (2026-10-15): the Work Order parts-plan edit gate reads EOS readMyWorkOrderCapabilities;
     // access/useWorkOrderPartsPlanCapability.js (Firestore users read + feed callable) is deleted -- 19 -> 18.
-    "frontend.firestore_client": 18,
+    // Firebase exit Lane B slice 2 (2026-10-15): hooks/useAssignableEmployees.js (Firestore employees onSnapshot) is
+    // deleted; EmployeeAssignmentPicker requires its injected governed EOS source -- 18 -> 17.
+    "frontend.firestore_client": 17,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
@@ -1057,5 +1059,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 266); // 268 -> 266: Firebase exit Lane B (2026-10-15), the Work Order parts-plan capability hook, one client file in two categories; 270 -> 268: Firebase retirement F3b (2026-10-11), one file in two server categories; 271 -> 270: Firebase retirement F3a (2026-10-11), one server entry; 273 -> 271: Firebase retirement F4 (2026-10-11), one file in two server categories; 275 -> 273: Firebase retirement F2 (2026-10-10), two server entries; 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
+  assert.equal(total, 265); // 266 -> 265: Firebase exit Lane B slice 2 (2026-10-15), useAssignableEmployees, one client entry; 268 -> 266: Firebase exit Lane B (2026-10-15), the Work Order parts-plan capability hook, one client file in two categories; 270 -> 268: Firebase retirement F3b (2026-10-11), one file in two server categories; 271 -> 270: Firebase retirement F3a (2026-10-11), one server entry; 273 -> 271: Firebase retirement F4 (2026-10-11), one file in two server categories; 275 -> 273: Firebase retirement F2 (2026-10-10), two server entries; 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
 });
