@@ -19,6 +19,8 @@ on:
       - "field-ops-app-vite/src/modules/workOrders/**"
       - "field-ops-app-vite/test/workOrderPartsPlan.test.mjs"
       - "field-ops-app-vite/test/workOrderPartsPlanEditor.test.jsx"
+      - "field-ops-app-vite/test/workOrderDetailPartsPlanEosGate.test.jsx"
+      - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
       - ".github/workflows/wo-parts-plan-tests.yml"
   push:
     branches: [main]
@@ -34,6 +36,8 @@ on:
       - "field-ops-app-vite/src/modules/workOrders/**"
       - "field-ops-app-vite/test/workOrderPartsPlan.test.mjs"
       - "field-ops-app-vite/test/workOrderPartsPlanEditor.test.jsx"
+      - "field-ops-app-vite/test/workOrderDetailPartsPlanEosGate.test.jsx"
+      - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
       - ".github/workflows/wo-parts-plan-tests.yml"
   workflow_dispatch:
 
@@ -100,6 +104,10 @@ jobs:
 
       - name: WO parts plan editor component tests
         run: npx vitest run test/workOrderPartsPlanEditor.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: WO parts plan edit gate reads EOS capabilities (no Firebase)
+        run: npx vitest run test/workOrderDetailPartsPlanEosGate.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint
