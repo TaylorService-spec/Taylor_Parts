@@ -22,7 +22,8 @@ Browser / (later) mobile app
   -> PostgreSQL       sole system of record (business data, identity, sessions, audit)
 ```
 
-- **EOS controls:** identity, sessions, navigation, capabilities, company boundaries, entitlements, audit and all data.
+- **EOS Core controls (O-2), enforced server-side:** the domain model, identity and Employee association, sessions, effective permissions, record ownership and assignment, company and tenant boundaries, workflows and approvals, entitlements, business data access, audit and administrative configuration.
+- **Navigation is a projection of that authority, not an authorization boundary.**
 - **Vercel serves files.** It decides nothing and holds no credentials.
 - **Firebase: zero.** No Auth, Firestore, Functions, Hosting, Storage or CI dependency.
 - **One product, many deployments.** Every customer runs the same versioned release from a per-customer template:
@@ -59,9 +60,10 @@ Product shape follows the SaaS readiness assessment (PR #2054, Scenario A): mana
 | # | Ruling | Blocks | Recommendation |
 |---|---|---|---|
 | ~~O-0~~ | Repository privacy. **DEFERRED — OWNER DIRECTED (2026-10-15, DECISIONS #233):** visibility is not changed now; it is revisited as a final commercial-release readiness item. It blocks nothing listed here. Secret scanning and the no-credentials / no-sensitive-evidence rules stay in force. | — (final release item) | Deferred |
-| O-1 | End state is zero Firebase, **including identity**. This supersedes FX-AUTH-001. | Everything | Approve |
-| O-2 | Domain model: a **product domain** (not Taylor's corporate domain). Each deployment gets an app + api pair under one registrable domain: `<customer>.<product>` / `<customer>-api.<product>`, or the customer's own `app.` / `api.` (premium). | Phase 1, login UX | Approve |
-| O-9 | Launch model: Scenario A, managed dedicated deployment per customer (#2054 OD-1). | Phase 1 template | Approve |
+| O-1 | End state is zero Firebase: authentication, navigation, business data, security rules and application access. Supersedes FX-AUTH-001. Identity and data cutovers each need proof plus a separate Owner authorization. | Everything | **DECIDED (2026-10-15, #234)** |
+| O-2 | **EOS Core authority.** EOS Core owns the domain model and **all governed business authority**, enforced server-side: entities and relationships; identity and Employee association; effective permissions; record ownership, accountability and assignment; company and tenant boundaries; workflows, rules and approvals; business data access; audit and administrative configuration. **Frontend navigation is not an authorization boundary.** | Phases 2–6 | **DECIDED (2026-10-15, #234)** |
+| O-9 | Shared product codebase; dedicated customer deployments; governed customer/company isolation. Taylor Freezer of Arizona and Ventana keep distinct operating-company boundaries. | Phase 1 template | **DECIDED (2026-10-15, #234)** |
+| O-15 | (Formerly listed as O-2.) Product domain: each deployment gets an app + api pair under one registrable domain: `<customer>.<product>` / `<customer>-api.<product>`, or the customer's own `app.` / `api.` (premium). | Phase 1.2, login UX | Approve (open) |
 
 ### Needed before identity cutover
 | # | Ruling | Recommendation |
@@ -103,7 +105,7 @@ Size: S ≈ 1 PR, M ≈ 2–4 PRs, L ≈ 5+ PRs or a full capability lifecycle.
 | WP | Scope | Size | Tier |
 |---|---|---|---|
 | 1.1 | **Production EOS Blueprint, parameterized per customer:** API, PostgreSQL, env, origins, brand. Production fences replace the blanket production refusal. Taylor is deployment #1 (#2054 P1-01). | M | A (design/code) + O-9 |
-| 1.2 | Domains for nonprod and Taylor. Add DNS records (app + api, **DNS only / grey cloud**, CAA allows Let's Encrypt). **Existing Firebase records are left untouched until 7.3.** | S | O-2 → Op |
+| 1.2 | Domains for nonprod and Taylor. Add DNS records (app + api, **DNS only / grey cloud**, CAA allows Let's Encrypt). **Existing Firebase records are left untouched until 7.3.** | S | O-15 → Op |
 | 1.3 | Render env per deployment: `EOS_ALLOWED_ORIGINS`, `EOS_AUTH_COOKIE_SAMESITE=Strict`, trusted-proxy hops measured | S | Op |
 | 1.4 | `vercel.json` hardening: CSP `connect-src` limited to the deployment's api host, security headers, only public env vars | S | A |
 | 1.5 | Confirm production is served by Vercel, then remove `hosting` from `firebase.json` and disable Firebase Hosting (DNS stays until 7.3) | S | A + Op |
@@ -268,6 +270,6 @@ Training and operator handoff are a **separate** go-live checklist.
   4. identity cutover readiness;
   5. UAT sign-off and v1.0.
 
-**Critical path:** O-1/O-2/O-9 → 0.1/0.2 → 2.1/2.2 → 2.4 → UAT on EOS identity → 6.1 review → O-5 → 6.3/6.4 → v1.0 → 6.5 → 7.
+**Critical path:** (O-1/O-2/O-9 decided 2026-10-15) → O-15 for domains → 0.1/0.2 → 2.1/2.2 → 2.4 → UAT on EOS identity → 6.1 review → O-5 → 6.3/6.4 → v1.0 → 6.5 → 7.
 
 Phases 2P, 3, 4 and §5 run in parallel with the critical path and gate criteria 8–11.
