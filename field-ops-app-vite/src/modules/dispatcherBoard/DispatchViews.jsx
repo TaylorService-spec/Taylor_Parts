@@ -107,6 +107,7 @@ function WeekViewImpl({
   technicians,
   placedWorkOrders,
   availabilityByTechnicianId,
+  availabilityFailed = false,
   anchorMillis,
   nowMillis,
   onSelectDay,
@@ -151,7 +152,7 @@ function WeekViewImpl({
                 <div
                   key={d.dateMillis}
                   role="cell"
-                  className={`ns-dispatch-week__cell${canDrop ? " ns-dispatch-week__cell--droppable" : ""}${d.isWeekend ? " ns-dispatch-week__cell--weekend" : ""}${dayStateClass(availability, d.dateMillis, nowMillis)}`}
+                  className={`ns-dispatch-week__cell${canDrop ? " ns-dispatch-week__cell--droppable" : ""}${d.isWeekend ? " ns-dispatch-week__cell--weekend" : ""}${dayStateClass(availability, d.dateMillis, nowMillis, availabilityFailed)}`}
                   onDragOver={canDrop ? (e) => e.preventDefault() : undefined}
                   onDrop={canDrop ? (e) => { e.preventDefault(); onDropOnTechnicianDay?.(tech.id, d.dateMillis); } : undefined}
                   onClick={() => onSelectDay?.(d.dateMillis)}
@@ -165,7 +166,7 @@ function WeekViewImpl({
                     </span>
                   ))}
                   {entries.length === 0 && blocks.length === 0 ? (
-                    <span className="ns-dispatch-week__open">{EMPTY_DAY_WORDS[dayTimeState(availability, d.dateMillis)]}</span>
+                    <span className="ns-dispatch-week__open">{availabilityFailed ? "schedule unavailable" : EMPTY_DAY_WORDS[dayTimeState(availability, d.dateMillis)]}</span>
                   ) : null}
                 </div>
               );
@@ -189,6 +190,7 @@ function TwoWeekLoadImpl({
   technicians,
   placedWorkOrders,
   availabilityByTechnicianId,
+  availabilityFailed = false,
   anchorMillis,
   nowMillis,
   onSelectDay,
@@ -233,10 +235,10 @@ function TwoWeekLoadImpl({
                   key={d.dateMillis}
                   className={`ns-dispatch-load__cell${blocked ? " ns-dispatch-load__cell--blocked" : ""}${
                     i === weekBreakIndex - 1 ? " ns-dispatch-load__weekbreak" : ""
-                  }${dayStateClass(availability, d.dateMillis, nowMillis)}`}
+                  }${dayStateClass(availability, d.dateMillis, nowMillis, availabilityFailed)}`}
                   data-load={loadBucket(capacity.percentBooked)}
                   onClick={() => onSelectDay?.(d.dateMillis)}
-                  aria-label={loadCellLabel(identity.name, d, capacity, blocked, dayTimeState(availability, d.dateMillis))}
+                  aria-label={loadCellLabel(identity.name, d, capacity, blocked, availabilityFailed ? "unknown" : dayTimeState(availability, d.dateMillis))}
                 >
                   {capacity.percentBooked == null ? (
                     <span className="ns-dispatch-load__unknown">—</span>
@@ -291,9 +293,11 @@ function shortDayHeading(day) {
 const EMPTY_DAY_WORDS = Object.freeze({ working: "open", nonWorking: "off", unconfigured: "no schedule" });
 
 /** Elapsed (a day already over), not working, or no schedule — the same three states the lanes draw. */
-function dayStateClass(availability, dayStartMillis, nowMillis) {
-  const state = dayTimeState(availability, dayStartMillis);
+function dayStateClass(availability, dayStartMillis, nowMillis, failed = false) {
   const over = Number.isFinite(nowMillis) && startOfDayMillis(nowMillis) > dayStartMillis;
+  // A failed read draws no schedule state at all: unknown is neither "off" nor "no schedule" (S-1).
+  if (failed) return over ? " ns-dispatch-day--elapsed" : "";
+  const state = dayTimeState(availability, dayStartMillis);
   return `${over ? " ns-dispatch-day--elapsed" : ""}${state === "working" ? "" : ` ns-dispatch-day--${state === "nonWorking" ? "off" : "unconfigured"}`}`;
 }
 
@@ -314,7 +318,8 @@ function loadBucket(percent) {
 function loadCellLabel(name, day, capacity, blocked, state) {
   const when = new Date(day.dateMillis).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
   if (capacity.percentBooked == null) {
-    const why = state === "nonWorking" ? "not a working day" : state === "working" ? "no available hours" : "no working schedule recorded";
+    const why = state === "unknown" ? "schedule could not be read"
+      : state === "nonWorking" ? "not a working day" : state === "working" ? "no available hours" : "no working schedule recorded";
     return `${name}, ${when}: ${why}${blocked ? ", has blocked time" : ""}`;
   }
   return `${name}, ${when}: ${capacity.percentBooked}% booked${blocked ? ", has blocked time" : ""}`;

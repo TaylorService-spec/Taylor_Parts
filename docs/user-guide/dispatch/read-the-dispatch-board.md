@@ -19,6 +19,10 @@ The legend above the board uses the same styles as the lanes.
 
 The line under each name shows that day's recorded hours (for example *7a–4p*), then *% booked* and any blocked hours. *Not working today* means a schedule exists and the person is off that day. *No schedule* means nothing is recorded, so no percentage is shown. A percentage over unknown hours would be invented.
 
+If working hours could not be read, a banner says so and each lane reads **Schedule unavailable**. That means EOS could not check the hours just now, not that none are recorded. Scheduling still works, and the server still enforces hours and unavailable time.
+
+If a shared link names technicians who are no longer on the roster, the board says how many it could not find.
+
 **Week** and **2 weeks** use the same states for whole days: *open*, *off*, *no schedule*, and greyed days already past. On **2 weeks**, each day's percentage is booked time divided by **that day's** available hours.
 
 ## Keep your place

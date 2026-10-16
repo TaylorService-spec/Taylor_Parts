@@ -49,6 +49,7 @@ function DispatchLaneGrid({
   workOrdersByTechnician,
   availabilityByTechnicianId,
   availabilityLoading,
+  availabilityFailed = false,
   band,
   draggingWorkOrder,
   onDropOnLane,
@@ -98,8 +99,11 @@ function DispatchLaneGrid({
         const blocked = placedBlockedTime(availability, band);
         const blockedMinutes = blockedMinutesInBand(availability, band);
         // G-2: what the schedule says about every minute that is not a placement or a block.
+        // A FAILED read knows nothing about the schedule: no background is drawn and the lane says
+        // "Schedule unavailable" — never "No schedule", which is a claim about the record (S-1).
+        const scheduleUnknown = availabilityLoading || availabilityFailed;
         const spans = laneTimeSpans(availability, band);
-        const noSchedule = !availabilityLoading && !spans.configured;
+        const noSchedule = !scheduleUnknown && !spans.configured;
         const canAccept = Boolean(draggingWorkOrder);
         const isDragOver = dragOverLaneId === tech.id;
 
@@ -114,6 +118,7 @@ function DispatchLaneGrid({
                   capacity={capacity}
                   blockedMinutes={blockedMinutes}
                   availabilityLoading={availabilityLoading}
+                  availabilityFailed={availabilityFailed}
                 />
               </div>
             </div>
@@ -128,11 +133,11 @@ function DispatchLaneGrid({
             >
               {/* Schedule background first, under everything: not-working minutes (evenings, the gap of a
                   split day) and minutes no schedule governs at all. Neither is ever a default shift. */}
-              {availabilityLoading ? null : spans.nonWorking.map((s) => (
+              {scheduleUnknown ? null : spans.nonWorking.map((s) => (
                 <div key={`off-${s.startMillis}`} className="ns-dispatch-lane__off" aria-hidden="true"
                   style={{ left: `${s.leftPercent}%`, width: `${s.widthPercent}%` }} />
               ))}
-              {availabilityLoading || noSchedule ? null : spans.unconfigured.map((s) => (
+              {scheduleUnknown || noSchedule ? null : spans.unconfigured.map((s) => (
                 <div key={`nc-${s.startMillis}`} className="ns-dispatch-lane__unconfigured" aria-hidden="true"
                   style={{ left: `${s.leftPercent}%`, width: `${s.widthPercent}%` }} />
               ))}
@@ -291,8 +296,17 @@ function laneChipLabel(wo, technicianName, geometry) {
  * Booked HOURS still render in that case, because they are known: they come from committed
  * placements. Only the ratio is withheld.
  */
-function LaneMeta({ shift, configured, capacity, blockedMinutes, availabilityLoading }) {
+function LaneMeta({ shift, configured, capacity, blockedMinutes, availabilityLoading, availabilityFailed }) {
   if (availabilityLoading) return <span className="ns-dispatch-lane__meta-muted">Loading availability…</span>;
+  if (availabilityFailed) {
+    // Neutral, and claims nothing about the record or about placements: the read failed, so whether a
+    // schedule exists is unknown here. The page banner says why; the server still enforces.
+    return (
+      <span className="ns-dispatch-lane__meta-muted">
+        Schedule unavailable{capacity.bookedMinutes > 0 ? ` · ${formatHours(capacity.bookedMinutes)} booked` : ""}
+      </span>
+    );
+  }
 
   const parts = [];
   // Three different facts, three different words: hours, a recorded day off, or no record at all.

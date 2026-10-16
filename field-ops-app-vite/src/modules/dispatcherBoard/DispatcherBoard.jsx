@@ -202,6 +202,11 @@ export default function DispatcherBoard() {
   // The lanes the three views draw. Presentation only — availability is still read for the WHOLE
   // roster, recommendations still score every technician, and the queue is untouched.
   const lanes = useMemo(() => visibleTechnicians(technicians ?? [], technicianFilter), [technicians, technicianFilter]);
+  const missingFilterIds = useMemo(() => {
+    if (!(technicianFilter instanceof Set) || !Array.isArray(technicians)) return 0;
+    const known = new Set(technicians.map((t) => t.id));
+    return [...technicianFilter].filter((id) => !known.has(id)).length;
+  }, [technicians, technicianFilter]);
 
   const band = useMemo(
     () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
@@ -569,6 +574,13 @@ export default function DispatcherBoard() {
           selectedIds={technicianFilter}
           onChange={setTechnicianFilter}
         />
+        {missingFilterIds > 0 ? (
+          // A shared link can name technicians who are no longer on the governed roster. Say so,
+          // rather than leaving a board filtered to nothing with no cue why.
+          <span className="ns-dispatch__filter-missing" role="status">
+            {missingFilterIds === 1 ? "1 selected technician not found" : `${missingFilterIds} selected technicians not found`}
+          </span>
+        ) : null}
       </DispatchViewSwitcher>
 
       {boardMessage ? (
@@ -612,6 +624,7 @@ export default function DispatcherBoard() {
               workOrdersByTechnician={workOrdersByTechnician}
               availabilityByTechnicianId={availabilityByTechnicianId}
               availabilityLoading={availabilityLoading}
+              availabilityFailed={Boolean(availabilityError)}
               band={band}
               draggingWorkOrder={dragging}
               onDropOnLane={handleDropOnLane}
@@ -634,6 +647,7 @@ export default function DispatcherBoard() {
               technicians={lanes}
               placedWorkOrders={placedWorkOrders}
               availabilityByTechnicianId={availabilityByTechnicianId}
+              availabilityFailed={Boolean(availabilityError)}
               anchorMillis={anchorMillis}
               nowMillis={Date.now()}
               draggingWorkOrder={dragging}
@@ -662,6 +676,7 @@ export default function DispatcherBoard() {
               technicians={lanes}
               placedWorkOrders={placedWorkOrders}
               availabilityByTechnicianId={availabilityByTechnicianId}
+              availabilityFailed={Boolean(availabilityError)}
               anchorMillis={anchorMillis}
               nowMillis={Date.now()}
               onSelectDay={openDay}

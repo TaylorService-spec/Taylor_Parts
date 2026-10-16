@@ -7036,6 +7036,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-lane--unconfigured {
   background-color: transparent;
   border-block: 1px dashed var(--verenward-border-strong); box-sizing: border-box; }
+.ns-dispatch__filter-missing { font-size: var(--font-size-sm); color: var(--color-warning); align-self: center; }
 .ns-dispatch-lane__noschedule { color: var(--color-warning); font-weight: 600; cursor: help; }
 .ns-dispatch-chip--elapsed { opacity: 0.85; }
 .ns-dispatch-grid__hours { position: relative; }

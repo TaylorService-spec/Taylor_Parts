@@ -477,6 +477,25 @@ describe("honest states", () => {
     expect(await screen.findByText(/Working hours and blocked time could not be read/i)).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Ready to schedule/i })).toBeTruthy();
   });
+
+  it("a FAILED availability read is 'Schedule unavailable', never a claim that no schedule exists (S-1)", async () => {
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    useWorkOrders.mockReturnValue({ data: [SCHEDULED_WO, QUEUE_WO], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A, TECH_B], loading: false, error: null });
+    useAccountNames.mockReturnValue(new Map());
+    readTechnicianAvailability.mockResolvedValue({ errorStatus: "unavailable", errorCode: "UNAVAILABLE" });
+    const { container } = render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
+    await screen.findByText(/Working hours and blocked time could not be read/i);
+    expect(screen.getAllByText(/Schedule unavailable/)).toHaveLength(2);
+    expect(container.querySelector(".ns-dispatch-lane__noschedule")).toBeNull();
+    for (const meta of container.querySelectorAll(".ns-dispatch-lane__meta")) expect(meta.textContent).not.toMatch(/No schedule/);
+    expect(container.textContent).not.toMatch(/Placements are refused until one is recorded/);
+    expect(container.querySelector(".ns-dispatch-lane--unconfigured, .ns-dispatch-lane__unconfigured, .ns-dispatch-lane__off")).toBeNull();
+    // Week cells say the same neutral thing.
+    fireEvent.click(screen.getByRole("tab", { name: /^Week/ }));
+    expect(screen.getAllByText("schedule unavailable").length).toBeGreaterThan(0);
+    expect(container.querySelector(".ns-dispatch-day--unconfigured, .ns-dispatch-day--off")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -877,6 +896,12 @@ describe("the board's view, date and filter live in the URL (G-6)", () => {
     fireEvent.click(screen.getByRole("button", { name: /All technicians/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
     expect(screen.getByTestId("location").textContent).toBe("?view=fortnight&techs=tech-a");
+  });
+
+  it("a shared link naming technicians no longer on the roster says so", async () => {
+    setup({ url: "/service/dispatcher-board?techs=tech-a,gone-1,gone-2" });
+    expect(await screen.findByText("2 selected technicians not found")).toBeTruthy();
+    await waitFor(() => expect(laneNames()).toEqual(["J. Barela"]));
   });
 
   it("stepping to another day records the date", async () => {
