@@ -61,15 +61,15 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Lifecycle stage:     SANDBOX BUILD
 
 - Capability:          Filtering lane — site-wide object filtering and sorting standard (Owner requirement 2026-10-15); design first, Work Orders reference implementation only after the Owner approves the metadata contract
-- Agent/session:       Claude Code Filtering lane session · Role: builder (design)
+- Agent/session:       Claude Code Filtering lane session · Role: builder
 - Branch / worktree:   `work/eos-object-filter-sort-standard` · `D:/eos-filter-sort`
-- Base commit:         `a1261486`
-- Owned paths:         `docs/architecture/object-filter-sort-standard.md` (design report); after contract approval only: new list-query metadata/validator modules and the Work Orders list query path (named in the report's PR plan)
+- Base commit:         `93bec3b7`
+- Owned paths:         `docs/architecture/object-filter-sort-standard.md`; `functions/src/eosOps/listQuery.ts`, `functions/src/eosOps/workOrderListQuery.ts`, the `listWorkOrders` / `describeWorkOrderListQuery` path in `workOrderQueries.ts`; `functions/test/support/workOrderListQuerySuite.mjs`; `field-ops-app-vite/src/metadata/listUrlState.js` (IN serialization); the `searchable` seed derivation in `scripts/buildAdminPolicySeedSnapshot.mjs`
 - Shared paths req'd:  this registry; `docs/DECISIONS.md` via the coordinator; Lane UX shared compact components (PageHeader, Toolbar, InfoTip/FieldHelp, StatusBadge, EmptyState) consumed, not edited
 - Dependencies:        security lane company authority (`eosOps/companyAuthority.ts`, DECISIONS #235) — consumed, not edited; Lane A owns My Work/navigation; Lane Scheduling owns the dispatch board
 - Expected outcome:    approved metadata contract + server-validated filter/sort for Work Orders, then the reusable mechanism across object-backed lists
 - Protected boundaries:no role/grant/authority change, no Firebase dependency, no merge or deploy without Owner authorization; server query validation is security-sensitive (Owner approves the contract first)
-- Lifecycle stage:     DESIGNED
+- Lifecycle stage:     SANDBOX BUILD (Phase 1a server; contract approved ND-1..ND-7, 2026-10-15)
 
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder

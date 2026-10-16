@@ -16,6 +16,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+// The governed list query (listWorkOrders { query }) suite: its own database and world, run with this CI job.
+import "./support/workOrderListQuerySuite.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -122,6 +124,9 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
   await employee("emp-b"); await link("prn-tech-b", "emp-b");
   await employee("emp-c", { status: "CONTRACTOR" }); await link("prn-tech-c", "emp-c");
   await employee("emp-ventana", { company: "ventana" }); await link("prn-tech-ventana", "emp-ventana", "ventana");
+  // The office list is company-scoped (EOS Core company authority, DECISIONS #235): the dispatcher is a Taylor Employee.
+  // Unqualified, so it is never a technician candidate.
+  await employee("emp-dispatcher", { qualified: false }); await link("prn-dispatcher", "emp-dispatcher");
   await employee("emp-unqualified", { qualified: false });
   await employee("emp-unlinked");
   await q(`INSERT INTO eos_crm.accounts (id,tenant_id,name,status,created_by,updated_by) VALUES ('acct-1',$1,'Harbor Diner','ACTIVE','f','f')`, [T]);

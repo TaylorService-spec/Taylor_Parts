@@ -2,8 +2,41 @@
 
 Issued: 2026-10-15 (America/Phoenix) · base `a1261486` (= `main`) · branch `work/eos-object-filter-sort-standard`
 
-**Status:** DESIGNED. Awaiting Owner approval of the metadata contract (§3). No implementation code exists yet.
-Nothing here changes a role, a grant, an authority rule, a Firebase dependency, a migration or a deployment.
+**Status:** Owner decisions recorded 2026-10-15:
+- ND-1 approved; ND-2 approved; ND-3 approved for implementation.
+- ND-4: EOS Core company authority, enforced by the Workforce query.
+- ND-5 approved.
+- ND-6: complaint search disabled by default, pending field-governance review.
+- ND-7 approved.
+
+**Phase 1a** (server, Work Orders reference) is in SANDBOX BUILD. No role, grant, Firebase dependency or deployment changes.
+
+### Phase 1a as built (deltas from the design below)
+
+**Code**
+- **Server.**
+  - `functions/src/eosOps/listQuery.ts` is the shared, pure validator, compiler and keyset module (ND-5).
+  - `eosOps/workOrderListQuery.ts` holds the Work Order binding and field groups.
+  - `workOrderQueries.ts` adds `listWorkOrders { query }`, keeps the legacy filters, and adds `describeWorkOrderListQuery`.
+- **Tests.** `functions/test/support/workOrderListQuerySuite.mjs` runs inside `workOrderDomainCutoverPostgres.test.mjs`, so no workflow edit is needed.
+
+**Company isolation (ND-4)**
+- **Behaviour change.** Both the governed path and the legacy filters of the office list are scoped to `resolveCompanyAuthority(...).companyKeys` against `work_orders.operating_company_key`.
+  - A caller with no company authority is refused with `COMPANY_AUTHORITY_REQUIRED`.
+  - My Work's dispatch queue inherits the scoping. Its section wrapper (`myWork.ts`) already turns that refusal into NOT_AUTHORIZED.
+- **Reading of "enforced by the Workforce query".** The company comes from the linked Employee's Workforce home company, which the resolver reads from `eos_workforce.employees`. It does not come from a client-selected company.
+
+**Field naming (§2.2)**
+- Reference fields sort and search by the name the row shows (customer, location, assignee). There are no separate `customerName` / `locationName` field ids.
+
+**Not delivered in 1a**
+- **ND-3 index migration.** Writing the migration file was refused by this session's permission policy (migrations are an Owner boundary). The index `(tenant_id, created_at DESC, id DESC)` is specified and is a follow-up for an authorized session. Correctness does not depend on it.
+- **Tenant narrowing (§7).** It is a tested hook with no store. Today a tenant cannot change a SYSTEM field's eligibility, so nothing is read.
+- **Row projection by field group.** v1's single group has a `null` read requirement, so projection would remove nothing. It arrives with the first restricted group.
+
+**Defects fixed**
+- IN values now round-trip the URL (`listUrlState.js`), and old-form links still parse.
+- The seed snapshot's `searchable` now comes from a declared `searchable` attribute, not from `filterable`. 9 fields are searchable, each one a field the server search actually matches.
 
 **Owner requirement:** "EOS — Site-wide object filtering and sorting standard" (2026-10-15). Every object list exposes
 every governed field that is eligible for filtering and sorting. Eligibility is enforced on the server and intersected with

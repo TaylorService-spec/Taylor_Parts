@@ -90,6 +90,10 @@ test("the pinned quarantine, against PostgreSQL", { skip: SKIP, concurrency: 1 }
   await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id) VALUES ('emp-t',$1,'ACTIVE','taylor')`, [T]);
   await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
            VALUES ('l-t',$1,'prn-tech','emp-t','taylor','OPERATOR_ASSERTED','active','f','f')`, [T]);
+  // The office list is company-scoped (EOS Core company authority, DECISIONS #235): the dispatcher is a Taylor Employee.
+  await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id) VALUES ('emp-d',$1,'ACTIVE','taylor')`, [T]);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+           VALUES ('l-d',$1,'prn-disp','emp-d','taylor','OPERATOR_ASSERTED','active','f','f')`, [T]);
   await q(`INSERT INTO eos_workforce.employee_work_eligibility (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by,reason)
            VALUES ('el-t',$1,'emp-t','SERVICE_TECHNICIAN',now(),'f','f')`, [T]);
 

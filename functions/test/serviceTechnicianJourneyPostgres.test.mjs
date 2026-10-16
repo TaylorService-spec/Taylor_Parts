@@ -118,7 +118,9 @@ test("the Service Office + Technician journey through the EOS API", { skip: SKIP
     }
     return { subject, principalId };
   };
-  const office = await person("uid-sj-fieldmgr", ["fieldManager"]);
+  // The office list is company-scoped (EOS Core company authority, DECISIONS #235): the field manager is a Taylor
+  // Employee, unqualified, so never a technician candidate.
+  const office = await person("uid-sj-fieldmgr", ["fieldManager"], { id: "emp-sj-office", name: "Office Manager", qualified: false });
   const dispatcher = await person("uid-sj-dispatcher", ["dispatcher"]);
   const techA = await person("uid-sj-tech-a", ["technician"], { id: "emp-sj-a", name: "Alex Field" });
   const techB = await person("uid-sj-tech-b", ["technician"], { id: "emp-sj-b", name: "Bo Field" });

@@ -118,6 +118,7 @@ export const equipmentEntity = makeEntityDefinition({
       entityId: "equipment",
       label: "Name",
       type: "STRING",
+      searchable: true,
       sortable: true,
       description: "The human reference for this asset (firestore.rules' own comment names it so). Not enforced unique — duplicate names within an Account are real-world and allowed.",
     }),
@@ -173,6 +174,7 @@ export const equipmentEntity = makeEntityDefinition({
       entityId: "equipment",
       label: "Serial Number",
       type: "STRING",
+      searchable: true,
       description: "Optional, string | null, and NOT enforced unique — looks like a business reference but is not one. See the identity note in the file header.",
     }),
     makeFieldDefinition({
@@ -180,6 +182,7 @@ export const equipmentEntity = makeEntityDefinition({
       entityId: "equipment",
       label: "Asset Tag",
       type: "STRING",
+      searchable: true,
       description: "Optional, string | null, and NOT enforced unique — see the identity note in the file header.",
     }),
     makeFieldDefinition({
