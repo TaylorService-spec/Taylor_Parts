@@ -10,7 +10,24 @@ import {
   CATALOG_BOUND_IMPORT_ENTITY_TYPES,
   CATALOG_IMPORT_REFUSAL_MESSAGE,
   importRefusedByCatalogAuthority,
+  EQUIPMENT_FIRESTORE_WRITER_OPEN,
+  importRefusedByEquipmentAuthority,
 } from "../src/config/catalogAuthority.js";
+
+test("the client Equipment-register constant mirrors the committed server EQUIPMENT_WRITER_AUTHORITY", () => {
+  const src = readFileSync(new URL("../../functions/src/eosOps/equipmentWriterState.ts", import.meta.url), "utf8");
+  const m = src.match(/export const EQUIPMENT_WRITER_AUTHORITY[^=]*=\s*Object\.freeze\(\{\s*firestore:\s*"(\w+)",\s*postgres:\s*"(\w+)"\s*\}\)/);
+  assert.ok(m, "EQUIPMENT_WRITER_AUTHORITY could not be read from equipmentWriterState.ts -- re-pin this test");
+  assert.equal(EQUIPMENT_FIRESTORE_WRITER_OPEN, m[1] === "OPEN",
+    `server firestore=${m[1]} but the client says firestoreOpen=${EQUIPMENT_FIRESTORE_WRITER_OPEN}`);
+});
+
+test("only EQUIPMENT is refused by the Equipment register, and only while the Firestore writer is not OPEN", () => {
+  assert.equal(importRefusedByEquipmentAuthority("EQUIPMENT"), !EQUIPMENT_FIRESTORE_WRITER_OPEN);
+  assert.equal(importRefusedByEquipmentAuthority("EQUIPMENT", false), true);
+  assert.equal(importRefusedByEquipmentAuthority("EQUIPMENT", true), false);
+  for (const t of ["PARTS", "CUSTOMERS", "INVENTORY", "SERVICE_HISTORY"]) assert.equal(importRefusedByEquipmentAuthority(t, false), false, t);
+});
 
 test("the client constant mirrors the committed server CATALOG_WRITER_AUTHORITY", () => {
   const src = readFileSync(new URL("../../functions/src/catalogMaster/catalogWriterState.ts", import.meta.url), "utf8");

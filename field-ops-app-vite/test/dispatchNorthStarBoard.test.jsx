@@ -15,15 +15,15 @@
 // they were broken, which is exactly why they are asserted rather than trusted.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
 // The board reads the GOVERNED technician roster (listWorkOrderTechnicians), keyed by Employee id.
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
 vi.mock("../src/hooks/useAccountNames", () => ({ useAccountNames: vi.fn() }));
 vi.mock("../src/hooks/useSessionActivityFeed", () => ({ useSessionActivityFeed: vi.fn(() => []) }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
-vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn() }));
+vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn(), suggestWorkOrderPlacement: vi.fn() }));
 vi.mock("../src/services/schedulingCommandClient.js", () => ({
   rescheduleWorkOrder: vi.fn(),
   reassignScheduledWorkOrder: vi.fn(),
@@ -32,9 +32,22 @@ vi.mock("../src/services/schedulingCommandClient.js", () => ({
 }));
 
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard.jsx";
+import { suggestWorkOrderPlacement } from "../src/services/workOrderService";
+import { toZonedInput } from "../src/domain/zonedTime.js";
+
+// The governed placement default (suggestWorkOrderPlacement). Tests run in the browser's own zone so typed times read
+// exactly as they did before the default moved server-side.
+const TEST_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const suggestionAt = (startMillis, { employeeId = "tech-a", minutes = 120, outcome = "SLOT_FOUND", alternative = null } = {}) => ({
+  workOrderId: "wo-q", timeZone: TEST_ZONE, operatingCompanyId: "taylor", durationMinutes: minutes,
+  searchedFrom: new Date(startMillis).toISOString(), searchedTo: new Date(startMillis + 14 * 86_400_000).toISOString(), outcome,
+  suggestion: outcome === "SLOT_FOUND" ? { employeeId, displayName: null, start: new Date(startMillis).toISOString(), end: new Date(startMillis + minutes * 60_000).toISOString() } : null,
+  alternative,
+});
+const startInput = (dialog) => dialog.querySelector('input[type="datetime-local"]');
+const suggestionApplied = async (dialog) => waitFor(() => expect(startInput(dialog).value).not.toBe(""));
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
 import { useAccountNames } from "../src/hooks/useAccountNames";
 import { useAuth } from "../src/auth/AuthContext";
 import { transitionWorkOrder } from "../src/services/workOrderService";
@@ -63,6 +76,11 @@ const QUEUE_WO = {
   priority: 2, customerId: "cust-1", estimatedDurationMinutes: 120,
 };
 
+const NOT_CONFIGURED = (id) => ({
+  technicianId: id, availabilityState: "NOT_CONFIGURED", workingAvailability: null, workingIntervals: [],
+  notConfiguredIntervals: [{ startMillis: todayAt(0), endMillis: todayAt(0) + 86_400_000 }], blockedTime: [], availableMinutes: null,
+});
+
 /** A technician WITH a recorded shift, and one WITHOUT — the distinction the board must keep. */
 function availabilityResult({ withHours = true } = {}) {
   const dow = new Date().getDay();
@@ -73,24 +91,39 @@ function availabilityResult({ withHours = true } = {}) {
         withHours
           ? {
               technicianId: "tech-a",
+              availabilityState: "CONFIGURED",
               workingAvailability: { technicianId: "tech-a", timeZone: "America/Phoenix", weeklyHours: { [dow]: [{ start: "07:00", end: "16:00" }] } },
+              // The adapted governed read's instants (schedulingCommandClient.adaptAvailabilityView).
+              workingIntervals: [{ startMillis: todayAt(7), endMillis: todayAt(16) }],
+              notConfiguredIntervals: [],
               blockedTime: [{ blockId: "b1", kind: "LUNCH", startMillis: todayAt(12), endMillis: todayAt(12, 30) }],
               availableMinutes: 480,
             }
-          : { technicianId: "tech-a", workingAvailability: null, blockedTime: [], availableMinutes: null },
-        { technicianId: "tech-b", workingAvailability: null, blockedTime: [], availableMinutes: null },
+          : NOT_CONFIGURED("tech-a"),
+        NOT_CONFIGURED("tech-b"),
       ],
     },
   };
 }
 
-function setup({ workOrders = [SCHEDULED_WO, QUEUE_WO], role = "dispatcher", availability = availabilityResult() } = {}) {
+/** Renders the router location so a test can read what the board wrote to the URL. */
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location" hidden>{location.search}</div>;
+}
+
+function setup({ workOrders = [SCHEDULED_WO, QUEUE_WO], role = "dispatcher", availability = availabilityResult(), url = "/service/dispatcher-board" } = {}) {
   useAuth.mockReturnValue({ role });
   useWorkOrders.mockReturnValue({ data: workOrders, loading: false, error: null });
   useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A, TECH_B], loading: false, error: null });
   useAccountNames.mockReturnValue(new Map([["cust-1", "Desert Sun"]]));
   readTechnicianAvailability.mockResolvedValue(availability);
-  return render(<DispatcherBoard />);
+  return render(
+    <MemoryRouter initialEntries={[url]}>
+      <DispatcherBoard />
+      <LocationProbe />
+    </MemoryRouter>,
+  );
 }
 
 /** Drag `source` onto `target` through the real DnD handlers. */
@@ -120,6 +153,8 @@ beforeEach(() => {
   // shouldAdvanceTime keeps @testing-library's waitFor polling; a frozen clock deadlocks it.
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(PINNED_NOW);
+  suggestWorkOrderPlacement.mockReset();
+  suggestWorkOrderPlacement.mockImplementation(async () => suggestionAt(todayAt(7, 0)));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -133,12 +168,12 @@ describe("the North Star composition", () => {
     expect(screen.getByText("R. Ochoa")).toBeTruthy();
   });
 
-  it("offers Day, Week, 2 weeks and Map as views over one schedule", async () => {
+  it("offers Day, Week and 2 weeks as views over one schedule", async () => {
     setup();
     await screen.findByRole("tab", { name: /^Day/ });
     expect(screen.getByRole("tab", { name: /^Week/ })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /2 weeks/ })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /Map/ })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: /Map/ })).toBeNull();
   });
 
   it("draws a scheduled work order as a lane chip with its governed reference", async () => {
@@ -154,10 +189,23 @@ describe("the North Star composition", () => {
     expect(rescheduleWorkOrder).not.toHaveBeenCalled();
   });
 
-  it("the Map view states truthfully that location dispatch is unavailable, rather than faking a map", async () => {
+  it("Map is honestly unavailable: announced, reachable, and inert (Owner 2026-10-15)", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("tab", { name: /Map/ }));
-    expect(screen.getByText(/Location-based dispatch is not available/i)).toBeTruthy();
+    const map = await screen.findByRole("button", { name: /Map · not available/ });
+    expect(map.getAttribute("aria-disabled")).toBe("true");
+    const reason = document.getElementById(map.getAttribute("aria-describedby"));
+    expect(reason.textContent).toMatch(/No map provider or job coordinates/);
+    fireEvent.click(map);
+    // Still the Day board: the lane grid is drawn and the URL did not change.
+    expect(screen.getByRole("tab", { name: /^Day/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("location").textContent).toBe("");
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("a retired ?view=map link opens the Day board instead of a dead view", async () => {
+    setup({ url: "/service/dispatcher-board?view=map" });
+    expect((await screen.findByRole("tab", { name: /^Day/ })).getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByText(/WO-2026-001248/)).toBeTruthy();
   });
 
   it("renders no raw document ids anywhere on the board", async () => {
@@ -186,7 +234,7 @@ describe("availability is rendered truthfully", () => {
     // The rule the whole domain is built around. R. Ochoa has no availability record in the fixture.
     setup();
     await screen.findByText(/WO-2026-001248/);
-    const lanes = screen.getAllByText(/Shift not recorded/);
+    const lanes = screen.getAllByText(/No schedule/);
     expect(lanes.length).toBeGreaterThan(0);
     for (const lane of lanes) {
       expect(lane.textContent).not.toMatch(/0%/);
@@ -199,10 +247,8 @@ describe("availability is rendered truthfully", () => {
     // reads, so a direct query would fail closed and look like a bug.
     setup();
     await waitFor(() => expect(readTechnicianAvailability).toHaveBeenCalled());
-    expect(useFirestoreCollection).not.toHaveBeenCalledWith("technician_working_availability");
-    expect(useFirestoreCollection).not.toHaveBeenCalledWith("technician_blocked_time");
-    // Work Order cutover: the board reads NO Firestore collection at all -- not even fieldops_technicians.
-    expect(useFirestoreCollection).not.toHaveBeenCalled();
+    // Work Order cutover: the board reads NO Firestore collection at all. The Firestore collection hook it once used
+    // (hooks/useFirestoreCollection.js) was deleted by the Firebase exit, so there is no subscription left to assert against.
   });
 });
 
@@ -316,7 +362,8 @@ describe("reason gates", () => {
   it("an initial Schedule needs no reason — nothing is being withdrawn", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
-    expect(screen.getByRole("button", { name: /^Schedule$/ }).disabled).toBe(false);
+    // The default arrives from the governed read; once it has, nothing else is asked for.
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Schedule$/ }).disabled).toBe(false));
   });
 });
 
@@ -329,6 +376,7 @@ describe("the accessible path is the same path", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    await suggestionApplied(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /^Schedule$/ }));
 
     await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
@@ -390,6 +438,7 @@ describe("backend truth is what renders", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    await suggestionApplied(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /^Schedule$/ }));
 
     const status = await screen.findByRole("status");
@@ -408,7 +457,7 @@ describe("honest states", () => {
     useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A], loading: false, error: null });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue(availabilityResult());
-    render(<DispatcherBoard />);
+    render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
     expect(screen.getByText(/Work orders could not be loaded/i)).toBeTruthy();
   });
 
@@ -418,7 +467,7 @@ describe("honest states", () => {
     useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: new Error("boom") });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue(availabilityResult());
-    render(<DispatcherBoard />);
+    render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
     expect(screen.getByText(/Technicians could not be loaded/i)).toBeTruthy();
   });
 
@@ -439,9 +488,28 @@ describe("honest states", () => {
     useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A], loading: false, error: null });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue({ errorStatus: "permission-denied", errorCode: "PERMISSION_DENIED" });
-    render(<DispatcherBoard />);
+    render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
     expect(await screen.findByText(/Working hours and blocked time could not be read/i)).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Ready to schedule/i })).toBeTruthy();
+  });
+
+  it("a FAILED availability read is 'Schedule unavailable', never a claim that no schedule exists (S-1)", async () => {
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    useWorkOrders.mockReturnValue({ data: [SCHEDULED_WO, QUEUE_WO], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A, TECH_B], loading: false, error: null });
+    useAccountNames.mockReturnValue(new Map());
+    readTechnicianAvailability.mockResolvedValue({ errorStatus: "unavailable", errorCode: "UNAVAILABLE" });
+    const { container } = render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
+    await screen.findByText(/Working hours and blocked time could not be read/i);
+    expect(screen.getAllByText(/Schedule unavailable/)).toHaveLength(2);
+    expect(container.querySelector(".ns-dispatch-lane__noschedule")).toBeNull();
+    for (const meta of container.querySelectorAll(".ns-dispatch-lane__meta")) expect(meta.textContent).not.toMatch(/No schedule/);
+    expect(container.textContent).not.toMatch(/Placements are refused until one is recorded/);
+    expect(container.querySelector(".ns-dispatch-lane--unconfigured, .ns-dispatch-lane__unconfigured, .ns-dispatch-lane__off")).toBeNull();
+    // Week cells say the same neutral thing.
+    fireEvent.click(screen.getByRole("tab", { name: /^Week/ }));
+    expect(screen.getAllByText("schedule unavailable").length).toBeGreaterThan(0);
+    expect(container.querySelector(".ns-dispatch-day--unconfigured, .ns-dispatch-day--off")).toBeNull();
   });
 });
 
@@ -558,7 +626,7 @@ describe("the technician selector", () => {
     useWorkOrderTechnicians.mockReturnValue({ data: [TECH_A, { id: "tech-nameless" }], loading: false, error: null });
     useAccountNames.mockReturnValue(new Map());
     readTechnicianAvailability.mockResolvedValue(availabilityResult());
-    render(<DispatcherBoard />);
+    render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
 
     fireEvent.click(await screen.findByRole("button", { name: /All technicians/i }));
     expect(screen.getByRole("checkbox", { name: "Unknown technician" })).toBeTruthy();
@@ -781,5 +849,126 @@ describe("VC-4 — a time already past is not a target, on any path", () => {
     await screen.findByText(/WO-2026-001239/);
     dragOnto(screen.getByText(/WO-2026-001239/).closest("article"), container.querySelector('[data-technician-id="tech-a"]'));
     await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Scheduling lane PR-1 (Owner 2026-10-15): four facts drawn four ways, and the board as a place.
+describe("elapsed, not working, unavailable and no schedule are distinct", () => {
+  const lane = (name) => screen.getByText(name).closest(".ns-dispatch-grid__row").querySelector(".ns-dispatch-lane");
+
+  it("a recorded shift draws its non-working minutes; no schedule is a dashed lane, never a default shift", async () => {
+    setup();
+    await screen.findByText(/7a–4p/);
+    const withHours = lane("J. Barela");
+    const without = lane("R. Ochoa");
+    // Band 7a–5p, shift 7a–4p: 4p–5p is drawn as not working.
+    expect(withHours.querySelectorAll(".ns-dispatch-lane__off").length).toBeGreaterThan(0);
+    expect(withHours.classList.contains("ns-dispatch-lane--unconfigured")).toBe(false);
+    expect(without.classList.contains("ns-dispatch-lane--unconfigured")).toBe(true);
+    expect(without.querySelectorAll(".ns-dispatch-lane__off").length).toBe(0);
+    // Unavailable keeps the hatch as its own chip; it is not the not-working fill.
+    expect(withHours.querySelector(".ns-dispatch-chip--blocked")).toBeTruthy();
+  });
+
+  it("the missing-schedule marker explains itself to a screen reader", async () => {
+    setup();
+    await screen.findByText(/7a–4p/);
+    const marker = document.querySelector(".ns-dispatch-lane__noschedule");
+    expect(marker.textContent).toMatch(/No schedule: No governed working schedule/);
+    expect(marker.getAttribute("title")).toMatch(/Placements are refused until one is recorded/);
+  });
+
+  it("elapsed time is drawn today, and the current-time line is visible", async () => {
+    vi.setSystemTime(todayAt(10, 30));
+    setup();
+    await screen.findByText(/WO-2026-001248/);
+    expect(document.querySelectorAll(".ns-dispatch-lane__past").length).toBeGreaterThan(0);
+    // One in the hour header, one per lane.
+    expect(document.querySelectorAll(".ns-dispatch-now").length).toBe(3);
+  });
+
+  it("the legend names every state the lanes draw", async () => {
+    setup();
+    const legend = await screen.findByRole("list", { name: "Board legend" });
+    for (const word of [/Booked/, /Unavailable/, /Not working/, /No schedule recorded/, /Elapsed/, /Now/]) {
+      expect(within(legend).getByText(word)).toBeTruthy();
+    }
+  });
+});
+
+describe("the board's view, date and filter live in the URL (G-6)", () => {
+  it("opens on the view and technician filter a link names", async () => {
+    setup({ url: "/service/dispatcher-board?view=week&techs=tech-b" });
+    expect((await screen.findByRole("tab", { name: /^Week/ })).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(rowHeaderNames()).toEqual(["R. Ochoa"]));
+  });
+
+  it("changing view and filter writes them to the URL, so Back returns to the same board", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("tab", { name: /2 weeks/ }));
+    expect(screen.getByTestId("location").textContent).toBe("?view=fortnight");
+    fireEvent.click(screen.getByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+    expect(screen.getByTestId("location").textContent).toBe("?view=fortnight&techs=tech-a");
+  });
+
+  it("a shared link naming technicians no longer on the roster says so", async () => {
+    setup({ url: "/service/dispatcher-board?techs=tech-a,gone-1,gone-2" });
+    expect(await screen.findByText("2 selected technicians not found")).toBeTruthy();
+    await waitFor(() => expect(laneNames()).toEqual(["J. Barela"]));
+  });
+
+  it("stepping to another day records the date", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Next day" }));
+    expect(screen.getByTestId("location").textContent).toMatch(/^\?date=\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// FIX JOBS AND DISPATCH (Owner 2026-10-16): the Schedule picker's default is the governed suggestion, never the band's
+// first hour; no valid slot is explained; a default that goes stale while the dialog is open is caught on submit.
+describe("the Schedule picker defaults to a valid future time (governed suggestion)", () => {
+  it("asks suggestWorkOrderPlacement for the queued work order and fills its start — not the band's first hour", async () => {
+    suggestWorkOrderPlacement.mockImplementation(async () => suggestionAt(todayAt(13, 30)));
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    const dialog = screen.getByRole("dialog");
+    await suggestionApplied(dialog);
+    expect(suggestWorkOrderPlacement).toHaveBeenCalled();
+    expect(suggestWorkOrderPlacement.mock.calls[0][0].workOrderId).toBe(QUEUE_WO.id);
+    expect(startInput(dialog).value).toBe(toZonedInput(todayAt(13, 30), TEST_ZONE));
+    expect(within(dialog).getByText(new RegExp(`Times are in ${TEST_ZONE.replace("/", "\\/")}`))).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /^Schedule$/ }).disabled).toBe(false);
+  });
+
+  it("when the chosen technician has no open time it says so and offers the earliest real alternative", async () => {
+    const alt = { employeeId: "tech-b", displayName: null, start: new Date(todayAt(15, 0)).toISOString(), end: new Date(todayAt(17, 0)).toISOString() };
+    suggestWorkOrderPlacement.mockImplementation(async ({ employeeId }) => (employeeId === "tech-a"
+      ? suggestionAt(todayAt(7, 0), { outcome: "NO_OPEN_TIME", alternative: alt })
+      : suggestionAt(todayAt(15, 0), { employeeId: "tech-b" })));
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    expect(await within(dialog).findByText(/has no open 2-hour window in the next 14 days/i)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Use this time/i }));
+    expect(startInput(dialog).value).toBe(toZonedInput(todayAt(15, 0), TEST_ZONE));
+    expect(within(dialog).getAllByRole("combobox")[0].value).toBe("tech-b");
+  });
+
+  it("a default that went stale while the dialog was open is caught on submit — no command, a fresh suggestion", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    await suggestionApplied(dialog);
+    const asked = suggestWorkOrderPlacement.mock.calls.length;
+    vi.setSystemTime(todayAt(8, 0)); // the suggested 07:00 start is now in the past
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Schedule$/ }));
+    expect(await within(dialog).findByText(/passed while this dialog was open/i)).toBeTruthy();
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+    await waitFor(() => expect(suggestWorkOrderPlacement.mock.calls.length).toBeGreaterThan(asked));
   });
 });

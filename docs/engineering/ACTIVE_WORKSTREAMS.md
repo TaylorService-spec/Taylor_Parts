@@ -27,6 +27,83 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Firebase exit lane (O-1, DECISIONS #234) — PR-A unrouted Technicians chain, PR-B dormant / flag-dead clients, PR-C Timestamp-only types; read-only investigations of the 27 no-client write callables, the bin dual path and the operator inventory checklist (Owner decisions 2026-10-15)
+- Agent/session:       Claude Code Firebase-exit lane session · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-firebase-exit` (PR-A, then B and C serialized on it) · `D:/eos-fb-exit`
+- Base commit:         `93bec3b7` (PR-A refreshed onto main `3f5ed759`)
+- Owned paths:         the deleted Technicians chain and the PR-B / PR-C files named in each PR · `docs/architecture/frontend-dormant-firebase-client-retirement-ledger.md`
+- Shared paths req'd:  this registry · `docs/architecture/firebase-exit-baseline.json` · `docs/architecture/firebase-shim-consumer-census.json` · `scripts/firebaseExitGuard.test.mjs` · `scripts/firebaseShimBoundary.test.mjs` (ratchet pins — every other Firebase-exit PR must rebase and recount)
+- Dependencies:        none; A → B → C serialized because each edits the baseline and the pins
+- Expected outcome:    exit baseline 265 → 261 (A) → 257 (B) → 247 (C) with no runtime change; investigation report to the coordinator
+- Protected boundaries:no production change, Firebase deploy, undeploy or authentication cutover; no merge without exact-head Owner authorization
+- Lifecycle stage:     SANDBOX BUILD
+
+- Capability:          Jobs + Dispatcher Board on one governed scheduling path; Schedule dialog defaults to a valid future time (Owner "FIX JOBS AND DISPATCH" 2026-10-16, DECISIONS #239)
+- Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `fix/jobs-dispatch-and-schedule-default` · `D:/eos-dispatch-fix`
+- Base commit:         `5e4afa12`
+- Owned paths:         `modules/dispatch/Dispatch.jsx` · `modules/dispatcherBoard/{DispatcherBoard,PlacementDialog,ReadyToScheduleQueue}.jsx` · `modules/dispatcherBoard/usePlacementCommands.js` · `domain/{jobsDispatchList,zonedTime}.js` · `functions/src/eosOps/workOrderAvailability.ts` (suggestWorkOrderPlacement only) · their tests
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` · `workOrderOperations.ts` / client op lists · `.github/workflows/dispatch-north-star-tests.yml` · `test/suites.json` · `index.css` (3 Jobs rules)
+- Dependencies:        coordinated with Scheduling PR-2 (it edits workOrderAvailability.ts elsewhere; holds DECISIONS #238) and the Firebase-exit lane (AuthContext untouched)
+- Expected outcome:    Jobs dispatches/schedules; dialog never opens on a past time; same commands/authority/availability on both surfaces
+- Protected boundaries:no merge or deploy without Owner exact-head authorization; no role, grant, identity, migration or Firebase change
+- Lifecycle stage:     SANDBOX BUILD
+
+- Capability:          P0 rental company security — all 18 /operations/rental operations under EOS Core company authority (Owner rulings D1–D8 2026-10-15, DECISIONS #236)
+- Agent/session:       Claude Code EOS controller / security lane · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-rental-company-security` · `D:/eos-sec-rental`
+- Base commit:         `93bec3b7`
+- Owned paths:         `functions/src/eosRental/rental.ts` · `rentalOperations.ts` · `functions/src/eosOps/companyAuthority.ts` (readMyCompanyAuthority) · `functions/src/eosExperience/workspaceOperations.ts` · `myWork.ts` (rental actor) · `field-ops-app-vite/src/modules/rental/RentalWorkspace.jsx` · `services/workspaceApiClient.js` · `functions/scripts/rentalCompanyBindingIntegrity.mjs` · their tests
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json`
+- Dependencies:        #2105 (merged `93bec3b7`, DECISIONS #235)
+- Expected outcome:    no cross-company rental read, write or replay; out-of-company == missing; Finance-withheld receivables
+- Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
+- Lifecycle stage:     MERGED `94f420c4` (#2107); nonprod deployed; runtime proof partial (cross-company untestable live; D5 PARTIAL)
+
+- Capability:          G-9 scheduling company security — schedule commands under EOS Core company authority (Owner authorization 2026-10-15, DECISIONS #237)
+- Agent/session:       Claude Code EOS controller / security lane · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-g9-schedule-company-security` · `D:/eos-sec-g9`
+- Base commit:         `7a1c4cd7`
+- Owned paths:         `functions/src/eosOps/workOrderAvailability.ts` (command company checks) · `functions/test/workOrderAvailabilityPostgres.test.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` (rebase after #2107, which also appends to DECISIONS)
+- Dependencies:        #2105 (DECISIONS #235) merged; Scheduling PR-2 waits on this
+- Expected outcome:    no cross-company schedule or unavailability write; out-of-company == missing; no mutation on refusal
+- Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
+- Lifecycle stage:     SANDBOX BUILD
+
+- Capability:          EOS Core Company Authority V1 — Analysis / My Work company isolation (Owner security ruling 2026-10-15, DECISIONS #235)
+- Agent/session:       Claude Code EOS controller / Lane B session · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-analysis-company-isolation` · `D:/eos-sec-isolation`
+- Base commit:         `a1261486`
+- Owned paths:         `functions/src/eosOps/companyAuthority.ts` (new) · `functions/src/eosAnalysis/analysis.ts` (companyScope / finance consolidated rule) · `functions/test/analysisPostgres.test.mjs` · `functions/test/myWorkPostgres.test.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json`
+- Dependencies:        #2099 (merged; security acceptance OPEN until this passes authenticated runtime tests)
+- Expected outcome:    Analysis and My Work show only the caller's authorized companies; none = refused; Finance's stricter rule unchanged
+- Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
+- Lifecycle stage:     MERGED `93bec3b7`; runtime-accepted (F-1 closed for tested Taylor-home personas)
+
+- Capability:          Scheduling lane — Employee Work Schedule in Employee Administration + scheduler→Employee navigation + compact board treatment + Dispatch Map review (Owner requirements 2026-10-15)
+- Agent/session:       Claude Code Scheduling lane session · Role: builder (design first)
+- Branch / worktree:   `work/eos-employee-shift-schedule` · `D:/eos-shift-schedule`
+- Base commit:         `a1261486`
+- Owned paths:         `docs/architecture/employee-work-schedule-design.md`; after Owner plan approval: `field-ops-app-vite/src/modules/dispatcherBoard/**` (except `DispatchViews.jsx` view-chip lines Lane A2 reserves), `field-ops-app-vite/src/domain/dispatchBoardGeometry.js`, the `.ns-dispatch*` rules in `index.css`, a new Work Schedule tab component under `modules/administration/`, their tests
+- Shared paths req'd:  this registry · `modules/administration/UserDetail.jsx` (one tab entry) · `functions/src/eosOps/workOrderAvailability.ts` only if a server change is approved; NOT `companyAuthority.ts` or other security-lane files
+- Dependencies:        Owner decisions SCH-D1..D4 in the design doc; Lane UX shared compact components (reuse, not fork)
+- Expected outcome:    governed schedule visible/editable from the Employee record; board names link by employeeId with return state; subdued elapsed time; nonworking / unconfigured time drawn, never defaulted
+- Protected boundaries:no schema, permission, role or business-rule change and no merge/deploy without Owner approval
+- Lifecycle stage:     SANDBOX BUILD — PR-1 (presentation-only board corrections) open for review; PR-2 blocked on G-9; PR-3 after PR-1; PR-4 deferred
+
+- Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
+- Agent/session:       Claude Code Lane A session · Role: builder
+- Branch / worktree:   `fix/mywork-172-frontend-dual-shape` · `D:/eos-lane-a` (frontend, merges FIRST); `fix/mywork-count-totals-172` · `D:/Taylor_Parts-wt-mywork` (API, #2099, merges only after the frontend is verified on nonprod Vercel)
+- Base commit:         `e86fbfeb4`
+- Owned paths:         `field-ops-app-vite/src/modules/workspace/MyWorkspace.jsx` · `functions/src/eosExperience/myWork.ts` · their tests; Lane A reservations: My Work / navigation / employee home UI
+- Shared paths req'd:  this registry
+- Dependencies:        none (separate from Lane B #2098, Lane C, the Firebase exit)
+- Expected outcome:    sections carry a `hasMore` boolean, never a count; the UI renders both API shapes with no number and no "undefined"
+- Protected boundaries:no merge or deploy without Owner authorization; merging to main auto-deploys nonprod (= activation)
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
 - Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`

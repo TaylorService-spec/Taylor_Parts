@@ -234,6 +234,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dispatchBoardUrlState.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/dispatchRiskVocabulary.test.mjs",
       "runner": "node"
     },
@@ -243,6 +247,14 @@
     },
     {
       "file": "test/dispatchSchedulingRefusal.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/jobsDispatchList.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/zonedTime.test.mjs",
       "runner": "node --test"
     },
     {

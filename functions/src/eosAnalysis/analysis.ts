@@ -18,6 +18,7 @@ import { MEASURES, measureById, type MeasureDefinition, type MeasureRow, type Me
 import { scopedWarehouseIds } from "../eosOps/partsReads";
 import { queueReachKeys } from "../eosOps/reorderLifecycleCommands";
 import { financeCompanyReach } from "../eosFinance/financeCompanyAccess";
+import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -68,21 +69,32 @@ export type AnalysisArea = keyof typeof ANALYSIS_AREAS;
 
 // ════════════════════ scope ════════════════════
 
-interface Scope { readonly consolidated: boolean; readonly companyIds: string[]; readonly companyKeys: string[]; readonly keyToId: Map<string, string> }
+// tenantCompanyIds = every ACTIVE company of the tenant, kept ONLY so the Finance rule (consolidated needs every company) is not
+// relaxed by the narrower authorized union; it is never a data scope.
+interface Scope { readonly consolidated: boolean; readonly companyIds: string[]; readonly companyKeys: string[]; readonly keyToId: Map<string, string>; readonly tenantCompanyIds: string[] }
 
-async function companyScope(db: Queryable, tenantId: string, raw: unknown): Promise<Scope> {
+// COMPANY ISOLATION (EOS Core Company Authority V1, DECISIONS #235): the scope is drawn ONLY from the companies the caller is
+// authorized for (eosOps/companyAuthority.ts). Consolidated / omitted = the union of those companies, never every active
+// company; an explicit company outside them is refused exactly like an unknown one (out of scope == unknown); no authority
+// refuses outright. Measure, channel, warehouse and queue rules and the Finance per-key rule still apply on top.
+async function companyScope(db: Queryable, actor: AnalysisActor, raw: unknown): Promise<Scope> {
+  const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) {
+    refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
+  }
   const { rows } = await db.query(
     `SELECT c.operating_company_id AS id, k.operating_company_key AS key FROM eos_policy.tenant_operating_companies c
        LEFT JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = c.tenant_id AND k.operating_company_id = c.operating_company_id AND k.status = 'ACTIVE'
-      WHERE c.tenant_id = $1 AND c.status = 'ACTIVE' ORDER BY 1`, [tenantId]);
-  const all = rows.map((r) => ({ id: String(r.id), key: r.key === null ? null : String(r.key) }));
+      WHERE c.tenant_id = $1 AND c.status = 'ACTIVE' ORDER BY 1`, [actor.tenantId]);
+  const tenantCompanies = rows.map((r) => ({ id: String(r.id), key: r.key === null ? null : String(r.key) }));
+  const all = tenantCompanies.filter((c) => authority.companies.includes(c.id));
   const pick = raw === undefined || raw === null || String(raw).toLowerCase() === "consolidated" ? all
     : all.filter((c) => c.id === raw);
   if (pick.length === 0) refuse("OPERATING_COMPANY_UNKNOWN", "INVALID_INPUT", "operatingCompanyId is an active operating company, or consolidated");
   const keyToId = new Map<string, string>();
   for (const c of pick) if (c.key) keyToId.set(c.key, c.id);
   return { consolidated: pick.length !== 1 || String(raw ?? "").toLowerCase() === "consolidated" || raw === undefined || raw === null,
-    companyIds: pick.map((c) => c.id), companyKeys: pick.filter((c) => c.key).map((c) => c.key as string), keyToId };
+    companyIds: pick.map((c) => c.id), companyKeys: pick.filter((c) => c.key).map((c) => c.key as string), keyToId, tenantCompanyIds: tenantCompanies.map((c) => c.id) };
 }
 
 interface Period { readonly start: Date; readonly endExclusive: Date; readonly comparison: { start: Date; endExclusive: Date } | null; readonly metadata: Record<string, unknown> }
@@ -132,7 +144,7 @@ function measureAccess(actor: AnalysisActor, m: MeasureDefinition, areaChannel: 
 function financeCompanyRefusal(actor: AnalysisActor, m: MeasureDefinition, scope: Scope): string | null {
   if (m.readCapabilities.length === 0 || !m.readCapabilities.every((k) => k.startsWith("finance."))) return null;
   const reach = new Set(m.readCapabilities.flatMap((k) => financeCompanyReach(actor, k) ?? []));
-  return scope.companyIds.every((c) => reach.has(c)) ? null : "requires a Financials company assignment for every company in scope";
+  return (scope.consolidated ? scope.tenantCompanyIds : scope.companyIds).every((c) => reach.has(c)) ? null : "requires a Financials company assignment for every company in scope";
 }
 
 /**
@@ -229,6 +241,12 @@ export interface MeasureResult {
   readonly [k: string]: unknown;
 }
 
+/** #2084 path B: what a costInference measure withholds without the cost read -- names and the key, never a value. */
+const COST_READ_CAPABILITY = "inventory.catalog.cost.read";
+const COST_INFERENCE_WITHHELD = Object.freeze([Object.freeze({ group: "COST_INFERENCE", fields: Object.freeze(["dimension", "quantity"]),
+  requires: Object.freeze([COST_READ_CAPABILITY]) })]);
+const withoutQuantity = <T extends { quantity: number }>(a: T): Omit<T, "quantity"> => { const { quantity: _q, ...rest } = a; return rest; };
+
 async function computeMeasure(db: Queryable, actor: AnalysisActor, m: MeasureDefinition, scope: Scope, period: Period, areaChannel: string | null,
   opts: { readonly sources: number }): Promise<MeasureResult> {
   const base = { id: m.id, name: m.name, domain: m.domain, basis: m.basis, unit: m.unit, timeBasis: m.timeBasis, definitionVersion: m.version };
@@ -244,19 +262,23 @@ async function computeMeasure(db: Queryable, actor: AnalysisActor, m: MeasureDef
   const prevGot = isPeriod && period.comparison ? await rowsFor(db, actor, m, scope, access.channels, period.comparison.start, period.comparison.endExclusive, ROW_LIMIT) : null;
   const prevRows = prevGot && "rows" in prevGot ? prevGot.rows : null;
   const cur = aggregate(m, rows), prev = prevRows ? aggregate(m, prevRows) : null;
+  // The resolved capability Set: Protected Administrator standing never supplies the cost read (#230).
+  const withhold = m.costInference === true && !actor.capabilities.has(COST_READ_CAPABILITY);
+  const d = drivers(m, rows, scope);
   return Object.freeze({
     ...base, status: "COMPUTED" as const,
-    value: headline(m, cur), aggregate: cur, quality: quality(m, cur, rows),
-    comparison: isPeriod ? (prev ? { aggregate: prev, value: headline(m, prev), variance: variance(m, cur, prev) } : { notComparableReason: "no comparison window" })
+    value: headline(m, cur), aggregate: withhold ? withoutQuantity(cur) : cur, quality: quality(m, cur, rows),
+    comparison: isPeriod ? (prev ? { aggregate: withhold ? withoutQuantity(prev) : prev, value: headline(m, prev), variance: variance(m, cur, prev) } : { notComparableReason: "no comparison window" })
       : { notComparableReason: "a point-in-time measure has no governed history snapshot to compare against" },
-    drivers: drivers(m, rows, scope),
+    drivers: withhold ? { byCompany: d.byCompany.map(withoutQuantity), byDimension: [] } : d,
+    ...(withhold ? { withheld: COST_INFERENCE_WITHHELD } : {}),
     channels: access.channels,
     provenance: {
       definition: { formula: m.formula, description: m.description, sourceFacts: m.sourceFacts, periodEvent: m.periodEvent, dimension: m.dimension,
         readCapabilities: m.readCapabilities, version: m.version },
       contributingRecords: cur.count,
       sources: rows.slice(0, opts.sources).map((r) => ({ recordKind: r.recordKind, recordId: r.recordId, label: r.label, operatingCompanyId: scope.keyToId.get(r.company) ?? r.company,
-        dimension: r.dim, currency: r.currency, amountMinor: r.amount, quantity: r.qty,
+        ...(withhold ? {} : { dimension: r.dim }), currency: r.currency, amountMinor: r.amount, ...(withhold ? {} : { quantity: r.qty }),
         drill: drillOf(m, r.recordId) })),
     },
   });
@@ -395,7 +417,7 @@ export async function readAnalysisWorkspace(pool: Pool, actor: AnalysisActor, in
   if (extra.length) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
   const areaKey = (input.area ?? "executive") as AnalysisArea;
   const area = ANALYSIS_AREAS[areaKey] ?? refuse("AREA_UNKNOWN", "INVALID_INPUT", `area is one of ${Object.keys(ANALYSIS_AREAS).join(", ")}`);
-  const scope = await companyScope(pool, actor.tenantId, input.operatingCompanyId);
+  const scope = await companyScope(pool, actor, input.operatingCompanyId);
   const period = resolvePeriod(scope, input.periodType, input.comparison, now());
   const visible = area.measures.map((id) => measureById(id)!);
   if (!visible.some((m) => m.availability === "AVAILABLE" && measureAccess(actor, m, area.channel).allowed)) {
@@ -424,7 +446,7 @@ export async function readMeasureAnalysis(pool: Pool, actor: AnalysisActor, inpu
   if (extra.length) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
   const m = measureById(String(input.measureId ?? "")) ?? refuse("MEASURE_UNKNOWN", "NOT_FOUND", "no governed measure with that id");
   if (input.channel !== undefined && input.channel !== "RETAIL" && input.channel !== "NATIONAL_ACCOUNTS") refuse("CHANNEL_INVALID", "INVALID_INPUT", "channel is RETAIL or NATIONAL_ACCOUNTS");
-  const scope = await companyScope(pool, actor.tenantId, input.operatingCompanyId);
+  const scope = await companyScope(pool, actor, input.operatingCompanyId);
   const period = resolvePeriod(scope, input.periodType, input.comparison, now());
   const r = await computeMeasure(pool, actor, m, scope, period, (input.channel as string | undefined) ?? null, { sources: 200 });
   if (r.status === "REFUSED") refuse("MEASURE_NOT_AUTHORIZED", "FORBIDDEN", `this measure ${r.reason}`);

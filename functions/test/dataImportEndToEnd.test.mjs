@@ -179,7 +179,7 @@ await check("a frozen PARTS import wrote NO createPart audit event", async () =>
 // --------------------------------------------------------------- replay
 
 // Ruling A: a retry of the refused PARTS job is refused FROZEN again and still claims nothing. (The "a COMPLETED job cannot
-// run twice" proof moves to the EQUIPMENT import below -- ruling B, same executeDataImport path.)
+// run twice" proof is on the SERVICE_HISTORY import below -- ruling B, same executeDataImport path.)
 await check("the same PARTS job is refused FROZEN again on retry, and is still not claimed", async () => {
   await assert.rejects(executeDataImport.run({ data: { jobId, approved: true }, auth }), isPartImportFrozen);
   assert.equal((await db.collection("data_import_jobs").doc(jobId).get()).data().status, "STAGED");
@@ -363,7 +363,7 @@ await check("re-staging the same customers finds them by NAME, not only by deriv
 
 // --------------------------------------------------------------- equipment
 
-await check("equipment imports only where its customer and location BOTH resolve", async () => {
+await check("EQUIPMENT REGISTER FREEZE: an equipment file still stages with its findings; executing it is refused whole -- job not claimed, nothing written", async () => {
   // The customers imported above exist. Give one of them a location, and leave a second
   // location under a DIFFERENT customer so the scoped key is actually exercised.
   const soda = `Seeded Soda Works ${run}`;
@@ -389,30 +389,22 @@ await check("equipment imports only where its customer and location BOTH resolve
   assert.ok(staged.job.rows[1].findings.some((f) => f.code === "LOCATION_NOT_FOUND"));
   assert.ok(staged.job.rows[2].findings.some((f) => f.code === "CUSTOMER_NOT_FOUND"));
 
-  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
-  assert.equal(done.job.status, "COMPLETED");
-  assert.equal(done.job.result.created, 1);
+  // Owner ruling D-1: the register authority is eos_ops.equipment and the Firestore `equipment` collection is FROZEN
+  // (eosOps/equipmentWriterState.ts), so execution is refused before the claim. The written-document shape stays proven
+  // below the import boundary in dataImportEquipment.test.mjs.
+  const equipmentBefore = (await db.collection("equipment").get()).size;
+  const equipmentAudits = async () => (await db.collection("auditEvents").where("action", "==", "createEquipmentFromImport").get()).size;
+  const auditsBefore = await equipmentAudits();
+  const isEquipmentFrozen = (err) => err.code === "failed-precondition" && err.details?.code === "FIRESTORE_EQUIPMENT_WRITER_FROZEN";
+  await assert.rejects(executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }), isEquipmentFrozen);
+  assert.equal((await db.collection("data_import_jobs").doc(staged.job.jobId).get()).data().status, "STAGED", "a refused job is never claimed");
+  assert.equal((await db.collection("equipment").get()).size, equipmentBefore, "no equipment was written");
+  assert.equal(await equipmentAudits(), auditsBefore, "no createEquipmentFromImport audit");
 
-  const snap = await db.collection("equipment").where("serialNumber", "==", `EQ-${run}-1`).get();
-  assert.equal(snap.size, 1);
-  const eq = snap.docs[0].data();
-  assert.equal(eq.accountId, sodaId, "the customer NAME was resolved to an id");
-  assert.equal(eq.status, "ACTIVE", "create is always ACTIVE");
-  assert.equal(typeof eq.createdAt, "number", "equipment governs its stamps as NUMBER, not Timestamp");
-  assert.equal(eq.serialNumberKey, `EQ-${run}-1`.toUpperCase());
-  // The two name columns were the FILE's way of naming records; the document holds ids. A
-  // stale copy of a customer name on every machine is how two sources of one fact appear.
-  assert.equal(eq.customerName, undefined);
-  assert.equal(eq.locationName, undefined);
-
-  // Ruling B: "a COMPLETED job cannot be executed twice" is import-lifecycle domain logic -- proven on this (unfrozen)
-  // EQUIPMENT job, through the same executeDataImport path the frozen PARTS job used to prove it on.
-  await assert.rejects(
-    executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }),
-    (err) => err.code === "failed-precondition" && err.details?.code === "JOB_NOT_STAGED",
-    "a completed job must not run again",
-  );
-  assert.equal((await db.collection("equipment").where("serialNumber", "==", `EQ-${run}-1`).get()).size, 1, "and it wrote nothing more");
+  // A retry is refused the same way -- the refusal is a state gate, not a one-shot.
+  await assert.rejects(executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }), isEquipmentFrozen);
+  assert.equal((await db.collection("data_import_jobs").doc(staged.job.jobId).get()).data().status, "STAGED");
+  assert.equal((await db.collection("equipment").get()).size, equipmentBefore);
 });
 
 await check("a serial already registered is refused, whoever registered it", async () => {
@@ -538,6 +530,16 @@ await check("service history imports as its OWN record, never as a Work Order", 
   // one in every metric that counts them.
   const wos = await db.collection("fieldops_wos").get();
   assert.equal(wos.size, 0, `import must not create Work Orders, saw ${wos.size}`);
+
+  // Ruling B: "a COMPLETED job cannot be executed twice" is import-lifecycle domain logic -- proven on this unfrozen
+  // SERVICE_HISTORY job now that the EQUIPMENT job that used to carry it is refused at the register freeze.
+  await assert.rejects(
+    executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }),
+    (err) => err.code === "failed-precondition" && err.details?.code === "JOB_NOT_STAGED",
+    "a completed job must not run again",
+  );
+  const again = (await db.collection("imported_service_history").get()).docs.filter((d) => d.data().externalReference === `OLD-${run}-1`);
+  assert.equal(again.length, 1, "and it wrote nothing more");
 });
 
 await check("re-importing the same service records is refused by their source reference", async () => {
@@ -625,6 +627,7 @@ await check("ACCEPTANCE: all five entities landed, and each is what it claims to
   // Parts are the three FIXTURES seeded above: the PARTS import is refused while the catalog is frozen.
   assert.ok(counts.parts >= 3, `parts: ${counts.parts}`);
   assert.ok(counts.accounts >= 2, `accounts: ${counts.accounts}`);
+  // Equipment holds only the hand-registered FIXTURE above: the EQUIPMENT import is refused at the register freeze.
   assert.ok(counts.equipment >= 1, `equipment: ${counts.equipment}`);
   // Ruling A (activation): the INVENTORY import is refused while the catalog authority has moved, so it wrote no movement.
   assert.equal(counts.inventory_transactions, 0, `movements: ${counts.inventory_transactions}`);
@@ -638,10 +641,9 @@ await check("ACCEPTANCE: all five entities landed, and each is what it claims to
   // which is what proves import did not grow a shortcut for any one of them.
   const actions = new Set((await db.collection("auditEvents").get()).docs.map((d) => String(d.data().action)));
   // createAccountFromImport is absent by design while the CRM cutover freeze holds (see the customer check above), and
-  // this run's createPart audits are absent by design while the CATALOG freeze holds (see the PARTS checks above).
-  for (const action of ["createEquipmentFromImport", "createServiceHistoryFromImport"]) {
-    assert.ok(actions.has(action), `no audit event for ${action}`);
-  }
+  // this run's createPart audits are absent by design while the CATALOG freeze holds (see the PARTS checks above), and
+  // createEquipmentFromImport is absent by design while the EQUIPMENT register freeze holds (see the EQUIPMENT check above).
+  assert.ok(actions.has("createServiceHistoryFromImport"), "no audit event for createServiceHistoryFromImport");
   assert.equal(await createPartAuditsForRun(), 0, "no createPart audit for this run's frozen PARTS import");
 
   // And the history shows every run, with what each one wrote.
@@ -673,17 +675,19 @@ await check("an unauthenticated request never reaches authorization at all", asy
 
 // --------------------------------------------------------------- history
 
-// Ruling A (the refused PARTS job is listed as still STAGED, having written nothing) + Ruling B (history still lists what an
-// unfrozen run wrote -- the EQUIPMENT job).
+// Ruling A (the refused PARTS and EQUIPMENT jobs are listed as still STAGED, having written nothing) + Ruling B (history
+// still lists what an unfrozen run wrote -- the SERVICE_HISTORY job).
 await check("history lists the runs, with what each one wrote", async () => {
   const res = await listDataImportJobs.run({ data: {}, auth });
   const mine = res.jobs.filter((j) => j.fileName === "seeded-parts.csv" && j.jobId === jobId);
   assert.equal(mine.length, 1);
   assert.equal(mine[0].status, "STAGED", "the frozen PARTS job was never claimed");
   assert.equal(mine[0].result ?? null, null, "and it wrote nothing");
-  const equipment = res.jobs.find((j) => j.entityType === "EQUIPMENT" && j.status === "COMPLETED");
-  assert.ok(equipment, "a completed EQUIPMENT run is listed");
-  assert.equal(equipment.result.created, 1);
+  const history = res.jobs.find((j) => j.entityType === "SERVICE_HISTORY" && j.status === "COMPLETED");
+  assert.ok(history, "a completed SERVICE_HISTORY run is listed");
+  assert.equal(history.result.created, 1);
+  assert.equal(res.jobs.some((j) => j.entityType === "EQUIPMENT" && j.status === "COMPLETED"), false, "no EQUIPMENT run completed");
+  assert.ok(res.jobs.some((j) => j.entityType === "EQUIPMENT" && j.status === "STAGED"), "the refused EQUIPMENT job is listed as STAGED");
 });
 
 console.log(`\n${passed} passed, 0 failed`);

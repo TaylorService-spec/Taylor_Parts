@@ -21,10 +21,13 @@ const AGREEMENT = { id: "rag-1", number: "RA-2026-000001", status: "ACTIVE", ope
   assignments: [], charges: [], workOrders: [] };
 const api = (over = {}) => vi.fn(async (op) => over[op] ?? (op === "readRentalWorkspace" ? { ok: true, result: WS }
   : op === "listRentalAgreements" ? { ok: true, result: { items: [] } } : op === "readRentalAgreement" ? { ok: true, result: AGREEMENT } : { ok: true, result: {} }));
+// P0 rental security (D6): the create form's companies are the caller's EOS Core company authority, never a fixed list.
+const TAYLOR_ONLY = { ok: true, result: { companies: [{ operatingCompanyId: "taylor", operatingCompanyKey: "taylor" }], gap: null } };
+const ws = (res = TAYLOR_ONLY) => vi.fn(async () => res);
 
 describe("RentalWorkspace", () => {
   it("answers where each unit is and who holds it; due back and billing exceptions first", async () => {
-    const { container } = render(<RentalWorkspace callApi={api()} />);
+    const { container } = render(<RentalWorkspace callApi={api()} callWorkspace={ws()} />);
     await screen.findByText("Harbor Grill (customer)");
     expect(container.textContent).toMatch(/Taylor \(owner\)/);
     expect(container.textContent).toMatch(/Due in 5 day\(s\)/);
@@ -34,7 +37,7 @@ describe("RentalWorkspace", () => {
 
   it("records a charge only with stated tax evidence, in integer minor units", async () => {
     const callApi = api();
-    render(<RentalWorkspace callApi={callApi} />);
+    render(<RentalWorkspace callApi={callApi} callWorkspace={ws()} />);
     fireEvent.click((await screen.findAllByRole("button", { name: "RA-2026-000001" }))[0]);
     await screen.findByText(/ownership never transfers/);
     fireEvent.change(screen.getByLabelText("Period Start"), { target: { value: "2026-09-01" } });
@@ -47,8 +50,43 @@ describe("RentalWorkspace", () => {
       periodStart: "2026-09-01", periodEnd: "2026-09-08", taxEvidence: { status: "DETERMINED", amountMinor: 5600 } })));
   });
 
+  it("offers only the caller's authorized companies for a new agreement (D6)", async () => {
+    const callApi = api();
+    const callWorkspace = ws();
+    render(<RentalWorkspace callApi={callApi} callWorkspace={callWorkspace} />);
+    await waitFor(() => expect(callWorkspace).toHaveBeenCalledWith("readMyCompanyAuthority", {}));
+    const select = await screen.findByLabelText("Operating Company");
+    await waitFor(() => expect([...select.querySelectorAll("option")].map((o) => o.value)).toEqual(["taylor"]));
+    expect(select.textContent).not.toMatch(/Ventana/);
+  });
+
+  it("without company authority there is no company to pick and no create (fails closed)", async () => {
+    render(<RentalWorkspace callApi={api()} callWorkspace={ws({ ok: true, result: { companies: [], gap: "EMPLOYEE_LINK_REQUIRED" } })} />);
+    await screen.findByText(/no operating-company authority/);
+    expect(screen.getByRole("button", { name: "Create Rental Agreement" }).disabled).toBe(true);
+  });
+
+  it("shows receivables only with Finance access; withheld fields render as Finance only (D8)", async () => {
+    const charged = { ...AGREEMENT, charges: [{ id: "rch-1", kind: "PERIOD", termsVersion: 1, periodStart: "2026-09-01", periodEnd: "2026-09-08", periodCount: 1,
+      unitAmountMinor: "70000", amountMinor: "70000", currency: "USD", taxEvidence: { status: "DETERMINED", amountMinor: "5600" }, billingPackage: null }] };
+    const open = async (agreement) => {
+      const { container, unmount } = render(<RentalWorkspace callApi={api({ readRentalAgreement: { ok: true, result: agreement } })} callWorkspace={ws()} />);
+      fireEvent.click((await screen.findAllByRole("button", { name: "RA-2026-000001" }))[0]);
+      await screen.findByText(/ownership never transfers/);
+      const text = container.textContent;
+      unmount();
+      return text;
+    };
+    const withheld = await open({ ...charged, financeWithheld: true });
+    expect(withheld).toMatch(/Finance only/);
+    expect(withheld).not.toMatch(/outstanding/);
+    const visible = await open({ ...charged, financeWithheld: false, charges: [{ ...charged.charges[0], receivable: { obligationId: "ob-1", status: "OPEN", outstandingMinor: "75600" } }] });
+    expect(visible).toMatch(/outstanding/);
+    expect(visible).not.toMatch(/Finance only/);
+  });
+
   it("renders the server's refusal", async () => {
-    render(<RentalWorkspace callApi={vi.fn(async () => ({ ok: false, code: "FORBIDDEN" }))} />);
+    render(<RentalWorkspace callApi={vi.fn(async () => ({ ok: false, code: "FORBIDDEN" }))} callWorkspace={ws()} />);
     await screen.findByText(/Rental Agreement read access/);
   });
 });

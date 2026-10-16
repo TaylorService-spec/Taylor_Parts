@@ -33,6 +33,13 @@ test("static: every canonical Job Role has exactly one layout; the workspace is 
   }
 });
 
+test("static (DECISIONS #172): a My Work section is a bounded preview -- no count derived from its rows", () => {
+  const s = strip(readFileSync(join(SRC, "eosExperience", "myWork.ts"), "utf8"));
+  assert.doesNotMatch(s, /\bcount\s*[:?]/, "no Section.count");
+  assert.doesNotMatch(s, /exceptions\.length|items\.length\s*\)/, "no row length handed over as a total");
+  assert.match(s, /hasMore: sourceTruncated \|\| items\.length > PREVIEW_ROWS/, "hasMore is a boolean over the preview cut or the source's own truncation");
+});
+
 test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { q, admin, person, call, repo } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: TENANT, prefix: "myw" });
   const ok = (r, what = "") => { assert.equal(r.status, 200, `${what} ${JSON.stringify(r.body).slice(0, 700)}`); return r.body.result; };
@@ -100,6 +107,18 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.ok(d.items.some((i) => i.id === assigned && i.status === "SCHEDULED" && i.action.assignee === "Finley Tech"), "the ASSIGNEE is shown as the assignee");
   });
 
+  await t.test("COMPANY ISOLATION (DECISIONS #235): Key figures cover only the caller's authorized companies; an unauthorized company is NOT_AUTHORIZED", async () => {
+    // Finance persona, Taylor home company, no operatingCompany assignment: its default consolidated view is Taylor alone.
+    const f = ok(await mw(ctrl));
+    assert.deepEqual(section(f, "measures").summary.scope.companies, ["taylor"], "consolidated Key figures = the authorized union, never every active company");
+    // Asking for Ventana: every Analysis-backed section refuses; My Work itself still answers.
+    const v = ok(await mw(ctrl, { operatingCompanyId: "ventana" }));
+    for (const key of ["attention", "measures"]) {
+      assert.deepEqual([section(v, key).status, section(v, key).items.length, section(v, key).hasMore], ["NOT_AUTHORIZED", 0, false], key);
+    }
+    assert.equal("summary" in section(v, "measures"), false, "no figure, no scope, for an unauthorized company");
+  });
+
   await t.test("RETAIL SALES: owner and accountable are distinct answers; channel scope holds -- National records never appear", async () => {
     const w = ok(await mw(retail));
     assert.equal(w.persona.key, "retail-sales");
@@ -125,11 +144,13 @@ test("my work + search over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     const a = ok(await mw(analyst));
     assert.equal(a.persona.key, "reporting-analyst");
     const cat = section(a, "analysisCatalog");
-    assert.equal(cat.count, 37, "the analyst sees the whole governed catalog (items are capped at 25 per section; count is the total)");
+    // DECISIONS #172: 37 governed measures, a 25-row preview -- the section says only that MORE exist, never a total.
+    assert.deepEqual([cat.items.length, cat.hasMore, "count" in cat], [25, true, false], "a paginated section carries hasMore, never a count");
     assert.ok(cat.items.filter((i) => !i.detail.includes("·")).every((i) => i.status === "NO_UNDERLYING_READ"), "and no computed business measure is readable to it");
     const g = ok(await mw(nobody));
     assert.deepEqual([g.persona.key, g.persona.fromJobRole], ["general-employee", false]);
     assert.ok(g.sections.every((s) => s.status !== "READY" || s.items.length === 0), "a person who holds nothing sees nothing of anyone's work");
+    assert.ok([...f.sections, ...a.sections, ...g.sections].every((s) => !("count" in s) && typeof s.hasMore === "boolean"), "no section carries a count (#172)");
   });
 
   await t.test("SEARCH: only what the caller can already read; channel scope and queue reach hold; unreadable kinds are named", async () => {

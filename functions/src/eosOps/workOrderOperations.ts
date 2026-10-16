@@ -106,6 +106,7 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   recordTechnicianUnavailability: availability.recordTechnicianUnavailability,
   endTechnicianUnavailability: availability.endTechnicianUnavailability,
   findAvailableTechnicianSlots: availability.findAvailableTechnicianSlots,
+  suggestWorkOrderPlacement: availability.suggestWorkOrderPlacement,
   readWorkOrderLabor: labor.readWorkOrderLabor,
   recordWorkOrderLabor: labor.recordWorkOrderLabor,
   readWorkOrderFieldContext: fieldContext.readWorkOrderFieldContext,
@@ -128,7 +129,7 @@ export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "re
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
   "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities",
-  "readTechnicianAvailability", "findAvailableTechnicianSlots", "readWorkOrderLabor", "readWorkOrderFieldContext",
+  "readTechnicianAvailability", "findAvailableTechnicianSlots", "suggestWorkOrderPlacement", "readWorkOrderLabor", "readWorkOrderFieldContext",
   "readWorkOrderReadiness", "readTechnicianExecutionStats", "listInstallableEquipmentForWorkOrder", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
   ...SELF_SCHEDULING_READ_OPERATIONS,
 ]);

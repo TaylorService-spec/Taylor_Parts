@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader, SectionHeader, Button, StatusIndicator } from "../../shared/ui/primitives";
 import { Field, FormError } from "../../shared/ui/form";
 import { callRentalApi } from "../../services/rentalApiClient";
+import { callWorkspaceApi } from "../../services/workspaceApiClient";
 import { formatMinorUnits } from "../../domain/money.js";
 import { toMinorUnits } from "../financials/FinancialsWorkspace";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -126,14 +127,17 @@ function AgreementTable({ rows, onOpen }) {
   );
 }
 
-export default function RentalWorkspace({ callApi = callRentalApi }) {
+export default function RentalWorkspace({ callApi = callRentalApi, callWorkspace = callWorkspaceApi }) {
   const [ws, setWs] = useState(null);
   const [agreements, setAgreements] = useState([]);
   const [detail, setDetail] = useState(null);
   const [refusal, setRefusal] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ operatingCompanyId: "taylor", accountId: "", customerLocationId: "", startDate: "", expectedEndDate: "", rate: "", billingFrequency: "WEEK", delivery: "" });
+  // The companies a new agreement may name come from EOS Core company authority (readMyCompanyAuthority), never a fixed list;
+  // the server refuses any other company regardless (P0 rental security, D6).
+  const [companies, setCompanies] = useState(null);
+  const [draft, setDraft] = useState({ operatingCompanyId: "", accountId: "", customerLocationId: "", startDate: "", expectedEndDate: "", rate: "", billingFrequency: "WEEK", delivery: "" });
   const [charge, setCharge] = useState({ kind: "PERIOD", periodStart: "", periodEnd: "", tax: "", taxNotDetermined: false });
   const [act, setAct] = useState({ fleetUnitId: "", warehouseId: "", notes: "", extendTo: "", reason: "" });
 
@@ -146,6 +150,16 @@ export default function RentalWorkspace({ callApi = callRentalApi }) {
     if (list.ok) setAgreements(list.result.items);
   }, [callApi]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let live = true;
+    callWorkspace("readMyCompanyAuthority", {}).then((res) => {
+      if (!live) return;
+      const list = res?.ok ? res.result.companies : [];
+      setCompanies(list);
+      setDraft((d) => (d.operatingCompanyId || list.length === 0 ? d : { ...d, operatingCompanyId: list[0].operatingCompanyId }));
+    });
+    return () => { live = false; };
+  }, [callWorkspace]);
 
   const open = async (agreementId) => {
     const res = await callApi("readRentalAgreement", { agreementId });
@@ -218,7 +232,13 @@ export default function RentalWorkspace({ callApi = callRentalApi }) {
         <SectionHeader title="Rental Agreements" description={agreements.length === 0 ? "No Rental Agreement yet." : `${agreements.length} agreement(s)`} />
         {agreements.length > 0 && <AgreementTable rows={agreements} onOpen={open} />}
         <h3>New Rental Agreement</h3>
-        <Field id="rental-operating-company" label="Operating Company"><select className="fo-input" value={draft.operatingCompanyId} onChange={(e) => setDraft({ ...draft, operatingCompanyId: e.target.value })}><option value="taylor">{operatingCompanyLabel("taylor")}</option><option value="ventana">{operatingCompanyLabel("ventana")}</option></select></Field>
+        <Field id="rental-operating-company" label="Operating Company">
+          {companies !== null && companies.length === 0
+            ? <p className="fo-muted" role="status">You have no operating-company authority, so you cannot create a Rental Agreement.</p>
+            : <select className="fo-input" value={draft.operatingCompanyId} disabled={companies === null} onChange={(e) => setDraft({ ...draft, operatingCompanyId: e.target.value })}>
+                {(companies ?? []).map((c) => <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{operatingCompanyLabel(c.operatingCompanyKey)}</option>)}
+              </select>}
+        </Field>
         <Field id="rental-customer-account" label="Customer Account"><input className="fo-input" value={draft.accountId} onChange={(e) => setDraft({ ...draft, accountId: e.target.value })} /></Field>
         <Field id="rental-customer-site" label="Customer Site"><input className="fo-input" value={draft.customerLocationId} onChange={(e) => setDraft({ ...draft, customerLocationId: e.target.value })} /></Field>
         <Field id="rental-start-date" label="Start Date"><input className="fo-input" type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /></Field>
@@ -226,7 +246,7 @@ export default function RentalWorkspace({ callApi = callRentalApi }) {
         <Field id="rental-rate" label="Rate"><input className="fo-input" value={draft.rate} onChange={(e) => setDraft({ ...draft, rate: e.target.value })} /></Field>
         <Field id="rental-billing-frequency" label="Billing Frequency"><select className="fo-input" value={draft.billingFrequency} onChange={(e) => setDraft({ ...draft, billingFrequency: e.target.value })}><option value="DAY">Daily</option><option value="WEEK">Weekly</option><option value="MONTH">Monthly</option></select></Field>
         <Field id="rental-delivery-charge-optional" label="Delivery Charge (Optional)"><input className="fo-input" value={draft.delivery} onChange={(e) => setDraft({ ...draft, delivery: e.target.value })} /></Field>
-        <Button disabled={busy} onClick={createAgreement}>Create Rental Agreement</Button>
+        <Button disabled={busy || !draft.operatingCompanyId} onClick={createAgreement}>Create Rental Agreement</Button>
       </section>
 
       {detail && (
@@ -268,7 +288,8 @@ export default function RentalWorkspace({ callApi = callRentalApi }) {
               <tr key={x.id}><td>{statusLabel(x.kind)}</td><td>{x.periodStart ? `${x.periodStart} → ${x.periodEnd} (${x.periodCount})` : "—"}</td><td>{money(x.amountMinor, x.currency)}</td>
                 <td>{x.taxEvidence.status === "DETERMINED" ? money(x.taxEvidence.amountMinor, x.currency) : "Not Determined"}</td>
                 <td>{x.billingPackage ? `${statusLabel(x.billingPackage.status)}${x.billingPackage.readinessExceptions.length ? ` — ${x.billingPackage.readinessExceptions.join(", ")}` : ""}` : "—"}</td>
-                <td>{x.receivable ? `${statusLabel(x.receivable.status)} · ${money(x.receivable.outstandingMinor, x.currency)} outstanding` : "—"}</td></tr>))}</tbody>
+                <td>{detail.financeWithheld ? <span title="Receivables and balances need Finance access for this company">Finance only</span>
+                  : x.receivable ? `${statusLabel(x.receivable.status)} · ${money(x.receivable.outstandingMinor, x.currency)} outstanding` : "—"}</td></tr>))}</tbody>
           </table>
           <Field id="rental-charge" label="Charge"><select className="fo-input" value={charge.kind} onChange={(e) => setCharge({ ...charge, kind: e.target.value })}><option value="PERIOD">Rental Period</option><option value="DELIVERY">Agreed Delivery Charge</option><option value="INSTALL">Agreed Install Charge</option></select></Field>
           {charge.kind === "PERIOD" && (<>

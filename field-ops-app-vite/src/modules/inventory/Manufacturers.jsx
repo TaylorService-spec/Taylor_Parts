@@ -9,12 +9,12 @@
 // surfaces now also carries the `version` field this workspace's write actions need for optimistic
 // concurrency, so it is reused here as-is -- no new capability, no Rules change, no parallel read path.
 //
-// WRITE via useManufacturerWrite -> manufacturerCommandClient -> the trusted
-// createManufacturer/updateManufacturer/changeManufacturerStatus callables. ONE Manufacturer authority;
-// NO client Firestore writes; NO parallel validator; NO parallel status vocabulary (client mirror; the
-// command re-validates). FAIL-CLOSED: MANUFACTURER_WRITE_READY=false (config/environments.json, every
-// environment today) -> write-disabled + zero callable attempts, independent of the read-side fix above.
-// Honest outcomes; never claims a success it did not receive.
+// READ-ONLY (Firebase exit PR-B, 2026-10-15). The create / rename / status affordances, their write hook
+// (useManufacturerWrite), the createManufacturer / updateManufacturer / changeManufacturerStatus callable
+// client and the MANUFACTURER_WRITE_READY flag were removed: the flag was false in every environment, so no
+// write was ever attempted from here. Manufacturer administration returns on EOS Core (the PostgreSQL writer,
+// functions/src/catalogMaster/postgresManufacturerWriter.ts, once it is routed), never on these callables.
+// See docs/architecture/frontend-dormant-firebase-client-retirement-ledger.md.
 //
 // S-INV-MANUFACTURERS -- the list itself now renders through the metadata list runtime
 // (manufacturerIndexList/manufacturerEntity, definitions/manufacturer.js), the same
@@ -45,31 +45,19 @@
 // for manufacturerIndexList's columns). All three instances are fixed here: the ID column is
 // dropped entirely (manufacturerIndexList declares none), and both dialog headers now read
 // the manufacturer's `name`. manufacturerId is still used -- as the row's routing/keying
-// value and as the write commands' addressing key -- but never as displayed content.
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+// value -- but never as displayed content.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchManufacturerList } from "../../services/manufacturerQueries";
-import { useManufacturerWrite } from "../../hooks/useManufacturerWrite";
-import { allowedStatusTransitions } from "../../domain/manufacturerWrite";
 import { manufacturerEntity, manufacturerIndexList } from "../../metadata/definitions/manufacturer.js";
 import { buildListPresentation } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
-import { Button } from "../../shared/ui/primitives/index.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import { sortRows } from "../../shared/ui/sorting/useTableSort.js";
 import { statusLabel } from "../../shared/display/displayLabels.js";
 
-const STATUS_TONE_CLASS = {
-  ACTIVE: "fo-mfr__badge--active",
-  INACTIVE: "fo-mfr__badge--inactive",
-};
-// Still used by the Change Status dialog (not the list -- the list's own status cell now
-// renders through cellValue's ENUM branch, using manufacturerEntity's declared enumLabels,
-// same as every other migrated list's status column).
+// The status column's sort value. The cell itself renders through cellValue's ENUM branch, using
+// manufacturerEntity's declared enumLabels, same as every other migrated list's status column.
 const STATUS_WORDS = manufacturerEntity.fields.find((f) => f.id === "status")?.enumLabels ?? {};
-function StatusBadge({ status }) {
-  const toneClass = STATUS_TONE_CLASS[status] ?? STATUS_TONE_CLASS.INACTIVE;
-  return <span className={`fo-mfr__badge ${toneClass}`}>{statusLabel(status, STATUS_WORDS)}</span>;
-}
 
 // UI corrections item C: header sorting. getManufacturerCatalog returns the WHOLE catalog, so ordering the rows in
 // memory orders the complete result (no page boundary to misrepresent). Values are what the person reads.
@@ -77,31 +65,18 @@ const MANUFACTURER_SORT_COLUMNS = Object.freeze({
   name: { value: (row) => row.name ?? null },
   status: { value: (row) => (row.status ? statusLabel(row.status, STATUS_WORDS) : null) },
 });
-const OUTCOME_TONE_CLASS = {
-  applied: "fo-mfr__outcome--applied", replayed: "fo-mfr__outcome--replayed",
-  noop: "fo-mfr__outcome--noop", denied: "fo-mfr__outcome--denied",
-  invalid: "fo-mfr__outcome--invalid", conflict: "fo-mfr__outcome--conflict",
-  notFound: "fo-mfr__outcome--not-found", unavailable: "fo-mfr__outcome--unavailable",
-  error: "fo-mfr__outcome--error",
-};
-function OutcomeBanner({ outcome }) {
-  if (!outcome) return null;
-  const toneClass = OUTCOME_TONE_CLASS[outcome.kind] ?? OUTCOME_TONE_CLASS.error;
-  return <div role="status" className={`fo-mfr__outcome ${toneClass}`}>{outcome.message}</div>;
-}
 
 // Preserves this workspace's own, more specific copy over buildListPresentation's generic
 // per-state defaults (emptyMessageFor, listPresentation.js) -- overriding is the same
 // explicitly-supported "own copy" choice buildAccountRelatedListPresentation exercises.
-const EMPTY_MESSAGE = "No manufacturers are recorded yet. Use “New Manufacturer” to create the first governed record.";
+const EMPTY_MESSAGE = "No manufacturers are recorded yet.";
 const DENIED_MESSAGE = "You do not have access to Manufacturers. Contact an administrator if you believe this is an error.";
 const UNAVAILABLE_MESSAGE = "Manufacturers are currently unavailable. Try again later.";
 
 /**
  * Reshape this workspace's own load state into a metadata list presentation, without a
  * second read. `state.manufacturers` (when phase === "ready") is the SAME
- * fetchManufacturerList() result the workspace already holds for the write dialogs'
- * `expectedVersion` -- reused, not re-fetched.
+ * fetchManufacturerList() result the workspace already holds -- reused, not re-fetched.
  */
 export function buildManufacturersPresentation(state, sort = null) {
   const loading = state.phase === "loading";
@@ -132,19 +107,8 @@ export function buildManufacturersPresentation(state, sort = null) {
   return { ...presentation, emptyMessage };
 }
 
-export default function Manufacturers(props) {
+export default function Manufacturers() {
   const [state, setState] = useState({ phase: "loading" });
-  const [panel, setPanel] = useState(null); // {mode:"create"} | {mode:"edit", m} | {mode:"status", m}
-  const [form, setForm] = useState({});
-  // A <label> that only sits NEXT TO its input is not associated with it: clicking the label does
-  // not focus the field, and a screen reader announces the input unlabelled. Every other form in
-  // this app wraps its input in the <label> instead, which associates implicitly -- these two were
-  // the only siblings, which is why the sweep found exactly two.
-  const manufacturerIdFieldId = useId();
-  const nameFieldId = useId();
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState(null);
-  const { writeReady, runCreate, runRename, runChangeStatus } = useManufacturerWrite(props?.writeDeps);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -158,25 +122,6 @@ export default function Manufacturers(props) {
   }, []);
   useEffect(() => load(), [load]);
 
-  // MetadataListGrid's row actions receive only the row KEY (manufacturerId) -- the
-  // document id routes the row and never labels it (MetadataListGrid.jsx's own comment).
-  // This looks the real record back up for the dialogs, which need the full manufacturer.
-  const byId = useMemo(() => {
-    const map = new Map();
-    for (const m of state.manufacturers ?? []) map.set(m.manufacturerId, m);
-    return map;
-  }, [state.manufacturers]);
-
-  const openCreate = () => { setForm({}); setOutcome(null); setPanel({ mode: "create" }); };
-  const openEdit = (m) => { setForm({ name: m.name }); setOutcome(null); setPanel({ mode: "edit", m }); };
-  const openStatus = (m) => { setOutcome(null); setPanel({ mode: "status", m }); };
-  const close = () => { setPanel(null); setForm({}); };
-  const afterWrite = useCallback((o) => { setOutcome(o); if (o.kind === "applied" || o.kind === "replayed") { close(); load(); } }, [load]);
-
-  const submitCreate = async () => { setBusy(true); afterWrite(await runCreate(form)); setBusy(false); };
-  const submitEdit = async () => { setBusy(true); afterWrite(await runRename(panel.m.manufacturerId, panel.m.version, form, panel.m)); setBusy(false); };
-  const submitStatus = async (s) => { setBusy(true); afterWrite(await runChangeStatus(panel.m.manufacturerId, panel.m.version, s)); setBusy(false); };
-
   // Header sort state ({ key, direction } | null = the catalog's default order), in the grid's criteria shape.
   const [headerSort, setHeaderSort] = useState(null);
   const presentation = useMemo(() => buildManufacturersPresentation(state, headerSort), [state, headerSort]);
@@ -185,25 +130,6 @@ export default function Manufacturers(props) {
     criteria: { sort: headerSort ? [{ fieldId: headerSort.key, direction: headerSort.direction === "desc" ? "DESC" : "ASC" }] : [] },
     onSort: (fieldId, direction) => setHeaderSort(fieldId ? { key: fieldId, direction: direction === "DESC" ? "desc" : "asc" } : null),
   }), [headerSort]);
-
-  // Row actions mirror the original table's per-row Rename/Status buttons exactly:
-  // disabled while a write is in flight (`busy`), same as before -- never gated on
-  // `writeReady` here (the panel's own Save/transition controls are what enforce that,
-  // same as the pre-migration table).
-  const rowActions = [
-    {
-      id: "rename",
-      label: "Rename",
-      denied: busy,
-      onActivate: (rowKey) => { const m = byId.get(rowKey); if (m) openEdit(m); },
-    },
-    {
-      id: "status",
-      label: "Status",
-      denied: busy,
-      onActivate: (rowKey) => { const m = byId.get(rowKey); if (m) openStatus(m); },
-    },
-  ];
 
   // THE COUNT IS EXACT HERE, AND ONLY BECAUSE THE READ IS COMPLETE.
   //
@@ -232,51 +158,11 @@ export default function Manufacturers(props) {
           ? [{ key: "invalid", label: `${state.invalidCount} malformed record${state.invalidCount === 1 ? "" : "s"} excluded`, tone: "attention" }]
           : []
       }
-      action={<Button variant="primary" onClick={openCreate} disabled={busy}>New Manufacturer</Button>}
     >
       <p className="fo-mfr__hint">
-        Governed manufacturer reference records that Parts link to. Create, rename, and activate/deactivate
-        here; every change goes through the catalog administration service and is authorized server-side.
+        Governed manufacturer reference records that Parts link to. This page is read-only.
         {state.phase === "ready" && state.invalidCount > 0 ? ` ${state.invalidCount} malformed record(s) were excluded and need review.` : ""}
       </p>
-      {!writeReady && (
-        <div className="fo-mfr__notice">
-          Editing isn’t enabled in this environment yet. You can review manufacturers; create/rename/status
-          changes are activated with the catalog administration service (a governed deployment + grant).
-        </div>
-      )}
-      {!panel && <OutcomeBanner outcome={outcome} />}
-
-      {panel && (
-        <div className="fo-mfr__panel">
-          <div className="fo-mfr__panel-header">
-            <h3 className="fo-mfr__panel-title">{panel.mode === "create" ? "New Manufacturer" : panel.mode === "edit" ? `Rename ${panel.m.name}` : `Change Status — ${panel.m.name}`}</h3>
-            <Button variant="tertiary" className="fo-mfr__close-btn" onClick={close} disabled={busy}>×</Button>
-          </div>
-          <OutcomeBanner outcome={outcome} />
-          {panel.mode === "status" ? (
-            <div>
-              <p className="fo-mfr__status-desc">Current status: <StatusBadge status={panel.m.status} />. Choose a governed transition:</p>
-              <div className="fo-mfr__status-actions">
-                {allowedStatusTransitions(panel.m.status).map((s) => (
-                  <Button key={s} variant="secondary" onClick={() => submitStatus(s)} disabled={busy || !writeReady} className="fo-mfr__status-btn">→ {statusLabel(s, STATUS_WORDS)}</Button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="fo-mfr__form">
-              {panel.mode === "create" && (
-                <div className="fo-mfr__field"><label className="fo-mfr__label" htmlFor={manufacturerIdFieldId}>Manufacturer ID</label><input id={manufacturerIdFieldId} className="fo-mfr__input" value={form.manufacturerId ?? ""} onChange={(e) => setForm((f) => ({ ...f, manufacturerId: e.target.value }))} disabled={busy || !writeReady} /></div>
-              )}
-              <div className="fo-mfr__field"><label className="fo-mfr__label" htmlFor={nameFieldId}>Name</label><input id={nameFieldId} className="fo-mfr__input" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} disabled={busy || !writeReady} /></div>
-              <div className="fo-mfr__form-actions">
-                <Button variant="primary" onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={!writeReady} loading={busy}>{panel.mode === "create" ? "Create Manufacturer" : "Save Name"}</Button>
-                <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* NO onLoadMore, AND NO FOOTER — Owner ruling, Lists P2 tranche 1.
           getManufacturerCatalog reads the whole collection in one unbounded call. There is no
@@ -285,9 +171,8 @@ export default function Manufacturers(props) {
           `hasMore: false`, and the grid renders Load more only when hasMore AND onLoadMore are
           both present — so this is guarded in two places rather than by this line alone.
           NO ROW NAVIGATION either: there is no Manufacturer record route, and one is not invented
-          to make rows clickable. The rows carry governed row ACTIONS (rename, status) instead,
-          which is the affordance this object genuinely has. */}
-      <MetadataListGrid presentation={presentation} sorting={sorting} rowActions={rowActions} caption="Manufacturers" onRetry={load} />
+          to make rows clickable. */}
+      <MetadataListGrid presentation={presentation} sorting={sorting} caption="Manufacturers" onRetry={load} />
     </WorkspaceIdentity>
   );
 }

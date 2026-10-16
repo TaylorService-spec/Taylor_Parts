@@ -18,7 +18,6 @@ import { routerBasenameFrom } from "./routerBasename";
 import { customerSchedulingToken } from "./services/selfSchedulingApiClient.js";
 const ControlTower = lazy(() => import("./modules/controlTower/ControlTower"));
 import Jobs from "./modules/jobs/Jobs";
-import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 // THE HANDHELD SHELL. Eager, not lazy: it is the technician's first screen, and deferring the thing
@@ -229,7 +228,6 @@ import { Button } from "./shared/ui/primitives";
 const LEGACY_COMPONENTS = {
   controlTower: ControlTower,
   jobs: Jobs,
-  technicians: Technicians,
   dispatch: Dispatch,
   fieldMode: FieldMode,
   inventory: Inventory,

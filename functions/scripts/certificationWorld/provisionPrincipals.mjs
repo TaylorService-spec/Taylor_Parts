@@ -38,6 +38,7 @@ import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,7 +103,41 @@ const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, assertBothLiveFlag
  * an interactive credential -- and it is deliberately absent from every branch below. It already
  * requires --apply on its own account; that is an additional condition, never an alternative one.
  */
-export function authorizeProvisioning(argv) {
+/**
+ * THE CREDENTIAL FILE --activate-logins WRITES -- explicit, never guessed (UAT credential single-source correction,
+ * Owner-approved 2026-10-14). `--credential-file <file>` (or `--credential-file=<file>`) when given, otherwise the
+ * configured `SANDBOX_CREDENTIALS_FILE` -- the one canonical source scripts/sandboxCredentials.mjs reads. Neither:
+ * CREDENTIAL_SOURCE_NOT_CONFIGURED. The file must already exist (this tool merges; it never creates a credential file from
+ * nothing). Replaces `candidatePaths().find(existsSync)`, which on a WSL host picked a one-entry stub and wrote there.
+ * Pure apart from the `exists` probe; reads and writes nothing.
+ */
+export function resolveActivationCredentialFile(argv, env = process.env, cwd = process.cwd(), exists = existsSync) {
+  const at = argv.findIndex((a) => a === "--credential-file" || a.startsWith("--credential-file="));
+  let explicit = null;
+  if (at >= 0) {
+    const raw = argv[at].includes("=") ? argv[at].slice(argv[at].indexOf("=") + 1) : argv[at + 1];
+    if (typeof raw !== "string" || raw.trim() === "" || raw.startsWith("--")) {
+      throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: --credential-file needs a file path. Nothing was written.");
+    }
+    explicit = path.resolve(cwd, raw.trim());
+  }
+  const configured = typeof env.SANDBOX_CREDENTIALS_FILE === "string" && env.SANDBOX_CREDENTIALS_FILE.trim() !== ""
+    ? path.resolve(cwd, env.SANDBOX_CREDENTIALS_FILE.trim()) : null;
+  const filePath = explicit ?? configured;
+  if (!filePath) {
+    throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: --activate-logins writes credentials and needs the credential file named -- "
+      + "--credential-file <file>, or set SANDBOX_CREDENTIALS_FILE to the canonical credential file. Nothing was written.");
+  }
+  if (!/credentials\.local\.json$/.test(filePath)) {
+    throw new Error("REFUSING: the credential file must end with 'credentials.local.json' so it matches the gitignore rule. Nothing was written.");
+  }
+  if (!exists(filePath)) {
+    throw new Error(`CREDENTIAL_ACCESS_FAILED: the named credential file does not exist (${filePath}). Refusing to create one from nothing.`);
+  }
+  return filePath;
+}
+
+export function authorizeProvisioning(argv, env = process.env) {
   // --projectId is read by resolveExecutionTarget from argv itself. Parsing it here as well would
   // be a second copy of the rule, and the copy is what drifts out of step.
   const apply = argv.includes("--apply");
@@ -131,7 +166,11 @@ export function authorizeProvisioning(argv) {
     }
   }
 
-  return { target, apply, activate };
+  // The credential destination is settled HERE, before a single principal is created or password set: an unconfigured
+  // or missing file refuses the whole run up front rather than half-way through.
+  const credentialFile = activate ? resolveActivationCredentialFile(argv, env) : null;
+
+  return { target, apply, activate, credentialFile };
 }
 
 const OUTCOME = Object.freeze({
@@ -164,14 +203,13 @@ const OUTCOME = Object.freeze({
 // The generated value is written to the gitignored credentials file and NOWHERE else: not printed,
 // not logged, not returned, not committed. The operator can reset any of them later by removing the
 // entry and re-running with --activate-logins.
-async function activateLogins(auth, rows) {
-  const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
+async function activateLogins(auth, rows, filePath) {
+  const { readFileSync, writeFileSync } = await import("node:fs");
   const { randomBytes } = await import("node:crypto");
-  const { candidatePaths } = await import(L("scripts/sandboxCredentials.mjs"));
 
-  const filePath = candidatePaths().find(existsSync);
-  if (!filePath) {
-    throw new Error("CREDENTIAL_ACCESS_FAILED: no sandbox credentials file found. Refusing to create one from nothing.");
+  // Named explicitly by authorizeProvisioning (resolveActivationCredentialFile); re-checked so this can never run unnamed.
+  if (typeof filePath !== "string" || !existsSync(filePath)) {
+    throw new Error("CREDENTIAL_SOURCE_NOT_CONFIGURED: no explicit credential file was resolved. Nothing was written.");
   }
   const existing = JSON.parse(readFileSync(filePath, "utf8"));
   const before = Object.keys(existing).length;
@@ -207,7 +245,7 @@ async function main() {
   const argv = process.argv.slice(2);
   // AUTHORIZE BEFORE ANYTHING INITIALIZES. This runs ahead of initializeApp/getAuth, so a refused
   // invocation never opens an Auth client against the project it was refused for.
-  const { target, apply, activate } = authorizeProvisioning(argv);
+  const { target, apply, activate, credentialFile } = authorizeProvisioning(argv);
 
   console.log(`certification principals :: ${apply ? "APPLY" : "DRY RUN"} :: ${target.projectId} (role=${target.role})`);
   console.log(describeTarget(target));
@@ -349,7 +387,7 @@ async function main() {
       console.log("");
       console.log("--activate-logins requires --apply (it writes real credentials). Nothing done.");
     } else {
-      activation = await activateLogins(auth, rows);
+      activation = await activateLogins(auth, rows, credentialFile);
     }
   }
 

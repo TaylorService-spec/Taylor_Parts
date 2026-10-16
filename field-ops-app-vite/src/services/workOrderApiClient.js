@@ -48,6 +48,8 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   // The completion pass (2026-09-30).
   "readTechnicianAvailability",
   "findAvailableTechnicianSlots",
+  // The placement DEFAULT for the Schedule dialog (Board and Jobs): earliest valid window, governed business time zone.
+  "suggestWorkOrderPlacement",
   "readWorkOrderLabor",
   "readWorkOrderFieldContext",
   "readWorkOrderReadiness",

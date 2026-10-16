@@ -73,6 +73,11 @@ export interface MeasureDefinition {
    * WAREHOUSE     -- the warehouses the caller's WAREHOUSE Operational Scope covers (on-hand, receipts, transfers, cycle counts).
    */
   readonly reach?: "REORDER_QUEUE" | "WAREHOUSE";
+  /**
+   * The measure's dimension and quantity are unit-cost INPUTS (#2084 path B): without inventory.catalog.cost.read the engine
+   * withholds them (the dimension drivers, every quantity, each source's dimension and quantity); the count stays.
+   */
+  readonly costInference?: true;
   /** Where a contributing record drills to: its own governed read. */
   readonly drill: { readonly route: string; readonly operation: string; readonly idField: string; readonly asList?: boolean } | null;
   /** ABSENT / STRUCTURALLY_UNKNOWN measures carry the reason and no query. */
@@ -188,7 +193,7 @@ export const MEASURES: readonly MeasureDefinition[] = Object.freeze([
     id: "finance.costEvidence.missing", version: 1, domain: "finance", name: "Receipts missing cost evidence", basis: BASIS.EOS_OPERATIONAL_ACTUAL, unit: "COUNT",
     timeBasis: "POINT_IN_TIME", description: "Received purchase lines whose cost is unknown -- never valued at zero.", formula: "count of cost-evidence exceptions with no resolution",
     periodEvent: null, sourceFacts: ["eos_finance.cost_evidence_exceptions"], dimension: "part", readCapabilities: ["finance.payment.read"], channelScopedBy: null,
-    drill: null, availability: "AVAILABLE", absenceReason: null,
+    drill: null, availability: "AVAILABLE", absenceReason: null, costInference: true,
     rows: async (db, s) => run(db, `SELECT x.id, k.operating_company_key AS company, x.part_id AS dim, NULL AS currency, NULL AS amount, x.received_quantity AS qty, x.receiving_id AS label
         FROM eos_finance.cost_evidence_exceptions x JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = x.tenant_id AND k.operating_company_id = x.operating_company_id AND k.status = 'ACTIVE'
        WHERE x.tenant_id = $1 AND x.operating_company_id = ANY($2) AND NOT EXISTS (SELECT 1 FROM eos_finance.cost_evidence_exception_resolutions z WHERE z.exception_id = x.id)

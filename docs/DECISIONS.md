@@ -8353,3 +8353,240 @@ The Firebase catalog ids `financialPolicy.profile.read` / `.configure`, their sa
 **Context.**
 - The SaaS readiness assessment (PR #2054, OD-2) and the product program plan both recommended making the repository private. The Owner has sequenced that to the end of delivery.
 - A 2026-10-14 review classified the committed `executionModeToken` (`functions/authpr4/production-authorization.json`) as a non-secret execution marker; there is no exposure that requires reopening.
+
+## #234 — OWNER: Firebase exit, EOS Core authority, customer deployment model, and the D-1 / D-2 scoping (2026-10-15)
+
+**Status: DECIDED (O-1, O-2, O-9). AUTHORIZED WITH GATES (D-1, D-2).** These are established architectural decisions; do not treat them as open.
+
+**O-1 — Zero Firebase dependency: CONFIRMED target.**
+- EOS eliminates every Firebase dependency: authentication, navigation, business data, security rules and application access.
+- This supersedes the "IDENTITY_ONLY" end state recorded for FX-AUTH-001 in `firebase-exit-ratchet.md` and `firebase-exit-baseline.json`.
+- **Authorized:** read-only inventory, dependency analysis, migration design, and preparation of incremental implementation PRs.
+- **Not authorized:** identity or data cutovers. Each needs its required proof and a separate Owner authorization.
+
+**O-2 — EOS Core authority: CONFIRMED (correction of the product plan's earlier "domain model" wording).**
+- EOS Core owns the domain model **and all governed business authority**, enforced server-side:
+  - business entities and relationships;
+  - identity and the Employee association;
+  - effective permissions and authorization;
+  - record ownership, accountability and assignment;
+  - company and tenant boundaries;
+  - workflows, business rules and approvals;
+  - business data access;
+  - auditability and administrative configuration.
+- **Frontend navigation is not an authorization boundary.**
+- The plan's former O-2 (product domain / `app.` + `api.` hostnames) is renumbered **O-15** and remains open.
+
+**O-9 — Customer deployment model: CONFIRMED.**
+- A shared product codebase with dedicated customer deployments and governed customer/company isolation.
+- Taylor Freezer of Arizona and Ventana keep their distinct operating-company boundaries.
+
+**D-1 — Equipment import: AUTHORIZED to investigate and prepare a fail-closed guard.**
+- No writes to the Firebase (Firestore) equipment store are permitted.
+- Activating anything that affects live imports requires regression proof.
+
+**D-2 — Finance grants: AUTHORIZED for read-only examination only.**
+- Examine actual effective grants, historical provenance and intended role/company scope.
+- No revocation, expansion or change of Finance grants without the exact change set presented for Owner approval.
+
+**Still separately gated:** identity migration, permission/grant changes, financial grants, production deployment and destructive migrations. O-0 remains DEFERRED (#233).
+
+## #235 — OWNER: EOS Core Company Authority V1 — Analysis and My Work company isolation (2026-10-15)
+
+**Status: OWNER APPROVED (security ruling, 2026-10-15).** Applied to Analysis and My Work only. These need separate decisions: Commercial reads, the `/operations/rental` reads and site search (`searchEos`).
+
+**Why.** Lane D's authenticated UAT of #2099 at `a1261486` found that Analysis and My Work Key figures defaulted to a consolidated view of **every active company**, whatever the caller's assignment. `eosAnalysis/analysis.ts` `companyScope` took no actor. As a result, real Ventana figures reached Taylor-only office, retail and national-accounts staff. #2099 is merged and deployed, with security acceptance OPEN until this correction passes authenticated runtime tests.
+
+**Rule (`functions/src/eosOps/companyAuthority.ts` `resolveCompanyAuthority(db, tenantId, principalId)`).** EOS Core owns company authority. It is server-side and read-only, and grants nothing.
+1. **Identity.** An ENABLED Principal with an ACTIVE tenant membership and EXACTLY ONE active Employee link, to an access-eligible Employee (ACTIVE / CONTRACTOR).
+   - No link, more than one link, or a missing or ineligible Employee means **no authority**. Identity ambiguity fails closed.
+2. **Ordinary authority.** That Employee's home operating company (`eos_workforce.employees.operating_company_id`), when it is ACTIVE for the tenant.
+3. **Explicit expansion (Owner Q1).** Every company named by the Principal's ACTIVE, non-stale, tenant-matching `operatingCompany`-scoped role assignments, when that company is ACTIVE.
+   - This confers REACH only, never a capability.
+4. **Never.**
+   - A global Role, Administrator standing, a Firebase claim, or a frontend or client-selected company implies no company.
+   - No role-name exceptions.
+5. **Result.** The union of 2 and 3. Empty means no company data.
+
+**Applied to (Owner Q2).**
+- `readAnalysisWorkspace` and `readMeasureAnalysis`, and through them My Work's attention, insights, Key figures and the Analysis rental exceptions.
+- **My Work's `rental` section.**
+  - It passes the caller's authorized company keys to `readRentalWorkspace` through a server-only parameter, never request input. Fleet units are narrowed by owner company; everything agreement-borne is narrowed by the agreement's company.
+  - The capability check comes first. With the capability but no company authority, the section is NOT_AUTHORIZED.
+  - The `/operations/rental` route itself is unchanged.
+- **Consolidated or omitted.** The authorized union, never every active company.
+- **An explicit company outside the union.** Refused exactly like an unknown one (`OPERATING_COMPANY_UNKNOWN`), so out of scope == unknown.
+- **No authority.** `COMPANY_AUTHORITY_REQUIRED` (403). My Work shows the affected sections as NOT_AUTHORIZED and still answers.
+- **Unchanged:**
+  - every measure's capability, channel, warehouse and queue rule;
+  - drill-through re-authorization;
+  - action availability;
+  - **Finance's stricter rule** (#232 Phase 1 correction, `financeCompanyAccess.ts`). A finance figure still needs a Financials assignment for every company in scope, and a consolidated finance figure still needs EVERY active company, not just the narrower union.
+
+**Supersedes** #232's "non-finance Analysis measures … are unchanged" **only** for company visibility.
+
+**Not changed (and not authorized here):** role assignments, grants, identities, employee records; Commercial reads; the `/operations/rental` route; `searchEos`; production or Functions deployment.
+
+**Known residuals: NOT covered here, each tracked as a separate security acceptance gap (Owner direction 2026-10-15).**
+- **P0, `/operations/rental`:** reads and COMMANDS, including cross-company mutations and idempotency replays. Addressed by **#236**, except the Work Order install flow, which is a separate track (D7).
+- **P1, Commercial reads:** salesChannel reach only.
+- **P1, `searchEos`:** no company authority on any kind.
+- **P1, the other My Work sections:**
+  - `ownedRecords` / `accountableRecords`: owner / accountable + channel only;
+  - `dispatchQueue`: tenant-wide;
+  - `reorderQueue` / `transfers`: queue and warehouse reach, including Administrator reach;
+  - `assignedReorders`: cross-company assignee by design;
+  - `assignedWork`: company drift after an Employee's company change;
+  - `administration`.
+
+This PR isolates only the Analysis-backed My Work sections and the `rental` section.
+
+**Effect.**
+- Callers whose only authority is a Taylor home company see Taylor only.
+- Owner, GM and Finance reach Ventana only through explicit `operatingCompany` assignments (today the Financials company assignments).
+- A Principal with no linked Employee sees no company data.
+
+**Proof.** `functions/test/analysisPostgres.test.mjs` COMPANY-AUTHORITY and FIN-SCOPE; `functions/test/myWorkPostgres.test.mjs` COMPANY ISOLATION. They cover:
+- Taylor-only and Ventana-only isolation;
+- consolidated = the authorized union;
+- an unauthorized explicit company is refused like an unknown one;
+- an assignment expands reach without adding any measure;
+- a disabled assignment is ignored;
+- a global Role without an Employee, with or without assignments, is refused;
+- an ineligible Employee and an absent Principal have no authority;
+- another tenant, a stale assignment, an assignment to an INACTIVE company and an INACTIVE home company confer nothing;
+- the rental company filter, with the capability checked first;
+- duplicate active links cannot be represented.
+
+**Gate.** Lane D independently reviews the exact PR head and runs an authenticated runtime verification. No merge or deploy without a further Owner authorization.
+
+## #236 — OWNER: P0 rental company security — all 18 `/operations/rental` operations enforce EOS Core company authority (2026-10-15)
+
+**Status: OWNER APPROVED (D1–D8, 2026-10-15).** It extends #235 to the public rental route. Merging needs separate Owner authorization.
+
+**Why.** #235's residual: every rental read and command filtered by tenant and capability only. Concretely:
+- a Taylor-only holder could read, mutate and replay Ventana's units, agreements, assignments and charges by id;
+- `createRentalAgreement` accepted any company from input.
+
+**Rule.**
+- The route (`eosRental/rentalOperations.ts`) resolves `resolveCompanyAuthority` (#235) **once per request, server-side**, and attaches it to the actor. Request input can never supply or widen it.
+- Every one of the 18 operations (5 reads, 13 commands) checks **its existing rental capability first**, then company authority.
+
+**The eight rulings:**
+- **D1:** no company authority → `COMPANY_AUTHORITY_REQUIRED` (403). It fails closed.
+- **D2:** an out-of-company record is answered **exactly** like a nonexistent one (same status, code and message). There is no existence oracle.
+- **D3:** a fleet unit follows its **owner** company. An agreement and its terms, assignments, charges and tax evidence follow the **agreement's** company. A reservation needs both, and the existing rule unit owner = agreement company still applies.
+  - Enforced at the choke points: `lockUnit`, `lockAgreement`, `lockAssignment`, the scoped readers and the list SQL. **Every refusal precedes any write.**
+- **D4:** charge and tax mutations need company authority plus the existing `rental.charge.record`.
+- **D5:** a record whose company key binding is retired or invalid is hidden from everyone (fail closed) and is kept: nothing is deleted or rewritten.
+  - There is no governed in-app alert surface. The data-quality alert is the read-only operator check `functions/scripts/rentalCompanyBindingIntegrity.mjs`, which exits 2 when affected records exist. An in-app alert would be a separate decision.
+- **D6:** a new read-only `readMyCompanyAuthority` (`/operations/workspace`) returns only the caller's authorized companies (id and key). The Rental create form uses it; the server refuses any other company regardless.
+- **D7:** the Work Order install flow (`rentalInstallContextOn`) is a **separate tracked security workstream**, unchanged here.
+- **D8:** each charge's `receivable` (obligation status and outstanding balance) is returned only with Finance's **existing** per-company authority (`financeReachesCompany`, `finance.payment.read`). Otherwise it is omitted and the agreement says `financeWithheld: true`.
+  - This applies to every agreement projection, including command responses.
+
+**Idempotency replays** are re-authorized before any stored result is returned:
+- charge replay: the key's agreement must be in authority, otherwise `IDEMPOTENCY_KEY_REUSED` with no content;
+- designation replay: `UNIT_NOT_FOUND`;
+- reservation, return and receipt replays: through the scoped locks and readers;
+- inspection replay: returns only the stored inspection's own unit. A key reused for another unit is `IDEMPOTENCY_KEY_REUSED` (closes the old "any id once a key is used" quirk).
+
+**Unchanged.**
+- All six rental capabilities and their holders.
+- Business rules: owner = agreement company, return warehouse = owner company, plus the WAREHOUSE scope.
+- History.
+- No role, grant, identity or employee change.
+
+**Proof** (`functions/test/rentalPostgres.test.mjs` COMPANY SECURITY, plus the updated FLEET, RESERVE and WORKSPACE tests, with synthetic personas only). It covers:
+- every by-id operation on a Ventana record by a Taylor-only holder of every capability ≡ the nonexistent-id answer;
+- a create for another company ≡ an unknown company;
+- **no cross-company mutation** (snapshot unchanged);
+- per-company lists and workspace;
+- no authority refused on all 18 operations, after the capability check;
+- replays (charge, inspection, designation);
+- Finance fields shown and withheld, including command responses;
+- cross-tenant: the same keys from another tenant reach nothing;
+- `readMyCompanyAuthority`.
+
+Plus `field-ops-app-vite/test/rentalWorkspace.test.jsx`: authorized company options only, no create without authority, Finance-only rendering.
+
+**Coverage still open** (#235 acceptance): Ventana-only and Taylor-only Finance personas, and Ventana rental data in nonprod, for live runtime negatives. Creating them needs separate approval.
+
+## #237 — OWNER: G-9 scheduling company security — the schedule commands enforce EOS Core company authority (2026-10-15)
+
+**Status: OWNER AUTHORIZED for preparation and implementation (2026-10-15).** Merge and deployment need a separate Owner authorization. Scheduling PR-2 (Work Schedule editing) stays blocked until this is reviewed, authorized, deployed to nonprod and verified.
+
+**Why.** The Scheduling lane's finding G-9 (`docs/architecture/employee-work-schedule-design.md`): `setTechnicianWorkingHours`, `recordTechnicianUnavailability` and `endTechnicianUnavailability` checked tenant, capability and membership only.
+- Any holder of `workOrder.lifecycle.schedule` could change another company's Employee's hours or time off.
+- They could also scope a schedule to any active company.
+
+**Rule** (`functions/src/eosOps/workOrderAvailability.ts`, EOS Core company authority #235, `resolveCompanyAuthority`).
+- Resolution happens inside each command's transaction, after the capability and membership checks. It is server-side and never taken from input.
+- **No company authority** gives `COMPANY_AUTHORITY_REQUIRED` (403). It fails closed.
+- **The Employee:** set hours and record unavailability need the Employee's home company (`employees.operating_company_id`) to be one of the caller's companies.
+- **The unavailability:** ending one is reached through its Employee's company.
+- **Out of scope == unknown:**
+  - an Employee outside the caller's companies answers `EMPLOYEE_NOT_FOUND`;
+  - an unavailability outside them answers `UNAVAILABILITY_NOT_FOUND`;
+  - in each case the code, category and message are identical to those for a nonexistent record.
+- **A schedule scoped to a company** outside the caller's companies answers exactly like an unknown or inactive company (`OPERATING_COMPANY_NOT_GOVERNED`), even for the caller's own Employee.
+- **Every refusal precedes any write.**
+
+**Unchanged.**
+- The capability rule (DECISION 5): writes need `workOrder.lifecycle.schedule`.
+- The append/close-only history.
+- The placement checks.
+- No new authorization engine, grant, role or identity change.
+
+**Not covered** (the board read; tracked with the Work Order list isolation): `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads, gated by schedule or dispatch capability.
+
+**Proof** (`functions/test/workOrderAvailabilityPostgres.test.mjs` G-9). It covers:
+- for all three commands, outside the caller's companies ≡ nonexistent (code, category, message);
+- an out-of-company schedule scope ≡ an unknown company;
+- no authority refused, after the capability check;
+- **a snapshot proves no mutation on refusal**;
+- the positive cases, including explicit cross-company authority.
+
+Fixture: the existing synthetic dispatcher, which works both companies' technicians in that suite, now holds explicit authority (a linked Taylor Employee plus a Ventana `operatingCompany` assignment). The new schedulers are synthetic.
+- **Service suites** that call these commands as synthetic schedulers (service journey, service activation, Work Order journey, domain cutover, field context, labor, quarantine, technician job context, customer self-scheduling) now grant that synthetic scheduler explicit company authority through `test/support/syntheticAvailability.mjs` `grantSyntheticCompanyAuthority`. It covers exactly the companies of the technicians the scheduler configures. No canonical persona is widened.
+
+## #239 — OWNER: Jobs and Dispatcher Board share one governed scheduling path; the Schedule dialog defaults to a valid future time (2026-10-16)
+
+**Status: OWNER DIRECTED ("FIX JOBS AND DISPATCH", 2026-10-16).** Keep the Jobs page; fix its dispatch controls and the Schedule dialog's past-time default. Merge and deployment need the Owner's exact-head decision.
+
+**Why.**
+- **Jobs could not dispatch.** Since the governed Work Order cutover the one governed assignee is set when a job is SCHEDULED, so the Jobs page's "pick a technician for an unassigned job" branch never matched. Every scheduled row read "Assigned to X" with no control.
+- **The default was in the past.** The Board's Schedule dialog opened with the visible band's first hour (07:00) as its start — already past for today — so it opened refused ("That start time has already passed").
+
+**Rule.**
+- **One placement runner** (`modules/dispatcherBoard/usePlacementCommands.js`): the Board and the Jobs page both Schedule, Move, Reassign, Return to queue and Dispatch through it. These are the existing governed commands and stale guards, re-checked server-side. There is no second scheduler.
+- **One Schedule dialog** (`PlacementDialog`) on both surfaces.
+  - Its default start comes from a new governed read, `suggestWorkOrderPlacement` (`eosOps/workOrderAvailability.ts`): the earliest window the placement check would accept, from the SAME `computeTechnicianSlots` as the office slot query and self-scheduling.
+  - It is never in the past (rounded UP onto the grid), and it is stated in the Work Order company's governed business time zone (`tenant_operating_companies.business_time_zone`).
+  - The time field is read and written in that zone.
+  - When no window exists the dialog says why (no hours recorded / no open window / cannot be scheduled) and names the earliest real alternative.
+  - Submit re-checks the clock and asks again if the default went stale. The server re-validates everything.
+- **`suggestWorkOrderPlacement` gates:**
+  - schedule or dispatch capability (the existing read pair), checked first;
+  - EOS Core company authority (#235). A Work Order outside the caller's companies answers `WORK_ORDER_NOT_FOUND`, identical to a nonexistent one (the G-9 rule, #237). No authority answers `COMPANY_AUTHORITY_REQUIRED`.
+  - Company, time zone and qualification come from the Work Order, never from input. A requested technician outside the Work Order's company and an unknown one both answer `NOT_SCHEDULABLE`.
+  - Quarantined Work Orders are not offered. Only READY_TO_DISPATCH and SCHEDULED Work Orders are offered (a moved job excludes its own window).
+  - It writes nothing and grants nothing.
+- **What the Jobs page OFFERS follows the caller's governed capabilities** (`readMyWorkOrderCapabilities`), failing closed while unknown:
+  - Schedule, Move and Reassign need `workOrder.lifecycle.schedule`;
+  - Dispatch needs `workOrder.lifecycle.dispatch`.
+  - No hardcoded role decides it.
+- **Rows are grouped by what can be done next** (`domain/jobsDispatchList.js`). Ties keep the server's order; nothing is promoted by name.
+
+**Unchanged and out of scope (tracked).**
+- The Board's own access gate still reads the session `role`, which for Firebase-signed-in users comes from a Firestore read in `AuthContext`. That is Firebase-exit Auth-cutover scope, untouched here.
+- The Board's time grid still renders in the browser's local time. It equals the governed zone for Arizona users; a governed-zone grid is a follow-up.
+- `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads (#2110 follow-ups).
+- No migration, grant, role, identity or Firebase change. The Jobs and Board data and command paths were traced and have no reachable Firebase dependency.
+
+**Proof.**
+- **PostgreSQL** (`workOrderAvailabilityPostgres`, the suggestWorkOrderPlacement subtest): Phoenix earliest window; never in the past; NOT_CONFIGURED with an in-company alternative; NOT_SCHEDULABLE for another company's or an unknown technician; a held window is skipped but a moved job ignores its own; outside the caller's companies ≡ nonexistent; COMPANY_AUTHORITY_REQUIRED; capability first; terminal refused; writes nothing.
+- **Client:**
+  - `jobsDispatchFlow`: Dispatch from Jobs, Schedule via the shared dialog with the governed default, capability gating fail-closed, one shared runner;
+  - `dispatchNorthStarBoard`: governed default, no-slot explanation with alternative, stale-on-submit re-check;
+  - `jobsDispatchList` and `zonedTime` (including a daylight-saving zone).

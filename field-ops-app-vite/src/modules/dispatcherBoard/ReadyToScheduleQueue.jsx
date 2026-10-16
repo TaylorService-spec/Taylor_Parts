@@ -107,7 +107,7 @@ function ReadyToScheduleQueue({
               >
                 <div className="ns-dispatch-card__line1">
                   <span className="ns-dispatch-card__priority">
-                    {priorityText ? `${priorityText.toUpperCase()} (${wo.priority})` : workOrderPriorityLabel(wo.priority)}
+                    {priorityText ? priorityText.toUpperCase() : workOrderPriorityLabel(wo.priority)}
                   </span>
                   <strong className="ns-dispatch-card__ref">{wo.woNumber}</strong>
                   <span className="ns-dispatch-card__type">
