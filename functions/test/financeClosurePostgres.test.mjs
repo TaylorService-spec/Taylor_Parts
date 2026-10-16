@@ -389,6 +389,8 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     const WITHHELD = [{ group: "RELIEF_INVENTORY", fields: ["partId", "quantity"], requires: [COST] }];
     await grant("financeManager", COST); // local test tenant only: financeManager is held by no other person in this suite
     const ctrlCost = await person("uid-ctrl-cost", ["controller", "financeManager"], { id: "e-ctrl-cost", name: "Quinn Cost-Reader" });
+    // The same Finance company reach as ctrl (Financials company assignment): the ONLY difference between them is the cost read.
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlCost]);
     // (a) premise: the controller holds the Finance read and NOT the cost read; the cost reader holds both.
     const ctrlKeys = new Set(await capabilitiesForRoleKeys(pool, TENANT, ["controller"]));
     assert.deepEqual([ctrlKeys.has("finance.payment.read"), ctrlKeys.has(COST)], [true, false], "controller: Finance read without the cost read");
