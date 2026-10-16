@@ -80,10 +80,12 @@ test("CRM CUTOVER: both canonical writers go to the governed PostgreSQL CRM auth
 
 // --- the structural invariant ------------------------------------------------
 
+// The ONE write pattern the sweep uses. The mutation test below proves this exact regex, not a copy of it.
+const WRITE = /\b(addDoc|setDoc|updateDoc)\s*\(/;
+
 test("no module outside the canonical writer writes the accounts collection", () => {
   // The guard that survives new code: a second writer is how the derived field goes stale.
   const offenders = [];
-  const WRITE = /\b(addDoc|setDoc|updateDoc)\s*\(/;
 
   for (const file of sourceFiles(srcDir)) {
     const rel = path.relative(srcDir, file);
@@ -109,8 +111,15 @@ test("MUTATION: the structural sweep can actually fail", () => {
   // silently matched nothing -- the failure mode of every allowlist-shaped guard.
   const files = sourceFiles(srcDir);
   assert.ok(files.length > 50, `the sweep found only ${files.length} source files -- it is not reading the tree`);
-  const anyWriter = files.filter((f) => /\b(addDoc|setDoc|updateDoc)\s*\(/.test(readFileSync(f, "utf8")));
-  assert.ok(anyWriter.length > 0, "the write pattern matches nothing anywhere -- the regex has gone stale");
+  // The pattern is proven on fixtures, because no live file can prove it any more: the Firebase exit (PR-A,
+  // 2026-10-15) deleted the client's last Firestore writer (lib/firebaseSafe.js / firebase/collectionStore.js).
+  for (const call of ["addDoc(ref, data)", "setDoc (ref, data)", "await updateDoc(ref, { name })"]) {
+    assert.ok(WRITE.test(call), `the write pattern no longer recognises "${call}" -- the regex has gone stale`);
+  }
+  assert.equal(WRITE.test("getDoc(ref); readDocs(q); addDocument(x)"), false, "the write pattern matches non-writes");
+  // The zero is now the asserted state, not a silent one: a client Firestore writer coming back fails here by name.
+  const anyWriter = files.filter((f) => WRITE.test(readFileSync(f, "utf8"))).map((f) => path.relative(srcDir, f));
+  assert.deepEqual(anyWriter, [], "a client Firestore writer is back -- the Firebase exit retired every one");
 });
 
 // --- CRM cutover: the client Firestore CRM writers are retired ---------------
