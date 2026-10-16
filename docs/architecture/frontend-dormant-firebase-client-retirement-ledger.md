@@ -45,3 +45,32 @@ feature listed here comes back only on its EOS Core path, never by restoring the
 | Add a technician | Create an Employee and grant field eligibility through the governed Employee and role administration (PostgreSQL `employees`, `user_role_assignments`). A `fieldops_technicians` row was never an Employee and carried no authority. |
 | Live technician job status (`available` / `on_job`) | Derived from Work Order assignment and execution state in `eos_ops` (Dispatch board, My Work). No separate status document is written. |
 | Atomic job assignment and status transitions on `fieldops_jobs` | The Work Order lifecycle on `/operations/work-orders` (`transitionWorkOrder`, assignment). Legacy `fieldops_jobs` has no EOS writer and is not being revived. |
+
+## PR-B: orphaned and environment-disabled clients (exit baseline 261 → 257)
+
+### Removed
+
+| Item | Why nothing reachable used it |
+| --- | --- |
+| `services/completionService.js` (`completeAssignedJob` binding) | No importer. FieldMode completes through the governed Work Order `Complete` transition (F0; see `test/completionFlow.test.mjs`). |
+| `services/manufacturerCommandClient.js`, `hooks/useManufacturerWrite.js`, `config/manufacturerWriteReadiness.js`, and the create / rename / status affordances in `modules/inventory/Manufacturers.jsx` | `MANUFACTURER_WRITE_READY` was `false` in all five environments, so the hook returned "write disabled" before any call. The flag is removed from `config/environments.json` and `vitest.config.js`. The Manufacturers page stays as a read-only list. |
+| `services/inventoryBalanceCallableClient.js` (`getPartBalance`) and its default use in `modules/scan/LookupScan.jsx` | `INVENTORY_BALANCE_READ_READY` was `false` in all five environments, so the client only ever answered `transport-not-ready`. LookupScan's default now returns exactly that, so the balance row renders the same refusal as before. |
+| The `getCountFromServer` fallback in `hooks/useListViewChrome.js` | It ran only for a `CLIENT_DIRECT` entity with no injected count. Of the five lists that mount the hook, Accounts, Customer Equipment and Work Orders read through `EOS_API`, Sales Orders reads through `CALLABLE`, and the Part Master (`CLIENT_DIRECT`) injects the Render Catalog `countParts`. The branch never ran. |
+
+### Kept, on purpose
+
+| Item | Why it stays |
+| --- | --- |
+| `domain/manufacturerWrite.js` and `domain/completionFlow.js` | Pure modules, no Firebase. They record the input shaping, the status transitions, the outcome vocabulary and the idempotent / ambiguous-result recovery rules. They have no runtime consumer now; they are kept as the tested specification for the EOS cutover to reuse or delete. |
+| `INVENTORY_BALANCE_READ_READY` in `config/environments.json` | Still a required readiness key (`scripts/resolveEnvironment.mjs`, `functions/test/scannerReleaseReadiness.test.mjs`). `config/inventoryBalanceReadiness.js` still supplies `INVENTORY_BALANCE_UNAVAILABLE_REASON` to `domain/partsNorthStar.js`. |
+
+The server callables (`completeAssignedJob`, `createManufacturer`, `updateManufacturer`, `changeManufacturerStatus`, `getPartBalance`) are not touched here. Each needs a GATED equivalence record under [firebase-capability-equivalence-gate.md](firebase-capability-equivalence-gate.md) and an operator undeploy.
+
+### Business requirements and their EOS Core owner
+
+| Requirement | EOS Core owner | State |
+| --- | --- | --- |
+| Complete an assigned job, idempotent and safe on an ambiguous result | The Work Order `Complete` transition on `/operations/work-orders` | Live. Legacy `fieldops_jobs` completion is not revived. |
+| Create, rename, activate and deactivate a Manufacturer, with optimistic concurrency and a separate activate authority | `functions/src/catalogMaster/postgresManufacturerWriter.ts` (`inventory.catalog.manage` for create and rename; `inventory.catalog.activate` for status; `updated_at` as the concurrency token). Reads: `functions/src/eosOps/manufacturerAuthority.ts` (`listManufacturers` / `getManufacturer` / `searchManufacturers`, `inventory.manufacturer.read`). | Built and tested, **not routed**. Next step: add Catalog API operations for the writer and the reads, then point the Manufacturers page at them. |
+| See a Part's on-hand, reserved, available and on-order quantities while scanning | An EOS Core inventory balance read over `eos_ops` stock, injected into `LookupScan` as `deps.fetchBalance` | **No EOS read yet.** The scan screen states the balance is unavailable, as it always has. |
+| An exact header count on a list | Each object's own count authority, passed as `options.count` (the Part Master's Catalog `countParts` today) | Live. Other lists show no count until they have one. |

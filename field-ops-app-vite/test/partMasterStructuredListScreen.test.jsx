@@ -27,9 +27,8 @@ const h = vi.hoisted(() => ({
   firebaseLoaded: [],
 }));
 
-// TRIPWIRES, not fakes. The shared list chrome (hooks/useListViewChrome.js) still IMPORTS Firestore statically,
-// because it counts every Firestore-backed list and a dependency is not hidden by loading it lazily. What this
-// screen must never do is USE it: every Firestore function the chrome imports records its call here, and the
+// TRIPWIRES, not fakes. The shared list chrome (hooks/useListViewChrome.js) no longer imports Firestore (Firebase exit
+// PR-B), but nothing this screen loads may USE it either: every Firestore function the chrome imports records its call here, and the
 // Firestore list source records being loaded at all -- the suite fails below on either. The screen must render every
 // state (rows, empty, denied, unavailable, count) without one Firestore call.
 vi.mock("firebase/firestore", () => {

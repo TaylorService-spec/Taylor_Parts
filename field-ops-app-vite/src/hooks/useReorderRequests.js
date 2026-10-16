@@ -14,8 +14,8 @@ import { REORDER_REQUEST_STATUS } from "../domain/constants";
 // taken at each component's own mount time.
 //
 // Fixed by reusing the realtime pattern already established elsewhere
-// in this platform (hooks/useFirestoreCollection.js, 17 existing
-// consumers; services/workOrderService.ts's subscribeToWorkOrders()/
+// in this platform at the time (the generic Firestore collection hook, since
+// deleted by the Firebase exit; services/workOrderService.ts's subscribeToWorkOrders()/
 // subscribeAssignedWorkOrders()) instead of inventing a new pub-sub or
 // cache-invalidation mechanism: every hook here now subscribes
 // directly via onSnapshot(), server-side query-filtered (where()) the

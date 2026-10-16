@@ -35,7 +35,6 @@ export default defineConfig({
       INVENTORY_BALANCE_READ_READY: false,
       TRUCK_MANAGEMENT_WRITE_READY: true,
       PART_MASTER_WRITE_READY: false,
-      MANUFACTURER_WRITE_READY: false,
       TRUSTED_COMPLETION_ENABLED: true,
       // Wave 6 / Lane V, and STILL FALSE after Wave 11 / Lane AS activated platform-sandbox.
       //

@@ -14,8 +14,8 @@ export { resolveActorDisplayName, UNKNOWN_ACTOR_DISPLAY_NAME } from "../domain/a
 // already relies on (see domain/employees.js's
 // buildEmployeeDirectoryQuery() for why this is unfiltered).
 // onSnapshot()-based, not a one-shot read -- this project's
-// established standard (see hooks/useFirestoreCollection.js's header
-// comment).
+// established standard at the time (the generic Firestore collection hook it
+// cited was deleted by the Firebase exit, PR-A).
 //
 // Returns byUserId, a Map<userId, employee> -- a userId with no
 // linked Employee record (a plain admin/dispatcher account, or a
