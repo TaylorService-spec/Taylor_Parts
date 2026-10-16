@@ -121,6 +121,23 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
   for (const p of ["prn-dispatcher", "prn-reader", "prn-nobody"]) await principal(p);
   for (const e of ["emp-ny", "emp-none", "emp-az", "emp-slot", "emp-end"]) await employee(e);
   await employee("emp-ventana", { company: "ventana" });
+  // G-9 (DECISIONS #237): the schedule commands act only on the caller's operating companies. The fixture dispatcher works
+  // BOTH companies' technicians here, so it holds explicit company authority (synthetic principal): a linked Taylor Employee
+  // (home company) and an operatingCompany-scoped role assignment at Ventana. prn-sched-t is Taylor-only; prn-sched-none has
+  // no linked Employee (no company authority at all).
+  const linkTo = async (pid, eid, company) => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number,display_name)
+             VALUES ($1,$2,'ACTIVE',$3,$1,$1)`, [eid, T, company]);
+    await q(`INSERT INTO eos_policy.employee_principal_links
+               (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ($1,$2,$3,$4,$5,'OPERATOR_ASSERTED','active','fixture','g9 fixture')`, [`lnk-${eid}`, T, pid, eid, company]);
+  };
+  await linkTo("prn-dispatcher", "emp-disp", "taylor");
+  await q(`INSERT INTO eos_policy.roles (id,tenant_id,key,name,origin,created_by,updated_by) VALUES ('role-reach',$1,'companyReachFixture','Company reach fixture','SYSTEM','fixture','fixture')`, [T]);
+  await q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+           VALUES ('ura-disp-v',$1,'prn-dispatcher','role-reach','operatingCompany','ventana','active','fixture',0,'fixture','fixture')`, [T]);
+  for (const p of ["prn-sched-t", "prn-sched-none"]) await principal(p);
+  await linkTo("prn-sched-t", "emp-sched-t", "taylor");
   await q(`INSERT INTO eos_crm.accounts (id,tenant_id,name,status,created_by,updated_by) VALUES ('acct-1',$1,'Harbor Diner','ACTIVE','f','f')`, [T]);
   await q(`INSERT INTO eos_crm.account_locations (id,tenant_id,account_id,name,address_street,created_by,updated_by)
            VALUES ('loc-1',$1,'acct-1','Harbor Diner Main','1 Pier Rd','f','f')`, [T]);
@@ -132,6 +149,8 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
       capabilities: new Set(["workOrder.lifecycle.schedule", "workOrder.lifecycle.dispatch", "workOrder.transition"]) },
     reader: { tenantId: T, principalId: "prn-reader", capabilities: new Set(["workOrder.lifecycle.dispatch"]) },
     nobody: { tenantId: T, principalId: "prn-nobody", capabilities: new Set(["workOrder.record.read"]) },
+    schedT: { tenantId: T, principalId: "prn-sched-t", capabilities: new Set(["workOrder.lifecycle.schedule", "workOrder.lifecycle.dispatch"]) },
+    schedNone: { tenantId: T, principalId: "prn-sched-none", capabilities: new Set(["workOrder.lifecycle.schedule", "workOrder.lifecycle.dispatch"]) },
   });
   const op = (name, actor, input) => availability[name](deps, { actor }, input);
   const refusedWith = (code, extra) => (e) => { assert.equal(e.code, code, `${e.code}: ${e.message}`); extra?.(e); return true; };
@@ -474,4 +493,55 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
     const still = await q(`SELECT to_regclass('eos_workforce.technician_working_schedules') AS t`);
     assert.ok(still.rows[0].t);
   });
+
+  // ════════════════════ G-9: schedule commands under EOS Core company authority (DECISIONS #237) ════════════════════
+
+  await t.test("G-9: schedule commands act only on the caller's companies; outside == nonexistent; none refuses; no mutation on refusal", async () => {
+    await employee("emp-g9-t");
+    await employee("emp-g9-v", { company: "ventana" });
+    const refusal = async (promise) => {
+      try { await promise; } catch (e) { return [e.code, e.category, e.message]; }
+      return assert.fail("expected a refusal");
+    };
+    const hours = (employeeId, extra = {}) => ({ employeeId, timeZone: "America/Phoenix", effectiveFrom: "2030-10-01", weeklyHours: WEEKDAYS("07:00", "15:00"), ...extra });
+    const pto = (employeeId) => ({ employeeId, kind: "PTO", start: "2030-10-20T00:00:00Z", end: "2030-10-21T00:00:00Z", reason: "g9" });
+    // Ventana's own record, made by the dispatcher (authorized for both companies).
+    const vBlock = (await op("recordTechnicianUnavailability", P.dispatcher, pto("emp-g9-v"))).unavailabilityId;
+    const snapshot = async () => JSON.stringify((await q(`SELECT
+        (SELECT count(*)::int FROM eos_workforce.technician_working_schedules WHERE employee_id = 'emp-g9-v') s,
+        (SELECT count(*)::int FROM eos_workforce.technician_working_hours h JOIN eos_workforce.technician_working_schedules w ON w.id = h.schedule_id WHERE w.employee_id = 'emp-g9-v') h,
+        (SELECT count(*)::int FROM eos_workforce.technician_unavailability WHERE employee_id = 'emp-g9-v') u,
+        (SELECT count(*)::int FROM eos_workforce.technician_unavailability WHERE employee_id = 'emp-g9-v' AND ended_at IS NOT NULL) ended,
+        (SELECT count(*)::int FROM eos_workforce.technician_working_schedules WHERE employee_id = 'emp-g9-t' AND operating_company_id = 'ventana') tv`)).rows[0]);
+    const before = await snapshot();
+
+    // Out of the caller's companies == does not exist (code, category AND message).
+    assert.deepEqual(await refusal(op("setTechnicianWorkingHours", P.schedT, hours("emp-g9-v"))),
+      await refusal(op("setTechnicianWorkingHours", P.schedT, hours("emp-nope"))));
+    assert.equal((await refusal(op("setTechnicianWorkingHours", P.schedT, hours("emp-g9-v"))))[0], "EMPLOYEE_NOT_FOUND");
+    assert.deepEqual(await refusal(op("recordTechnicianUnavailability", P.schedT, pto("emp-g9-v"))),
+      await refusal(op("recordTechnicianUnavailability", P.schedT, pto("emp-nope"))));
+    assert.deepEqual(await refusal(op("endTechnicianUnavailability", P.schedT, { unavailabilityId: vBlock, reason: "x" })),
+      await refusal(op("endTechnicianUnavailability", P.schedT, { unavailabilityId: "tua_nope", reason: "x" })));
+    assert.equal((await refusal(op("endTechnicianUnavailability", P.schedT, { unavailabilityId: vBlock, reason: "x" })))[0], "UNAVAILABILITY_NOT_FOUND");
+    // A schedule scoped to a company outside the caller's == an unknown company, even for the caller's own Employee.
+    assert.deepEqual(await refusal(op("setTechnicianWorkingHours", P.schedT, hours("emp-g9-t", { operatingCompanyId: "ventana" }))),
+      await refusal(op("setTechnicianWorkingHours", P.schedT, hours("emp-g9-t", { operatingCompanyId: "acme" }))));
+    // No company authority: every command refuses (after the capability check, which comes first).
+    for (const [name, input] of [["setTechnicianWorkingHours", hours("emp-g9-t")], ["recordTechnicianUnavailability", pto("emp-g9-t")],
+      ["endTechnicianUnavailability", { unavailabilityId: vBlock, reason: "x" }]]) {
+      assert.equal((await refusal(op(name, P.schedNone, input)))[0], "COMPANY_AUTHORITY_REQUIRED", name);
+      assert.equal((await refusal(op(name, P.nobody, input)))[0], "CAPABILITY_MISSING", `${name}: capability first`);
+    }
+    assert.equal(await snapshot(), before, "no refused command wrote anything");
+
+    // Inside the caller's companies everything still works.
+    assert.ok((await op("setTechnicianWorkingHours", P.schedT, hours("emp-g9-t"))).scheduleId);
+    assert.ok((await op("setTechnicianWorkingHours", P.schedT, hours("emp-g9-t", { operatingCompanyId: "taylor" }))).scheduleId);
+    const tBlock = (await op("recordTechnicianUnavailability", P.schedT, pto("emp-g9-t"))).unavailabilityId;
+    assert.equal((await op("endTechnicianUnavailability", P.schedT, { unavailabilityId: tBlock, reason: "back" })).withdrawn, true);
+    assert.ok((await op("setTechnicianWorkingHours", P.dispatcher, hours("emp-g9-v"))).scheduleId, "explicit Ventana authority reaches Ventana");
+    assert.ok((await op("endTechnicianUnavailability", P.dispatcher, { unavailabilityId: vBlock, reason: "back" })).withdrawn);
+  });
+
 });
