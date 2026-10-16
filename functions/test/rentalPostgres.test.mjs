@@ -79,6 +79,17 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const sysAdmin = await person("uid-sysadmin", ["admin"], { id: "e-sysadmin", name: "Rowan Administrator" });
   // Company assignment is mandatory for Finance (Financials Workspace P0 correction): the settling Controller is assigned.
   await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrl]);
+  // P0 RENTAL COMPANY SECURITY (DECISIONS #236): SYNTHETIC personas only -- no existing Taylor-only persona is widened.
+  //   wmV / gmV   Ventana-home warehouse manager / general manager: operate Ventana's fleet and agreements
+  //   dispX       Taylor-home dispatcher with an explicit Ventana operatingCompany assignment (reach both companies)
+  //   ctrlT       Taylor-home controller with NO Financials assignment (company authority Taylor; no Finance reach)
+  //   unlinkedGm  every rental capability (generalManager) but no linked Employee -> no company authority at all
+  const wmV = await person("uid-wm-v", ["warehouseManager"], { id: "e-wm-v", name: "Val Ventana-WM", company: "ventana" });
+  const gmV = await person("uid-gm-v", ["generalManager"], { id: "e-gm-v", name: "Vic Ventana-GM", company: "ventana" });
+  const dispX = await person("uid-dispatch-x", ["dispatcher"], { id: "e-dispatch-x", name: "Xan Cross-Dispatch" });
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [dispX], ["ventana"]);
+  const ctrlT = await person("uid-ctrl-t", ["controller"], { id: "e-ctrl-t", name: "Tia Taylor-Controller" });
+  const unlinkedGm = await person("uid-gm-unlinked", ["generalManager"]);
 
   // ── masters ──
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-r',$1,'Harbor Grill','ACTIVE','f','f'), ('acct-o',$1,'Other Diner','ACTIVE','f','f')`, [TENANT]);
@@ -146,8 +157,12 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
 
   let agreement, ag2;
   await t.test("FLEET + AGREEMENT: designation fixes the owner from custody; RA numbering; versioned terms; activation", async () => {
+    // A unit is designated by someone with authority over the company that holds it in custody: Taylor's by the Taylor WM,
+    // Ventana's by the Ventana WM. The Taylor WM is answered about Ventana's unit exactly as about one that does not exist.
+    assert.deepEqual(refused(await rn(wm, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: "RU-V", displayName: "x", reason: "x" }), 404, "UNIT_NOT_FOUND").message,
+      refused(await rn(wm, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: "NO-SUCH", displayName: "x", reason: "x" }), 404, "UNIT_NOT_FOUND").message.replace("NO-SUCH", "RU-V"));
     for (const s of ["RU-1", "RU-2", "RU-V"]) {
-      const r = ok(await rn(wm, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: s, displayName: `Rental ${s}`, reason: "rental fleet" }), s);
+      const r = ok(await rn(s === "RU-V" ? wmV : wm, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: s, displayName: `Rental ${s}`, reason: "rental fleet" }), s);
       assert.deepEqual([r.fleetUnit.availability, r.fleetUnit.ownerOperatingCompanyKey, r.fleetUnit.custodian.kind], ["AVAILABLE", s === "RU-V" ? "ventana" : "taylor", "OWNER"]);
     }
     assert.equal(ok(await rn(wm, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: "RU-1", displayName: "again", reason: "x" })).outcome, "replayed");
@@ -173,7 +188,9 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     a1 = ok(await rn(dispatcher, "reserveRentalUnit", { agreementId: agreement.id, fleetUnitId: (await unitOf("RU-1")).id, idempotencyKey: key("rs") })).assignmentId;
     assert.equal((await unitOf("RU-1")).availability, "RESERVED");
     refused(await rn(dispatcher, "reserveRentalUnit", { agreementId: ag2.id, fleetUnitId: (await unitOf("RU-1")).id, idempotencyKey: key("rs") }), 409, "RENTAL_UNIT_NOT_AVAILABLE", "double booking");
-    refused(await rn(dispatcher, "reserveRentalUnit", { agreementId: agreement.id, fleetUnitId: (await unitOf("RU-V")).id, idempotencyKey: key("rs") }), 412, "RENTAL_COMPANY_MISMATCH", "Ventana's unit");
+    // A caller with BOTH companies still cannot cross-rent; a Taylor-only caller never learns Ventana's unit exists.
+    refused(await rn(dispX, "reserveRentalUnit", { agreementId: agreement.id, fleetUnitId: (await unitOf("RU-V")).id, idempotencyKey: key("rs") }), 412, "RENTAL_COMPANY_MISMATCH", "Ventana's unit");
+    refused(await rn(dispatcher, "reserveRentalUnit", { agreementId: agreement.id, fleetUnitId: (await unitOf("RU-V")).id, idempotencyKey: key("rs") }), 404, "FLEET_UNIT_NOT_FOUND", "outside the caller's companies");
     ok(await rn(wm, "setFleetUnitAvailability", { fleetUnitId: (await unitOf("RU-2")).id, availability: "UNAVAILABLE", reason: "awaiting a part" }));
     refused(await rn(dispatcher, "reserveRentalUnit", { agreementId: agreement.id, fleetUnitId: (await unitOf("RU-2")).id, idempotencyKey: key("rs") }), 409, "RENTAL_UNIT_NOT_AVAILABLE", "unavailable");
     ok(await rn(wm, "setFleetUnitAvailability", { fleetUnitId: (await unitOf("RU-2")).id, availability: "AVAILABLE", reason: "part fitted" }));
@@ -295,7 +312,9 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
 
   await t.test("WORKSPACE: available / on rent / due back / billing exceptions answered from governed records", async () => {
     const ws = ok(await rn(dispatcher, "readRentalWorkspace", {}));
-    assert.deepEqual([ws.counts.AVAILABLE, ws.counts.ON_RENT, ws.counts.fleet], [2, 1, 3]);
+    // The Taylor-only dispatcher's workspace is Taylor's fleet (RU-1 available, RU-2 on rent); Ventana's RU-V is not in it.
+    assert.deepEqual([ws.counts.AVAILABLE, ws.counts.ON_RENT, ws.counts.fleet], [1, 1, 2]);
+    assert.equal([...ws.available, ...ws.onRent].some((u) => u.serialNumber === "RU-V"), false);
     assert.equal(ws.onRent[0].serialNumber, "RU-2");
     assert.equal(ws.onRent[0].custodian.kind, "CUSTOMER");
     assert.ok(ws.billingExceptions.some((x) => x.kind === "DEPLOYED_WITHOUT_CURRENT_CHARGE" && x.agreementId === agreement.id), "charged through 16 days ago, still out");
@@ -317,5 +336,117 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.deepEqual(events, ["DESIGNATED", "RESERVED", "DEPLOYED", "RETURN_INITIATED", "RETURN_RECEIVED", "INSPECTED", "SERVICE_HOLD_RELEASED"]);
     await assert.rejects(q(`DELETE FROM eos_rental.fleet_unit_events WHERE tenant_id = $1`, [TENANT]), /RENTAL_HISTORY_APPEND_ONLY/);
     void deterministicAccountingAdapter;
+  });
+
+  // ── P0 RENTAL COMPANY SECURITY (Owner rulings D1-D8, 2026-10-15; DECISIONS #236) ──
+  await t.test("COMPANY SECURITY: all 18 operations -- capability then company authority; out-of-company == missing; no cross-company write; replays re-authorized; Finance fields", async () => {
+    const WS_ROUTE = "/operations/workspace";
+    const respond = (r) => [r.status, r.body.code, r.body.message];
+    // Ventana's own agreement, reservation and charge, operated by Ventana-authorized personas.
+    const vAg = ok(await rn(gmV, "createRentalAgreement", { operatingCompanyId: "ventana", accountId: "acct-r", customerLocationId: "loc-r1", startDate: day(-10),
+      rateMinor: 9000, billingFrequency: "DAY", expectedEndDate: day(20), deliveryChargeMinor: 2500, idempotencyKey: key("ra-v") }), "ventana agreement").agreement;
+    ok(await rn(gmV, "activateRentalAgreement", { agreementId: vAg.id }));
+    const ruV = (await unitOf("RU-V")).id;
+    const vAsg = ok(await rn(gmV, "reserveRentalUnit", { agreementId: vAg.id, fleetUnitId: ruV, idempotencyKey: key("rs-v") })).assignmentId;
+    const vChargeKey = key("ch-v");
+    ok(await rn(ctrl, "recordRentalCharge", { agreementId: vAg.id, kind: "DELIVERY", taxEvidence: { status: "NOT_DETERMINED" }, idempotencyKey: vChargeKey }), "ventana charge");
+    const vCharge = (await one(`SELECT id FROM eos_rental.rental_charges WHERE tenant_id = $1 AND agreement_id = $2`, [TENANT, vAg.id])).id;
+    const snapshot = async () => JSON.stringify(await Promise.all([
+      one(`SELECT status, version FROM eos_rental.rental_agreements WHERE id = $1`, [vAg.id]),
+      one(`SELECT availability, version, current_assignment_id FROM eos_rental.fleet_units WHERE id = $1`, [ruV]),
+      one(`SELECT status FROM eos_rental.rental_assignments WHERE id = $1`, [vAsg]),
+      count(`SELECT count(*)::int n FROM eos_rental.rental_agreement_terms WHERE agreement_id = $1`, [vAg.id]),
+      count(`SELECT count(*)::int n FROM eos_rental.rental_charges WHERE agreement_id = $1`, [vAg.id]),
+      count(`SELECT count(*)::int n FROM eos_rental.rental_charge_tax_evidence WHERE charge_id = $1`, [vCharge]),
+      count(`SELECT count(*)::int n FROM eos_rental.fleet_unit_events WHERE fleet_unit_id = $1`, [ruV]),
+      count(`SELECT count(*)::int n FROM eos_rental.rental_inspections WHERE fleet_unit_id = $1`, [ruV]),
+    ]));
+    const before = await snapshot();
+
+    // D2/D3: every by-id operation on a Ventana record, by a Taylor-only holder of EVERY rental capability (the Taylor GM), is
+    // answered exactly like the same operation on a record that does not exist -- status, code AND message.
+    const byId = [
+      ["readRentalAgreement", (id) => ({ agreementId: id }), vAg.id],
+      ["readFleetUnit", (id) => ({ fleetUnitId: id }), ruV],
+      ["activateRentalAgreement", (id) => ({ agreementId: id }), vAg.id],
+      ["amendRentalAgreementTerms", (id) => ({ agreementId: id, changeKind: "EXTENSION", expectedEndDate: day(60), reason: "x" }), vAg.id],
+      ["endRentalAgreement", (id) => ({ agreementId: id, outcome: "CANCELLED", reason: "x" }), vAg.id],
+      ["reserveRentalUnit", (id) => ({ agreementId: id, fleetUnitId: ruV, idempotencyKey: key("x") }), vAg.id],
+      ["releaseRentalReservation", (id) => ({ assignmentId: id, reason: "x" }), vAsg],
+      ["initiateRentalReturn", (id) => ({ assignmentId: id }), vAsg],
+      ["receiveRentalReturn", (id) => ({ assignmentId: id, warehouseId: VWH, conditionNotes: "x", idempotencyKey: key("x") }), vAsg],
+      ["inspectRentalUnit", (id) => ({ fleetUnitId: id, outcome: "READY", conditionNotes: "x", idempotencyKey: key("x") }), ruV],
+      ["setFleetUnitAvailability", (id) => ({ fleetUnitId: id, availability: "UNAVAILABLE", reason: "x" }), ruV],
+      ["recordRentalCharge", (id) => ({ agreementId: id, kind: "DELIVERY", taxEvidence: { status: "NOT_DETERMINED" }, idempotencyKey: key("x") }), vAg.id],
+      ["determineRentalChargeTax", (id) => ({ chargeId: id, taxEvidence: { status: "DETERMINED", amountMinor: 1 } }), vCharge],
+    ];
+    for (const [op, input, ventanaId] of byId) {
+      const outside = await rn(gm, op, input(ventanaId));
+      const missing = await rn(gm, op, input(`nope-${op}`));
+      assert.equal(outside.status, 404, `${op}: ${JSON.stringify(outside.body).slice(0, 300)}`);
+      assert.deepEqual(respond(outside), respond(missing), `${op}: out-of-company == nonexistent`);
+      assert.equal("result" in outside.body, false, `${op}: no record content`);
+    }
+    // A create naming another company is answered like an unknown company.
+    const create = (company) => rn(gm, "createRentalAgreement", { operatingCompanyId: company, accountId: "acct-r", customerLocationId: "loc-r1", startDate: day(0),
+      rateMinor: 1, billingFrequency: "DAY", expectedEndDate: day(3), idempotencyKey: key("ra-x") });
+    assert.deepEqual(respond(await create("ventana")).slice(0, 2), [400, "OPERATING_COMPANY_UNKNOWN"]);
+    assert.deepEqual(respond(await create("ventana")), respond(await create("acme")));
+    // Nothing above wrote anything.
+    assert.equal(await snapshot(), before, "no cross-company mutation, partial or otherwise");
+
+    // Lists and the workspace: each caller's companies only (D3).
+    assert.equal(ok(await rn(gm, "listRentalAgreements", {})).items.some((a) => a.id === vAg.id), false);
+    assert.equal(ok(await rn(gm, "listFleetUnits", {})).items.some((u) => u.id === ruV), false);
+    assert.deepEqual(ok(await rn(gmV, "listRentalAgreements", {})).items.map((a) => a.operatingCompanyKey), ["ventana"]);
+    assert.deepEqual(ok(await rn(gmV, "listFleetUnits", {})).items.map((u) => u.serialNumber), ["RU-V"]);
+    assert.equal(ok(await rn(gmV, "readRentalWorkspace", {})).counts.fleet, 1);
+    assert.equal(ok(await rn(dispX, "listFleetUnits", {})).items.length, 3, "explicit cross-company authority reaches both companies");
+
+    // D1: no company authority -> every one of the 18 operations refuses AFTER its capability check.
+    for (const op of ["readRentalWorkspace", "listRentalAgreements", "readRentalAgreement", "listFleetUnits", "readFleetUnit", "designateFleetUnit", "setFleetUnitAvailability",
+      "createRentalAgreement", "activateRentalAgreement", "amendRentalAgreementTerms", "endRentalAgreement", "reserveRentalUnit", "releaseRentalReservation",
+      "initiateRentalReturn", "receiveRentalReturn", "inspectRentalUnit", "recordRentalCharge", "determineRentalChargeTax"]) {
+      refused(await rn(unlinkedGm, op, {}), 403, "COMPANY_AUTHORITY_REQUIRED", op);
+      refused(await rn(salesP, op, {}), 403, "CAPABILITY_REQUIRED", `${op}: capability first`);
+    }
+
+    // REPLAYS are re-authorized before anything stored is returned.
+    const replayV = await rn(ctrlT, "recordRentalCharge", { agreementId: vAg.id, kind: "DELIVERY", taxEvidence: { status: "NOT_DETERMINED" }, idempotencyKey: vChargeKey });
+    assert.deepEqual(respond(replayV).slice(0, 2), [409, "IDEMPOTENCY_KEY_REUSED"], "another company's charge key returns no package");
+    assert.equal(JSON.stringify(replayV.body).includes("billingPackage"), false);
+    assert.equal(ok(await rn(ctrl, "recordRentalCharge", { agreementId: vAg.id, kind: "DELIVERY", taxEvidence: { status: "NOT_DETERMINED" }, idempotencyKey: vChargeKey })).outcome,
+      "replayed", "the authorized caller's replay still works");
+    const usedKey = (await one(`SELECT i.idempotency_key k FROM eos_rental.rental_inspections i JOIN eos_rental.fleet_units f ON f.id = i.fleet_unit_id
+      WHERE i.tenant_id = $1 AND f.serial_number = 'RU-1' LIMIT 1`, [TENANT])).k;
+    refused(await rn(wm, "inspectRentalUnit", { fleetUnitId: (await unitOf("RU-2")).id, outcome: "READY", conditionNotes: "x", idempotencyKey: usedKey }), 409, "IDEMPOTENCY_KEY_REUSED",
+      "an inspection key never returns another unit");
+    refused(await rn(wm, "designateFleetUnit", { partId: "PRT-RENT", serialNumber: "RU-V", displayName: "again", reason: "x" }), 404, "UNIT_NOT_FOUND",
+      "the designation replay of another company's unit returns nothing");
+
+    // D8: receivables and balances need Finance's per-company authority; otherwise omitted and financeWithheld.
+    const withReach = ok(await rn(ctrl, "readRentalAgreement", { agreementId: agreement.id }));
+    assert.equal(withReach.financeWithheld, false);
+    assert.ok(withReach.charges.some((c) => c.receivable && c.receivable.outstandingMinor !== undefined), "the assigned Controller sees the receivable");
+    for (const who of [gm, ctrlT]) {
+      const w = ok(await rn(who, "readRentalAgreement", { agreementId: agreement.id }));
+      assert.equal(w.financeWithheld, true);
+      assert.equal(w.charges.some((c) => "receivable" in c), false, "no receivable or balance without Finance reach");
+      assert.ok(w.charges.length > 0 && w.charges.every((c) => c.amountMinor), "the charges themselves stay visible");
+    }
+    assert.equal(ok(await rn(gmV, "amendRentalAgreementTerms", { agreementId: vAg.id, changeKind: "EXTENSION", expectedEndDate: day(30), reason: "longer" })).agreement.financeWithheld, true,
+      "command responses follow the same rule");
+
+    // CROSS-TENANT: the same company key from another tenant reaches nothing (keys and ids are tenant-scoped).
+    const otherTenant = { tenantId: "t-rental-other", principalId: "p-other", capabilities: new Set(rental.RENTAL_CAPABILITIES), companyKeys: ["taylor", "ventana"], companyIds: ["taylor", "ventana"] };
+    await assert.rejects(rental.readRentalAgreement(pool, otherTenant, { agreementId: agreement.id }), (e) => e.code === "RENTAL_AGREEMENT_NOT_FOUND");
+    await assert.rejects(rental.readFleetUnit(pool, otherTenant, { fleetUnitId: ruV }), (e) => e.code === "FLEET_UNIT_NOT_FOUND");
+    assert.deepEqual((await rental.listRentalAgreements(pool, otherTenant, {})).items, []);
+
+    // D6: the caller's own company options, from EOS Core.
+    assert.deepEqual(ok(await call(gm, WS_ROUTE, "readMyCompanyAuthority", {})).companies, [{ operatingCompanyId: "taylor", operatingCompanyKey: "taylor" }]);
+    assert.deepEqual(ok(await call(dispX, WS_ROUTE, "readMyCompanyAuthority", {})).companies.map((c) => c.operatingCompanyId), ["taylor", "ventana"]);
+    assert.deepEqual(ok(await call(unlinkedGm, WS_ROUTE, "readMyCompanyAuthority", {})).companies, []);
+    refused(await call(gm, WS_ROUTE, "readMyCompanyAuthority", { operatingCompanyId: "ventana" }), 400, "FIELD_NOT_ACCEPTED");
   });
 });

@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          P0 rental company security — all 18 /operations/rental operations under EOS Core company authority (Owner rulings D1–D8 2026-10-15, DECISIONS #236)
+- Agent/session:       Claude Code EOS controller / security lane · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-rental-company-security` · `D:/eos-sec-rental`
+- Base commit:         `93bec3b7`
+- Owned paths:         `functions/src/eosRental/rental.ts` · `rentalOperations.ts` · `functions/src/eosOps/companyAuthority.ts` (readMyCompanyAuthority) · `functions/src/eosExperience/workspaceOperations.ts` · `myWork.ts` (rental actor) · `field-ops-app-vite/src/modules/rental/RentalWorkspace.jsx` · `services/workspaceApiClient.js` · `functions/scripts/rentalCompanyBindingIntegrity.mjs` · their tests
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json`
+- Dependencies:        #2105 (merged `93bec3b7`, DECISIONS #235)
+- Expected outcome:    no cross-company rental read, write or replay; out-of-company == missing; Finance-withheld receivables
+- Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          EOS Core Company Authority V1 — Analysis / My Work company isolation (Owner security ruling 2026-10-15, DECISIONS #235)
 - Agent/session:       Claude Code EOS controller / Lane B session · Role: builder; Lane D: independent reviewer
 - Branch / worktree:   `work/eos-analysis-company-isolation` · `D:/eos-sec-isolation`
@@ -36,7 +47,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        #2099 (merged; security acceptance OPEN until this passes authenticated runtime tests)
 - Expected outcome:    Analysis and My Work show only the caller's authorized companies; none = refused; Finance's stricter rule unchanged
 - Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `93bec3b7`; runtime-accepted (F-1 closed for tested Taylor-home personas)
 
 - Capability:          Scheduling lane — Employee Work Schedule in Employee Administration + scheduler→Employee navigation + compact board treatment + Dispatch Map review (Owner requirements 2026-10-15)
 - Agent/session:       Claude Code Scheduling lane session · Role: builder (design first)
