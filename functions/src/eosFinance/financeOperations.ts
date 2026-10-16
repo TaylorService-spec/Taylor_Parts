@@ -67,6 +67,24 @@ export const INTERCOMPANY_RELIEF_PENDING_FIELD_GROUPS = defineFieldGroups({
   ],
 });
 
+/**
+ * THE MISSING-COST-EVIDENCE ROW of the workspace, the same rule as the relief row (#2084 path B). Its part and quantity
+ * are a unit-cost INPUT: once the evidence arrives, the vendor payable (or the intercompany obligation) opens on the SAME
+ * receipt at the at-cost total, so (part, quantity) seen here plus that later amount reconstructs the unit cost of a
+ * single-line receipt. Without inventory.catalog.cost.read they are ABSENT and `withheld` names the group; the receipt,
+ * line, purchase order and company stay (the exception must remain actionable and countable).
+ */
+export const MISSING_COST_EVIDENCE_FIELD_GROUPS = defineFieldGroups({
+  objectKey: "payment",
+  record: { read: FINANCE_VIEW_CAPABILITY },
+  groups: [
+    { key: "MISSING_COST_REFERENCE", label: "Missing cost evidence reference", sensitive: false, read: null, create: null, edit: null,
+      fields: ["exceptionId", "operatingCompanyId", "receivingId", "receivingLineId", "purchaseOrderId"] },
+    { key: "MISSING_COST_INVENTORY", label: "Part and quantity missing cost evidence", sensitive: true,
+      read: COST_READ_CAPABILITY, create: COST_READ_CAPABILITY, edit: COST_READ_CAPABILITY, fields: ["partId", "receivedQuantity"] },
+  ],
+});
+
 export class FinanceOperationError extends Error {
   constructor(readonly code: string, readonly category: "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN", message: string) {
     super(message);
@@ -218,7 +236,8 @@ async function readFinanceWorkspace(deps: WorkOrderOperationDeps, caller: WorkOr
       billingPackageId: h.billing_package_id ?? null, openExceptions: Number(h.open_exceptions) })),
     reconciliation: recon.map((r) => ({ settlementId: String(r.id), operatingCompanyId: String(r.operating_company_id), kind: String(r.kind), amountMinor: String(r.amount_minor),
       currency: String(r.currency), status: r.outcome ?? "UNRECONCILED", externalAmountMinor: r.external_amount_minor === null ? null : String(r.external_amount_minor), reason: r.reason ?? null })),
-    missingCostEvidence: missing.map((x) => ({ exceptionId: String(x.id), operatingCompanyId: String(x.operating_company_id), receivingId: String(x.receiving_id),
+    missingCostEvidence: missing.map((x) => projectForCaller(MISSING_COST_EVIDENCE_FIELD_GROUPS, caller.actor.capabilities, {
+      exceptionId: String(x.id), operatingCompanyId: String(x.operating_company_id), receivingId: String(x.receiving_id),
       receivingLineId: String(x.receiving_line_id), purchaseOrderId: String(x.purchase_order_id), partId: String(x.part_id), receivedQuantity: Number(x.received_quantity) })),
     intercompanyReliefPending: relief.map((r) => projectForCaller(INTERCOMPANY_RELIEF_PENDING_FIELD_GROUPS, caller.actor.capabilities, {
       intercompanyTransactionId: String(r.id), sellerOperatingCompanyId: String(r.seller_operating_company_id),

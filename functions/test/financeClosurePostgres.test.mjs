@@ -40,7 +40,7 @@ const { capabilitiesForRoleKeys, protectedAdministratorKeys } = require("../lib/
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 const TENANT = "t-fclose";
-const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance";
+const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance", AN = "/operations/analysis";
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
@@ -99,7 +99,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
                VALUES ($1,$2,$3,$4,$5,now(),'f')`, [`os-${e}-${kind}-${id}`, TENANT, e, kind, id]);
     }
   }
-  for (const p of ["P-DS", "P-PUR", "P-UNPRICED", "P-IC", "P-IC2"]) {
+  for (const p of ["P-DS", "P-PUR", "P-UNPRICED", "P-IC", "P-IC2", "P-PATHB"]) {
     await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
              VALUES ($1,$2,'f',$1,$1,'ACTIVE','EACH','STANDARD','STOCKED',false,false,false,false,1,'f')`, [p, TENANT]);
@@ -384,11 +384,12 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1 AND correlation_id=$2`, [TENANT, after.id]), 2);
   });
 
+  let ctrlCost;
   await t.test("MUST-2: intercompany-relief rows withhold partId + quantity without inventory.catalog.cost.read; counts, money and every other read identical", async () => {
     const COST = "inventory.catalog.cost.read";
     const WITHHELD = [{ group: "RELIEF_INVENTORY", fields: ["partId", "quantity"], requires: [COST] }];
     await grant("financeManager", COST); // local test tenant only: financeManager is held by no other person in this suite
-    const ctrlCost = await person("uid-ctrl-cost", ["controller", "financeManager"], { id: "e-ctrl-cost", name: "Quinn Cost-Reader" });
+    ctrlCost = await person("uid-ctrl-cost", ["controller", "financeManager"], { id: "e-ctrl-cost", name: "Quinn Cost-Reader" });
     // The same Finance company reach as ctrl (Financials company assignment): the ONLY difference between them is the cost read.
     await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlCost]);
     // (a) premise: the controller holds the Finance read and NOT the cost read; the cost reader holds both.
@@ -447,6 +448,64 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     const detail = await Promise.all([ctrl, ctrlCost, sysAdmin].map(async (who) => ok(await fn(who, "readObligation", { obligationId: ic.buyer_obligation_id }))));
     assert.deepEqual(detail[0], detail[1]);
     assert.deepEqual(detail[0], detail[2]);
+  });
+
+  await t.test("MUST-2 path B: a missing-cost row and the cost-evidence measure withhold part + quantity without the cost read; the later payable cannot be divided", async () => {
+    // The inference (#2084, Lane D + static trace): an unpriced receipt's exception shows (receipt, part, quantity); once the
+    // evidence arrives the PAYABLE opens on that SAME receipt at the at-cost total -- a single-line receipt's total / quantity
+    // is the unit cost. Without inventory.catalog.cost.read neither the workspace row nor the Analysis measure carries the
+    // part or the quantity, so the payable total has nothing to be divided by.
+    const COST = "inventory.catalog.cost.read";
+    const rr = await ordered({ partId: "P-PATHB", qty: 4, supplier: EXT });
+    const r = ok(await receive(rr, "P-PATHB", 4), "unpriced receipt");
+    const rowOf = async (who) => ok(await fn(who, "readFinanceWorkspace", { operatingCompanyId: "taylor" }), "workspace")
+      .missingCostEvidence.find((x) => x.receivingId === r.receivingId);
+    const costed = await rowOf(ctrlCost);
+    assert.deepEqual([costed.partId, costed.receivedQuantity, costed.withheld], ["P-PATHB", 4, []], "the cost reader sees the part and the quantity");
+    for (const [who, p] of [["controller", ctrl], ["protected Administrator", sysAdmin]]) {
+      const row = await rowOf(p);
+      assert.ok(row, `${who}: the exception stays visible and actionable`);
+      assert.equal(Object.hasOwn(row, "partId") || Object.hasOwn(row, "receivedQuantity"), false, `${who}: absent, never null`);
+      assert.deepEqual(row.withheld, [{ group: "MISSING_COST_INVENTORY", fields: ["partId", "receivedQuantity"], requires: [COST] }], who);
+      const { partId: _p, receivedQuantity: _q, withheld: _w, ...ids } = costed;
+      const { withheld: _w2, ...shown } = row;
+      assert.deepEqual(shown, ids, `${who}: the receipt, line, purchase order and company are kept exactly`);
+    }
+    // The Analysis measure (and the areas that carry it) applies the same rule; the count is the same for every caller.
+    const measure = async (who) => ok(await call(who, AN, "readMeasureAnalysis", { measureId: "finance.costEvidence.missing", operatingCompanyId: "taylor" }), "measure").measure;
+    const full = await measure(ctrlCost);
+    const src = full.provenance.sources.find((x) => x.label === r.receivingId);
+    assert.deepEqual([src.dimension, src.quantity, full.withheld], ["P-PATHB", 4, undefined], "the cost reader's measure is unchanged");
+    for (const [who, p] of [["controller", ctrl], ["protected Administrator", sysAdmin]]) {
+      const m = await measure(p);
+      assert.deepEqual(m.value, full.value, `${who}: the count is identical`);
+      assert.deepEqual(m.withheld, [{ group: "COST_INFERENCE", fields: ["dimension", "quantity"], requires: [COST] }], who);
+      assert.deepEqual(m.drivers.byDimension, [], `${who}: no per-part driver`);
+      assert.equal(Object.hasOwn(m.aggregate, "quantity"), false, `${who}: no total quantity`);
+      for (const c of m.drivers.byCompany) assert.equal(Object.hasOwn(c, "quantity"), false, `${who}: no per-company quantity`);
+      assert.ok(m.provenance.sources.some((x) => x.label === r.receivingId), `${who}: the receipt is still a source`);
+      for (const x of m.provenance.sources) assert.equal(Object.hasOwn(x, "dimension") || Object.hasOwn(x, "quantity"), false, `${who}: source without part or quantity`);
+      assert.doesNotMatch(JSON.stringify(m), /P-PATHB/, `${who}: the part appears nowhere in the measure`);
+      for (const area of ["finance", "purchasing", "executive"]) {
+        const res = await call(p, AN, "readAnalysisWorkspace", { area, operatingCompanyId: "taylor" });
+        if (res.status === 200) assert.doesNotMatch(JSON.stringify(res.body.result), /P-PATHB/, `${who} ${area}: no figure, driver, insight or exception names the part`);
+      }
+    }
+    // The evidence arrives; the PAYABLE opens on the same receipt at the at-cost total (4 x 2500).
+    ok(await fn(whm, "supplyReceiptCostEvidence", { receivingId: r.receivingId, receivingLineId: "L1", unitPriceMinor: 2500, currency: "USD",
+      reason: "vendor invoice states the price", evidenceReference: "INV-PB" }), "supply");
+    for (const [who, p] of [["controller", ctrl], ["protected Administrator", sysAdmin]]) {
+      const pay = ok(await fn(p, "listObligations", { operatingCompanyId: "taylor", kind: "PAYABLE" })).items.find((o) => o.sourceRecordId === r.receivingId);
+      assert.equal(pay.originatedMinor, "10000", `${who}: the at-cost total is a Finance figure by design`);
+      const detail = ok(await fn(p, "readObligation", { obligationId: pay.id }));
+      const ws = ok(await fn(p, "readFinanceWorkspace", { operatingCompanyId: "taylor" }));
+      const m = await measure(p);
+      // Nothing the reader without the cost read can see carries the receipt's part or quantity -- the divisor is gone.
+      for (const [what, body] of [["payable", pay], ["obligation detail", detail], ["workspace", ws], ["measure", m]]) {
+        assert.doesNotMatch(JSON.stringify(body), /P-PATHB/, `${who} ${what}: no part`);
+      }
+      assert.equal(ws.missingCostEvidence.some((x) => x.receivingId === r.receivingId), false, `${who}: the exception is resolved`);
+    }
   });
 
   await t.test("F2: Taylor Service performs a Ventana sale's service only under the seller's authorization; the seller stays the seller", async () => {
