@@ -8549,3 +8549,44 @@ Plus `field-ops-app-vite/test/rentalWorkspace.test.jsx`: authorized company opti
 
 Fixture: the existing synthetic dispatcher, which works both companies' technicians in that suite, now holds explicit authority (a linked Taylor Employee plus a Ventana `operatingCompany` assignment). The new schedulers are synthetic.
 - **Service suites** that call these commands as synthetic schedulers (service journey, service activation, Work Order journey, domain cutover, field context, labor, quarantine, technician job context, customer self-scheduling) now grant that synthetic scheduler explicit company authority through `test/support/syntheticAvailability.mjs` `grantSyntheticCompanyAuthority`. It covers exactly the companies of the technicians the scheduler configures. No canonical persona is widened.
+
+## #238 — OWNER: Jobs and Dispatcher Board share one governed scheduling path; the Schedule dialog defaults to a valid future time (2026-10-16)
+
+**Status: OWNER DIRECTED ("FIX JOBS AND DISPATCH", 2026-10-16).** Keep the Jobs page; fix its dispatch controls and the Schedule dialog's past-time default. Merge and deployment need the Owner's exact-head decision.
+
+**Why.**
+- **Jobs could not dispatch.** Since the governed Work Order cutover the one governed assignee is set when a job is SCHEDULED, so the Jobs page's "pick a technician for an unassigned job" branch never matched. Every scheduled row read "Assigned to X" with no control.
+- **The default was in the past.** The Board's Schedule dialog opened with the visible band's first hour (07:00) as its start — already past for today — so it opened refused ("That start time has already passed").
+
+**Rule.**
+- **One placement runner** (`modules/dispatcherBoard/usePlacementCommands.js`): the Board and the Jobs page both Schedule, Move, Reassign, Return to queue and Dispatch through it. These are the existing governed commands and stale guards, re-checked server-side. There is no second scheduler.
+- **One Schedule dialog** (`PlacementDialog`) on both surfaces.
+  - Its default start comes from a new governed read, `suggestWorkOrderPlacement` (`eosOps/workOrderAvailability.ts`): the earliest window the placement check would accept, from the SAME `computeTechnicianSlots` as the office slot query and self-scheduling.
+  - It is never in the past (rounded UP onto the grid), and it is stated in the Work Order company's governed business time zone (`tenant_operating_companies.business_time_zone`).
+  - The time field is read and written in that zone.
+  - When no window exists the dialog says why (no hours recorded / no open window / cannot be scheduled) and names the earliest real alternative.
+  - Submit re-checks the clock and asks again if the default went stale. The server re-validates everything.
+- **`suggestWorkOrderPlacement` gates:**
+  - schedule or dispatch capability (the existing read pair), checked first;
+  - EOS Core company authority (#235). A Work Order outside the caller's companies answers `WORK_ORDER_NOT_FOUND`, identical to a nonexistent one (the G-9 rule, #237). No authority answers `COMPANY_AUTHORITY_REQUIRED`.
+  - Company, time zone and qualification come from the Work Order, never from input. A requested technician outside the Work Order's company and an unknown one both answer `NOT_SCHEDULABLE`.
+  - Quarantined Work Orders are not offered. Only READY_TO_DISPATCH and SCHEDULED Work Orders are offered (a moved job excludes its own window).
+  - It writes nothing and grants nothing.
+- **What the Jobs page OFFERS follows the caller's governed capabilities** (`readMyWorkOrderCapabilities`), failing closed while unknown:
+  - Schedule, Move and Reassign need `workOrder.lifecycle.schedule`;
+  - Dispatch needs `workOrder.lifecycle.dispatch`.
+  - No hardcoded role decides it.
+- **Rows are grouped by what can be done next** (`domain/jobsDispatchList.js`). Ties keep the server's order; nothing is promoted by name.
+
+**Unchanged and out of scope (tracked).**
+- The Board's own access gate still reads the session `role`, which for Firebase-signed-in users comes from a Firestore read in `AuthContext`. That is Firebase-exit Auth-cutover scope, untouched here.
+- The Board's time grid still renders in the browser's local time. It equals the governed zone for Arizona users; a governed-zone grid is a follow-up.
+- `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads (#2110 follow-ups).
+- No migration, grant, role, identity or Firebase change. The Jobs and Board data and command paths were traced and have no reachable Firebase dependency.
+
+**Proof.**
+- **PostgreSQL** (`workOrderAvailabilityPostgres`, the suggestWorkOrderPlacement subtest): Phoenix earliest window; never in the past; NOT_CONFIGURED with an in-company alternative; NOT_SCHEDULABLE for another company's or an unknown technician; a held window is skipped but a moved job ignores its own; outside the caller's companies ≡ nonexistent; COMPANY_AUTHORITY_REQUIRED; capability first; terminal refused; writes nothing.
+- **Client:**
+  - `jobsDispatchFlow`: Dispatch from Jobs, Schedule via the shared dialog with the governed default, capability gating fail-closed, one shared runner;
+  - `dispatchNorthStarBoard`: governed default, no-slot explanation with alternative, stale-on-submit re-check;
+  - `jobsDispatchList` and `zonedTime` (including a daylight-saving zone).

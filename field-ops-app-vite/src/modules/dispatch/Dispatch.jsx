@@ -1,273 +1,198 @@
-import Autocomplete, { searchLoaded } from "../../shared/ui/Autocomplete.jsx";
 import { useMemo, useState } from "react";
+import { Link, useInRouterContext } from "react-router-dom";
 import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities";
 import { mergeTechnicianDirectories, techniciansFromWorkOrders } from "../../domain/workOrderAdapter.js";
-import { transitionWorkOrder } from "../../services/workOrderService";
+import { suggestWorkOrderPlacement } from "../../services/workOrderService";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
-import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
-import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { placementWindow } from "../../domain/dispatchBoardGeometry.js";
+import { JOB_SECTION, groupJobs } from "../../domain/jobsDispatchList.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
+import PlacementDialog, { PLACEMENT_INTENT } from "../dispatcherBoard/PlacementDialog.jsx";
+import { usePlacementCommands } from "../dispatcherBoard/usePlacementCommands.js";
 
-// F0 -- this IS now the canonical Work Order dispatch surface. It reads
-// fieldops_wos and assigns by invoking the governed `Dispatch` transition
-// (transitionWorkOrder), which sets assignedTechId and writes the lifecycle
-// timestamp server-side. The legacy assignJob() client transaction against
-// fieldops_jobs is no longer used here.
+// THE JOBS PAGE — the list view of the same dispatch work the Dispatcher Board shows on a timeline.
 //
-// Assigns pending jobs to available technicians. Writes back to both the
-// job (technicianId, status) and the technician (status) so Jobs,
-// Technicians, and Control Tower all stay in sync via their own
-// realtime listeners. The write goes through the governed Dispatch
-// transition, which re-checks permission and lifecycle server-side so two
-// dispatchers can't both win the same technician.
+// ════════════════════ ONE AUTHORITY, TWO VIEWS (Owner "FIX JOBS AND DISPATCH", 2026-10-16) ════════════════════
 //
-// Sprint 3.6.4: visual-only upgrade. Shows every job (not just
-// unassigned ones) with a status/priority chip, so the board reads as a
-// full dispatch view rather than just a to-do queue. The chip for
-// OPEN/ASSIGNED jobs reuses the existing risk severity engine
-// (domain/jobRiskScoring.js -- already-derived, no new logic here) to
-// label them Emergency (HIGH/CRITICAL) vs Scheduled (MEDIUM/LOW). No new
-// backend logic, no schema change -- assign() below is byte-for-byte the
-// same governed Dispatch transition this screen already invoked.
+// Since the governed cutover a Work Order gets its technician when it is SCHEDULED (the adapter carries the one governed
+// assignee as assignedTechId), so this page's old branch — "pick a technician to dispatch an UNASSIGNED job" — never
+// matched anything, and every scheduled job showed "Assigned to X" with no control: nothing could be dispatched here.
+// The page now acts through exactly what the Board uses:
 //
-// Sandbox-fidelity fix (Part 2): this screen previously imported
-// demo/heroConfig.js and used it to pin a hardcoded "hero" job (matched by
-// customer name "Beacon Manufacturing") to the top of the queue, badge it
-// "Active Demo Job", and pre-select a hardcoded "hero" technician (matched
-// by name "Alex Rivera") in the assign dropdown. That is demo-only
-// presentation bleeding into production-shaped runtime: a job or
-// technician with a matching name in a REAL environment would silently get
-// special treatment it never asked for and no governed field explains.
-// heroConfig.js is now used ONLY by demo/test fixtures (see
-// demo/inventoryData.js and test/*), never imported by this screen. This
-// remains the canonical Work Order Dispatch transition surface (see the
-// F0 note above) -- the combined Dispatch/Scheduling workspace
-// (DispatchSchedulingWorkspace.jsx) only performs the Schedule transition
-// (unscheduled -> SCHEDULED with a suggested tech/time); it does not
-// perform the Dispatch transition (SCHEDULED -> DISPATCHED, the actual
-// "send this job to this technician now" governed write), so this screen
-// keeps a unique, still-necessary operational responsibility.
+//   * reads    — the governed Work Order list (useWorkOrders) and roster (useWorkOrderTechnicians); no Firestore;
+//   * commands — usePlacementCommands (the Board's runner): Schedule, Move, Reassign (typed reason, H20/ND-18) and the
+//                governed Dispatch transition — every one re-checked server-side;
+//   * the Schedule dialog — the Board's PlacementDialog, defaulted by the governed suggestWorkOrderPlacement (earliest
+//                valid window, company business time zone), re-checked on submit;
+//   * what is OFFERED — the caller's own governed capabilities (readMyWorkOrderCapabilities): Schedule/Move/Reassign need
+//                workOrder.lifecycle.schedule, Dispatch needs workOrder.lifecycle.dispatch. Fail closed while unknown.
+//
+// Rows are grouped by what can be done next (domain/jobsDispatchList.js). No demo fixture, hero job or hero technician
+// is referenced here (heroConfig.js stays demo/test-only); the chips below read the governed status and the derived risk.
 
-// Chips read the governed operational phase, so all eleven statuses are
-// covered without this surface enumerating them.
+const SCHEDULE_CAPABILITY = "workOrder.lifecycle.schedule";
+const DISPATCH_CAPABILITY = "workOrder.lifecycle.dispatch";
+
+// Chips read the governed operational phase, so all eleven statuses are covered without this surface enumerating them.
 const PHASE_CHIP = {
   [FIELD_PHASE.ON_SITE]: { label: "In Progress", tone: "in-progress" },
   [FIELD_PHASE.FINISHED]: { label: "Completed", tone: "completed" },
 };
 
 function priorityChip(job) {
-  // This chip reads computeJobRisk(), which is DERIVED from how long a job has been
-  // sitting and what state it is in -- age and status factors. It is not a customer-
-  // declared priority, and this platform has no such field.
-  //
-  // It used to render that score as "Emergency". A dispatcher persona reported
-  // routine PM work badged red and read the queue as full of emergencies. "At risk"
-  // is what the number actually supports: this job needs attention because it is
-  // aging or stuck, which is a claim the data can carry.
+  // computeJobRisk() is DERIVED from age and state, not a customer-declared priority — so "At risk", never "Emergency".
   const risk = computeJobRisk(job);
   const atRisk = risk && (risk.severity === SEVERITY.HIGH || risk.severity === SEVERITY.CRITICAL);
   return atRisk ? { label: "At risk", tone: "emergency" } : { label: "Scheduled", tone: "scheduled" };
 }
 
-// PHASE_BY_STATUS (domain/fieldWorkOrder.js) deliberately folds COMPLETED, CLOSED, and
-// CANCELLED into the single FIELD_PHASE.FINISHED bucket -- phase only answers "is there
-// still field work to do", not "what happened to this job". Reading the chip off phase
-// alone therefore renders a cancelled job with the identical green "Completed" chip as a
-// job that actually finished, with no way for a dispatcher to tell them apart. Cancelled
-// is checked against the real governed status here, ahead of the phase projection, so it
-// gets its own label and a tone (danger, not success) instead of borrowing "Completed"'s.
+// CANCELLED is checked against the real governed status ahead of the phase projection (which folds it into FINISHED),
+// so a cancelled job never wears the green "Completed" chip.
 function statusChipFor(job) {
   if (job?.status === "CANCELLED") return { label: "Cancelled", tone: "emergency" };
   return PHASE_CHIP[fieldPhase(job)] ?? priorityChip(job);
 }
 
+const whenText = (wo) => {
+  const w = placementWindow(wo);
+  if (!w) return null;
+  const f = (ms, opts) => new Date(ms).toLocaleString(undefined, opts);
+  return `${f(w.startMillis, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} – ${f(w.endMillis, { hour: "numeric", minute: "2-digit" })}`;
+};
+
 export default function Dispatch() {
   const { data: jobs, loading, error } = useWorkOrders();
-  // The technicians read can fail independently of the work-order read. Unchecked, the assignment
-  // dropdown rendered with zero options and no explanation -- silently non-functional, and
-  // indistinguishable from "there are no technicians".
-  // GOVERNED roster (listWorkOrderTechnicians): ids are EMPLOYEE ids, matching the Work Orders'
-  // assignedTechId / scheduledTechId. Names of assignees outside the roster come from the rows themselves.
+  // The technicians read can fail independently; the screen says so instead of offering an empty picker.
   const { data: roster, error: techniciansError } = useWorkOrderTechnicians();
   const technicians = useMemo(() => mergeTechnicianDirectories(roster, techniciansFromWorkOrders(jobs)), [roster, jobs]);
-  const rosterIds = useMemo(() => new Set(roster.map((t) => t.id)), [roster]);
-  const [dispatchError, setDispatchError] = useState(null);
-  // H20 fix: reassigning a job away from the technician it was Scheduled for is a distinct, audited,
-  // reason-required action (Owner ruling) -- never a silent side effect of picking someone else from this
-  // select. `pendingReassignment` holds the {job, technicianId} pair awaiting a typed reason; nothing is
-  // dispatched until the dispatcher confirms with a reason.
-  const [pendingReassignment, setPendingReassignment] = useState(null);
-  const [reassignReasonInput, setReassignReasonInput] = useState("");
+  const caps = useMyWorkOrderCapabilities();
+  const canSchedule = caps.has(SCHEDULE_CAPABILITY);
+  const canDispatch = caps.has(DISPATCH_CAPABILITY);
+  const { runPlacement, dispatchTo, busyWorkOrderId, message } = usePlacementCommands({ workOrders: jobs, technicians });
+  const [pending, setPending] = useState(null);
+  const sections = useMemo(() => groupJobs(jobs), [jobs]);
+  const inRouter = useInRouterContext();
 
-  // Shared resolver -- see domain/actorDisplayName.js. Returned undefined before, leaving each
-  // call site to fall back to the raw id on its own.
-  const technicianName = (id) =>
-    resolveTechnicianIdentity(id, { technicians, error: techniciansError }).name;
+  const technicianName = (id) => resolveTechnicianIdentity(id, { technicians, error: techniciansError }).name;
 
-  // Governed dispatch: the server sets assignedTechId, enforces the
-  // CREATED/READY_TO_DISPATCH/SCHEDULED -> DISPATCHED transition and the
-  // admin/dispatcher permission, and writes the timestamp. Nothing about the
-  // assignment is decided client-side.
-  async function assign(job, technicianId, reassignReason) {
-    if (!technicianId) return;
-    setDispatchError(null);
-    const technician = technicians.find((t) => t.id === technicianId);
-    if (!technician) return;
-    try {
-      await transitionWorkOrder(job.id, "Dispatch", {
-        assignedTechId: technicianId,
-        ...(reassignReason ? { reassignReason } : {}),
-      });
-    } catch (err) {
-      console.error(err);
-      setDispatchError(workflowActionErrorMessage(err));
-    }
-  }
-
-  // H20 fix: the server is the only authority on whether this is actually a reassignment (it compares
-  // against wo.scheduledTechId at the moment Dispatch runs) -- this client-side check only decides whether
-  // to show the reason prompt before calling assign(); the server still enforces the requirement itself
-  // regardless of what this UI does.
-  function handleSelectTechnician(job, technicianId) {
-    if (!technicianId) return;
-    if (job.scheduledTechId && job.scheduledTechId !== technicianId) {
-      setPendingReassignment({ job, technicianId });
-      setReassignReasonInput("");
-      return;
-    }
-    assign(job, technicianId);
-  }
-
-  function confirmReassignment() {
-    if (!pendingReassignment || !reassignReasonInput.trim()) return;
-    assign(pendingReassignment.job, pendingReassignment.technicianId, reassignReasonInput.trim());
-    setPendingReassignment(null);
-    setReassignReasonInput("");
-  }
-
-  function cancelReassignment() {
-    setPendingReassignment(null);
-    setReassignReasonInput("");
-  }
+  const openDialog = (intent, wo) => setPending({
+    intent, workOrder: wo,
+    technicianId: intent === PLACEMENT_INTENT.SCHEDULE ? null : (wo.scheduledTechId ?? null),
+    durationMinutes: placementWindow(wo)?.durationMinutes ?? wo.estimatedDurationMinutes ?? 120,
+    errorMessage: null,
+  });
+  const confirm = async (payload) => {
+    const outcome = await runPlacement(payload);
+    if (outcome.ok) setPending(null);
+    else setPending((p) => (p ? { ...p, errorMessage: outcome.message } : null));
+  };
 
   return (
     <div className="fo-panel">
       <h2>Dispatch</h2>
-      {dispatchError && <p className="fo-error" role="alert">{dispatchError}</p>}
-      {/* Announced rather than left to look like "no technicians exist". Work orders are still worth
-          showing when only the technician read failed, but the assignment control cannot work and
-          the screen must say why instead of offering an empty dropdown. */}
+      {message ? (
+        <p className={message.tone === "error" ? "fo-error" : "fo-muted"} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p>
+      ) : null}
       {techniciansError && (
         <p className="fo-scan__notice fo-scan__notice--warn" role="alert">
-          Technicians could not be loaded, so assignment is unavailable.
+          Technicians could not be loaded, so scheduling and dispatch are unavailable.
           {" "}{loadErrorMessage(techniciansError, { entity: "technicians" })}
         </p>
       )}
+      {caps.status === "ready" && !canSchedule && !canDispatch ? (
+        <p className="fo-muted" role="status">You can see these jobs, but scheduling and dispatching are not part of your access.</p>
+      ) : null}
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
       ) : error ? (
-        // Fail VISIBLY. A denied/unavailable read used to fall through to
-        // "No work orders yet" -- a false empty board a dispatcher could read
-        // as nothing to do, missing real jobs with no indication of failure.
-        <p className="fo-muted" role="alert">
-          {loadErrorMessage(error, { entity: "work orders" })}
-        </p>
-      ) : jobs.length === 0 ? (
+        // Fail VISIBLY: a denied/unavailable read is never a false empty board.
+        <p className="fo-muted" role="alert">{loadErrorMessage(error, { entity: "work orders" })}</p>
+      ) : (jobs ?? []).length === 0 ? (
         <p className="fo-muted">No work orders yet.</p>
       ) : (
-        jobs.map((job) => {
-          const chip = statusChipFor(job);
-          return (
-            <div
-              key={job.id}
-              className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}`}
-            >
-              <div className="fo-dispatch__card-head">
-                <h3>{job.woNumber ?? job.id}</h3>
-                <span className={`fo-chip fo-chip-${chip.tone}`}>{chip.label}</span>
-              </div>
-              <p>{job.description}</p>
+        sections.map(({ section, title, items }) => (
+          <section key={section} className="fo-dispatch__section" aria-label={title}>
+            <h2 className="fo-dispatch__section-title">{title} <span className="fo-muted">({items.length})</span></h2>
+            {items.map((job) => {
+              const chip = statusChipFor(job);
+              const busy = busyWorkOrderId === job.id;
+              const when = whenText(job);
+              const tech = job.scheduledTechId ?? job.assignedTechId ?? null;
+              return (
+                <div key={job.id} className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}`}>
+                  <div className="fo-dispatch__card-head">
+                    <h3>{job.woNumber ?? job.id}</h3>
+                    <span className={`fo-chip fo-chip-${chip.tone}`}>{chip.label}</span>
+                  </div>
+                  <p className="fo-muted">
+                    {[job.customerName, when].filter(Boolean).join(" · ")}
+                  </p>
+                  {job.description ? <p>{job.description}</p> : null}
+                  {job.id && inRouter ? <p><Link to={`/service/work-orders/${job.id}`}>Open work order</Link></p> : null}
 
-              {/* The governed engine allows Dispatch only from SCHEDULED
-                  (CREATED -> READY_TO_DISPATCH -> SCHEDULED -> DISPATCHED).
-                  Asking the engine rather than assuming means this control is
-                  never offered where the transition would be rejected -- and
-                  scheduling is NOT fabricated here, because Schedule requires a
-                  real scheduledStart/End/TechId decision this board does not
-                  make. */}
-              {!getAllowedActions(job.status, "dispatcher", false).includes("Dispatch") ? (
-                <div className="fo-muted">
-                  {job.assignedTechId
-                    ? `Assigned to ${technicianName(job.assignedTechId)}`
-                    : job.status === "CANCELLED"
-                    ? "This work order was cancelled before it was dispatched — no further action is needed."
-                    : "Not ready to dispatch — this work order must be scheduled first."}
-                </div>
-              ) : !job.assignedTechId ? (
-                <>
-                  {/* H20 fix: make who this job was Scheduled for a visible fact on the dispatch surface
-                      itself, not something only discoverable by cross-referencing the Scheduling board.
-                      Picking anyone else in the select below is then a visible choice, not an accident. */}
-                  {job.scheduledTechId && (
-                    <div className="fo-muted">
-                      Scheduled for: {technicianName(job.scheduledTechId)}
-                    </div>
-                  )}
-                  {/* ASSIGNEE TYPEAHEAD (UI corrections item E): over the governed roster only (plus the scheduled
-                      assignee) -- the same list the select offered; there is no field "available" status on a governed
-                      Employee, and the server re-checks eligibility. Choosing one behaves exactly as the select did. */}
-                  <Autocomplete
-                    label={`Technician for ${job.workOrderNumber ?? job.id}`}
-                    hideLabel
-                    placeholder="Type a technician's name"
-                    search={searchLoaded(technicians.filter((t) => rosterIds.has(t.id) || t.id === job.scheduledTechId), (t) => t.name)}
-                    selected={pendingReassignment?.job.id === job.id ? technicians.find((t) => t.id === pendingReassignment.technicianId) ?? null : null}
-                    getKey={(t) => t.id}
-                    getLabel={(t) => t.name}
-                    getContext={(t) => (t.id === job.scheduledTechId ? "Scheduled technician" : null)}
-                    onSelect={(t) => { if (t) handleSelectTechnician(job, t.id); }}
-                  />
-                  {/* H20 fix: dispatching to anyone OTHER than job.scheduledTechId is a reassignment --
-                      the Owner ruling requires a reason before it can be confirmed. Same-technician
-                      dispatch never reaches this prompt (handleSelectTechnician dispatches it immediately). */}
-                  {pendingReassignment?.job.id === job.id && (
-                    <div className="fo-form" role="group" aria-label="Reassignment reason required">
-                      <p className="fo-muted">
-                        Reassigning from {technicianName(job.scheduledTechId) ?? job.scheduledTechId} to{" "}
-                        {technicianName(pendingReassignment.technicianId)} —
-                        a reason is required.
-                      </p>
-                      <textarea
-                        value={reassignReasonInput}
-                        onChange={(e) => setReassignReasonInput(e.target.value)}
-                        placeholder="Why is this job being reassigned?"
-                        aria-label="Reassignment reason"
-                        rows={2}
-                      />
-                      <div className="fo-dispatch__reassign-actions">
-                        <Button variant="primary" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
-                          Confirm reassignment
-                        </Button>
-                        <Button variant="secondary" onClick={cancelReassignment}>
-                          Cancel
-                        </Button>
+                  {section === JOB_SECTION.READY_TO_DISPATCH ? (
+                    tech ? (
+                      <div className="fo-dispatch__actions">
+                        <span className="fo-muted">Scheduled for {technicianName(tech)}</span>
+                        {canDispatch ? (
+                          <Button onClick={() => dispatchTo(job, tech)} loading={busy} disabled={busy}>
+                            Dispatch to {technicianName(tech)}
+                          </Button>
+                        ) : null}
+                        {canSchedule ? (
+                          <>
+                            <Button variant="secondary" onClick={() => openDialog(PLACEMENT_INTENT.REASSIGN, job)} disabled={busy}>Reassign…</Button>
+                            <Button variant="secondary" onClick={() => openDialog(PLACEMENT_INTENT.RESCHEDULE, job)} disabled={busy}>Move…</Button>
+                          </>
+                        ) : null}
                       </div>
+                    ) : (
+                      <div className="fo-dispatch__actions">
+                        <span className="fo-muted">Scheduled, but no technician is recorded — choose one before dispatching.</span>
+                        {canSchedule ? <Button variant="secondary" onClick={() => openDialog(PLACEMENT_INTENT.REASSIGN, job)} disabled={busy}>Choose technician…</Button> : null}
+                      </div>
+                    )
+                  ) : section === JOB_SECTION.TO_SCHEDULE ? (
+                    <div className="fo-dispatch__actions">
+                      <span className="fo-muted">Waiting to be scheduled — this work order must be scheduled first.</span>
+                      {canSchedule ? <Button onClick={() => openDialog(PLACEMENT_INTENT.SCHEDULE, job)} disabled={busy}>Schedule…</Button> : null}
                     </div>
-                  )}
-                </>
-              ) : (
-                <div className="fo-muted">Assigned to {technicianName(job.assignedTechId)}</div>
-              )}
-            </div>
-          );
-        })
+                  ) : section === JOB_SECTION.NOT_READY ? (
+                    <div className="fo-muted">Not ready to dispatch — this work order must be scheduled first, and it has not been marked ready to schedule yet.</div>
+                  ) : job.status === "CANCELLED" && !tech ? (
+                    <div className="fo-muted">This work order was cancelled before it was dispatched — no further action is needed.</div>
+                  ) : tech ? (
+                    <div className="fo-muted">Assigned to {technicianName(tech)}</div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </section>
+        ))
       )}
+
+      {pending ? (
+        <PlacementDialog
+          intent={pending.intent}
+          workOrder={pending.workOrder}
+          technicians={technicians}
+          defaultTechnicianId={pending.technicianId}
+          defaultStartMillis={null}
+          defaultDurationMinutes={pending.durationMinutes}
+          suggestPlacement={pending.intent === PLACEMENT_INTENT.REASSIGN ? null : suggestWorkOrderPlacement}
+          submitting={busyWorkOrderId === pending.workOrder.id}
+          errorMessage={pending.errorMessage}
+          onConfirm={confirm}
+          onCancel={() => setPending(null)}
+        />
+      ) : null}
     </div>
   );
 }
