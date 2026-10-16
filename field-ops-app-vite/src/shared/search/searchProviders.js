@@ -16,8 +16,8 @@
 // never triggers its own extra Firestore read -- same client-side-
 // filter-over-already-loaded-data pattern already used by
 // DispatcherBoard.jsx's search. For `accounts`, that's the same
-// `accounts` array AccountsList.jsx already has from
-// useFirestoreCollection("accounts").
+// `accounts` array the caller already holds (the old Firestore
+// accounts subscription is gone; AccountsList.jsx uses governed search).
 export const SEARCH_PROVIDERS = {
   accounts: {
     key: "accounts",

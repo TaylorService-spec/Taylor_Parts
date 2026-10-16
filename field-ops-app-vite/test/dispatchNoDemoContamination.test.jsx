@@ -25,14 +25,12 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
 // The page offers actions from the caller's governed capabilities and reads the governed roster (FIX JOBS AND DISPATCH).
 vi.mock("../src/hooks/useMyWorkOrderCapabilities", () => ({ useMyWorkOrderCapabilities: () => ({ status: "ready", has: () => true }) }));
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn(() => ({ data: [], loading: false, error: null })) }));
 vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn(), suggestWorkOrderPlacement: vi.fn(async () => null) }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
 import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 
@@ -74,7 +72,6 @@ describe("Dispatch -- no demo/heroConfig contamination in normal runtime", () =>
       description: "Looks like the old hero job by name only",
     };
     useWorkOrders.mockReturnValue({ data: [normalJob, heroNamedJob], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
 
     render(<Dispatch />);
 

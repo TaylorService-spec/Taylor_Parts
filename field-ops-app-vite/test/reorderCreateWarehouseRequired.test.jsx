@@ -23,15 +23,8 @@ vi.mock("../src/services/reorderApiClient.js", () => ({
   reorderApiClient: { call: (...args) => call(...args) },
   callReorderApi: (...args) => call(...args),
 }));
-// The retired direct-write path must not be reachable from this test either: if createReorderRequest
-// ever falls back to it, this store throws rather than quietly succeeding.
-vi.mock("../src/firebase/collectionStore", () => ({
-  makeCollectionStore: () => ({
-    add: () => { throw new Error("the direct reorder_requests write path is retired"); },
-    update: vi.fn(),
-    doc: vi.fn(),
-  }),
-}));
+// The retired direct-write path (firebase/collectionStore.js) was deleted by the Firebase exit, so there is no store left
+// for createReorderRequest to fall back to.
 vi.mock("../src/config/env", () => ({ isWriteBlocked: () => false }));
 
 import { createReorderRequest, requestReorderForRecommendation } from "../src/domain/inventoryReorderRequests.js";
