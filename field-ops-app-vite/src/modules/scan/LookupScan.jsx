@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
-import { fetchPartBalance } from "../../services/inventoryBalanceCallableClient.js";
 import { fetchLocationLabels, fetchSerializedUnits } from "../../services/scanEquipmentReads.js";
 import { mapLocationDisplayResultToMap } from "../../domain/locationDisplayProjection.js";
 import {
@@ -65,11 +64,18 @@ import {
 // predicate client-side — a second copy that can drift and lie in both directions — the read is
 // attempted and its refusal is displayed AS a refusal. See access/scanWorkflows.js.
 
+// NO BALANCE TRANSPORT (Firebase exit PR-B, 2026-10-15). The getPartBalance callable client was removed: its
+// INVENTORY_BALANCE_READ_READY gate was false in every environment, so it only ever answered "transport-not-ready",
+// which is exactly what this returns -- the balance row renders the same refusal it always has. The governed
+// balance comes back as an EOS Core inventory read, injected here, never as the Firebase callable. See
+// docs/architecture/frontend-dormant-firebase-client-retirement-ledger.md.
+const balanceReadNotAvailable = async () => ({ errorStatus: "transport-not-ready", errorDetail: null });
+
 export default function LookupScan({ deps }) {
   // ONE governed server read answers both halves (Part code + registered identifier) -- the same one
   // Move stock uses. It replaced a whole-`parts`-collection client read a Parts Associate was refused.
   const lookupPart = deps?.lookupPart ?? lookupScannedPart;
-  const readBalance = deps?.fetchBalance ?? fetchPartBalance;
+  const readBalance = deps?.fetchBalance ?? balanceReadNotAvailable;
   // EOS reads (Controller EQUIPMENT ACTIVATION, 2026-10-01) -- never the Firebase serialized-asset / location callables.
   const readSerialized = deps?.fetchSerialized ?? fetchSerializedUnits;
   const readLocations = deps?.fetchLocations ?? fetchLocationLabels;

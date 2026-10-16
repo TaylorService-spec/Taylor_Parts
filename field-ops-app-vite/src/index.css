@@ -3872,7 +3872,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-controltower-attention-row__title { display: flex; align-items: center; gap: var(--space-2); }
 /* === inline-style elimination: dispatch ================================= */
 .fo-dispatch__card-head { display: flex; align-items: center; justify-content: space-between; }
-.fo-dispatch__reassign-actions { display: flex; gap: var(--space-2); }
+/* Jobs page (FIX JOBS AND DISPATCH): rows grouped by what can be done next, each with its governed actions. */
+.fo-dispatch__section { margin-top: var(--space-4); }
+.fo-dispatch__section-title { font-size: var(--font-size-md); margin: 0 0 var(--space-2); }
+.fo-dispatch__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
 /* === inline-style elimination: inventory/truckManagement (TruckInventory,
    ManageTruckDrawer, OutcomeBanner) ==========================================
    Structural layout/spacing rules pulled out of style={{...}} attributes.

@@ -23,7 +23,7 @@
 // silent, and by the time it is visible the data is already written.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -87,7 +87,6 @@ const files = walk(src);
 
 const stores = [];
 for (const file of files) {
-  if (file.endsWith(path.join("firebase", "collectionStore.js"))) continue;
   const text = read(file);
   for (const m of text.matchAll(/makeCollectionStore\(\s*([A-Z_"][A-Za-z_"]*)\s*(,[\s\S]{0,220}?)?\)/g)) {
     const collection = collectionFor(m[1]);
@@ -145,12 +144,12 @@ test("A STORE'S TIMESTAMP POLICY MATCHES ITS COLLECTION'S GOVERNED TYPE", () => 
   }
 });
 
-test("no server-timestamp store remains (accounts moved to PostgreSQL), and the default stays epoch millis", () => {
+test("no server-timestamp store remains (accounts moved to PostgreSQL), and the shared writer itself is gone", () => {
   const server = stores.filter((s) => s.declaresServerTimestamp).map((s) => s.collection);
   assert.deepEqual(server, []);
-  // Every other store passes no options at all, so this change is byte-identical for them.
-  const storeSrc = read(path.join(src, "firebase", "collectionStore.js"));
-  assert.match(storeSrc, /timestamps = TIMESTAMP_SHAPE\.EPOCH_MILLIS/, "the default must remain epoch millis");
+  // FIREBASE EXIT PR-A (2026-10-15): firebase/collectionStore.js was deleted with its last consumer (the unrouted
+  // Technicians screen's domain/jobActions.js). No Firestore shared writer remains to hold a timestamp policy.
+  assert.equal(existsSync(path.join(src, "firebase", "collectionStore.js")), false, "the retired Firestore shared writer is back");
 });
 
 // ── the edit path, which re-broke a correctly created record ────────────────────────────────────

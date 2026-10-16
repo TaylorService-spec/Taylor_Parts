@@ -8511,3 +8511,82 @@ This PR isolates only the Analysis-backed My Work sections and the `rental` sect
 Plus `field-ops-app-vite/test/rentalWorkspace.test.jsx`: authorized company options only, no create without authority, Finance-only rendering.
 
 **Coverage still open** (#235 acceptance): Ventana-only and Taylor-only Finance personas, and Ventana rental data in nonprod, for live runtime negatives. Creating them needs separate approval.
+
+## #237 — OWNER: G-9 scheduling company security — the schedule commands enforce EOS Core company authority (2026-10-15)
+
+**Status: OWNER AUTHORIZED for preparation and implementation (2026-10-15).** Merge and deployment need a separate Owner authorization. Scheduling PR-2 (Work Schedule editing) stays blocked until this is reviewed, authorized, deployed to nonprod and verified.
+
+**Why.** The Scheduling lane's finding G-9 (`docs/architecture/employee-work-schedule-design.md`): `setTechnicianWorkingHours`, `recordTechnicianUnavailability` and `endTechnicianUnavailability` checked tenant, capability and membership only.
+- Any holder of `workOrder.lifecycle.schedule` could change another company's Employee's hours or time off.
+- They could also scope a schedule to any active company.
+
+**Rule** (`functions/src/eosOps/workOrderAvailability.ts`, EOS Core company authority #235, `resolveCompanyAuthority`).
+- Resolution happens inside each command's transaction, after the capability and membership checks. It is server-side and never taken from input.
+- **No company authority** gives `COMPANY_AUTHORITY_REQUIRED` (403). It fails closed.
+- **The Employee:** set hours and record unavailability need the Employee's home company (`employees.operating_company_id`) to be one of the caller's companies.
+- **The unavailability:** ending one is reached through its Employee's company.
+- **Out of scope == unknown:**
+  - an Employee outside the caller's companies answers `EMPLOYEE_NOT_FOUND`;
+  - an unavailability outside them answers `UNAVAILABILITY_NOT_FOUND`;
+  - in each case the code, category and message are identical to those for a nonexistent record.
+- **A schedule scoped to a company** outside the caller's companies answers exactly like an unknown or inactive company (`OPERATING_COMPANY_NOT_GOVERNED`), even for the caller's own Employee.
+- **Every refusal precedes any write.**
+
+**Unchanged.**
+- The capability rule (DECISION 5): writes need `workOrder.lifecycle.schedule`.
+- The append/close-only history.
+- The placement checks.
+- No new authorization engine, grant, role or identity change.
+
+**Not covered** (the board read; tracked with the Work Order list isolation): `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads, gated by schedule or dispatch capability.
+
+**Proof** (`functions/test/workOrderAvailabilityPostgres.test.mjs` G-9). It covers:
+- for all three commands, outside the caller's companies ≡ nonexistent (code, category, message);
+- an out-of-company schedule scope ≡ an unknown company;
+- no authority refused, after the capability check;
+- **a snapshot proves no mutation on refusal**;
+- the positive cases, including explicit cross-company authority.
+
+Fixture: the existing synthetic dispatcher, which works both companies' technicians in that suite, now holds explicit authority (a linked Taylor Employee plus a Ventana `operatingCompany` assignment). The new schedulers are synthetic.
+- **Service suites** that call these commands as synthetic schedulers (service journey, service activation, Work Order journey, domain cutover, field context, labor, quarantine, technician job context, customer self-scheduling) now grant that synthetic scheduler explicit company authority through `test/support/syntheticAvailability.mjs` `grantSyntheticCompanyAuthority`. It covers exactly the companies of the technicians the scheduler configures. No canonical persona is widened.
+
+## #239 — OWNER: Jobs and Dispatcher Board share one governed scheduling path; the Schedule dialog defaults to a valid future time (2026-10-16)
+
+**Status: OWNER DIRECTED ("FIX JOBS AND DISPATCH", 2026-10-16).** Keep the Jobs page; fix its dispatch controls and the Schedule dialog's past-time default. Merge and deployment need the Owner's exact-head decision.
+
+**Why.**
+- **Jobs could not dispatch.** Since the governed Work Order cutover the one governed assignee is set when a job is SCHEDULED, so the Jobs page's "pick a technician for an unassigned job" branch never matched. Every scheduled row read "Assigned to X" with no control.
+- **The default was in the past.** The Board's Schedule dialog opened with the visible band's first hour (07:00) as its start — already past for today — so it opened refused ("That start time has already passed").
+
+**Rule.**
+- **One placement runner** (`modules/dispatcherBoard/usePlacementCommands.js`): the Board and the Jobs page both Schedule, Move, Reassign, Return to queue and Dispatch through it. These are the existing governed commands and stale guards, re-checked server-side. There is no second scheduler.
+- **One Schedule dialog** (`PlacementDialog`) on both surfaces.
+  - Its default start comes from a new governed read, `suggestWorkOrderPlacement` (`eosOps/workOrderAvailability.ts`): the earliest window the placement check would accept, from the SAME `computeTechnicianSlots` as the office slot query and self-scheduling.
+  - It is never in the past (rounded UP onto the grid), and it is stated in the Work Order company's governed business time zone (`tenant_operating_companies.business_time_zone`).
+  - The time field is read and written in that zone.
+  - When no window exists the dialog says why (no hours recorded / no open window / cannot be scheduled) and names the earliest real alternative.
+  - Submit re-checks the clock and asks again if the default went stale. The server re-validates everything.
+- **`suggestWorkOrderPlacement` gates:**
+  - schedule or dispatch capability (the existing read pair), checked first;
+  - EOS Core company authority (#235). A Work Order outside the caller's companies answers `WORK_ORDER_NOT_FOUND`, identical to a nonexistent one (the G-9 rule, #237). No authority answers `COMPANY_AUTHORITY_REQUIRED`.
+  - Company, time zone and qualification come from the Work Order, never from input. A requested technician outside the Work Order's company and an unknown one both answer `NOT_SCHEDULABLE`.
+  - Quarantined Work Orders are not offered. Only READY_TO_DISPATCH and SCHEDULED Work Orders are offered (a moved job excludes its own window).
+  - It writes nothing and grants nothing.
+- **What the Jobs page OFFERS follows the caller's governed capabilities** (`readMyWorkOrderCapabilities`), failing closed while unknown:
+  - Schedule, Move and Reassign need `workOrder.lifecycle.schedule`;
+  - Dispatch needs `workOrder.lifecycle.dispatch`.
+  - No hardcoded role decides it.
+- **Rows are grouped by what can be done next** (`domain/jobsDispatchList.js`). Ties keep the server's order; nothing is promoted by name.
+
+**Unchanged and out of scope (tracked).**
+- The Board's own access gate still reads the session `role`, which for Firebase-signed-in users comes from a Firestore read in `AuthContext`. That is Firebase-exit Auth-cutover scope, untouched here.
+- The Board's time grid still renders in the browser's local time. It equals the governed zone for Arizona users; a governed-zone grid is a follow-up.
+- `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads (#2110 follow-ups).
+- No migration, grant, role, identity or Firebase change. The Jobs and Board data and command paths were traced and have no reachable Firebase dependency.
+
+**Proof.**
+- **PostgreSQL** (`workOrderAvailabilityPostgres`, the suggestWorkOrderPlacement subtest): Phoenix earliest window; never in the past; NOT_CONFIGURED with an in-company alternative; NOT_SCHEDULABLE for another company's or an unknown technician; a held window is skipped but a moved job ignores its own; outside the caller's companies ≡ nonexistent; COMPANY_AUTHORITY_REQUIRED; capability first; terminal refused; writes nothing.
+- **Client:**
+  - `jobsDispatchFlow`: Dispatch from Jobs, Schedule via the shared dialog with the governed default, capability gating fail-closed, one shared runner;
+  - `dispatchNorthStarBoard`: governed default, no-slot explanation with alternative, stale-on-submit re-check;
+  - `jobsDispatchList` and `zonedTime` (including a daylight-saving zone).

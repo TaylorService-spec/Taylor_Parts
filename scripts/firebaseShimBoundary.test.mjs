@@ -266,15 +266,15 @@ test("the committed census matches the live tree exactly -- no new consumer, no 
   assert.deepEqual(result, { newConsumers: [], staleEntries: [], unregistered: [] });
 });
 
-test("the discovered registry is EXACTLY the four transitional shims, with two tolerated " +
+test("the discovered registry is EXACTLY the two transitional shims, with one tolerated " +
   "consumers -- the regression floor against the three rule sets that over-discovered", () => {
   const live = buildCensus(REPO_ROOT);
   assert.deepEqual(live.shims.map((shim) => shim.shim), [
-    "field-ops-app-vite/src/firebase/collectionStore.js",
     "field-ops-app-vite/src/firebase/firebase.js",
-    "field-ops-app-vite/src/lib/firebaseSafe.js",
     "functions/src/scheduling/schedulingRepository.ts",
-  ], "a fifth shim is either a real new re-export or a rule that started over-discovering again");
+  ], "a third shim is either a real new re-export or a rule that started over-discovering again");
+  // Firebase exit PR-A (2026-10-15): firebase/collectionStore.js and lib/firebaseSafe.js were DELETED with the unrouted
+  // Technicians chain that was their last consumer (4 -> 2 shims).
   // CRM cutover: domain/accounts.js, contacts.js and locations.js no longer use collectionStore (5 -> 2).
   // EQUIPMENT ACTIVATION (2026-10-01): domain/equipmentRepository.js writes the EOS register, not collectionStore (2 -> 1).
   assert.equal(live.shims.reduce((sum, shim) => sum + shim.consumers.length, 0), 1);
@@ -311,7 +311,12 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // leaving the shim AND the fenced dependency together (27 -> 26).
   // Firebase exit Lane B (2026-10-15): access/useWorkOrderPartsPlanCapability.js was DELETED (the parts-plan edit gate
   // reads EOS readMyWorkOrderCapabilities), leaving the shim AND the fenced dependency together (26 -> 25).
-  assert.equal(live.observed.alreadyFencedConsumers, 25,
+  // Firebase exit PR-A (2026-10-15): domain/jobActions.js, firebase/collectionStore.js and hooks/useFirestoreCollection.js
+  // were DELETED with the unrouted Technicians screen, leaving the shim AND the fenced dependency together (25 -> 22).
+  // Firebase exit PR-B (2026-10-15): hooks/useListViewChrome.js dropped its Firestore count fallback, and
+  // services/completionService.js and services/manufacturerCommandClient.js were DELETED -- each left the shim AND the
+  // fenced dependency together (22 -> 19).
+  assert.equal(live.observed.alreadyFencedConsumers, 19,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });
