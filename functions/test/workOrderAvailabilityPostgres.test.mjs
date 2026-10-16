@@ -549,6 +549,11 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.equal((await refusal(read(P.schedT, "emp-ws-t")))[0], "CAPABILITY_MISSING", "scheduling capability without employee.record.read");
     assert.equal((await refusal(read(reader.recordOnly, "emp-ws-t")))[0], "CAPABILITY_MISSING", "employee.record.read without a scheduling capability");
     assert.equal((await refusal(read(reader.schedNone, "emp-ws-t")))[0], "COMPANY_AUTHORITY_REQUIRED", "no company authority");
+    // Capability is checked FIRST: a caller with neither the read capabilities nor any company authority is refused for the
+    // capability, never told whether company authority would have sufficed.
+    const bare = { tenantId: T, principalId: "prn-sched-none", capabilities: new Set(["employee.record.read"]) };
+    assert.equal((await refusal(read(bare, "emp-ws-v")))[0], "CAPABILITY_MISSING");
+    assert.equal((await refusal(read(P.schedNone, "emp-ws-v")))[0], "CAPABILITY_MISSING", "no employee.record.read, no authority");
     // Outside the caller's companies reads EXACTLY like an Employee that does not exist.
     assert.deepEqual(await refusal(read(reader.schedT, "emp-ws-v")), await refusal(read(reader.schedT, "emp-nope")));
     assert.equal((await refusal(read(reader.schedT, "emp-ws-v")))[0], "EMPLOYEE_NOT_FOUND");
