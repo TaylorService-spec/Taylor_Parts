@@ -38,8 +38,8 @@ export async function grantSyntheticCompanyAuthority(db, tenantId, principalId, 
   if (!home) {
     home = companies[0];
     const eid = `syn-g9-emp-${principalId}`;
-    await db.query(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number,display_name)
-                    VALUES ($1,$2,'ACTIVE',$3,$1,$1)`, [eid, tenantId, home]);
+    await db.query(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name)
+                    VALUES ($1,$2,'ACTIVE',$3,$1)`, [eid, tenantId, home]);
     await db.query(`INSERT INTO eos_policy.employee_principal_links
                       (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
                     VALUES ($1,$2,$3,$4,$5,'OPERATOR_ASSERTED','active','fixture','g9 synthetic scheduler')`, [`syn-g9-lnk-${principalId}`, tenantId, principalId, eid, home]);
