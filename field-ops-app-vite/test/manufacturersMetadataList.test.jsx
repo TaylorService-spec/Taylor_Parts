@@ -4,22 +4,14 @@
 // with no functional or accessibility regression against the hand-written table it
 // replaces: rows render through the runtime, denied/unavailable/empty stay three distinct
 // renderings, the document id is NEVER shown as cell content or dialog copy (DECISIONS
-// #106 -- X-MANUFACTURER-ID-AS-COLUMN class defect), and row actions (Rename/Status) still
-// work. Firebase-touching modules (fetchManufacturerList, the write hook/client) are
-// mocked at the same module boundary partsListInvalid.test.jsx and its siblings use; no
+// #106 -- X-MANUFACTURER-ID-AS-COLUMN class defect), and the page is READ-ONLY: the
+// Firebase write affordances were removed by the Firebase exit (PR-B). The Firebase-touching
+// read (fetchManufacturerList) is mocked at the same module boundary partsListInvalid.test.jsx and its siblings use; no
 // network, no emulator.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 
 vi.mock("../src/services/manufacturerQueries", () => ({ fetchManufacturerList: vi.fn() }));
-vi.mock("../src/hooks/useManufacturerWrite", () => ({
-  useManufacturerWrite: () => ({
-    writeReady: true,
-    runCreate: vi.fn(),
-    runRename: vi.fn(),
-    runChangeStatus: vi.fn(),
-  }),
-}));
 
 import { fetchManufacturerList } from "../src/services/manufacturerQueries";
 import Manufacturers, { buildManufacturersPresentation } from "../src/modules/inventory/Manufacturers.jsx";
@@ -55,35 +47,20 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
     expect(screen.queryByText(/^ID$/)).toBeNull();
   });
 
-  it("row actions: Rename opens the dialog headed by the manufacturer's NAME, never its id", async () => {
+  it("READ-ONLY: no create, rename or status affordance (Firebase exit PR-B)", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
     render(<Manufacturers />);
     await screen.findByText("Alpha Mfg");
-
-    const row = screen.getByText("Alpha Mfg").closest("tr");
-    fireEvent.click(within(row).getByRole("button", { name: "Rename" }));
-
-    expect(await screen.findByRole("heading", { name: "Rename Alpha Mfg" })).toBeTruthy();
-    expect(document.body.textContent.includes("doc-alpha-123")).toBe(false);
+    for (const name of [/New Manufacturer/, /^Rename$/, /^Status$/]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
   });
 
-  it("row actions: Status opens the dialog headed by the manufacturer's NAME, never its id", async () => {
-    fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
-    render(<Manufacturers />);
-    await screen.findByText("Beta Industrial");
-
-    const row = screen.getByText("Beta Industrial").closest("tr");
-    fireEvent.click(within(row).getByRole("button", { name: "Status" }));
-
-    expect(await screen.findByRole("heading", { name: "Change Status — Beta Industrial" })).toBeTruthy();
-    expect(document.body.textContent.includes("doc-beta-456")).toBe(false);
-  });
-
-  it("EMPTY: distinct from denied/unavailable, and keeps the actionable copy pointing at New Manufacturer", async () => {
+  it("EMPTY: distinct from denied/unavailable, and offers no create action the page does not have", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: [], invalidCount: 0 });
     render(<Manufacturers />);
     await screen.findByText(/No manufacturers are recorded yet/);
-    expect(screen.getByText(/Use “New Manufacturer” to create the first governed record/)).toBeTruthy();
+    expect(screen.queryByText(/New Manufacturer/)).toBeNull();
   });
 
   it("DENIED: distinct wording from EMPTY and UNAVAILABLE", async () => {

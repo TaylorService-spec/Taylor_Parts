@@ -3,7 +3,7 @@ import { useWorkOrderTechnicians } from "./useWorkOrderTechnicians";
 import { mergeTechnicianDirectories, techniciansFromWorkOrders } from "../domain/workOrderAdapter.js";
 
 // The technician directory a Work Order DISPLAY surface resolves assignee names against, in the same
-// { data, loading, error } shape useFirestoreCollection returned -- but keyed by EMPLOYEE id, because the
+// { data, loading, error } shape the retired Firestore collection hook returned -- but keyed by EMPLOYEE id, because the
 // governed Work Orders' assignedTechId / scheduledTechId are Employee ids now (domain/workOrderAdapter.js).
 // fieldops_technicians ids can never match them, so that collection is not read here.
 //

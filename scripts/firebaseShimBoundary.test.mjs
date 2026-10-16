@@ -313,7 +313,10 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // reads EOS readMyWorkOrderCapabilities), leaving the shim AND the fenced dependency together (26 -> 25).
   // Firebase exit PR-A (2026-10-15): domain/jobActions.js, firebase/collectionStore.js and hooks/useFirestoreCollection.js
   // were DELETED with the unrouted Technicians screen, leaving the shim AND the fenced dependency together (25 -> 22).
-  assert.equal(live.observed.alreadyFencedConsumers, 22,
+  // Firebase exit PR-B (2026-10-15): hooks/useListViewChrome.js dropped its Firestore count fallback, and
+  // services/completionService.js and services/manufacturerCommandClient.js were DELETED -- each left the shim AND the
+  // fenced dependency together (22 -> 19).
+  assert.equal(live.observed.alreadyFencedConsumers, 19,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

@@ -5,10 +5,10 @@
 // `active: false` and granted to no Role. So there is nothing to reach and nobody to reach it, and
 // this constant is false in every environment.
 //
-// While false, services/inventoryBalanceCallableClient.js makes ZERO callable attempts. This is a
-// compile-time constant, NOT a runtime probe — the code never reaches Functions to guess. Flipping
-// it AND releasing the resulting bundle requires a separate explicit Owner authorization, and
-// flipping it alone is not activation: the capability must be activated and granted too.
+// The client that read it (services/inventoryBalanceCallableClient.js, the getPartBalance callable) was
+// deleted by the Firebase exit (PR-B, 2026-10-15), so no code path reads this constant any more. It remains
+// a REQUIRED registry key, and the governed balance returns as an EOS Core read rather than by flipping
+// this flag. See docs/architecture/frontend-dormant-firebase-client-retirement-ledger.md.
 //
 // There is deliberately NO runtime override seam. Tests that need the ready branch mock this module
 // at build time (vi.mock), which introduces no production-importable bypass.
