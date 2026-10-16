@@ -234,6 +234,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dispatchBoardUrlState.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/dispatchRiskVocabulary.test.mjs",
       "runner": "node"
     },

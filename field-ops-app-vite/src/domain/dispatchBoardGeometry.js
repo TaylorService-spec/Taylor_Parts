@@ -18,7 +18,7 @@
 // though it were a fact about the business -- every technician looking permanently off-shift on the
 // day the collection ships and nobody has filled it in.
 //
-// So `laneCapacity` returns { known: false } and callers render "Shift not recorded" with NO
+// So `laneCapacity` returns { known: false } and callers render "No schedule" with NO
 // percentage. There is no default, no `?? 0`, and there must never be one.
 //
 // Time helpers come from ./schedulingWorkspace.js (startOfWeekMillis, addWeeks, buildWeekDays,
@@ -91,7 +91,12 @@ export function dayBand(millis, occupancy = []) {
   return { startMillis: at(startHour), endMillis: startHour === 0 && endHour === 24 ? dayEnd : at(endHour) };
 }
 
-/** Every span the day board must be able to draw, for `dayBand`'s occupancy argument. */
+/**
+ * Every span the day board must be able to draw, for `dayBand`'s occupancy argument.
+ *
+ * Recorded working intervals count too (G-4): a 05:00–13:00 shift used to lose its first two hours
+ * off the band's leading edge because only placements and blocked time could widen it.
+ */
 export function dayOccupancy(workOrders, availabilityViews = []) {
   const spans = [];
   for (const wo of workOrders ?? []) {
@@ -100,6 +105,7 @@ export function dayOccupancy(workOrders, availabilityViews = []) {
   }
   for (const view of availabilityViews) {
     for (const b of view?.blockedTime ?? []) spans.push({ startMillis: b.startMillis, endMillis: b.endMillis });
+    for (const w of view?.workingIntervals ?? []) spans.push({ startMillis: w.startMillis, endMillis: w.endMillis });
   }
   return spans;
 }
@@ -278,33 +284,126 @@ export function blockedMinutesInBand(availabilityView, band) {
   return Math.round(total);
 }
 
-/**
- * The recorded working-hours sentence for a lane, or null when unrecorded.
- *
- * Reads the governed weeklyHours for the band's own weekday and renders the earliest start and
- * latest end. A technician whose day is split by an unpaid lunch has two intervals; the line reports
- * the outer bounds and the gap shows in the grid, rather than inventing a summary the record does
- * not make.
- */
-export function shiftLabel(availabilityView, band) {
-  const weekly = availabilityView?.workingAvailability?.weeklyHours;
-  if (!weekly) return null;
-  const dow = new Date(band.startMillis).getDay();
-  const intervals = weekly[String(dow)] ?? weekly[dow];
-  if (!Array.isArray(intervals) || intervals.length === 0) return null;
-  const starts = intervals.map((i) => i.start).filter(Boolean).sort();
-  const ends = intervals.map((i) => i.end).filter(Boolean).sort();
-  if (!starts.length || !ends.length) return null;
-  return `${clock(starts[0])}–${clock(ends[ends.length - 1])}`;
+// ════════════════════ WORKING, NOT WORKING, AND NO SCHEDULE AT ALL ════════════════════
+//
+// The server's read already answers all three, as instants (workOrderAvailability.ts
+// readTechnicianAvailability): `workingIntervals` are when the governing schedule says the Employee
+// works, `notConfiguredIntervals` are where NO schedule governs, and everything else inside the range
+// is configured-but-not-working (evenings, weekends, the gap of a split day). The board used to draw
+// none of it, so "after the shift" looked exactly like "open and bookable" (G-2).
+//
+// Nothing here recomputes a schedule from weeklyHours. The instants are the server's, already
+// resolved in the schedule's own time zone and already applying company precedence and mid-range
+// supersession, so a viewer in another zone sees the same minutes the placement policy enforces (G-5).
+
+/** Disjoint, ascending spans of `spans` clipped to [from, to). */
+function clipSpans(spans, from, to) {
+  return mergeBlockedIntervals(spans)
+    .map((s) => ({ startMillis: Math.max(s.startMillis, from), endMillis: Math.min(s.endMillis, to) }))
+    .filter((s) => s.endMillis > s.startMillis);
 }
 
-/** "07:00" -> "7a". The artifact's lane line reads 7a–4p, not 07:00–16:00. */
-function clock(hhmm) {
-  const [h, m] = String(hhmm).split(":").map((n) => Number(n));
-  if (!Number.isFinite(h)) return String(hhmm);
+/** `from` minus every span in `cuts`. Both are disjoint ascending lists. */
+function subtractSpans(from, cuts) {
+  const out = [];
+  for (const span of from) {
+    let cursor = span.startMillis;
+    for (const cut of cuts) {
+      if (cut.endMillis <= cursor || cut.startMillis >= span.endMillis) continue;
+      if (cut.startMillis > cursor) out.push({ startMillis: cursor, endMillis: cut.startMillis });
+      cursor = Math.max(cursor, cut.endMillis);
+    }
+    if (cursor < span.endMillis) out.push({ startMillis: cursor, endMillis: span.endMillis });
+  }
+  return out;
+}
+
+const spanMinutes = (spans) => Math.round(spans.reduce((s, x) => s + (x.endMillis - x.startMillis), 0) / MS_PER_MINUTE);
+
+/** Is ANY governed schedule recorded for this lane in the read? Absent view = absent record = no. */
+export function isConfigured(availabilityView) {
+  return availabilityView?.availabilityState === "CONFIGURED";
+}
+
+/** Working and no-schedule spans inside [from, to), from the governed read only. */
+function partition(availabilityView, from, to) {
+  if (!isConfigured(availabilityView)) {
+    return { working: [], unconfigured: [{ startMillis: from, endMillis: to }], nonWorking: [] };
+  }
+  const working = clipSpans(availabilityView.workingIntervals ?? [], from, to);
+  const unconfigured = clipSpans(availabilityView.notConfiguredIntervals ?? [], from, to);
+  const nonWorking = subtractSpans(subtractSpans([{ startMillis: from, endMillis: to }], working), unconfigured);
+  return { working, unconfigured, nonWorking };
+}
+
+/**
+ * The lane's background spans, positioned in the band: `nonWorking` (recorded schedule, not a working
+ * minute — breaks included) and `unconfigured` (no schedule governs these minutes at all).
+ *
+ * Unconfigured is NEVER drawn as working and never as non-working: either would be a default the
+ * record does not make. It gets its own treatment and the lane says "No schedule" in words.
+ */
+export function laneTimeSpans(availabilityView, band) {
+  const { nonWorking, unconfigured } = partition(availabilityView, band.startMillis, band.endMillis);
+  const place = (list) => list.map((s) => ({ ...s, ...placeInBand(s.startMillis, s.endMillis, band) }));
+  return { configured: isConfigured(availabilityView), nonWorking: place(nonWorking), unconfigured: place(unconfigured) };
+}
+
+/**
+ * One whole local day, for the Week and 2-week cells: "unconfigured" when no schedule governs any of
+ * it, "nonWorking" when a schedule governs it and records no working minute, otherwise "working".
+ */
+export function dayTimeState(availabilityView, dayStartMillis) {
+  const { working, unconfigured } = partition(availabilityView, dayStartMillis, dayStartMillis + MS_PER_DAY);
+  if (working.length > 0) return "working";
+  return unconfigured.length > 0 ? "unconfigured" : "nonWorking";
+}
+
+/**
+ * Available minutes on ONE local day: working minus the union of blocked time — the same arithmetic as
+ * the server's `availableMinutes`, restricted to the day. Null when any minute of the day has no
+ * governing schedule: a denominator that is partly unknown is unknown.
+ *
+ * Exists because the 2-week band used to divide each day's bookings by the available minutes of the
+ * WHOLE four-week read, which made every day look nearly empty (G-11).
+ */
+export function dayAvailableMinutes(availabilityView, dayStartMillis) {
+  const dayEnd = dayStartMillis + MS_PER_DAY;
+  const { working, unconfigured } = partition(availabilityView, dayStartMillis, dayEnd);
+  if (unconfigured.length > 0) return null;
+  const blocked = clipSpans(availabilityView.blockedTime ?? [], dayStartMillis, dayEnd);
+  return spanMinutes(subtractSpans(working, blocked));
+}
+
+/**
+ * The recorded working-hours sentence for the band's day, or null when there are no working minutes.
+ *
+ * Read from the server's `workingIntervals` for that day, so a schedule that changed mid-week labels
+ * each day by the schedule that actually governs it, in the same local clock the grid is drawn in. A
+ * day split by a break reports its outer bounds; the gap shows in the lane, not in the words.
+ */
+export function shiftLabel(availabilityView, band) {
+  const dayStart = startOfDayMillis(band.startMillis);
+  const { working } = partition(availabilityView, dayStart, dayStart + MS_PER_DAY);
+  if (working.length === 0) return null;
+  return `${clock(working[0].startMillis)}–${clock(working[working.length - 1].endMillis)}`;
+}
+
+/** An instant -> "7a" / "4:30p" in the viewer's local clock. The artifact's lane line reads 7a–4p. */
+function clock(millis) {
+  const d = new Date(millis);
+  const h = d.getHours();
+  const m = d.getMinutes();
   const suffix = h < 12 ? "a" : "p";
   const display = h % 12 === 0 ? 12 : h % 12;
   return m ? `${display}:${String(m).padStart(2, "0")}${suffix}` : `${display}${suffix}`;
+}
+
+/** Where "now" sits in the band, as a percentage — or null when now is outside it. */
+export function nowLinePercent(band, nowMillis) {
+  if (!band || !Number.isFinite(nowMillis)) return null;
+  if (nowMillis < band.startMillis || nowMillis > band.endMillis) return null;
+  return ((nowMillis - band.startMillis) / (band.endMillis - band.startMillis)) * 100;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -384,18 +483,13 @@ export function occupiedDays(workOrders, availabilityViews = []) {
 }
 
 /**
- * Per-day load for the two-week band: a percentage where the denominator is known, `null` where it
- * is not. Rendered as a muted "—", never as 0%.
+ * Per-day load for the two-week band: a percentage where that DAY's denominator is known, `null`
+ * where it is not (rendered as a muted "—", never as 0%). Bookings count over the whole local day and
+ * divide by that day's available minutes only.
  */
-export function dayLoad(availabilityByDay, workOrdersByDay, days) {
-  return days.map((day) => {
-    const band = dayBand(day.dateMillis);
-    const view = availabilityByDay?.get?.(day.dateMillis) ?? null;
-    const placed = (workOrdersByDay?.get?.(day.dateMillis) ?? []).map((e) => e.workOrder);
-    const capacity = laneCapacity(view, placed, band);
-    const blocks = bucketBlockedByDay(view, [day]).get(day.dateMillis) ?? [];
-    return { day, capacity, blocked: blocks.length > 0 };
-  });
+export function dayLoadCapacity(availabilityView, placedWorkOrders, dayStartMillis) {
+  const day = { startMillis: dayStartMillis, endMillis: dayStartMillis + MS_PER_DAY };
+  return laneCapacity({ availableMinutes: dayAvailableMinutes(availabilityView, dayStartMillis) }, placedWorkOrders, day);
 }
 
 // ════════════════════ DIRECT MANIPULATION: SLOTS, PAST TIME, MOVE AND RESIZE ════════════════════

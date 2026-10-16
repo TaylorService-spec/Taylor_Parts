@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
@@ -36,6 +37,7 @@ import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { workOrderPastDueItem } from "../../domain/workOrderAttentionProjection.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { readBoardUrlState, writeBoardUrlState } from "../../domain/dispatchBoardUrlState.js";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import DispatchLaneGrid from "./DispatchLaneGrid.jsx";
@@ -44,7 +46,6 @@ import PlacementDialog, { PLACEMENT_INTENT } from "./PlacementDialog.jsx";
 import ReasonPrompt from "./ReasonPrompt.jsx";
 import {
   DISPATCH_VIEW,
-  DispatchMapView,
   DispatchTwoWeekLoad,
   DispatchViewSwitcher,
   DispatchWeekView,
@@ -88,7 +89,7 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 // Both availability collections deny client reads (deployed; proved live by the Scheduling Functional
 // Gate). `useTechnicianAvailability` is the trusted projection and the only source of shift lines,
 // hatched blocked time and every percentage on this page. A technician with no record reads as
-// UNKNOWN and renders as "Shift not recorded" with no percentage — never 0%.
+// UNKNOWN and renders as "No schedule" with no percentage — never 0%.
 export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
@@ -98,8 +99,27 @@ export default function DispatcherBoard() {
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
-  const [view, setView] = useState(DISPATCH_VIEW.DAY);
-  const [anchorMillis, setAnchorMillis] = useState(() => startOfDayMillis(Date.now()));
+  // G-6: view, date and technician filter live in the URL (domain/dispatchBoardUrlState.js), so Back
+  // from a Work Order or an Employee record returns to the same board. Selection and drag state are
+  // gestures, not places, and stay in memory.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { view, anchorMillis, technicianFilter } = useMemo(() => readBoardUrlState(searchParams, Date.now()), [searchParams]);
+  // Stepping through days REPLACES the entry (Back should not walk every day you clicked past);
+  // changing view or filter pushes one.
+  const updateBoardUrl = useCallback((patch, { replace = false } = {}) => {
+    setSearchParams((prev) => writeBoardUrlState(prev, { ...readBoardUrlState(prev, Date.now()), ...patch }, Date.now()), { replace });
+  }, [setSearchParams]);
+  const setView = useCallback((v) => updateBoardUrl({ view: v }), [updateBoardUrl]);
+  const setAnchorMillis = useCallback((t) => updateBoardUrl({ anchorMillis: t }, { replace: true }), [updateBoardUrl]);
+  const setTechnicianFilter = useCallback((f) => updateBoardUrl({ technicianFilter: f }), [updateBoardUrl]);
+  const openDay = useCallback((d) => updateBoardUrl({ anchorMillis: d, view: DISPATCH_VIEW.DAY }), [updateBoardUrl]);
+  // The current-time line and the elapsed region move with the clock, not only with data: one
+  // re-render a minute keeps them honest on a board left open all day.
+  const [, setMinuteTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMinuteTick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const [selectedId, setSelectedId] = useState(null);
   const [dragging, setDragging] = useState(null);
   const [dragOverLaneId, setDragOverLaneId] = useState(null);
@@ -111,9 +131,6 @@ export default function DispatcherBoard() {
   // picker — the accessible non-drag path genuinely has to collect a placement, so it keeps its
   // fields. A drag does not, and must not be sent through the same form.
   const [pendingReason, setPendingReason] = useState(null);
-  // null = every technician. NOT a set holding everyone: a roster that grows would otherwise leave a
-  // new technician silently filtered OUT of a board whose owner believes they see the whole fleet.
-  const [technicianFilter, setTechnicianFilter] = useState(null);
 
   // The availability window spans what the CURRENT VIEW can show, so one read serves the day board,
   // the week grid and the fortnight band without any of them issuing their own.
@@ -135,7 +152,6 @@ export default function DispatcherBoard() {
   } = useTechnicianAvailability({
     startMillis: availabilityWindow.startMillis,
     endMillis: availabilityWindow.endMillis,
-    enabled: view !== DISPATCH_VIEW.MAP,
   });
 
   // ---- derived, all from the one live array -------------------------------------------------
@@ -186,6 +202,11 @@ export default function DispatcherBoard() {
   // The lanes the three views draw. Presentation only — availability is still read for the WHOLE
   // roster, recommendations still score every technician, and the queue is untouched.
   const lanes = useMemo(() => visibleTechnicians(technicians ?? [], technicianFilter), [technicians, technicianFilter]);
+  const missingFilterIds = useMemo(() => {
+    if (!(technicianFilter instanceof Set) || !Array.isArray(technicians)) return 0;
+    const known = new Set(technicians.map((t) => t.id));
+    return [...technicianFilter].filter((id) => !known.has(id)).length;
+  }, [technicians, technicianFilter]);
 
   const band = useMemo(
     () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
@@ -523,13 +544,20 @@ export default function DispatcherBoard() {
         </p>
       </WorkspaceIdentity>
 
+      {/* One compact legend line instead of a paragraph. Each swatch is bound to the SAME CSS rule as the
+          thing it explains, so the legend and the lane cannot drift apart. */}
+      <ul className="ns-dispatch__legend" aria-label="Board legend">
+        <li><span className="ns-dispatch__swatch ns-dispatch__swatch--booked" aria-hidden="true" />Booked</li>
+        <li><span className="ns-dispatch__swatch ns-dispatch__hatch-key" aria-hidden="true" />Unavailable (PTO, training…) — drops refused</li>
+        <li><span className="ns-dispatch__swatch ns-dispatch__swatch--off" aria-hidden="true" />Not working</li>
+        <li><span className="ns-dispatch__swatch ns-dispatch__swatch--unconfigured" aria-hidden="true" />No schedule recorded</li>
+        <li><span className="ns-dispatch__swatch ns-dispatch__swatch--elapsed" aria-hidden="true" />Elapsed — not a target</li>
+        <li><span className="ns-dispatch__swatch ns-dispatch__swatch--now" aria-hidden="true" />Now</li>
+      </ul>
       <p className="ns-dispatch__rule">
-        Drag a queue card onto a lane to schedule · between lanes to reassign · back to the queue to
-        return it. Drag a chip&rsquo;s trailing edge to change how long it takes. With a chip focused:
-        <kbd>←</kbd>/<kbd>→</kbd> move it 15 min (<kbd>Shift</kbd> = 1 hour), <kbd>Alt</kbd>+arrow
-        resizes, <kbd>R</kbd> reassigns. <span className="ns-dispatch__hatch-key" aria-hidden="true" />{" "}
-        Hatched is blocked time — its own governed record, never a work order; drops onto it are
-        refused. Times already past today are not targets.
+        Drag a queue card onto a lane to schedule, between lanes to reassign, back to the queue to return
+        it; drag a chip&rsquo;s trailing edge to resize. Focused chip: <kbd>←</kbd>/<kbd>→</kbd> 15 min
+        (<kbd>Shift</kbd> = 1 h), <kbd>Alt</kbd>+arrow resizes, <kbd>R</kbd> reassigns.
       </p>
 
       <DispatchViewSwitcher
@@ -546,6 +574,13 @@ export default function DispatcherBoard() {
           selectedIds={technicianFilter}
           onChange={setTechnicianFilter}
         />
+        {missingFilterIds > 0 ? (
+          // A shared link can name technicians who are no longer on the governed roster. Say so,
+          // rather than leaving a board filtered to nothing with no cue why.
+          <span className="ns-dispatch__filter-missing" role="status">
+            {missingFilterIds === 1 ? "1 selected technician not found" : `${missingFilterIds} selected technicians not found`}
+          </span>
+        ) : null}
       </DispatchViewSwitcher>
 
       {boardMessage ? (
@@ -589,6 +624,7 @@ export default function DispatcherBoard() {
               workOrdersByTechnician={workOrdersByTechnician}
               availabilityByTechnicianId={availabilityByTechnicianId}
               availabilityLoading={availabilityLoading}
+              availabilityFailed={Boolean(availabilityError)}
               band={band}
               draggingWorkOrder={dragging}
               onDropOnLane={handleDropOnLane}
@@ -611,10 +647,11 @@ export default function DispatcherBoard() {
               technicians={lanes}
               placedWorkOrders={placedWorkOrders}
               availabilityByTechnicianId={availabilityByTechnicianId}
+              availabilityFailed={Boolean(availabilityError)}
               anchorMillis={anchorMillis}
               nowMillis={Date.now()}
               draggingWorkOrder={dragging}
-              onSelectDay={(d) => { setAnchorMillis(d); setView(DISPATCH_VIEW.DAY); }}
+              onSelectDay={openDay}
               onDropOnTechnicianDay={(technicianId, dateMillis) => {
                 const workOrder = dragging;
                 setDragging(null);
@@ -639,13 +676,12 @@ export default function DispatcherBoard() {
               technicians={lanes}
               placedWorkOrders={placedWorkOrders}
               availabilityByTechnicianId={availabilityByTechnicianId}
+              availabilityFailed={Boolean(availabilityError)}
               anchorMillis={anchorMillis}
               nowMillis={Date.now()}
-              onSelectDay={(d) => { setAnchorMillis(d); setView(DISPATCH_VIEW.DAY); }}
+              onSelectDay={openDay}
             />
           ) : null}
-
-          {view === DISPATCH_VIEW.MAP ? <DispatchMapView /> : null}
 
           {scheduledWithoutWindow.length > 0 ? (
             <section className="ns-dispatch-unplaced" aria-label="Scheduled Without a Window">

@@ -6900,10 +6900,6 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-load__unknown { color: var(--color-text-muted); }
 .ns-dispatch-load__legend { font-size: 11.5px; color: var(--color-text-secondary); margin: 12px 0 0; }
 
-.ns-dispatch-map { border: 1px solid var(--verenward-border-strong);
-  background: var(--verenward-stone-card); padding: 22px; margin-bottom: 22px; }
-.ns-dispatch-map__note { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); max-width: 72ch; }
-
 /* --- footer band --------------------------------------------------------- */
 .ns-dispatch__footer { margin-top: 26px; display: grid;
   grid-template-columns: minmax(0, 1fr) 360px; gap: 56px; }
@@ -7025,11 +7021,48 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    chips and takes no pointer events, so it dims the lane without swallowing a drop on a chip. */
 .ns-dispatch-lane__past {
   position: absolute; inset-block: 0; inset-inline-start: 0; pointer-events: none; z-index: 0;
-  background: repeating-linear-gradient(135deg,
-    var(--color-border) 0 3px, transparent 3px 8px);
-  opacity: 0.55;
-  border-inline-end: 1px solid var(--verenward-border-strong);
+  /* Owner 2026-10-15: a flat, quiet veil — NOT a hatch. Hatching now means one thing on this board:
+     unavailable time (blocked records). Elapsed dims what it covers instead of competing with it. */
+  background: color-mix(in srgb, var(--verenward-border-strong) 18%, transparent);
 }
+
+/* ── Scheduling lane · schedule background (G-2), now-line, missing schedule ──────────────────
+   Four distinct facts, four distinct treatments: elapsed (veil, above), not working (flat sunken
+   fill), unavailable (the hatch, unchanged), no schedule recorded (dashed lane edge, no fill). */
+.ns-dispatch-lane__off, .ns-dispatch-lane__unconfigured {
+  position: absolute; inset-block: 0; pointer-events: none; z-index: 0; }
+.ns-dispatch-lane__off { background: var(--verenward-stone-sunken); }
+.ns-dispatch-lane__unconfigured,
+.ns-dispatch-lane--unconfigured {
+  background-color: transparent;
+  border-block: 1px dashed var(--verenward-border-strong); box-sizing: border-box; }
+.ns-dispatch__filter-missing { font-size: var(--font-size-sm); color: var(--color-warning); align-self: center; }
+.ns-dispatch-lane__noschedule { color: var(--color-warning); font-weight: 600; cursor: help; }
+.ns-dispatch-chip--elapsed { opacity: 0.85; }
+.ns-dispatch-grid__hours { position: relative; }
+.ns-dispatch-now {
+  position: absolute; inset-block: 0; width: 2px; margin-inline-start: -1px; z-index: 3;
+  background: var(--color-brand-accent); pointer-events: none; }
+
+.ns-dispatch__legend { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none;
+  margin: 4px 0 6px; padding: 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.ns-dispatch__legend li { display: inline-flex; align-items: center; gap: 6px; }
+.ns-dispatch__swatch { display: inline-block; width: 22px; height: 11px; flex: none;
+  outline: 1px solid var(--verenward-border-strong); outline-offset: -1px; }
+.ns-dispatch__swatch--booked { background: var(--verenward-evergreen); outline: 0; }
+.ns-dispatch__swatch--off { background: var(--verenward-stone-sunken); }
+.ns-dispatch__swatch--unconfigured { outline: 0; border-block: 1px dashed var(--verenward-border-strong); box-sizing: border-box; }
+.ns-dispatch__swatch--elapsed { background: color-mix(in srgb, var(--verenward-border-strong) 18%, transparent); }
+.ns-dispatch__swatch--now { width: 2px; outline: 0; background: var(--color-brand-accent); }
+
+/* Week and 2-week day cells carry the same states as the lanes. */
+.ns-dispatch-day--off { background: var(--verenward-stone-sunken); }
+.ns-dispatch-day--unconfigured { border-block: 1px dashed var(--verenward-border-strong); }
+.ns-dispatch-day--elapsed { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--verenward-border-strong) 18%, transparent); }
+
+/* Map — honestly unavailable (§7 of the Scheduling design): reachable, announced, inert. */
+.ns-dispatch-views__tab--unavailable { color: var(--color-text-muted); cursor: not-allowed;
+  border-style: dashed; background: transparent; }
 
 /* VC-2. The trailing-edge resize grip. Deliberately narrow and only visible on hover/focus of its
    chip: it is a second gesture on an element that is already draggable, and an always-on handle

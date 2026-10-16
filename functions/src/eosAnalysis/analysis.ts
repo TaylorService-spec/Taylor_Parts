@@ -241,6 +241,12 @@ export interface MeasureResult {
   readonly [k: string]: unknown;
 }
 
+/** #2084 path B: what a costInference measure withholds without the cost read -- names and the key, never a value. */
+const COST_READ_CAPABILITY = "inventory.catalog.cost.read";
+const COST_INFERENCE_WITHHELD = Object.freeze([Object.freeze({ group: "COST_INFERENCE", fields: Object.freeze(["dimension", "quantity"]),
+  requires: Object.freeze([COST_READ_CAPABILITY]) })]);
+const withoutQuantity = <T extends { quantity: number }>(a: T): Omit<T, "quantity"> => { const { quantity: _q, ...rest } = a; return rest; };
+
 async function computeMeasure(db: Queryable, actor: AnalysisActor, m: MeasureDefinition, scope: Scope, period: Period, areaChannel: string | null,
   opts: { readonly sources: number }): Promise<MeasureResult> {
   const base = { id: m.id, name: m.name, domain: m.domain, basis: m.basis, unit: m.unit, timeBasis: m.timeBasis, definitionVersion: m.version };
@@ -256,19 +262,23 @@ async function computeMeasure(db: Queryable, actor: AnalysisActor, m: MeasureDef
   const prevGot = isPeriod && period.comparison ? await rowsFor(db, actor, m, scope, access.channels, period.comparison.start, period.comparison.endExclusive, ROW_LIMIT) : null;
   const prevRows = prevGot && "rows" in prevGot ? prevGot.rows : null;
   const cur = aggregate(m, rows), prev = prevRows ? aggregate(m, prevRows) : null;
+  // The resolved capability Set: Protected Administrator standing never supplies the cost read (#230).
+  const withhold = m.costInference === true && !actor.capabilities.has(COST_READ_CAPABILITY);
+  const d = drivers(m, rows, scope);
   return Object.freeze({
     ...base, status: "COMPUTED" as const,
-    value: headline(m, cur), aggregate: cur, quality: quality(m, cur, rows),
-    comparison: isPeriod ? (prev ? { aggregate: prev, value: headline(m, prev), variance: variance(m, cur, prev) } : { notComparableReason: "no comparison window" })
+    value: headline(m, cur), aggregate: withhold ? withoutQuantity(cur) : cur, quality: quality(m, cur, rows),
+    comparison: isPeriod ? (prev ? { aggregate: withhold ? withoutQuantity(prev) : prev, value: headline(m, prev), variance: variance(m, cur, prev) } : { notComparableReason: "no comparison window" })
       : { notComparableReason: "a point-in-time measure has no governed history snapshot to compare against" },
-    drivers: drivers(m, rows, scope),
+    drivers: withhold ? { byCompany: d.byCompany.map(withoutQuantity), byDimension: [] } : d,
+    ...(withhold ? { withheld: COST_INFERENCE_WITHHELD } : {}),
     channels: access.channels,
     provenance: {
       definition: { formula: m.formula, description: m.description, sourceFacts: m.sourceFacts, periodEvent: m.periodEvent, dimension: m.dimension,
         readCapabilities: m.readCapabilities, version: m.version },
       contributingRecords: cur.count,
       sources: rows.slice(0, opts.sources).map((r) => ({ recordKind: r.recordKind, recordId: r.recordId, label: r.label, operatingCompanyId: scope.keyToId.get(r.company) ?? r.company,
-        dimension: r.dim, currency: r.currency, amountMinor: r.amount, quantity: r.qty,
+        ...(withhold ? {} : { dimension: r.dim }), currency: r.currency, amountMinor: r.amount, ...(withhold ? {} : { quantity: r.qty }),
         drill: drillOf(m, r.recordId) })),
     },
   });

@@ -35,12 +35,12 @@ const soCommands = require("../lib/eosCommercial/commands/salesOrderCommandServi
 const authority = require("../lib/eosOps/reorderAssignmentAuthority.js");
 const closure = require("../lib/adminPolicy/purchasingFinanceClosureDelta.js");
 const partsDelta = require("../lib/adminPolicy/partsPurchasingReceivingDelta.js");
-const { capabilitiesForRoleKeys } = require("../lib/eosOps/capabilityAuthority.js");
+const { capabilitiesForRoleKeys, protectedAdministratorKeys } = require("../lib/eosOps/capabilityAuthority.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 const TENANT = "t-fclose";
-const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance";
+const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance", AN = "/operations/analysis";
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
@@ -99,7 +99,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
                VALUES ($1,$2,$3,$4,$5,now(),'f')`, [`os-${e}-${kind}-${id}`, TENANT, e, kind, id]);
     }
   }
-  for (const p of ["P-DS", "P-PUR", "P-UNPRICED", "P-IC", "P-IC2"]) {
+  for (const p of ["P-DS", "P-PUR", "P-UNPRICED", "P-IC", "P-IC2", "P-PATHB"]) {
     await q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
                expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
              VALUES ($1,$2,'f',$1,$1,'ACTIVE','EACH','STANDARD','STOCKED',false,false,false,false,1,'f')`, [p, TENANT]);
@@ -382,6 +382,130 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(after.status, "ESTABLISHED");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, after.id]), 2);
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1 AND correlation_id=$2`, [TENANT, after.id]), 2);
+  });
+
+  let ctrlCost;
+  await t.test("MUST-2: intercompany-relief rows withhold partId + quantity without inventory.catalog.cost.read; counts, money and every other read identical", async () => {
+    const COST = "inventory.catalog.cost.read";
+    const WITHHELD = [{ group: "RELIEF_INVENTORY", fields: ["partId", "quantity"], requires: [COST] }];
+    await grant("financeManager", COST); // local test tenant only: financeManager is held by no other person in this suite
+    ctrlCost = await person("uid-ctrl-cost", ["controller", "financeManager"], { id: "e-ctrl-cost", name: "Quinn Cost-Reader" });
+    // The same Finance company reach as ctrl (Financials company assignment): the ONLY difference between them is the cost read.
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlCost]);
+    // (a) premise: the controller holds the Finance read and NOT the cost read; the cost reader holds both.
+    const ctrlKeys = new Set(await capabilitiesForRoleKeys(pool, TENANT, ["controller"]));
+    assert.deepEqual([ctrlKeys.has("finance.payment.read"), ctrlKeys.has(COST)], [true, false], "controller: Finance read without the cost read");
+    const costKeys = new Set(await capabilitiesForRoleKeys(pool, TENANT, ["controller", "financeManager"]));
+    assert.deepEqual([costKeys.has("finance.payment.read"), costKeys.has(COST)], [true, true], "cost reader: both");
+    // (c) premise: the Administrator holds the PROTECTED admin Role and NO grant of the cost read (standing excludes it, #230).
+    assert.equal((await one(`SELECT protected FROM eos_policy.roles WHERE tenant_id=$1 AND key='admin'`, [TENANT])).protected, true, "admin is the protected Administrator Role");
+    assert.equal(new Set(await capabilitiesForRoleKeys(pool, TENANT, ["admin"])).has(COST), false, "no explicit cost-read grant reaches the Administrator");
+    const standing = new Set(await protectedAdministratorKeys(pool, TENANT, ["admin"]));
+    assert.deepEqual([standing.size > 0, standing.has(COST)], [true, false], "standing implies READ keys but never the cost read (PROTECTED_ADMINISTRATOR_EXCLUSIONS)");
+
+    for (const scope of ["ventana", "consolidated", "taylor"]) {
+      const plain = ok(await fn(ctrl, "readFinanceWorkspace", { operatingCompanyId: scope }), `ctrl ${scope}`);
+      const costed = ok(await fn(ctrlCost, "readFinanceWorkspace", { operatingCompanyId: scope }), `cost ${scope}`);
+      const adminWs = ok(await fn(sysAdmin, "readFinanceWorkspace", { operatingCompanyId: scope }), `admin ${scope}`);
+      if (scope !== "taylor") {
+        assert.ok(plain.intercompanyReliefPending.length >= 1, `${scope}: the unrelieved P-IC2 line is pending relief`);
+        // (b) the cost reader sees the part and the quantity.
+        const p2 = costed.intercompanyReliefPending.find((r) => r.partId === "P-IC2");
+        assert.ok(p2, `${scope}: the cost reader sees P-IC2 ${JSON.stringify(costed.intercompanyReliefPending)}`);
+        assert.deepEqual([p2.quantity, p2.sellerOperatingCompanyId, p2.buyerOperatingCompanyId, p2.receivingLineId, p2.withheld], [1, "ventana", "taylor", "L1", []]);
+      }
+      // (a) + (c) without the cost read: ids kept, partId + quantity ABSENT (not null), the withheld group named -- never a value.
+      for (const [who, ws] of [["controller", plain], ["protected Administrator", adminWs]]) {
+        assert.equal(ws.intercompanyReliefPending.length, costed.intercompanyReliefPending.length, `${who} ${scope}: same rows`);
+        ws.intercompanyReliefPending.forEach((row, i) => {
+          const full = costed.intercompanyReliefPending[i];
+          assert.deepEqual(Object.keys(row), ["intercompanyTransactionId", "sellerOperatingCompanyId", "buyerOperatingCompanyId", "receivingLineId", "withheld"], `${who} ${scope}`);
+          assert.equal(Object.hasOwn(row, "partId") || Object.hasOwn(row, "quantity"), false, `${who} ${scope}: absent, never null`);
+          assert.deepEqual(row.withheld, WITHHELD, `${who} ${scope}: withheld names the group and key`);
+          assert.doesNotMatch(JSON.stringify(row), /P-IC/, `${who} ${scope}: no part value anywhere in the row`);
+          const { partId: _p, quantity: _q, withheld: _w, ...ids } = full;
+          const { withheld: _w2, ...shown } = row;
+          assert.deepEqual(shown, ids, `${who} ${scope}: the ids are kept exactly`);
+        });
+        // (d) every other field of the response is deep-equal; counts and money identical.
+        const { intercompanyReliefPending: _a, ...restW } = ws;
+        const { intercompanyReliefPending: _b, ...restC } = costed;
+        assert.deepEqual(restW, restC, `${who} ${scope}: every other workspace section is identical`);
+        assert.deepEqual(ws.exceptionCounts, costed.exceptionCounts, `${who} ${scope}: counts identical`);
+        assert.equal(ws.exceptionCounts.intercompanyReliefPending, costed.intercompanyReliefPending.length, `${who} ${scope}: the count is the row count`);
+      }
+      assert.deepEqual(adminWs, plain, `${scope}: the Administrator sees exactly what a Finance reader without the cost read sees`);
+    }
+    // (e) the obligation and settlement reads are unaffected.
+    for (const scope of ["taylor", "ventana", "consolidated"]) {
+      const lists = [];
+      for (const who of [ctrl, ctrlCost, sysAdmin]) {
+        lists.push([ok(await fn(who, "listObligations", { operatingCompanyId: scope })), ok(await fn(who, "listSettlements", { operatingCompanyId: scope }))]);
+      }
+      assert.deepEqual(lists[0], lists[1], `${scope}: obligations + settlements identical with and without the cost read`);
+      assert.deepEqual(lists[0], lists[2], `${scope}: obligations + settlements identical for the Administrator`);
+    }
+    const detail = await Promise.all([ctrl, ctrlCost, sysAdmin].map(async (who) => ok(await fn(who, "readObligation", { obligationId: ic.buyer_obligation_id }))));
+    assert.deepEqual(detail[0], detail[1]);
+    assert.deepEqual(detail[0], detail[2]);
+  });
+
+  await t.test("MUST-2 path B: a missing-cost row and the cost-evidence measure withhold part + quantity without the cost read; the later payable cannot be divided", async () => {
+    // The inference (#2084, Lane D + static trace): an unpriced receipt's exception shows (receipt, part, quantity); once the
+    // evidence arrives the PAYABLE opens on that SAME receipt at the at-cost total -- a single-line receipt's total / quantity
+    // is the unit cost. Without inventory.catalog.cost.read neither the workspace row nor the Analysis measure carries the
+    // part or the quantity, so the payable total has nothing to be divided by.
+    const COST = "inventory.catalog.cost.read";
+    const rr = await ordered({ partId: "P-PATHB", qty: 4, supplier: EXT });
+    const r = ok(await receive(rr, "P-PATHB", 4), "unpriced receipt");
+    const rowOf = async (who) => ok(await fn(who, "readFinanceWorkspace", { operatingCompanyId: "taylor" }), "workspace")
+      .missingCostEvidence.find((x) => x.receivingId === r.receivingId);
+    const costed = await rowOf(ctrlCost);
+    assert.deepEqual([costed.partId, costed.receivedQuantity, costed.withheld], ["P-PATHB", 4, []], "the cost reader sees the part and the quantity");
+    for (const [who, p] of [["controller", ctrl], ["protected Administrator", sysAdmin]]) {
+      const row = await rowOf(p);
+      assert.ok(row, `${who}: the exception stays visible and actionable`);
+      assert.equal(Object.hasOwn(row, "partId") || Object.hasOwn(row, "receivedQuantity"), false, `${who}: absent, never null`);
+      assert.deepEqual(row.withheld, [{ group: "MISSING_COST_INVENTORY", fields: ["partId", "receivedQuantity"], requires: [COST] }], who);
+      const { partId: _p, receivedQuantity: _q, withheld: _w, ...ids } = costed;
+      const { withheld: _w2, ...shown } = row;
+      assert.deepEqual(shown, ids, `${who}: the receipt, line, purchase order and company are kept exactly`);
+    }
+    // The Analysis measure (and the areas that carry it) applies the same rule; the count is the same for every caller.
+    const measure = async (who) => ok(await call(who, AN, "readMeasureAnalysis", { measureId: "finance.costEvidence.missing", operatingCompanyId: "taylor" }), "measure").measure;
+    const full = await measure(ctrlCost);
+    const src = full.provenance.sources.find((x) => x.label === r.receivingId);
+    assert.deepEqual([src.dimension, src.quantity, full.withheld], ["P-PATHB", 4, undefined], "the cost reader's measure is unchanged");
+    for (const [who, p] of [["controller", ctrl], ["protected Administrator", sysAdmin]]) {
+      const m = await measure(p);
+      assert.deepEqual(m.value, full.value, `${who}: the count is identical`);
+      assert.deepEqual(m.withheld, [{ group: "COST_INFERENCE", fields: ["dimension", "quantity"], requires: [COST] }], who);
+      assert.deepEqual(m.drivers.byDimension, [], `${who}: no per-part driver`);
+      assert.equal(Object.hasOwn(m.aggregate, "quantity"), false, `${who}: no total quantity`);
+      for (const c of m.drivers.byCompany) assert.equal(Object.hasOwn(c, "quantity"), false, `${who}: no per-company quantity`);
+      assert.ok(m.provenance.sources.some((x) => x.label === r.receivingId), `${who}: the receipt is still a source`);
+      for (const x of m.provenance.sources) assert.equal(Object.hasOwn(x, "dimension") || Object.hasOwn(x, "quantity"), false, `${who}: source without part or quantity`);
+      assert.doesNotMatch(JSON.stringify(m), /P-PATHB/, `${who}: the part appears nowhere in the measure`);
+      for (const area of ["finance", "purchasing", "executive"]) {
+        const res = await call(p, AN, "readAnalysisWorkspace", { area, operatingCompanyId: "taylor" });
+        if (res.status === 200) assert.doesNotMatch(JSON.stringify(res.body.result), /P-PATHB/, `${who} ${area}: no figure, driver, insight or exception names the part`);
+      }
+    }
+    // The evidence arrives; the PAYABLE opens on the same receipt at the at-cost total (4 x 2500).
+    ok(await fn(whm, "supplyReceiptCostEvidence", { receivingId: r.receivingId, receivingLineId: "L1", unitPriceMinor: 2500, currency: "USD",
+      reason: "vendor invoice states the price", evidenceReference: "INV-PB" }), "supply");
+    for (const [who, p] of [["controller", ctrl], ["protected Administrator", sysAdmin]]) {
+      const pay = ok(await fn(p, "listObligations", { operatingCompanyId: "taylor", kind: "PAYABLE" })).items.find((o) => o.sourceRecordId === r.receivingId);
+      assert.equal(pay.originatedMinor, "10000", `${who}: the at-cost total is a Finance figure by design`);
+      const detail = ok(await fn(p, "readObligation", { obligationId: pay.id }));
+      const ws = ok(await fn(p, "readFinanceWorkspace", { operatingCompanyId: "taylor" }));
+      const m = await measure(p);
+      // Nothing the reader without the cost read can see carries the receipt's part or quantity -- the divisor is gone.
+      for (const [what, body] of [["payable", pay], ["obligation detail", detail], ["workspace", ws], ["measure", m]]) {
+        assert.doesNotMatch(JSON.stringify(body), /P-PATHB/, `${who} ${what}: no part`);
+      }
+      assert.equal(ws.missingCostEvidence.some((x) => x.receivingId === r.receivingId), false, `${who}: the exception is resolved`);
+    }
   });
 
   await t.test("F2: Taylor Service performs a Ventana sale's service only under the seller's authorization; the seller stays the seller", async () => {
