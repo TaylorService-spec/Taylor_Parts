@@ -73,14 +73,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 - Capability:          Scheduling lane — Employee Work Schedule in Employee Administration + scheduler→Employee navigation + compact board treatment + Dispatch Map review (Owner requirements 2026-10-15)
 - Agent/session:       Claude Code Scheduling lane session · Role: builder (design first)
-- Branch / worktree:   `work/eos-employee-shift-schedule` · `D:/eos-shift-schedule`
-- Base commit:         `a1261486`
+- Branch / worktree:   `work/eos-employee-work-schedule-tab` (PR-2) · `D:/eos-shift-schedule`; PR-1 `work/eos-employee-shift-schedule` merged as #2108
+- Base commit:         `5e4afa12` (main incl. G-9 #2111)
 - Owned paths:         `docs/architecture/employee-work-schedule-design.md`; after Owner plan approval: `field-ops-app-vite/src/modules/dispatcherBoard/**` (except `DispatchViews.jsx` view-chip lines Lane A2 reserves), `field-ops-app-vite/src/domain/dispatchBoardGeometry.js`, the `.ns-dispatch*` rules in `index.css`, a new Work Schedule tab component under `modules/administration/`, their tests
-- Shared paths req'd:  this registry · `modules/administration/UserDetail.jsx` (one tab entry) · `functions/src/eosOps/workOrderAvailability.ts` only if a server change is approved; NOT `companyAuthority.ts` or other security-lane files
+- Shared paths req'd:  this registry · `modules/administration/UserDetail.jsx` (one tab entry) · `functions/src/eosOps/workOrderAvailability.ts` + `workOrderOperations.ts` (PR-2: one new read, `readEmployeeWorkSchedule`); NOT `companyAuthority.ts` or other security-lane files; NOT `config/environments.json`
 - Dependencies:        Owner decisions SCH-D1..D4 in the design doc; Lane UX shared compact components (reuse, not fork)
 - Expected outcome:    governed schedule visible/editable from the Employee record; board names link by employeeId with return state; subdued elapsed time; nonworking / unconfigured time drawn, never defaulted
 - Protected boundaries:no schema, permission, role or business-rule change and no merge/deploy without Owner approval
-- Lifecycle stage:     SANDBOX BUILD — PR-1 (presentation-only board corrections) open for review; PR-2 blocked on G-9; PR-3 after PR-1; PR-4 deferred
+- Lifecycle stage:     PR-1 MERGED (#2108). PR-2 SANDBOX BUILD (local, not pushed): Work Schedule tab + `readEmployeeWorkSchedule`; editing held behind `EMPLOYEE_SCHEDULE_EDIT_READY` (off) until the controlled G-9 proof and Owner approval. PR-3 next; PR-4 deferred
 
 - Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
 - Agent/session:       Claude Code Lane A session · Role: builder

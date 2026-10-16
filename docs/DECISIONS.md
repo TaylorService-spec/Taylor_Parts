@@ -8550,6 +8550,51 @@ Plus `field-ops-app-vite/test/rentalWorkspace.test.jsx`: authorized company opti
 Fixture: the existing synthetic dispatcher, which works both companies' technicians in that suite, now holds explicit authority (a linked Taylor Employee plus a Ventana `operatingCompany` assignment). The new schedulers are synthetic.
 - **Service suites** that call these commands as synthetic schedulers (service journey, service activation, Work Order journey, domain cutover, field context, labor, quarantine, technician job context, customer self-scheduling) now grant that synthetic scheduler explicit company authority through `test/support/syntheticAvailability.mjs` `grantSyntheticCompanyAuthority`. It covers exactly the companies of the technicians the scheduler configures. No canonical persona is widened.
 
+**Runtime acceptance (Owner, 2026-10-16, "G-9 ACCEPTANCE AND CONTINUATION").**
+- Runtime-verified on nonprod 2026-10-16 (5e4afa12) for checks 1–4.
+- Live gaps, covered by PostgreSQL tests only: authorized cross-company scheduling, and a scheduler without company authority.
+
+## #238 — OWNER: Employee Work Schedule read — `readEmployeeWorkSchedule` gate (Scheduling PR-2, 2026-10-16)
+
+**Status: Owner-directed implementation (SCH-D2 as amended, 2026-10-15; continuation authorized 2026-10-16).** Merge, deployment and schedule-editing activation need separate Owner approval. Lane D reviews the gate at the PR's exact head.
+
+**Why.** Employee Administration → Employee record → **Work Schedule** must show one Employee's governed schedule (`docs/architecture/employee-work-schedule-design.md` §3, §6). The existing board read `readTechnicianAvailability` is **not company-isolated** (#237 "Not covered"), so it cannot back a per-Employee record page. This is therefore a **new authorization surface**, even though it composes only existing capabilities.
+
+**Rule** (`functions/src/eosOps/workOrderAvailability.ts` `readEmployeeWorkSchedule`, Work Order route, read-only). It is decided server-side, in this order, and every check precedes any Employee lookup:
+1. **Scheduling capability:** `workOrder.lifecycle.schedule` **or** `workOrder.lifecycle.dispatch` (the existing availability-read pair). Otherwise `CAPABILITY_MISSING`.
+2. **Employee record visibility, held FLAT:** `employee.record.read` in the caller's resolved capability set. Otherwise `CAPABILITY_MISSING`.
+3. **Company authority (#235):** `resolveCompanyAuthority` must be non-empty (otherwise `COMPANY_AUTHORITY_REQUIRED`) and must include the Employee's home company.
+   - **Out of scope ≡ nonexistent:** an Employee outside the caller's companies answers `EMPLOYEE_NOT_FOUND`, with the same code, category and message as a nonexistent Employee (the #237 rule).
+   - **No oracle:** refusals 1–3 are identical whether the target is in scope, out of scope or nonexistent.
+
+**Owner decision point: scoped-only `employee.record.read` FAILS CLOSED.**
+- A caller who holds `employee.record.read` only through an assignment scope (for example `operatingCompany`-scoped) and not flat is refused at step 2. This read does not evaluate assignment-scoped holdings.
+- This **narrows who can see the tab** compared with the Employee record itself, which does honour scoped holdings.
+- It is the SCH-D4 posture, chosen as the safe default. The Owner may later rule that scoped holdings should be honoured here. That would be a separate change evaluating the scope against the Employee's company.
+
+**Returns (bounded):**
+- the Employee's schedules newest first, each with `CURRENT` / `UPCOMING` / `ENDED`, capped at 50 with `schedulesHasMore`;
+- the unavailability overlapping `[now − 30 days, now + 90 days)`.
+
+Nothing outside that window is returned or counted. It uses the same tables and loaders as the board read, and makes no write.
+
+**Unchanged.**
+- No schema, capability, role, grant or persona change.
+- The schedule commands keep their #237 rule.
+- **Editing stays inactive:** the tab's edit controls render only when the fail-closed readiness flag `EMPLOYEE_SCHEDULE_EDIT_READY` is true. That flag is absent from `config/environments.json`, so it is false everywhere. The caller must also hold `workOrder.lifecycle.schedule`. Activation is a separate Owner approval.
+
+**Not covered.** `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide, tracked with #2110 and its follow-ups. The Work Schedule tab does not use them.
+
+**Proof** (`functions/test/workOrderAvailabilityPostgres.test.mjs`, "readEmployeeWorkSchedule"):
+- each gate leg alone is refused;
+- no-oracle equivalence across in-scope, out-of-scope-with-data and nonexistent targets for every refusal;
+- out of scope ≡ nonexistent;
+- the positive read with current, upcoming and ended schedules;
+- the bounded window excludes far-future and long-past exceptions;
+- a snapshot proves the read writes nothing.
+
+Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refusal as a refusal, and proves no capability or command call while editing is held.
+
 ## #239 — OWNER: Jobs and Dispatcher Board share one governed scheduling path; the Schedule dialog defaults to a valid future time (2026-10-16)
 
 **Status: OWNER DIRECTED ("FIX JOBS AND DISPATCH", 2026-10-16).** Keep the Jobs page; fix its dispatch controls and the Schedule dialog's past-time default. Merge and deployment need the Owner's exact-head decision.

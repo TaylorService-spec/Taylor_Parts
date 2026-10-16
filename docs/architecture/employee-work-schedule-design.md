@@ -222,6 +222,26 @@ Each PR is verified locally (unit tests plus a Vite fixture screenshot), pushed 
 - **Fixed alongside:** G-11 (the 2-week denominator). The unreachable placeholder map view and its CSS were removed.
 - **Not in PR-1:** the Lane UX `InfoTip` component, which is still in open PR #2106. The marker and the Map reason therefore use `title` plus screen-reader text, and swap to `InfoTip` once #2106 merges.
 
+**PR-2 as built (2026-10-16, on main 5e4afa12, which includes G-9 #2111).** Editing activation, merge and deploy are held by the Owner until the controlled G-9 proof passes and PR-2 is separately approved.
+- **Server: one new read and nothing else.** `readEmployeeWorkSchedule {employeeId}` is on the Work Order route (`workOrderAvailability.ts`). There is no schema, capability, role or grant change.
+  - **Gate (SCH-D2 as amended), all checked server-side:** `workOrder.lifecycle.schedule` or `.dispatch`; AND flat `employee.record.read`; AND `resolveCompanyAuthority` covering the Employee's company.
+  - **Refusals:** an Employee outside the caller's companies is refused exactly like a nonexistent one (`EMPLOYEE_NOT_FOUND`, the G-9 rule). Empty authority is refused with `COMPANY_AUTHORITY_REQUIRED`. A holder of `employee.record.read` that is only assignment-scoped fails closed (SCH-D4).
+  - **Returns:** schedules newest first, each with a `CURRENT` / `UPCOMING` / `ENDED` status, capped at 50 with `schedulesHasMore`. Also the exceptions overlapping the last 30 days and the next 90.
+  - **Same tables, same loaders.** It reads through `loadSchedules` / `loadUnavailability`. It deliberately does **not** use `readTechnicianAvailability`, which is not company-isolated (#2110).
+- **Frontend:**
+  - an Employee record **Work Schedule** tab (`?tab=schedule`);
+  - `EmployeeWorkSchedule.jsx`;
+  - a pure `domain/employeeWorkSchedule.js`;
+  - the fail-closed seam `config/employeeScheduleReadiness.js`.
+
+  Behaviour:
+  - A refusal renders as a refusal. The no-schedule state never shows hours.
+  - The edit controls render only when `EMPLOYEE_SCHEDULE_EDIT_READY` is true **and** the caller holds `workOrder.lifecycle.schedule`. The flag is absent from `config/environments.json`, so it is false everywhere. While it is false, the tab makes no capability call and no command call.
+- **Verification:**
+  - Postgres (PG16): the new subtest in `workOrderAvailabilityPostgres.test.mjs`, plus 9 related Work Order suites, all pass.
+  - Frontend: `employeeWorkSchedule.test.mjs` 9/9 and `employeeWorkScheduleTab.test.jsx` 11/11, plus the full suites.
+- **Still open:** board and availability-read isolation is **not** provided by G-9 or by this PR (#2110 and follow-ups).
+
 **Not in scope:** company-authority enforcement on the schedule commands (G-9, security lane / #235); production schedule data entry (an operator task after PR-2 ships); Firebase anything; the functional Map (§7, separately approved).
 
 ---
