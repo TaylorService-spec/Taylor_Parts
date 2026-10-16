@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Firebase exit lane (O-1, DECISIONS #234) — PR-A unrouted Technicians chain, PR-B dormant / flag-dead clients, PR-C Timestamp-only types; read-only investigations of the 27 no-client write callables, the bin dual path and the operator inventory checklist (Owner decisions 2026-10-15)
+- Agent/session:       Claude Code Firebase-exit lane session · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-firebase-exit` (PR-A, then B and C serialized on it) · `D:/eos-fb-exit`
+- Base commit:         `93bec3b7` (PR-A refreshed onto main `3f5ed759`)
+- Owned paths:         the deleted Technicians chain and the PR-B / PR-C files named in each PR · `docs/architecture/frontend-dormant-firebase-client-retirement-ledger.md`
+- Shared paths req'd:  this registry · `docs/architecture/firebase-exit-baseline.json` · `docs/architecture/firebase-shim-consumer-census.json` · `scripts/firebaseExitGuard.test.mjs` · `scripts/firebaseShimBoundary.test.mjs` (ratchet pins — every other Firebase-exit PR must rebase and recount)
+- Dependencies:        none; A → B → C serialized because each edits the baseline and the pins
+- Expected outcome:    exit baseline 265 → 261 (A) → 257 (B) → 247 (C) with no runtime change; investigation report to the coordinator
+- Protected boundaries:no production change, Firebase deploy, undeploy or authentication cutover; no merge without exact-head Owner authorization
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Jobs + Dispatcher Board on one governed scheduling path; Schedule dialog defaults to a valid future time (Owner "FIX JOBS AND DISPATCH" 2026-10-16, DECISIONS #239)
 - Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
 - Branch / worktree:   `fix/jobs-dispatch-and-schedule-default` · `D:/eos-dispatch-fix`
