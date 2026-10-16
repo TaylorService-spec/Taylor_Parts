@@ -7,6 +7,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const listState = { presentation: null };
 const summaryState = { summary: null, state: "LOADING" };
@@ -17,10 +19,6 @@ vi.mock("../src/hooks/useMetadataList", () => ({
 vi.mock("../src/hooks/useAccountPortfolioSummary", () => ({
   useAccountPortfolioSummary: () => ({ ...summaryState, retry: vi.fn() }),
 }));
-// If the page ever reacquires a collection subscription, this mock is the tripwire: the
-// import would resolve and the test asserting it is unused would fail.
-const subscribeSpy = vi.fn(() => ({ data: [], loading: false, error: null }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: subscribeSpy }));
 // The governed Account search hook issues its own bounded Firestore read (see
 // domain/accountSearch.js); this suite is about the surface's rendering contract, not
 // Firestore, so the hook is mocked here the same way useMetadataList and
@@ -45,7 +43,6 @@ const readyList = (rows = []) => ({
 const renderPage = () => render(<MemoryRouter><AccountsList /></MemoryRouter>);
 
 beforeEach(() => {
-  subscribeSpy.mockClear();
   listState.presentation = readyList([{ id: "a1", name: "Northside Foods" }]);
   summaryState.summary = null;
   summaryState.state = "LOADING";
@@ -53,8 +50,10 @@ beforeEach(() => {
 
 describe("Customers surface", () => {
   it("owns no collection subscription — the page is a query result, not a dataset", () => {
-    renderPage();
-    expect(subscribeSpy).not.toHaveBeenCalled();
+    // The Firestore collection hook this suite used to spy on (hooks/useFirestoreCollection.js) was deleted by the
+    // Firebase exit, so the tripwire is now the page's own imports: no Firestore and no collection subscription.
+    const src = readFileSync(path.join(process.cwd(), "src/modules/accounts/AccountsList.jsx"), "utf8");
+    expect(src).not.toMatch(/firebase\/firestore|onSnapshot|useFirestoreCollection/);
   });
 
   it("card counts come from the governed summary, not from the rows on screen", () => {
@@ -110,8 +109,8 @@ describe("Customers surface", () => {
     // GlobalSearch's `accounts` provider (src/shared/search/searchProviders.js) filters an
     // array the caller supplies; handing it the current page would silently answer "no
     // results" for a customer that exists. That surface stays gone from this page.
-    renderPage();
-    expect(subscribeSpy).not.toHaveBeenCalled();
+    const src = readFileSync(path.join(process.cwd(), "src/modules/accounts/AccountsList.jsx"), "utf8");
+    expect(src.split("\n").filter((line) => /^\s*import\b/.test(line)).join("\n")).not.toMatch(/GlobalSearch|searchProviders/);
   });
 
   it("offers a governed bounded search instead, whose copy says 'starts with', not 'search' or 'contains'", () => {

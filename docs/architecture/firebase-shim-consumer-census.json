@@ -9,22 +9,12 @@
     "noNewBusinessAuthorityBehindAShim": true
   },
   "observed": {
-    "scannedFiles": 1638,
-    "shimsDiscovered": 4,
-    "alreadyFencedConsumers": 26,
+    "scannedFiles": 1657,
+    "shimsDiscovered": 2,
+    "alreadyFencedConsumers": 22,
     "insulationNotGoverned": "Read hooks, query services and domain commands that use Firestore internally and return data are NOT shims and their callers are NOT censused -- see authorityExports."
   },
   "shims": [
-    {
-      "shim": "field-ops-app-vite/src/firebase/collectionStore.js",
-      "guardCategories": [
-        "frontend.firestore_client"
-      ],
-      "authorityExports": [
-        "makeCollectionStore"
-      ],
-      "consumers": []
-    },
     {
       "shim": "field-ops-app-vite/src/firebase/firebase.js",
       "guardCategories": [
@@ -34,19 +24,6 @@
       "authorityExports": [
         "db",
         "functions"
-      ],
-      "consumers": []
-    },
-    {
-      "shim": "field-ops-app-vite/src/lib/firebaseSafe.js",
-      "guardCategories": [
-        "frontend.firestore_client"
-      ],
-      "authorityExports": [
-        "safeAddDoc",
-        "safeDeleteDoc",
-        "safeSetDoc",
-        "safeUpdateDoc"
       ],
       "consumers": []
     },

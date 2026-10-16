@@ -82,7 +82,7 @@ const KNOWN_UNNAMED = new Set([
   "reportBuilderArrayFilterAndSavedWiring.test.jsx", "reservationsSection.test.jsx",
   "salesOrderActionsDestructiveStyling.test.jsx", "schedulingWorkspace.test.jsx",
   "serializedAssetsSection.test.jsx", "supplierPicker.test.jsx",
-  "technicianWorkOrderActionsCompletionHonesty.test.jsx", "techniciansErrorState.test.jsx",
+  "technicianWorkOrderActionsCompletionHonesty.test.jsx",
   "truckManagementCommandClient.test.jsx", "truckManagementView.test.jsx",
   "useSalesOrderActions.test.jsx",
   "useSchedulingDataErrorState.test.jsx", "useTruckManagement.test.jsx", "useTruckRegistrySource.test.jsx",

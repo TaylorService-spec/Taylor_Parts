@@ -27,32 +27,19 @@
 // the next instance of this bug will be a new list with a new default sort, not accounts again.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(here, "../src");
 
-const store = readFileSync(path.join(SRC, "firebase/collectionStore.js"), "utf8");
-
-test("the shared writer stamps updatedAt on CREATE, not only on update", () => {
-  // The fix, pinned at its source. Stamping in the shared writer covers every collection that goes
-  // through it, rather than patching accounts alone and waiting for the next list to repeat it.
-  const addBody = store.slice(store.indexOf("add(data)"), store.indexOf("update(id, data)"));
-  assert.match(addBody, /updatedAt/, "add() must stamp updatedAt");
-  assert.match(addBody, /createdAt/, "add() must still stamp createdAt");
-});
-
-test("caller-supplied timestamps still win — the stamp is a floor, not an override", () => {
-  // `{ createdAt: now, updatedAt: now, ...data }` puts the spread LAST on purpose: a caller that
-  // supplies its own timestamps (a migration, a fixture, a backdated import) keeps them.
-  const addBody = store.slice(store.indexOf("add(data)"), store.indexOf("update(id, data)"));
-  assert.match(
-    addBody,
-    /\{\s*createdAt:\s*now,\s*updatedAt:\s*now,\s*\.\.\.data\s*\}/,
-    "the data spread must come after the defaults so a caller can override them",
-  );
+test("the retired Firestore shared writer stays retired", () => {
+  // FIREBASE EXIT PR-A (2026-10-15): firebase/collectionStore.js -- the shared writer whose add() had to stamp updatedAt
+  // on create -- was deleted with its last consumer (the unrouted Technicians screen). Records are now created by
+  // governed PostgreSQL commands that stamp created/updated time server-side, so the general invariant below is the
+  // whole remaining contract.
+  assert.equal(existsSync(path.join(SRC, "firebase/collectionStore.js")), false);
 });
 
 // ═══════════════════════════════════════════ the general invariant
@@ -78,7 +65,7 @@ function defaultSortFields() {
  * omit newly created records.
  */
 const ALWAYS_PRESENT = new Set([
-  "createdAt", "updatedAt",          // stamped by collectionStore.add
+  "createdAt", "updatedAt",          // stamped on create by the governed writer
 
   // Identity fields: a record cannot be created without them.
   "name", "displayName", "displayLabel", "internalPartNumber", "partId", "id",
