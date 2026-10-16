@@ -336,6 +336,69 @@ test("the governed Work Order list query, against PostgreSQL", { skip: SKIP, con
     }
   });
 
+  await t.test("EQUIVALENCE: to a Taylor caller, every probe at a Ventana record answers EXACTLY as a probe at a record that does not exist", async () => {
+    // Pairs of (aimed at Ventana data, aimed at nothing). Each pair must produce the identical page -- items, hasMore,
+    // nextCursor -- or the identical refusal (code AND message). Anything else would let a Taylor caller learn that a
+    // Ventana record, customer, Part or company exists.
+    const probe = async (query) => {
+      try {
+        const p = await list(TAYLOR, query);
+        return { items: p.items, hasMore: p.hasMore, nextCursor: p.nextCursor };
+      } catch (e) { return { refused: e.code, message: e.message, category: e.category }; }
+    };
+    const legacy = async (input) => {
+      try { const p = await queries.listWorkOrders({ pool }, TAYLOR, input); return { items: p.items, truncated: p.truncated }; }
+      catch (e) { return { refused: e.code, message: e.message }; }
+    };
+    const pairs = [
+      [{ filters: [{ field: "customerId", op: "EQUALS", value: "acct-v" }] }, { filters: [{ field: "customerId", op: "EQUALS", value: "acct-none" }] }],
+      [{ filters: [{ field: "customerId", op: "IN", value: ["acct-v"] }] }, { filters: [{ field: "customerId", op: "IN", value: ["acct-none"] }] }],
+      [{ filters: [{ field: "woNumber", op: "EQUALS", value: ventanaRows[0].number }] }, { filters: [{ field: "woNumber", op: "EQUALS", value: "WO-2026-555555" }] }],
+      [{ filters: [{ field: "woNumber", op: "TEXT_PREFIX", value: "WO-2026-9" }] }, { filters: [{ field: "woNumber", op: "TEXT_PREFIX", value: "WO-2026-8" }] }],
+      [{ search: "Ventana Ice" }, { search: "Nonexistent Shop" }],
+      [{ search: ventanaRows[3].number }, { search: "WO-2026-555555" }],
+      [{ filters: [{ field: "locationId", op: "EQUALS", value: "loc-acct-v" }] }, { filters: [{ field: "locationId", op: "EQUALS", value: "loc-none" }] }],
+      [{ filters: [{ field: "company", op: "EQUALS", value: "ventana" }] }, { filters: [{ field: "company", op: "EQUALS", value: "no-such-company" }] }],
+      [{ filters: [{ field: "company", op: "IN", value: ["ventana"] }] }, { filters: [{ field: "company", op: "IN", value: ["no-such-company"] }] }],
+      // A Part only Ventana plans, vs a Part nobody plans.
+      [{ filters: [{ field: "plannedPartId", op: "EQUALS", value: "part-v-only" }] }, { filters: [{ field: "plannedPartId", op: "EQUALS", value: "part-none" }] }],
+    ];
+    await q(`INSERT INTO eos_ops.work_order_parts_plan (tenant_id,work_order_id,part_id,qty_planned,planned_by,updated_by)
+             VALUES ($1,'wo-v-0002','part-v-only',1,'f','f')`, [T]);
+    for (const [ventana, nothing] of pairs) {
+      for (const extra of [{}, { sort: [{ field: "customerId", dir: "ASC" }], limit: 1 }]) {
+        assert.deepEqual(await probe({ ...ventana, ...extra }), await probe({ ...nothing, ...extra }), JSON.stringify(ventana));
+      }
+    }
+    for (const [ventana, nothing] of [[{ customerId: "acct-v" }, { customerId: "acct-none" }], [{ search: "Ventana Ice" }, { search: "Nonexistent Shop" }],
+      [{ plannedPartId: "part-v-only" }, { plannedPartId: "part-none" }]]) {
+      assert.deepEqual(await legacy(ventana), await legacy(nothing), `legacy ${JSON.stringify(ventana)}`);
+    }
+    // The whole Taylor answer -- every page under every default -- is the same with Ventana's data present or deleted.
+    const before = await all(TAYLOR, {}, 200);
+    const describeBefore = await queries.describeWorkOrderListQuery({ pool }, TAYLOR, {});
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM eos_ops.work_order_parts_plan WHERE work_order_id LIKE 'wo-v-%'`);
+      await client.query(`DELETE FROM eos_ops.work_orders WHERE id LIKE 'wo-v-%'`);
+      assert.deepEqual(await (async () => {
+        const ids = []; let cursor;
+        for (;;) {
+          const p = await queries.listWorkOrders({ pool: client }, TAYLOR, { query: { v: 1, limit: 200, ...(cursor ? { cursor } : {}) } });
+          ids.push(...p.items.map((w) => w.workOrderId));
+          if (!p.hasMore) return ids;
+          cursor = p.nextCursor;
+        }
+      })(), before, "Taylor's list does not depend on Ventana rows existing");
+      assert.deepEqual(await queries.describeWorkOrderListQuery({ pool: client }, TAYLOR, {}), describeBefore);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.work_orders WHERE id LIKE 'wo-v-%'`)).rows[0].n, VENTANA_N, "rolled back");
+  });
+
   await t.test("CURSORS reposition inside ONE query and ONE scope -- anything else is refused, never restarted", async () => {
     const p = await list(TAYLOR, { filters: [{ field: "priority", op: "EQUALS", value: 1 }], limit: 5 });
     assert.ok(p.nextCursor);
