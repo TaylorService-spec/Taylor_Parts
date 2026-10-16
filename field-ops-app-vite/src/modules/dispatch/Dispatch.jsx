@@ -72,7 +72,10 @@ export default function Dispatch() {
   const { data: roster, error: techniciansError } = useWorkOrderTechnicians();
   const technicians = useMemo(() => mergeTechnicianDirectories(roster, techniciansFromWorkOrders(jobs)), [roster, jobs]);
   const caps = useMyWorkOrderCapabilities();
-  const canSchedule = caps.has(SCHEDULE_CAPABILITY);
+  // Schedule, Move and Reassign need the roster for their technician picker; Dispatch does not (it goes to the scheduled
+  // technician). A failed roster read therefore withdraws the first three and keeps Dispatch, and the notice says exactly that.
+  const holdsSchedule = caps.has(SCHEDULE_CAPABILITY);
+  const canSchedule = holdsSchedule && !techniciansError;
   const canDispatch = caps.has(DISPATCH_CAPABILITY);
   const { runPlacement, dispatchTo, busyWorkOrderId, message } = usePlacementCommands({ workOrders: jobs, technicians });
   const [pending, setPending] = useState(null);
@@ -101,11 +104,11 @@ export default function Dispatch() {
       ) : null}
       {techniciansError && (
         <p className="fo-scan__notice fo-scan__notice--warn" role="alert">
-          Technicians could not be loaded, so scheduling and dispatch are unavailable.
+          Technicians could not be loaded, so scheduling, moving and reassigning are unavailable{caps.has(DISPATCH_CAPABILITY) ? " (dispatching to the scheduled technician still works)" : ""}.
           {" "}{loadErrorMessage(techniciansError, { entity: "technicians" })}
         </p>
       )}
-      {caps.status === "ready" && !canSchedule && !canDispatch ? (
+      {caps.status === "ready" && !holdsSchedule && !canDispatch ? (
         <p className="fo-muted" role="status">You can see these jobs, but scheduling and dispatching are not part of your access.</p>
       ) : null}
 

@@ -88,6 +88,16 @@ describe("the Jobs page dispatches and schedules through the governed commands",
     expect(screen.queryByRole("button", { name: /Dispatch to|Schedule…|Reassign…|Move…/ })).toBeNull();
   });
 
+  it("a failed roster read withdraws Schedule/Move/Reassign (they need the picker) but keeps Dispatch, and says exactly that", () => {
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: new Error("roster unavailable") });
+    render(<Dispatch />);
+    expect(screen.queryByRole("button", { name: /Schedule…|Reassign…|Move…/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Dispatch to/ })).toBeTruthy();
+    expect(screen.getByText(/scheduling, moving and reassigning are unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/dispatching to the scheduled technician still works/i)).toBeTruthy();
+    expect(screen.queryByText(/not part of your access/i)).toBeNull();
+  });
+
   it("says so when the caller can see jobs but holds neither scheduling nor dispatch", () => {
     useMyWorkOrderCapabilities.mockReturnValue(caps());
     render(<Dispatch />);
