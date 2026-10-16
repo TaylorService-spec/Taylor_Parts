@@ -10,7 +10,6 @@
   "baseline": {
     "frontend": {
       "firestore_client": [
-        "field-ops-app-vite/src/access/parityFixtures.ts",
         "field-ops-app-vite/src/access/useReportCapabilities.js",
         "field-ops-app-vite/src/auth/employeeSession.js",
         "field-ops-app-vite/src/domain/employees.js",
@@ -20,8 +19,7 @@
         "field-ops-app-vite/src/hooks/useInventoryActions.js",
         "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js",
         "field-ops-app-vite/src/metadata/firestoreListSource.js",
-        "field-ops-app-vite/src/services/operationsQueries.ts",
-        "field-ops-app-vite/src/types/access.ts"
+        "field-ops-app-vite/src/services/operationsQueries.ts"
       ],
       "firebase_functions_client": [
         "field-ops-app-vite/src/access/adminPasswordResetClient.js",
@@ -57,7 +55,6 @@
         "functions/src/access/employeeProfileCommands.ts",
         "functions/src/access/nativeResetSender.ts",
         "functions/src/access/operationalRoleContext.ts",
-        "functions/src/access/parityFixtures.ts",
         "functions/src/access/recordChangeHistoryReadService.ts",
         "functions/src/access/trustedWriterCommands.ts",
         "functions/src/account/accountImportCommand.ts",
@@ -181,7 +178,6 @@
         "functions/src/scheduling/placementPolicy.ts",
         "functions/src/scheduling/schedulingCommands.ts",
         "functions/src/scheduling/schedulingRepository.ts",
-        "functions/src/scheduling/types.ts",
         "functions/src/serializedAsset/acquireCallableWiring.ts",
         "functions/src/serializedAsset/acquireCallables.ts",
         "functions/src/serializedAsset/acquireSerializedAssetCommand.ts",
@@ -190,18 +186,12 @@
         "functions/src/supplierMaster/reorderPurchaseOrderSupplierMigrationExecute.ts",
         "functions/src/supplierMaster/supplierMasterCommands.ts",
         "functions/src/supplierMaster/supplierMasterRepository.ts",
-        "functions/src/supplierMaster/supplierMasterTypes.ts",
         "functions/src/supplierMaster/supplierMasterValidation.ts",
         "functions/src/transitionWorkOrder.ts",
         "functions/src/truckRegistry/operationalReferenceProbe.ts",
         "functions/src/truckRegistry/truckRegistryCallables.ts",
         "functions/src/truckRegistry/truckRegistryCommands.ts",
         "functions/src/truckRegistry/truckRegistryRepository.ts",
-        "functions/src/types/access.ts",
-        "functions/src/types/inventoryTransaction.ts",
-        "functions/src/types/procurement.ts",
-        "functions/src/types/warehouse.ts",
-        "functions/src/types/workOrder.ts",
         "functions/src/updateWorkOrderExecutionData.ts",
         "functions/src/warehouseGovernance/governedWarehouseValidation.ts",
         "functions/src/warehouseGovernance/receivingLocationOptionsService.ts",

@@ -4,7 +4,7 @@
 // the governed part_supplier_items authority already references. `status` is the authority; a
 // legacy `active` field is FORBIDDEN on a governed record (same discipline as governed warehouses).
 
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "../types/timestampShape";
 
 export const SUPPLIER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 export type SupplierStatus = (typeof SUPPLIER_STATUSES)[number];

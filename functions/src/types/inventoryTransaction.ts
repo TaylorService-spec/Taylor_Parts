@@ -1,5 +1,5 @@
 // Epic 2D Inventory Trigger System (see docs/architecture/ADR-003).
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "./timestampShape";
 
 // The legacy Work-Order reservation vocabulary PLUS the governed operational movement types that
 // Receiving, Transfer and Cycle Count reconciliation write to this SAME append-only ledger. They were
