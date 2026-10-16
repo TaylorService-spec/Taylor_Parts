@@ -74,7 +74,9 @@ describe("Customers surface", () => {
     renderPage();
     expect(screen.queryByText("0")).toBeNull();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
-    expect(screen.getByText(/totals could not be loaded/i)).toBeTruthy();
+    // No PostgreSQL CRM aggregate exists yet: say so, and offer no retry that cannot succeed.
+    expect(screen.getByText(/totals are not available yet/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
   });
 
   it("a denied summary says so, and does not read as missing data", () => {

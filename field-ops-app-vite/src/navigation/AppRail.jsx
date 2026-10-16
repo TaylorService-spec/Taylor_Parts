@@ -379,13 +379,9 @@ export function RailIdentity() {
 export function RailBrand() {
   return (
     <div className="fo-rail__brand">
+      {/* No hardcoded company line: the rail serves every operating company (Taylor and Ventana), so a fixed
+          customer name was wrong for anyone outside it. A record's company is shown on the record itself. */}
       <VerenwardMark variant="horizontal" tone="onDark" size={30} />
-      <span className="fo-implementation">
-        {/* Customer/workspace identity. Keep the canonical company name only:
-            the extra "Taylor Parts" workspace label duplicated and contradicted
-            the customer identity during live acceptance. */}
-        <span className="fo-implementation__context">Taylor Freezer of Arizona</span>
-      </span>
     </div>
   );
 }
