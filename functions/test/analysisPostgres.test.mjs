@@ -381,9 +381,11 @@ test("analysis over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     // RENTAL (My Work's rental section, DECISIONS #235): the server-only company filter narrows fleet and agreements; omitted = unchanged.
     const { readRentalWorkspace } = require("../lib/eosRental/rental.js");
     const reader = { tenantId: TENANT, principalId: "rental-reader", capabilities: new Set(["rental.agreement.read"]) };
-    assert.deepEqual([(await readRentalWorkspace(pool, reader, {})).counts.fleet, (await readRentalWorkspace(pool, reader, {}, ["taylor"])).counts.fleet,
-      (await readRentalWorkspace(pool, reader, {}, ["ventana"])).counts.fleet], [1, 1, 0], "the Taylor fleet unit is invisible to a Ventana-only scope");
-    await assert.rejects(readRentalWorkspace(pool, { ...reader, capabilities: new Set() }, {}, ["taylor"]), /rental.agreement.read/, "capability first, always");
+    // Since the P0 rental security PR (DECISIONS #236) company authority travels on the actor, resolved server-side; none = refused.
+    await assert.rejects(readRentalWorkspace(pool, reader, {}), (e) => e.code === "COMPANY_AUTHORITY_REQUIRED");
+    assert.deepEqual([(await readRentalWorkspace(pool, { ...reader, companyKeys: ["taylor"] }, {})).counts.fleet,
+      (await readRentalWorkspace(pool, { ...reader, companyKeys: ["ventana"] }, {})).counts.fleet], [1, 0], "the Taylor fleet unit is invisible to a Ventana-only scope");
+    await assert.rejects(readRentalWorkspace(pool, { ...reader, capabilities: new Set(), companyKeys: ["taylor"] }, {}), /rental.agreement.read/, "capability first, always");
     // Analysis wrote nothing while deciding any of this.
     assert.deepEqual(await resolveCompanyAuthority(pool, TENANT, dispatcher.principalId), { companies: ["taylor"], companyKeys: ["taylor"], gap: null });
   });
