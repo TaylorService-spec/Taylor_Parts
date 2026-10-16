@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serviceBaselineTenant, DAY, HOUR } from "./support/serviceBaselineTenant.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const require = createRequire(import.meta.url);
 const { handleSelfSchedulingRequest } = require("../lib/eosOps/selfSchedulingHttp.js");
@@ -61,6 +62,8 @@ test("customer self-scheduling on PostgreSQL", { skip: SKIP, concurrency: 1 }, a
   await person("uid-ss-tech-v", ["technician"], { id: "emp-ss-v", technician: true, company: "ventana" });
   await person("uid-ss-tech-u", ["technician"], { id: "emp-ss-unqualified" });
   const sales = await person("uid-ss-sales", ["salesperson"]);
+  // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
+  await grantSyntheticCompanyAuthority(pool, TENANT, sm.principalId, ["taylor", "ventana"]);
 
   // PROPOSED holders (an open Owner decision), granted the governed way for this proof.
   for (const [roleKey, actionKey] of [["dispatcher", "issueSchedulingLink"], ["fieldManager", "configureSelfScheduling"]]) {

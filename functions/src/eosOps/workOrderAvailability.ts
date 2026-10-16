@@ -50,6 +50,7 @@ import {
 } from "./workOrderLifecycle";
 import type { WorkOrderOp } from "./workOrderOperationTypes";
 import { notQuarantined } from "./workOrderQuarantine";
+import { resolveCompanyAuthority } from "./companyAuthority";
 import {
   WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION,
 } from "./workOrderAssignmentAuthority";
@@ -527,20 +528,36 @@ async function requireActiveMember(client: PoolClient, actor: LifecycleActor): P
   if (rows.length === 0) refuse("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
 }
 
-async function requireEmployee(db: Db, tenantId: string, employeeId: unknown): Promise<{ id: string; operatingCompanyId: string }> {
+/**
+ * G-9 COMPANY AUTHORITY (Owner authorization 2026-10-15; DECISIONS #237): the schedule COMMANDS act only on Employees of the
+ * caller's operating companies (EOS Core company authority, eosOps/companyAuthority.ts -- resolved server-side inside the
+ * command's transaction, after the capability and membership checks). None fails closed. Out of scope == unknown: an
+ * Employee, a company or an unavailability outside the caller's companies is refused exactly like one that does not exist,
+ * and every refusal precedes any write.
+ */
+async function requireCompanyAuthority(client: PoolClient, actor: LifecycleActor): Promise<readonly string[]> {
+  const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+  return authority.companies;
+}
+
+async function requireEmployee(db: Db, tenantId: string, employeeId: unknown, companies: readonly string[]): Promise<{ id: string; operatingCompanyId: string }> {
   if (!ID_SHAPE(employeeId)) refuse("EMPLOYEE_ID_REQUIRED", "INVALID_INPUT", "employeeId is required and must be a governed Employee id");
   const { rows } = await db.query(
-    `SELECT id, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [tenantId, employeeId]);
+    `SELECT id, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2 AND operating_company_id = ANY($3::text[])`,
+    [tenantId, employeeId, [...companies]]);
   if (rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
   return { id: rows[0].id, operatingCompanyId: rows[0].operating_company_id };
 }
 
-async function requireActiveCompany(db: Db, tenantId: string, companyId: unknown): Promise<string> {
+async function requireActiveCompany(db: Db, tenantId: string, companyId: unknown, companies: readonly string[]): Promise<string> {
   if (!ID_SHAPE(companyId)) refuse("OPERATING_COMPANY_ID_INVALID", "INVALID_INPUT", "operatingCompanyId must be a governed operating company id");
   const { rows } = await db.query(
     `SELECT 1 FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`,
     [tenantId, companyId]);
-  if (rows.length === 0) refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE for this tenant");
+  if (rows.length === 0 || !companies.includes(companyId as string)) {
+    refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE for this tenant");
+  }
   return companyId as string;
 }
 
@@ -617,8 +634,9 @@ export const setTechnicianWorkingHours: WorkOrderOp = async (deps, caller, input
 
   return inTransaction(deps, async (client) => {
     await requireActiveMember(client, actor);
-    const employee = await requireEmployee(client, actor.tenantId, i.employeeId);
-    const operatingCompanyId = companyScope === null ? null : await requireActiveCompany(client, actor.tenantId, companyScope);
+    const companies = await requireCompanyAuthority(client, actor);
+    const employee = await requireEmployee(client, actor.tenantId, i.employeeId, companies);
+    const operatingCompanyId = companyScope === null ? null : await requireActiveCompany(client, actor.tenantId, companyScope, companies);
     await lockEmployeePlacement(client, actor.tenantId, employee.id);
     const open = await client.query(
       `SELECT id, to_char(effective_from, 'YYYY-MM-DD') AS effective_from FROM eos_workforce.technician_working_schedules
@@ -684,7 +702,8 @@ export const recordTechnicianUnavailability: WorkOrderOp = async (deps, caller, 
   const now = (deps.now ?? (() => new Date()))();
   return inTransaction(deps, async (client) => {
     await requireActiveMember(client, actor);
-    const employee = await requireEmployee(client, actor.tenantId, i.employeeId);
+    const companies = await requireCompanyAuthority(client, actor);
+    const employee = await requireEmployee(client, actor.tenantId, i.employeeId, companies);
     await lockEmployeePlacement(client, actor.tenantId, employee.id);
     const id = `tua_${randomUUID()}`;
     await client.query(
@@ -718,8 +737,11 @@ export const endTechnicianUnavailability: WorkOrderOp = async (deps, caller, inp
   const now = (deps.now ?? (() => new Date()))().getTime();
   return inTransaction(deps, async (client) => {
     await requireActiveMember(client, actor);
+    const companies = await requireCompanyAuthority(client, actor);
     const found = await client.query(
-      `SELECT employee_id FROM eos_workforce.technician_unavailability WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, i.unavailabilityId]);
+      `SELECT u.employee_id FROM eos_workforce.technician_unavailability u
+         JOIN eos_workforce.employees e ON e.tenant_id = u.tenant_id AND e.id = u.employee_id
+        WHERE u.tenant_id = $1 AND u.id = $2 AND e.operating_company_id = ANY($3::text[])`, [actor.tenantId, i.unavailabilityId, [...companies]]);
     if (found.rows.length === 0) refuse("UNAVAILABILITY_NOT_FOUND", "NOT_FOUND", "no such unavailability in this tenant");
     await lockEmployeePlacement(client, actor.tenantId, found.rows[0].employee_id);
     const { rows } = await client.query(
@@ -993,6 +1015,110 @@ export const findAvailableTechnicianSlots: WorkOrderOp = async (deps, caller, in
       truncated: slots.length > (limit as number),
       notConfiguredEmployeeIds: notConfigured,
     });
+  } finally {
+    client.release();
+  }
+};
+
+// ════════════════════ suggestWorkOrderPlacement (the placement DEFAULT for every scheduling surface) ════════════════════
+
+/** The statuses a placement suggestion is offered for: a job waiting to be scheduled, or a scheduled job being moved. */
+const SUGGESTABLE_STATUSES = Object.freeze(["READY_TO_DISPATCH", "SCHEDULED"]);
+const SUGGEST_DEFAULT_HORIZON_DAYS = 14;
+const SUGGEST_DEFAULT_INCREMENT_MINUTES = 15;
+const SUGGEST_DEFAULT_DURATION_MINUTES = 120;
+
+/**
+ * THE PLACEMENT DEFAULT (Owner "FIX JOBS AND DISPATCH", 2026-10-16). The Dispatcher Board and the Jobs page both open the
+ * same Schedule dialog; its default start used to be the visible band's first hour, which is already past for today. This
+ * read answers "the earliest window the placement check would accept" for ONE Work Order, so neither surface guesses:
+ *
+ *   * the Work Order is read in the caller's EOS Core company authority (#235): one outside it answers WORK_ORDER_NOT_FOUND,
+ *     exactly like a nonexistent id (the G-9 rule); quarantined Work Orders are not offered;
+ *   * the company, its GOVERNED BUSINESS TIME ZONE (tenant_operating_companies.business_time_zone) and the qualification
+ *     come from the Work Order -- never from input;
+ *   * the window comes from the SAME computeTechnicianSlots the office slot query and self-scheduling use (working hours,
+ *     configured, not blocked, no window-holding Work Order -- the job's own window excluded when it is being moved), and
+ *     never starts before now (rounded UP onto the increment);
+ *   * `employeeId` (optional) asks for that technician; one outside the Work Order's company or not eligible is reported
+ *     as NOT_SCHEDULABLE, never distinguished. Without one, the earliest window of any eligible technician is offered.
+ *
+ * It writes nothing and grants nothing. The command re-validates everything on submit.
+ * Output: { workOrderId, timeZone, operatingCompanyId, durationMinutes, searchedFrom, searchedTo, outcome, suggestion,
+ *           alternative } where outcome is SLOT_FOUND | NO_OPEN_TIME | NOT_CONFIGURED | NOT_SCHEDULABLE, suggestion and
+ *           alternative are { employeeId, displayName, start, end } or null (alternative: the earliest window of ANY
+ *           eligible technician when the requested one has none).
+ */
+export const suggestWorkOrderPlacement: WorkOrderOp = async (deps, caller, input) => {
+  const actor = caller.actor;
+  requireRead(actor, "suggesting a Work Order placement");
+  const i = acceptOnly(input, ["workOrderId", "employeeId", "durationMinutes", "horizonDays", "slotIncrementMinutes"]);
+  if (!ID_SHAPE(i.workOrderId)) refuse("WORK_ORDER_ID_REQUIRED", "INVALID_INPUT", "workOrderId is required");
+  if (i.employeeId !== undefined && i.employeeId !== null && !ID_SHAPE(i.employeeId)) {
+    refuse("EMPLOYEE_ID_INVALID", "INVALID_INPUT", "employeeId must be a governed Employee id");
+  }
+  if (i.durationMinutes !== undefined && (typeof i.durationMinutes !== "number" || !Number.isSafeInteger(i.durationMinutes)
+    || i.durationMinutes < 1 || i.durationMinutes > MAX_SLOT_DURATION_MINUTES)) {
+    refuse("DURATION_INVALID", "INVALID_INPUT", `durationMinutes is a whole number 1..${MAX_SLOT_DURATION_MINUTES}`);
+  }
+  const horizonDays = i.horizonDays === undefined ? SUGGEST_DEFAULT_HORIZON_DAYS : i.horizonDays;
+  if (typeof horizonDays !== "number" || !Number.isSafeInteger(horizonDays) || horizonDays < 1 || horizonDays > MAX_SLOT_HORIZON_DAYS) {
+    refuse("HORIZON_INVALID", "INVALID_INPUT", `horizonDays is a whole number 1..${MAX_SLOT_HORIZON_DAYS}`);
+  }
+  const increment = i.slotIncrementMinutes === undefined ? SUGGEST_DEFAULT_INCREMENT_MINUTES : i.slotIncrementMinutes;
+  if (!(SLOT_INCREMENTS_MINUTES as readonly unknown[]).includes(increment)) {
+    refuse("SLOT_INCREMENT_INVALID", "INVALID_INPUT", `slotIncrementMinutes is one of ${SLOT_INCREMENTS_MINUTES.join(", ")}`);
+  }
+  const requestedEmployee = (i.employeeId ?? null) as string | null;
+  const now = (deps.now ?? (() => new Date()))().getTime();
+
+  const client = await deps.pool.connect();
+  try {
+    const companies = await requireCompanyAuthority(client, actor);
+    const { rows } = await client.query(
+      `SELECT w.id, w.status::text AS status, w.work_order_type::text AS work_order_type, w.operating_company_key, w.estimated_duration_minutes
+         FROM eos_ops.work_orders w WHERE w.tenant_id = $1 AND w.id = $2 AND ${notQuarantined("w")}`, [actor.tenantId, i.workOrderId]);
+    const wo = rows[0];
+    let companyId: string | null = null;
+    if (wo) {
+      try { companyId = await resolveActiveOperatingCompanyId(client, actor.tenantId, wo.operating_company_key); }
+      catch (err) { if (!(err instanceof OperatingCompanyBindingError)) throw err; }
+    }
+    // Outside the caller's companies, unbound, or nonexistent: one answer (no existence oracle).
+    if (!wo || companyId === null || !companies.includes(companyId)) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "no such Work Order");
+    if (!SUGGESTABLE_STATUSES.includes(wo.status)) {
+      refuse("WORK_ORDER_NOT_SCHEDULABLE", "PRECONDITION_FAILED", `a ${wo.status} Work Order is not offered a placement`);
+    }
+    const tz = await client.query(`SELECT business_time_zone FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2`,
+      [actor.tenantId, companyId]);
+    const timeZone = String(tz.rows[0]?.business_time_zone ?? "UTC");
+    const qualification = QUALIFICATION_BY_WORK_ORDER_TYPE[wo.work_order_type] ?? WORK_ORDER_ASSIGNMENT_QUALIFICATION;
+    const durationMinutes = (i.durationMinutes as number | undefined) ?? (wo.estimated_duration_minutes ?? SUGGEST_DEFAULT_DURATION_MINUTES);
+    const incMs = (increment as number) * MINUTE;
+    const today = localDateKey(now, timeZone);
+    // Strictly in the future, rounded UP onto the grid: a default must never be refused as a past start.
+    const notBefore = Math.ceil((now + MINUTE) / incMs) * incMs;
+    const range: Interval = { start: Math.max(zonedInstant(today, 0, timeZone), notBefore),
+      end: zonedInstant(addDays(today, horizonDays as number), 0, timeZone) };
+    const ask = (onlyIds: readonly string[] | null) => computeTechnicianSlots(client, {
+      tenantId: actor.tenantId, companyId: companyId as string, qualification, durationMs: durationMinutes * MINUTE, range, incrementMs: incMs,
+      onlyIds, excludeWorkOrderId: wo.id,
+    });
+    const view = (s: TechnicianSlot | undefined) => (s ? Object.freeze({ employeeId: s.employeeId, displayName: s.displayName, start: iso(s.start), end: iso(s.end) }) : null);
+    const base = { workOrderId: wo.id, timeZone, operatingCompanyId: companyId, durationMinutes, searchedFrom: iso(range.start), searchedTo: iso(range.end) };
+
+    if (requestedEmployee === null) {
+      const any = await ask(null);
+      return Object.freeze({ ...base, outcome: any.slots.length > 0 ? "SLOT_FOUND" : "NO_OPEN_TIME", suggestion: view(any.slots[0]), alternative: null });
+    }
+    const mine = await ask([requestedEmployee]);
+    if (mine.slots.length > 0) return Object.freeze({ ...base, outcome: "SLOT_FOUND", suggestion: view(mine.slots[0]), alternative: null });
+    // The requested technician has no window: say why (not configured / not schedulable / no open time), and offer the earliest
+    // window of anyone eligible so the dialog can name a real alternative instead of leaving the dispatcher to hunt.
+    const schedulable = (await schedulableEmployees(client, actor.tenantId, companyId as string, qualification, [requestedEmployee])).length > 0;
+    const outcome = !schedulable ? "NOT_SCHEDULABLE" : mine.notConfigured.includes(requestedEmployee) ? "NOT_CONFIGURED" : "NO_OPEN_TIME";
+    const any = await ask(null);
+    return Object.freeze({ ...base, outcome, suggestion: null, alternative: view(any.slots[0]) });
   } finally {
     client.release();
   }

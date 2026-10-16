@@ -69,3 +69,19 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
       WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id = ANY($2::text[]) ORDER BY 1`, [tenantId, companies])).rows.map((r) => String(r.key));
   return Object.freeze({ companies: Object.freeze(companies), companyKeys: Object.freeze(keys), gap: null });
 }
+
+/**
+ * D6 (P0 rental security): the caller's authorized companies as picker options -- each ACTIVE company with its ACTIVE key(s).
+ * Only what resolveCompanyAuthority already decided; nothing is widened, and a caller without authority gets an empty list.
+ */
+export async function readMyCompanyAuthority(db: Db, tenantId: string, principalId: string) {
+  const authority = await resolveCompanyAuthority(db, tenantId, principalId);
+  if (authority.companies.length === 0) return Object.freeze({ companies: Object.freeze([]), gap: authority.gap });
+  const { rows } = await db.query<{ id: string; key: string }>(
+    `SELECT operating_company_id AS id, operating_company_key AS key FROM eos_policy.tenant_operating_company_keys
+      WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id = ANY($2::text[]) ORDER BY 1, 2`, [tenantId, [...authority.companies]]);
+  return Object.freeze({
+    companies: Object.freeze(rows.map((r) => Object.freeze({ operatingCompanyId: String(r.id), operatingCompanyKey: String(r.key) }))),
+    gap: authority.gap,
+  });
+}

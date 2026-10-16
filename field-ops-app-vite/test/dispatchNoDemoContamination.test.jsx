@@ -22,11 +22,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
+// The page offers actions from the caller's governed capabilities and reads the governed roster (FIX JOBS AND DISPATCH).
+vi.mock("../src/hooks/useMyWorkOrderCapabilities", () => ({ useMyWorkOrderCapabilities: () => ({ status: "ready", has: () => true }) }));
+vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn(() => ({ data: [], loading: false, error: null })) }));
+vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn(), suggestWorkOrderPlacement: vi.fn(async () => null) }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
+import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,19 +84,24 @@ describe("Dispatch -- no demo/heroConfig contamination in normal runtime", () =>
     expect(headings).toEqual(["Ordinary Customer", "Beacon Manufacturing"]);
   });
 
-  it("does not pre-select a technician named 'Alex Rivera' (old hero technician) in the assign dropdown", () => {
+  it("does not pre-select a technician named 'Alex Rivera' (old hero technician) when choosing one for a scheduled job", () => {
     const job = {
       id: "wo-1",
       woNumber: "WO-100",
       status: "SCHEDULED",
       description: "Needs a tech",
     };
+    const heroNamedTech = { id: "tech-1", name: "Alex Rivera", status: "available" };
     useWorkOrders.mockReturnValue({ data: [job], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [heroNamedTech], loading: false, error: null });
 
     render(<Dispatch />);
 
-    const select = screen.getByRole("combobox");
-    // Neutral default -- the disabled placeholder option, never the hero-named technician's id.
+    // A scheduled job with no recorded technician gets one through the governed Reassign dialog (FIX JOBS AND
+    // DISPATCH) -- and the picker starts empty: no name-matched "hero" is chosen for the dispatcher.
+    fireEvent.click(screen.getByRole("button", { name: /Choose technician/i }));
+    const select = within(screen.getByRole("dialog")).getByRole("combobox");
+    // Neutral default -- the placeholder option, never the hero-named technician's id.
     expect(select.value).toBe("");
   });
 });

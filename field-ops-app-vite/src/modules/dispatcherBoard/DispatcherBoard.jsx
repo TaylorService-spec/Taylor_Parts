@@ -8,11 +8,7 @@ import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
-import { transitionWorkOrder } from "../../services/workOrderService";
-import {
-  reassignScheduledWorkOrder,
-  rescheduleWorkOrder,
-} from "../../services/schedulingCommandClient.js";
+import { suggestWorkOrderPlacement } from "../../services/workOrderService";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import {
   SLOT_MS,
@@ -28,21 +24,16 @@ import {
   startOfDayMillis,
   windowForDrop,
 } from "../../domain/dispatchBoardGeometry.js";
-import {
-  refusalContextFor,
-  schedulingRefusalMessage,
-  schedulingWarningMessages,
-} from "../../domain/schedulingRefusal.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { workOrderPastDueItem } from "../../domain/workOrderAttentionProjection.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { readBoardUrlState, writeBoardUrlState } from "../../domain/dispatchBoardUrlState.js";
-import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import DispatchLaneGrid from "./DispatchLaneGrid.jsx";
 import ReadyToScheduleQueue from "./ReadyToScheduleQueue.jsx";
 import PlacementDialog, { PLACEMENT_INTENT } from "./PlacementDialog.jsx";
+import { usePlacementCommands } from "./usePlacementCommands.js";
 import ReasonPrompt from "./ReasonPrompt.jsx";
 import {
   DISPATCH_VIEW,
@@ -124,8 +115,6 @@ export default function DispatcherBoard() {
   const [dragging, setDragging] = useState(null);
   const [dragOverLaneId, setDragOverLaneId] = useState(null);
   const [queueDragOver, setQueueDragOver] = useState(false);
-  const [busyWorkOrderId, setBusyWorkOrderId] = useState(null);
-  const [boardMessage, setBoardMessage] = useState(null);
   const [pendingPlacement, setPendingPlacement] = useState(null);
   // VC-1: the compact reason-only step. Distinct from pendingPlacement, which still drives the FULL
   // picker — the accessible non-drag path genuinely has to collect a placement, so it keeps its
@@ -153,6 +142,11 @@ export default function DispatcherBoard() {
     startMillis: availabilityWindow.startMillis,
     endMillis: availabilityWindow.endMillis,
   });
+
+  // ---- the four governed placement commands + Dispatch: shared with the Jobs page ------------
+  const {
+    runPlacement, dispatchTo, busyWorkOrderId, message: boardMessage, setMessage: setBoardMessage,
+  } = usePlacementCommands({ workOrders, technicians, onAfterPlacement: refreshAvailability });
 
   // ---- derived, all from the one live array -------------------------------------------------
 
@@ -260,99 +254,6 @@ export default function DispatcherBoard() {
 
   // ---- the four governed placement commands -------------------------------------------------
 
-  const runPlacement = useCallback(
-    async ({ intent, workOrderId, technicianId, startMillis, endMillis, reason }) => {
-      const workOrder = (workOrders ?? []).find((wo) => wo.id === workOrderId);
-      if (!workOrder) return { ok: false, message: "That work order is no longer on the board." };
-
-      setBusyWorkOrderId(workOrderId);
-      setBoardMessage(null);
-      const context = refusalContextFor(technicians ?? [], technicianId ?? workOrder.scheduledTechId, workOrder);
-
-      try {
-        if (intent === PLACEMENT_INTENT.SCHEDULE) {
-          // The EXISTING governed Schedule path — the same transition every other surface uses. No
-          // second scheduling function was invented for the board (ND-24 was exactly that lesson).
-          const result = await transitionWorkOrder(workOrder.id, "Schedule", {
-            scheduledStart: startMillis,
-            scheduledEnd: endMillis,
-            scheduledTechId: technicianId,
-          });
-          announce(schedulingWarningMessages(result?.warnings, context), `${workOrder.woNumber} scheduled.`);
-          return { ok: true };
-        }
-
-        if (intent === PLACEMENT_INTENT.RESCHEDULE) {
-          const res = await rescheduleWorkOrder({
-            workOrderId: workOrder.id,
-            scheduledStart: startMillis,
-            scheduledEnd: endMillis,
-            ...(technicianId ? { scheduledTechId: technicianId } : {}),
-            reason,
-            // The optimistic-concurrency guard: the start this board BELIEVED it was moving. If
-            // somebody else moved it between render and drop, the server refuses STALE_WORK_ORDER
-            // rather than silently overwriting a placement this dispatcher never saw.
-            expectedScheduledStart: placementWindow(workOrder)?.startMillis,
-          });
-          if (res.errorStatus) return refusal(res, context);
-          announce(schedulingWarningMessages(res.result?.warnings, context), `${workOrder.woNumber} moved.`);
-          return { ok: true };
-        }
-
-        if (intent === PLACEMENT_INTENT.REASSIGN) {
-          const res = await reassignScheduledWorkOrder({
-            workOrderId: workOrder.id,
-            scheduledTechId: technicianId,
-            reason,
-            // The window this board SAW: kept as-is, and the governed command's stale guard.
-            currentWindow: placementWindow(workOrder),
-          });
-          if (res.errorStatus) return refusal(res, context);
-          announce(schedulingWarningMessages(res.result?.warnings, context), `${workOrder.woNumber} reassigned.`);
-          return { ok: true };
-        }
-
-        if (intent === PLACEMENT_INTENT.UNSCHEDULE) {
-          // ND-18's governed reverse edge. MarkReady is NEVER used here: it targets the same status
-          // and would be a second, reason-free way out of SCHEDULED — the exact defect
-          // ACTION_ALLOWED_FROM exists to prevent.
-          await transitionWorkOrder(workOrder.id, "Unschedule", { unscheduleReason: reason });
-          setBoardMessage({ tone: "ok", text: `${workOrder.woNumber} returned to the queue.` });
-          return { ok: true };
-        }
-
-        return { ok: false, message: "That action is not available." };
-      } catch (err) {
-        // transitionWorkOrder throws; the scheduling callables return. Both end up as a sentence.
-        // The governed route's specific refusal rides on `reason` (WorkOrderApiError).
-        const code = err?.reason ?? err?.details?.code ?? null;
-        const message = code
-          ? schedulingRefusalMessage(code, stripPrefix(err?.code), { ...context, serverMessage: err?.message ?? null })
-          : workflowActionErrorMessage(err);
-        setBoardMessage({ tone: "error", text: message });
-        return { ok: false, message };
-      } finally {
-        setBusyWorkOrderId(null);
-        // A placement just consumed or released capacity; re-read so the lane is not still reporting
-        // the availability it had a moment ago.
-        refreshAvailability();
-      }
-
-      function refusal(res, ctx) {
-        const message = schedulingRefusalMessage(res.errorCode, res.errorStatus, { ...ctx, serverMessage: res.errorMessage ?? null });
-        setBoardMessage({ tone: "error", text: message });
-        return { ok: false, message };
-      }
-
-      function announce(warnings, okText) {
-        // ND-20's warnings ride along with a SUCCESSFUL placement and must not be styled as failures
-        // — nor dropped, which would make an out-of-hours placement look unremarkable.
-        if (warnings.length) setBoardMessage({ tone: "warn", text: `${okText} ${warnings.join(" ")}` });
-        else setBoardMessage({ tone: "ok", text: okText });
-      }
-    },
-    [workOrders, technicians, refreshAvailability],
-  );
 
   // ---- gestures -> intents -------------------------------------------------------------------
 
@@ -423,7 +324,7 @@ export default function DispatcherBoard() {
           : { intent, workOrder, technicianId, startMillis: dropped.startMillis, endMillis: dropped.endMillis },
       );
     },
-    [dragging, intentForDrop, band, runPlacement],
+    [dragging, intentForDrop, band, runPlacement, setBoardMessage],
   );
 
   /**
@@ -461,7 +362,7 @@ export default function DispatcherBoard() {
         endMillis: next.endMillis,
       });
     },
-    [],
+    [setBoardMessage],
   );
 
   const handleDropOnQueue = useCallback(() => {
@@ -481,7 +382,7 @@ export default function DispatcherBoard() {
       return;
     }
     setPendingPlacement({ intent: PLACEMENT_INTENT.UNSCHEDULE, workOrder, technicianId: null });
-  }, [dragging, role]);
+  }, [dragging, role, setBoardMessage]);
 
   const confirmPlacement = useCallback(
     async (payload) => {
@@ -540,7 +441,7 @@ export default function DispatcherBoard() {
         summaryItems={summaryItems}
       >
         <p className="ns-dispatch__live">
-          <span className="ns-dispatch__live-dot" aria-hidden="true" /> Live — updates as work orders change
+          <span className="ns-dispatch__live-dot" aria-hidden="true" /> Refreshes every 30 seconds, and right after your own changes
         </p>
       </WorkspaceIdentity>
 
@@ -717,7 +618,8 @@ export default function DispatcherBoard() {
                 intent: PLACEMENT_INTENT.SCHEDULE,
                 workOrder: wo,
                 technicianId: (recommendationsByWorkOrderId.get(wo.id) ?? [])[0]?.techId ?? null,
-                startMillis: band.startMillis,
+                // No guessed start: the dialog asks suggestWorkOrderPlacement for the earliest valid window.
+                startMillis: null,
                 durationMinutes: wo.estimatedDurationMinutes ?? 120,
               })
             }
@@ -756,19 +658,8 @@ export default function DispatcherBoard() {
               workOrder={selectedWorkOrder}
               technicians={technicians ?? []}
               recommendations={recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? []}
-              onDispatchToTechnician={async (workOrder, technicianId) => {
-                // DISPATCH — untouched by this migration and deliberately still reachable. Retiring
-                // the old board's presentation must not delete a governed capability with it.
-                setBusyWorkOrderId(workOrder.id);
-                try {
-                  await transitionWorkOrder(workOrder.id, "Dispatch", { assignedTechId: technicianId });
-                  setBoardMessage({ tone: "ok", text: `${workOrder.woNumber} dispatched.` });
-                } catch (err) {
-                  setBoardMessage({ tone: "error", text: workflowActionErrorMessage(err) });
-                } finally {
-                  setBusyWorkOrderId(null);
-                }
-              }}
+              // DISPATCH — deliberately still reachable here; the same governed transition the Jobs page uses.
+              onDispatchToTechnician={(workOrder, technicianId) => dispatchTo(workOrder, technicianId)}
               isDispatching={busyWorkOrderId === selectedWorkOrder.id}
             />
           ) : null}
@@ -783,6 +674,7 @@ export default function DispatcherBoard() {
           defaultTechnicianId={pendingPlacement.technicianId}
           defaultStartMillis={pendingPlacement.startMillis}
           defaultDurationMinutes={pendingPlacement.durationMinutes ?? 120}
+          suggestPlacement={suggestWorkOrderPlacement}
           submitting={busyWorkOrderId === pendingPlacement.workOrder.id}
           errorMessage={pendingPlacement.errorMessage ?? null}
           onConfirm={confirmPlacement}
@@ -834,9 +726,4 @@ function millisOf(value) {
 // puts the raw enum on screen for any value the local transform does not know about.
 function statusWords(status) {
   return workOrderStatusLabel(status) ?? "in a state that cannot be moved from here";
-}
-
-function stripPrefix(code) {
-  if (typeof code !== "string") return "";
-  return code.startsWith("functions/") ? code.slice("functions/".length) : code;
 }

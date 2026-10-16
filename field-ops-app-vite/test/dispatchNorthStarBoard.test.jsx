@@ -23,7 +23,7 @@ vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians
 vi.mock("../src/hooks/useAccountNames", () => ({ useAccountNames: vi.fn() }));
 vi.mock("../src/hooks/useSessionActivityFeed", () => ({ useSessionActivityFeed: vi.fn(() => []) }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
-vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn() }));
+vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn(), suggestWorkOrderPlacement: vi.fn() }));
 vi.mock("../src/services/schedulingCommandClient.js", () => ({
   rescheduleWorkOrder: vi.fn(),
   reassignScheduledWorkOrder: vi.fn(),
@@ -32,6 +32,20 @@ vi.mock("../src/services/schedulingCommandClient.js", () => ({
 }));
 
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard.jsx";
+import { suggestWorkOrderPlacement } from "../src/services/workOrderService";
+import { toZonedInput } from "../src/domain/zonedTime.js";
+
+// The governed placement default (suggestWorkOrderPlacement). Tests run in the browser's own zone so typed times read
+// exactly as they did before the default moved server-side.
+const TEST_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const suggestionAt = (startMillis, { employeeId = "tech-a", minutes = 120, outcome = "SLOT_FOUND", alternative = null } = {}) => ({
+  workOrderId: "wo-q", timeZone: TEST_ZONE, operatingCompanyId: "taylor", durationMinutes: minutes,
+  searchedFrom: new Date(startMillis).toISOString(), searchedTo: new Date(startMillis + 14 * 86_400_000).toISOString(), outcome,
+  suggestion: outcome === "SLOT_FOUND" ? { employeeId, displayName: null, start: new Date(startMillis).toISOString(), end: new Date(startMillis + minutes * 60_000).toISOString() } : null,
+  alternative,
+});
+const startInput = (dialog) => dialog.querySelector('input[type="datetime-local"]');
+const suggestionApplied = async (dialog) => waitFor(() => expect(startInput(dialog).value).not.toBe(""));
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import { useAccountNames } from "../src/hooks/useAccountNames";
@@ -139,6 +153,8 @@ beforeEach(() => {
   // shouldAdvanceTime keeps @testing-library's waitFor polling; a frozen clock deadlocks it.
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(PINNED_NOW);
+  suggestWorkOrderPlacement.mockReset();
+  suggestWorkOrderPlacement.mockImplementation(async () => suggestionAt(todayAt(7, 0)));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -346,7 +362,8 @@ describe("reason gates", () => {
   it("an initial Schedule needs no reason — nothing is being withdrawn", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
-    expect(screen.getByRole("button", { name: /^Schedule$/ }).disabled).toBe(false);
+    // The default arrives from the governed read; once it has, nothing else is asked for.
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Schedule$/ }).disabled).toBe(false));
   });
 });
 
@@ -359,6 +376,7 @@ describe("the accessible path is the same path", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    await suggestionApplied(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /^Schedule$/ }));
 
     await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
@@ -420,6 +438,7 @@ describe("backend truth is what renders", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    await suggestionApplied(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: /^Schedule$/ }));
 
     const status = await screen.findByRole("status");
@@ -904,5 +923,52 @@ describe("the board's view, date and filter live in the URL (G-6)", () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Next day" }));
     expect(screen.getByTestId("location").textContent).toMatch(/^\?date=\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// FIX JOBS AND DISPATCH (Owner 2026-10-16): the Schedule picker's default is the governed suggestion, never the band's
+// first hour; no valid slot is explained; a default that goes stale while the dialog is open is caught on submit.
+describe("the Schedule picker defaults to a valid future time (governed suggestion)", () => {
+  it("asks suggestWorkOrderPlacement for the queued work order and fills its start — not the band's first hour", async () => {
+    suggestWorkOrderPlacement.mockImplementation(async () => suggestionAt(todayAt(13, 30)));
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    const dialog = screen.getByRole("dialog");
+    await suggestionApplied(dialog);
+    expect(suggestWorkOrderPlacement).toHaveBeenCalled();
+    expect(suggestWorkOrderPlacement.mock.calls[0][0].workOrderId).toBe(QUEUE_WO.id);
+    expect(startInput(dialog).value).toBe(toZonedInput(todayAt(13, 30), TEST_ZONE));
+    expect(within(dialog).getByText(new RegExp(`Times are in ${TEST_ZONE.replace("/", "\\/")}`))).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /^Schedule$/ }).disabled).toBe(false);
+  });
+
+  it("when the chosen technician has no open time it says so and offers the earliest real alternative", async () => {
+    const alt = { employeeId: "tech-b", displayName: null, start: new Date(todayAt(15, 0)).toISOString(), end: new Date(todayAt(17, 0)).toISOString() };
+    suggestWorkOrderPlacement.mockImplementation(async ({ employeeId }) => (employeeId === "tech-a"
+      ? suggestionAt(todayAt(7, 0), { outcome: "NO_OPEN_TIME", alternative: alt })
+      : suggestionAt(todayAt(15, 0), { employeeId: "tech-b" })));
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    expect(await within(dialog).findByText(/has no open 2-hour window in the next 14 days/i)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Use this time/i }));
+    expect(startInput(dialog).value).toBe(toZonedInput(todayAt(15, 0), TEST_ZONE));
+    expect(within(dialog).getAllByRole("combobox")[0].value).toBe("tech-b");
+  });
+
+  it("a default that went stale while the dialog was open is caught on submit — no command, a fresh suggestion", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getAllByRole("combobox")[0], { target: { value: "tech-a" } });
+    await suggestionApplied(dialog);
+    const asked = suggestWorkOrderPlacement.mock.calls.length;
+    vi.setSystemTime(todayAt(8, 0)); // the suggested 07:00 start is now in the past
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Schedule$/ }));
+    expect(await within(dialog).findByText(/passed while this dialog was open/i)).toBeTruthy();
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+    await waitFor(() => expect(suggestWorkOrderPlacement.mock.calls.length).toBeGreaterThan(asked));
   });
 });

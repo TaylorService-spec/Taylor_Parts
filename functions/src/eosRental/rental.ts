@@ -21,6 +21,8 @@ import { businessDateOn } from "../eosOps/operatingCompanyBusinessTime";
 import { resolveOperatingCompanyFromKey } from "../eosFinance/financeFoundation";
 import { prepareRentalChargePackageOn } from "./rentalBilling";
 import { withActorAuthority } from "../eosOps/administrationReach";
+import { FINANCE_COMPANY_ASSIGNMENT_KEY, financeReachesCompany } from "../eosFinance/financeCompanyAccess";
+import type { ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -46,10 +48,32 @@ const refuse = (code: string, category: RentalError["category"], message: string
   throw new RentalError(code, category, message);
 };
 
-export interface RentalActor { readonly tenantId: string; readonly principalId: string; readonly capabilities: ReadonlySet<string> }
+/**
+ * COMPANY AUTHORITY (P0 rental security, Owner rulings D1-D8 2026-10-15; DECISIONS #235/#236). The route resolves the caller's
+ * EOS Core company authority ONCE per request (rentalOperations.ts) and hands it in here; request input never supplies it.
+ *   companyKeys  the ACTIVE operating-company keys the caller is authorized for (fleet / agreement records carry keys)
+ *   companyIds   the same companies by id (the create input names a company by id)
+ *   scopedHeld   the caller's scoped holdings, for Finance's stricter per-company receivable visibility (D8)
+ * Absent or empty = no company authority: every operation refuses (D1), after its capability check.
+ */
+export interface RentalActor {
+  readonly tenantId: string; readonly principalId: string; readonly capabilities: ReadonlySet<string>;
+  readonly companyKeys?: readonly string[]; readonly companyIds?: readonly string[]; readonly scopedHeld?: readonly ScopedHolding<unknown>[];
+}
 
 const requireCapability = (actor: RentalActor, key: string): void => {
   if (!actor?.capabilities?.has(key)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${key}`);
+};
+/** D1: capability first (the caller checked it), then governed company authority; none fails closed. */
+const requireCompanyAuthority = (actor: RentalActor): string[] => {
+  const keys = actor?.companyKeys;
+  if (!Array.isArray(keys) || keys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+  return [...(keys as readonly string[])];
+};
+/** Capability, then company authority -- the order every rental operation follows. */
+const authorize = (actor: RentalActor, capability: string): string[] => {
+  requireCapability(actor, capability);
+  return requireCompanyAuthority(actor);
 };
 const only = (input: Record<string, unknown>, allowed: readonly string[]): void => {
   if (input === null || typeof input !== "object" || Array.isArray(input)) refuse("INPUT_INVALID", "INVALID_INPUT", "input must be an object");
@@ -121,16 +145,22 @@ async function moveUnit(c: Queryable, actor: RentalActor, unit: Record<string, a
     WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, unit.id, to, currentAssignmentId]);
 }
 
-async function lockUnit(c: Queryable, tenantId: string, fleetUnitId: string) {
-  const { rows } = await c.query(`SELECT * FROM eos_rental.fleet_units WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, fleetUnitId]);
+// D2/D3: every lock is narrowed to the caller's companies -- a fleet unit by its OWNER company, an agreement by its own company, an
+// assignment by its agreement's. A record outside the caller's companies is answered exactly like one that does not exist.
+async function lockUnit(c: Queryable, actor: RentalActor, fleetUnitId: string) {
+  const { rows } = await c.query(`SELECT * FROM eos_rental.fleet_units WHERE tenant_id = $1 AND id = $2 AND owner_operating_company_key = ANY($3::text[]) FOR UPDATE`,
+    [actor.tenantId, fleetUnitId, requireCompanyAuthority(actor)]);
   return rows[0] ?? refuse("FLEET_UNIT_NOT_FOUND", "NOT_FOUND", "no rental fleet unit with that id");
 }
-async function lockAgreement(c: Queryable, tenantId: string, agreementId: string) {
-  const { rows } = await c.query(`SELECT * FROM eos_rental.rental_agreements WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, agreementId]);
+async function lockAgreement(c: Queryable, actor: RentalActor, agreementId: string) {
+  const { rows } = await c.query(`SELECT * FROM eos_rental.rental_agreements WHERE tenant_id = $1 AND id = $2 AND operating_company_key = ANY($3::text[]) FOR UPDATE`,
+    [actor.tenantId, agreementId, requireCompanyAuthority(actor)]);
   return rows[0] ?? refuse("RENTAL_AGREEMENT_NOT_FOUND", "NOT_FOUND", "no Rental Agreement with that id");
 }
-async function lockAssignment(c: Queryable, tenantId: string, assignmentId: string) {
-  const { rows } = await c.query(`SELECT * FROM eos_rental.rental_assignments WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, assignmentId]);
+async function lockAssignment(c: Queryable, actor: RentalActor, assignmentId: string) {
+  const { rows } = await c.query(`SELECT s.* FROM eos_rental.rental_assignments s WHERE s.tenant_id = $1 AND s.id = $2
+      AND EXISTS (SELECT 1 FROM eos_rental.rental_agreements g WHERE g.tenant_id = s.tenant_id AND g.id = s.agreement_id AND g.operating_company_key = ANY($3::text[]))
+    FOR UPDATE`, [actor.tenantId, assignmentId, requireCompanyAuthority(actor)]);
   return rows[0] ?? refuse("RENTAL_ASSIGNMENT_NOT_FOUND", "NOT_FOUND", "no rental assignment with that id");
 }
 export async function currentTermsOn(db: Queryable, tenantId: string, agreementId: string) {
@@ -152,16 +182,19 @@ export async function allocateRentalAgreementNumber(c: Queryable, tenantId: stri
 // ════════════════════ fleet ════════════════════
 
 export async function designateFleetUnit(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_FLEET_MANAGE);
+  const keys = authorize(actor, RENTAL_FLEET_MANAGE);
   only(input, ["partId", "serialNumber", "displayName", "reason"]);
   const partId = text(input.partId, "partId"), serial = text(input.serialNumber, "serialNumber");
   const displayName = text(input.displayName, "displayName"), reason = text(input.reason, "reason", 1000);
   return inTransaction(pool, async (c) => {
     const { rows: existing } = await c.query(`SELECT * FROM eos_rental.fleet_units WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3`, [actor.tenantId, partId, serial]);
-    if (existing[0]) return Object.freeze({ outcome: "replayed" as const, fleetUnit: await readFleetUnitOn(c, actor.tenantId, String(existing[0].id)) });
+    if (existing[0]) {
+      if (!keys.includes(String(existing[0].owner_operating_company_key))) refuse("UNIT_NOT_FOUND", "NOT_FOUND", `no serialized custody row for ${partId}/${serial}`);
+      return Object.freeze({ outcome: "replayed" as const, fleetUnit: await readFleetUnitFor(c, actor, String(existing[0].id)) });
+    }
     const { rows: cu } = await c.query(`SELECT status::text AS status, location_type::text AS location_type, location_id, operating_company_key
       FROM eos_ops.serialized_custody WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3 FOR UPDATE`, [actor.tenantId, partId, serial]);
-    const custody = cu[0] ?? refuse("UNIT_NOT_FOUND", "NOT_FOUND", `no serialized custody row for ${partId}/${serial}`);
+    const custody = cu[0] && keys.includes(String(cu[0].operating_company_key)) ? cu[0] : refuse("UNIT_NOT_FOUND", "NOT_FOUND", `no serialized custody row for ${partId}/${serial}`);
     if (custody.status !== "AVAILABLE" || !["WAREHOUSE", "BIN"].includes(custody.location_type)) {
       refuse("UNIT_NOT_IN_TAYLOR_STOCK", "PRECONDITION_FAILED", `only an AVAILABLE unit in a company warehouse / bin can join the fleet (it is ${custody.status} at ${custody.location_type})`);
     }
@@ -171,19 +204,19 @@ export async function designateFleetUnit(pool: Pool, actor: RentalActor, input: 
     await fleetEvent(c, actor, { id, availability: null, owner_operating_company_key: custody.operating_company_key },
       { event: "DESIGNATED", to: "AVAILABLE", locationType: custody.location_type, locationId: custody.location_id, reason });
     await audit(c, actor, "rental.fleet.designate", "rental_fleet_unit", id, { partId, serial, owner: custody.operating_company_key }, reason);
-    return Object.freeze({ outcome: "recorded" as const, fleetUnit: await readFleetUnitOn(c, actor.tenantId, id) });
+    return Object.freeze({ outcome: "recorded" as const, fleetUnit: await readFleetUnitFor(c, actor, id) });
   });
 }
 
 /** UNAVAILABLE (from AVAILABLE / SERVICE_HOLD / INSPECTION), or back to AVAILABLE (from SERVICE_HOLD / UNAVAILABLE) -- with a reason. */
 export async function setFleetUnitAvailability(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_FLEET_MANAGE);
+  authorize(actor, RENTAL_FLEET_MANAGE);
   only(input, ["fleetUnitId", "availability", "reason"]);
   const fleetUnitId = text(input.fleetUnitId, "fleetUnitId"), reason = text(input.reason, "reason", 1000);
   const to = input.availability;
   if (to !== "UNAVAILABLE" && to !== "AVAILABLE") refuse("AVAILABILITY_INVALID", "INVALID_INPUT", "availability is UNAVAILABLE or AVAILABLE (other states follow the lifecycle)");
   return inTransaction(pool, async (c) => {
-    const unit = await lockUnit(c, actor.tenantId, fleetUnitId);
+    const unit = await lockUnit(c, actor, fleetUnitId);
     const allowedFrom = to === "UNAVAILABLE" ? ["AVAILABLE", "SERVICE_HOLD", "INSPECTION"] : ["SERVICE_HOLD", "UNAVAILABLE"];
     if (!allowedFrom.includes(unit.availability)) {
       refuse("RENTAL_AVAILABILITY_TRANSITION_INVALID", "PRECONDITION_FAILED", `a unit ${unit.availability} cannot be set ${to as string} directly`);
@@ -196,18 +229,20 @@ export async function setFleetUnitAvailability(pool: Pool, actor: RentalActor, i
     await moveUnit(c, actor, unit, to as string, null);
     await fleetEvent(c, actor, unit, { event: to === "UNAVAILABLE" ? "MARKED_UNAVAILABLE" : unit.availability === "SERVICE_HOLD" ? "SERVICE_HOLD_RELEASED" : "AVAILABILITY_RESTORED", to: to as string, reason });
     await audit(c, actor, "rental.fleet.availability", "rental_fleet_unit", fleetUnitId, { from: unit.availability, to }, reason);
-    return Object.freeze({ outcome: "recorded" as const, fleetUnit: await readFleetUnitOn(c, actor.tenantId, fleetUnitId) });
+    return Object.freeze({ outcome: "recorded" as const, fleetUnit: await readFleetUnitFor(c, actor, fleetUnitId) });
   });
 }
 
 // ════════════════════ agreement ════════════════════
 
 export async function createRentalAgreement(pool: Pool, actor: RentalActor, input: Record<string, unknown>, now: () => Date = () => new Date()) {
-  requireCapability(actor, RENTAL_AGREEMENT_MANAGE);
+  authorize(actor, RENTAL_AGREEMENT_MANAGE);
   only(input, ["operatingCompanyId", "accountId", "customerLocationId", "startDate", "currency", "rateMinor", "billingFrequency", "expectedEndDate",
     "deliveryChargeMinor", "installChargeMinor", "deliveryRequirements", "returnExpectations", "idempotencyKey"]);
   const companyId = text(input.operatingCompanyId, "operatingCompanyId");
   if (companyId.toLowerCase() === "consolidated") refuse("CONSOLIDATED_NOT_A_COMPANY", "INVALID_INPUT", "CONSOLIDATED owns no fleet and rents nothing");
+  // The input names a company; it must be one of the caller's authorized companies. Outside == unknown (no oracle).
+  if (!(actor.companyIds ?? []).includes(companyId)) refuse("OPERATING_COMPANY_UNKNOWN", "INVALID_INPUT", "operatingCompanyId is not one of your operating companies");
   const accountId = text(input.accountId, "accountId"), siteId = text(input.customerLocationId, "customerLocationId");
   const start = isoDate(input.startDate, "startDate"), end = isoDate(input.expectedEndDate, "expectedEndDate");
   if (end <= start) refuse("RENTAL_TERM_INVALID", "INVALID_INPUT", "the expected end follows the start");
@@ -224,7 +259,7 @@ export async function createRentalAgreement(pool: Pool, actor: RentalActor, inpu
     const { rows: prior } = await c.query(`SELECT id, request_fingerprint FROM eos_rental.rental_agreements WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, key]);
     if (prior[0]) {
       if (prior[0].request_fingerprint !== fp) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that key created a different Rental Agreement");
-      return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(prior[0].id)) });
+      return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementFor(c, actor, String(prior[0].id)) });
     }
     let companyKey: string;
     try { companyKey = await resolveOperatingCompanyKeyForCompany(c, actor.tenantId, companyId); } catch {
@@ -244,33 +279,33 @@ export async function createRentalAgreement(pool: Pool, actor: RentalActor, inpu
         delivery_charge_minor, install_charge_minor, change_kind, reason, recorded_by) VALUES ($1,$2,1,$3,$4,$5,$6,$7,'ORIGINAL','original agreed terms',$8)`,
       [actor.tenantId, id, rate.toString(), input.billingFrequency, end, delivery?.toString() ?? null, install?.toString() ?? null, actor.principalId]);
     await audit(c, actor, "rental.agreement.create", "rental_agreement", id, { number, operatingCompanyKey: companyKey, accountId, siteId }, null);
-    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, id) });
+    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementFor(c, actor, id) });
   });
 }
 
 export async function activateRentalAgreement(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_AGREEMENT_MANAGE);
+  authorize(actor, RENTAL_AGREEMENT_MANAGE);
   only(input, ["agreementId"]);
   const agreementId = text(input.agreementId, "agreementId");
   return inTransaction(pool, async (c) => {
-    const a = await lockAgreement(c, actor.tenantId, agreementId);
-    if (a.status === "ACTIVE") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
+    const a = await lockAgreement(c, actor, agreementId);
+    if (a.status === "ACTIVE") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementFor(c, actor, agreementId) });
     if (a.status !== "DRAFT") refuse("RENTAL_AGREEMENT_NOT_DRAFT", "PRECONDITION_FAILED", `a ${String(a.status)} agreement is not activated`);
     await c.query(`UPDATE eos_rental.rental_agreements SET status = 'ACTIVE', activated_by = $3, activated_at = now(), version = version + 1, updated_at = now()
       WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, agreementId, actor.principalId]);
     await audit(c, actor, "rental.agreement.activate", "rental_agreement", agreementId, { status: "ACTIVE" }, null);
-    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
+    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementFor(c, actor, agreementId) });
   });
 }
 
 /** EXTENSION (a later expected end) or AMENDMENT (any agreed term) -- a NEW terms version; earlier versions never change. */
 export async function amendRentalAgreementTerms(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_AGREEMENT_MANAGE);
+  authorize(actor, RENTAL_AGREEMENT_MANAGE);
   only(input, ["agreementId", "changeKind", "expectedEndDate", "rateMinor", "billingFrequency", "deliveryChargeMinor", "installChargeMinor", "reason"]);
   const agreementId = text(input.agreementId, "agreementId"), reason = text(input.reason, "reason", 1000);
   if (input.changeKind !== "EXTENSION" && input.changeKind !== "AMENDMENT") refuse("CHANGE_KIND_INVALID", "INVALID_INPUT", "changeKind is EXTENSION or AMENDMENT");
   return inTransaction(pool, async (c) => {
-    const a = await lockAgreement(c, actor.tenantId, agreementId);
+    const a = await lockAgreement(c, actor, agreementId);
     if (!["DRAFT", "ACTIVE"].includes(a.status)) refuse("RENTAL_AGREEMENT_ENDED", "PRECONDITION_FAILED", `a ${String(a.status)} agreement is not amended`);
     const t = await currentTermsOn(c, actor.tenantId, agreementId);
     const end = input.expectedEndDate === undefined ? dateText(t.expected_end_date) as string : isoDate(input.expectedEndDate, "expectedEndDate");
@@ -291,18 +326,18 @@ export async function amendRentalAgreementTerms(pool: Pool, actor: RentalActor, 
       [actor.tenantId, agreementId, version, rate.toString(), freq, end, delivery, install, input.changeKind, reason, actor.principalId]);
     await c.query(`UPDATE eos_rental.rental_agreements SET version = version + 1, updated_at = now() WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, agreementId]);
     await audit(c, actor, "rental.agreement.amend", "rental_agreement", agreementId, { termsVersion: version, changeKind: input.changeKind, expectedEndDate: end }, reason);
-    return Object.freeze({ outcome: "recorded" as const, termsVersion: version, agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
+    return Object.freeze({ outcome: "recorded" as const, termsVersion: version, agreement: await readRentalAgreementFor(c, actor, agreementId) });
   });
 }
 
 /** CLOSED (an active agreement with every unit returned) or CANCELLED (never deployed) -- with a reason. */
 export async function endRentalAgreement(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_AGREEMENT_MANAGE);
+  authorize(actor, RENTAL_AGREEMENT_MANAGE);
   only(input, ["agreementId", "outcome", "reason"]);
   const agreementId = text(input.agreementId, "agreementId"), reason = text(input.reason, "reason", 1000);
   if (input.outcome !== "CLOSED" && input.outcome !== "CANCELLED") refuse("OUTCOME_INVALID", "INVALID_INPUT", "outcome is CLOSED or CANCELLED");
   return inTransaction(pool, async (c) => {
-    const a = await lockAgreement(c, actor.tenantId, agreementId);
+    const a = await lockAgreement(c, actor, agreementId);
     if (!["DRAFT", "ACTIVE"].includes(a.status)) refuse("RENTAL_AGREEMENT_ENDED", "PRECONDITION_FAILED", `the agreement is already ${String(a.status)}`);
     const { rows: live } = await c.query(`SELECT count(*)::int AS n FROM eos_rental.rental_assignments WHERE tenant_id = $1 AND agreement_id = $2
       AND status IN ('RESERVED', 'DEPLOYED', 'RETURN_PENDING')`, [actor.tenantId, agreementId]);
@@ -316,14 +351,14 @@ export async function endRentalAgreement(pool: Pool, actor: RentalActor, input: 
     await c.query(`UPDATE eos_rental.rental_agreements SET status = $3, ended_by = $4, ended_at = now(), end_reason = $5, version = version + 1, updated_at = now()
       WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, agreementId, input.outcome, actor.principalId, reason]);
     await audit(c, actor, "rental.agreement.end", "rental_agreement", agreementId, { status: input.outcome }, reason);
-    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
+    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementFor(c, actor, agreementId) });
   });
 }
 
 // ════════════════════ assign ════════════════════
 
 export async function reserveRentalUnit(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_UNIT_ASSIGN);
+  authorize(actor, RENTAL_UNIT_ASSIGN);
   only(input, ["agreementId", "fleetUnitId", "replacesAssignmentId", "idempotencyKey"]);
   const agreementId = text(input.agreementId, "agreementId"), fleetUnitId = text(input.fleetUnitId, "fleetUnitId"), key = text(input.idempotencyKey, "idempotencyKey");
   const replaces = optText(input.replacesAssignmentId, "replacesAssignmentId", 200);
@@ -331,17 +366,17 @@ export async function reserveRentalUnit(pool: Pool, actor: RentalActor, input: R
     const { rows: prior } = await c.query(`SELECT * FROM eos_rental.rental_assignments WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, key]);
     if (prior[0]) {
       if (prior[0].agreement_id !== agreementId || prior[0].fleet_unit_id !== fleetUnitId) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that key reserved something else");
-      return Object.freeze({ outcome: "replayed" as const, assignmentId: String(prior[0].id), agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
+      return Object.freeze({ outcome: "replayed" as const, assignmentId: String(prior[0].id), agreement: await readRentalAgreementFor(c, actor, agreementId) });
     }
-    const a = await lockAgreement(c, actor.tenantId, agreementId);
+    const a = await lockAgreement(c, actor, agreementId);
     if (!["DRAFT", "ACTIVE"].includes(a.status)) refuse("RENTAL_AGREEMENT_ENDED", "PRECONDITION_FAILED", `a ${String(a.status)} agreement takes no equipment`);
-    const unit = await lockUnit(c, actor.tenantId, fleetUnitId);
+    const unit = await lockUnit(c, actor, fleetUnitId);
     if (unit.owner_operating_company_key !== a.operating_company_key) {
       refuse("RENTAL_COMPANY_MISMATCH", "PRECONDITION_FAILED", "a company rents only its own fleet; the unit is owned by another operating company");
     }
     if (unit.availability !== "AVAILABLE") refuse("RENTAL_UNIT_NOT_AVAILABLE", "CONFLICT", `the unit is ${String(unit.availability)}; it cannot be booked`);
     if (replaces !== null) {
-      const r = await lockAssignment(c, actor.tenantId, replaces);
+      const r = await lockAssignment(c, actor, replaces);
       if (r.agreement_id !== agreementId || r.status !== "DEPLOYED") refuse("EXCHANGE_TARGET_INVALID", "PRECONDITION_FAILED", "an exchange replaces a DEPLOYED unit of the same agreement");
     }
     const id = `ras_${randomUUID()}`;
@@ -355,48 +390,48 @@ export async function reserveRentalUnit(pool: Pool, actor: RentalActor, input: R
     await moveUnit(c, actor, unit, "RESERVED", id);
     await fleetEvent(c, actor, unit, { event: "RESERVED", to: "RESERVED", agreementId, assignmentId: id, reason: replaces ? `exchange for ${replaces}` : null });
     await audit(c, actor, "rental.unit.reserve", "rental_assignment", id, { agreementId, fleetUnitId, replacesAssignmentId: replaces }, null);
-    return Object.freeze({ outcome: "recorded" as const, assignmentId: id, agreement: await readRentalAgreementOn(c, actor.tenantId, agreementId) });
+    return Object.freeze({ outcome: "recorded" as const, assignmentId: id, agreement: await readRentalAgreementFor(c, actor, agreementId) });
   });
 }
 
 export async function releaseRentalReservation(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_UNIT_ASSIGN);
+  authorize(actor, RENTAL_UNIT_ASSIGN);
   only(input, ["assignmentId", "reason"]);
   const assignmentId = text(input.assignmentId, "assignmentId"), reason = text(input.reason, "reason", 1000);
   return inTransaction(pool, async (c) => {
-    const s = await lockAssignment(c, actor.tenantId, assignmentId);
+    const s = await lockAssignment(c, actor, assignmentId);
     if (s.status !== "RESERVED") refuse("RENTAL_ASSIGNMENT_NOT_RESERVED", "PRECONDITION_FAILED", `a ${String(s.status)} assignment is not released (a deployed unit is returned)`);
-    const unit = await lockUnit(c, actor.tenantId, s.fleet_unit_id);
+    const unit = await lockUnit(c, actor, s.fleet_unit_id);
     await c.query(`UPDATE eos_rental.rental_assignments SET status = 'RELEASED', released_by = $3, released_at = now(), release_reason = $4 WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, assignmentId, actor.principalId, reason]);
     await moveUnit(c, actor, unit, "AVAILABLE", null);
     await fleetEvent(c, actor, unit, { event: "RESERVATION_RELEASED", to: "AVAILABLE", agreementId: s.agreement_id, assignmentId, reason });
-    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
+    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementFor(c, actor, String(s.agreement_id)) });
   });
 }
 
 // ════════════════════ return ════════════════════
 
 export async function initiateRentalReturn(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_UNIT_RETURN);
+  authorize(actor, RENTAL_UNIT_RETURN);
   only(input, ["assignmentId", "expectedPickupDate", "returnWorkOrderId", "reason"]);
   const assignmentId = text(input.assignmentId, "assignmentId");
   const pickup = input.expectedPickupDate === undefined ? null : isoDate(input.expectedPickupDate, "expectedPickupDate");
   const woId = optText(input.returnWorkOrderId, "returnWorkOrderId", 200), reason = optText(input.reason, "reason", 1000);
   return inTransaction(pool, async (c) => {
-    const s = await lockAssignment(c, actor.tenantId, assignmentId);
-    if (s.status === "RETURN_PENDING") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
+    const s = await lockAssignment(c, actor, assignmentId);
+    if (s.status === "RETURN_PENDING") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementFor(c, actor, String(s.agreement_id)) });
     if (s.status !== "DEPLOYED") refuse("RENTAL_ASSIGNMENT_NOT_DEPLOYED", "PRECONDITION_FAILED", `a ${String(s.status)} assignment has nothing to return`);
     if (woId !== null) {
       const { rows } = await c.query(`SELECT rental_agreement_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, woId]);
       if (rows[0]?.rental_agreement_id !== s.agreement_id) refuse("RETURN_WORK_ORDER_MISMATCH", "PRECONDITION_FAILED", "the pickup Work Order is not one of this agreement's");
     }
-    const unit = await lockUnit(c, actor.tenantId, s.fleet_unit_id);
+    const unit = await lockUnit(c, actor, s.fleet_unit_id);
     await c.query(`UPDATE eos_rental.rental_assignments SET status = 'RETURN_PENDING', return_initiated_by = $3, return_initiated_at = now(), expected_pickup_date = $4,
       return_work_order_id = $5 WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, assignmentId, actor.principalId, pickup, woId]);
     await moveUnit(c, actor, unit, "RETURN_PENDING", assignmentId);
     await fleetEvent(c, actor, unit, { event: "RETURN_INITIATED", to: "RETURN_PENDING", agreementId: s.agreement_id, assignmentId, workOrderId: woId, equipmentId: s.equipment_id, reason });
-    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
+    return Object.freeze({ outcome: "recorded" as const, agreement: await readRentalAgreementFor(c, actor, String(s.agreement_id)) });
   });
 }
 
@@ -406,15 +441,15 @@ export async function initiateRentalReturn(pool: Pool, actor: RentalActor, input
  * RENTAL_RETURNED event (its history kept), and the unit waits in INSPECTION -- never automatically AVAILABLE.
  */
 export async function receiveRentalReturn(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_UNIT_RETURN);
+  authorize(actor, RENTAL_UNIT_RETURN);
   only(input, ["assignmentId", "warehouseId", "conditionNotes", "idempotencyKey"]);
   const assignmentId = text(input.assignmentId, "assignmentId"), warehouseId = text(input.warehouseId, "warehouseId");
   const notes = text(input.conditionNotes, "conditionNotes", 2000), key = text(input.idempotencyKey, "idempotencyKey");
   return inTransaction(pool, async (c) => {
-    const s = await lockAssignment(c, actor.tenantId, assignmentId);
-    if (s.status === "RETURNED") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
+    const s = await lockAssignment(c, actor, assignmentId);
+    if (s.status === "RETURNED") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementFor(c, actor, String(s.agreement_id)) });
     if (!["DEPLOYED", "RETURN_PENDING"].includes(s.status)) refuse("RENTAL_ASSIGNMENT_NOT_DEPLOYED", "PRECONDITION_FAILED", `a ${String(s.status)} assignment has nothing to receive`);
-    const unit = await lockUnit(c, actor.tenantId, s.fleet_unit_id);
+    const unit = await lockUnit(c, actor, s.fleet_unit_id);
     const { rows: wh } = await c.query(`SELECT operating_company_key, status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, warehouseId]);
     const w = wh[0] ?? refuse("WAREHOUSE_NOT_FOUND", "NOT_FOUND", "no such warehouse");
     if (w.operating_company_key !== unit.owner_operating_company_key) {
@@ -456,21 +491,24 @@ export async function receiveRentalReturn(pool: Pool, actor: RentalActor, input:
     await fleetEvent(c, actor, unit, { event: "RETURN_RECEIVED", to: "INSPECTION", agreementId: s.agreement_id, assignmentId, equipmentId: s.equipment_id,
       locationType: "WAREHOUSE", locationId: warehouseId, reason: notes });
     await audit(c, actor, "rental.unit.returnReceive", "rental_assignment", assignmentId, { warehouseId, movementId, equipmentId: s.equipment_id }, notes);
-    return Object.freeze({ outcome: "recorded" as const, movementId, agreement: await readRentalAgreementOn(c, actor.tenantId, String(s.agreement_id)) });
+    return Object.freeze({ outcome: "recorded" as const, movementId, agreement: await readRentalAgreementFor(c, actor, String(s.agreement_id)) });
   });
 }
 
 const INSPECTION_RESULT: Readonly<Record<string, string>> = Object.freeze({ READY: "AVAILABLE", NEEDS_SERVICE: "SERVICE_HOLD", UNAVAILABLE: "UNAVAILABLE" });
 
 export async function inspectRentalUnit(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_UNIT_RETURN);
+  authorize(actor, RENTAL_UNIT_RETURN);
   only(input, ["fleetUnitId", "outcome", "conditionNotes", "idempotencyKey"]);
   const fleetUnitId = text(input.fleetUnitId, "fleetUnitId"), notes = text(input.conditionNotes, "conditionNotes", 2000), key = text(input.idempotencyKey, "idempotencyKey");
   const to = INSPECTION_RESULT[String(input.outcome)] ?? refuse("OUTCOME_INVALID", "INVALID_INPUT", "outcome is READY, NEEDS_SERVICE or UNAVAILABLE");
   return inTransaction(pool, async (c) => {
-    const { rows: prior } = await c.query(`SELECT id FROM eos_rental.rental_inspections WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, key]);
-    if (prior[0]) return Object.freeze({ outcome: "replayed" as const, inspectionId: String(prior[0].id), fleetUnit: await readFleetUnitOn(c, actor.tenantId, fleetUnitId) });
-    const unit = await lockUnit(c, actor.tenantId, fleetUnitId);
+    const { rows: prior } = await c.query(`SELECT id, fleet_unit_id FROM eos_rental.rental_inspections WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, key]);
+    if (prior[0]) {
+      if (String(prior[0].fleet_unit_id) !== fleetUnitId) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that key inspected a different unit");
+      return Object.freeze({ outcome: "replayed" as const, inspectionId: String(prior[0].id), fleetUnit: await readFleetUnitFor(c, actor, fleetUnitId) });
+    }
+    const unit = await lockUnit(c, actor, fleetUnitId);
     if (unit.availability !== "INSPECTION") refuse("RENTAL_UNIT_NOT_IN_INSPECTION", "PRECONDITION_FAILED", `a unit ${String(unit.availability)} is not awaiting inspection`);
     const { rows: last } = await c.query(`SELECT id FROM eos_rental.rental_assignments WHERE tenant_id = $1 AND fleet_unit_id = $2 AND status = 'RETURNED' ORDER BY returned_at DESC LIMIT 1`,
       [actor.tenantId, fleetUnitId]);
@@ -479,7 +517,7 @@ export async function inspectRentalUnit(pool: Pool, actor: RentalActor, input: R
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [id, actor.tenantId, fleetUnitId, last[0]?.id ?? null, input.outcome, notes, actor.principalId, key]);
     await moveUnit(c, actor, unit, to, null);
     await fleetEvent(c, actor, unit, { event: "INSPECTED", to, assignmentId: last[0]?.id ?? null, reason: `${String(input.outcome)}: ${notes}` });
-    return Object.freeze({ outcome: "recorded" as const, inspectionId: id, fleetUnit: await readFleetUnitOn(c, actor.tenantId, fleetUnitId) });
+    return Object.freeze({ outcome: "recorded" as const, inspectionId: id, fleetUnit: await readFleetUnitFor(c, actor, fleetUnitId) });
   });
 }
 
@@ -503,7 +541,7 @@ export function wholePeriods(start: string, end: string, frequency: string): num
  * charge is the agreed amount, once. Tax is the caller's evidence (DETERMINED amount or NOT_DETERMINED -> HELD).
  */
 export async function recordRentalCharge(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_CHARGE_RECORD);
+  const keys = authorize(actor, RENTAL_CHARGE_RECORD);
   only(input, ["agreementId", "kind", "periodStart", "periodEnd", "taxEvidence", "notes", "idempotencyKey"]);
   const agreementId = text(input.agreementId, "agreementId"), key = text(input.idempotencyKey, "idempotencyKey"), notes = optText(input.notes, "notes", 1000);
   const kind = input.kind;
@@ -511,13 +549,16 @@ export async function recordRentalCharge(pool: Pool, actor: RentalActor, input: 
   const tax = parseTaxEvidence(input.taxEvidence);
   const fp = fingerprintOf([agreementId, kind, input.periodStart ?? null, input.periodEnd ?? null, tax]);
   return inTransaction(pool, async (c) => {
-    const { rows: prior } = await c.query(`SELECT id, request_fingerprint FROM eos_rental.rental_charges WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, key]);
+    const { rows: prior } = await c.query(`SELECT c.id, c.request_fingerprint, g.operating_company_key FROM eos_rental.rental_charges c
+        JOIN eos_rental.rental_agreements g ON g.tenant_id = c.tenant_id AND g.id = c.agreement_id
+       WHERE c.tenant_id = $1 AND c.idempotency_key = $2`, [actor.tenantId, key]);
     if (prior[0]) {
-      if (prior[0].request_fingerprint !== fp) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that key recorded a different charge");
+      // Re-authorized before anything stored is returned; another company's key answers as a reused key, with no content.
+      if (prior[0].request_fingerprint !== fp || !keys.includes(String(prior[0].operating_company_key))) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that key recorded a different charge");
       const pkg = await prepareRentalChargePackageOn(c, actor, String(prior[0].id));
       return Object.freeze({ outcome: "replayed" as const, chargeId: String(prior[0].id), billingPackage: pkg });
     }
-    const a = await lockAgreement(c, actor.tenantId, agreementId);
+    const a = await lockAgreement(c, actor, agreementId);
     if (!["ACTIVE", "CLOSED"].includes(a.status)) refuse("RENTAL_AGREEMENT_NOT_ACTIVE", "PRECONDITION_FAILED", `a ${String(a.status)} agreement is not billed`);
     // ONE governed company (fails closed; CONSOLIDATED refused).
     await resolveOperatingCompanyFromKey(c, actor.tenantId, a.operating_company_key);
@@ -579,12 +620,14 @@ function parseTaxEvidence(v: unknown): { status: "DETERMINED" | "NOT_DETERMINED"
 
 /** A later tax-evidence version for a HELD charge; the package is re-evaluated (a new version supersedes the HELD one). */
 export async function determineRentalChargeTax(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_CHARGE_RECORD);
+  const keys = authorize(actor, RENTAL_CHARGE_RECORD);
   only(input, ["chargeId", "taxEvidence"]);
   const chargeId = text(input.chargeId, "chargeId");
   const tax = parseTaxEvidence(input.taxEvidence);
   return inTransaction(pool, async (c) => {
-    const { rows: ch } = await c.query(`SELECT id FROM eos_rental.rental_charges WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, chargeId]);
+    const { rows: ch } = await c.query(`SELECT c.id FROM eos_rental.rental_charges c
+        JOIN eos_rental.rental_agreements g ON g.tenant_id = c.tenant_id AND g.id = c.agreement_id
+       WHERE c.tenant_id = $1 AND c.id = $2 AND g.operating_company_key = ANY($3::text[]) FOR UPDATE OF c`, [actor.tenantId, chargeId, keys]);
     if (!ch[0]) refuse("RENTAL_CHARGE_NOT_FOUND", "NOT_FOUND", "no rental charge with that id");
     const { rows: last } = await c.query(`SELECT version, status FROM eos_rental.rental_charge_tax_evidence WHERE tenant_id = $1 AND charge_id = $2 ORDER BY version DESC LIMIT 1`,
       [actor.tenantId, chargeId]);
@@ -679,6 +722,32 @@ export async function readRentalAgreementOn(db: Queryable, tenantId: string, agr
   });
 }
 
+/**
+ * The ACTOR-FACING agreement projection: the agreement must be one of the caller's companies (else answered exactly like a
+ * missing one, D2), and receivables and balances are shown only with Finance's EXISTING per-company authority (D8,
+ * eosFinance/financeCompanyAccess.ts) -- otherwise each charge's `receivable` is omitted and `financeWithheld` is true.
+ */
+export async function readRentalAgreementFor(db: Queryable, actor: RentalActor, agreementId: string) {
+  const { rows } = await db.query(`SELECT g.operating_company_key, k.operating_company_id FROM eos_rental.rental_agreements g
+      LEFT JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = g.tenant_id AND k.operating_company_key = g.operating_company_key AND k.status = 'ACTIVE'
+     WHERE g.tenant_id = $1 AND g.id = $2 AND g.operating_company_key = ANY($3::text[])`, [actor.tenantId, agreementId, requireCompanyAuthority(actor)]);
+  if (!rows[0]) refuse("RENTAL_AGREEMENT_NOT_FOUND", "NOT_FOUND", "no Rental Agreement with that id");
+  const agreement = await readRentalAgreementOn(db, actor.tenantId, agreementId);
+  const companyId = rows[0].operating_company_id === null ? null : String(rows[0].operating_company_id);
+  const financeVisible = companyId !== null && financeReachesCompany(actor, FINANCE_COMPANY_ASSIGNMENT_KEY, companyId);
+  if (financeVisible) return Object.freeze({ ...agreement, financeWithheld: false as const });
+  return Object.freeze({ ...agreement, financeWithheld: true as const,
+    charges: agreement.charges.map(({ receivable: _withheld, ...charge }) => charge) });
+}
+
+/** The ACTOR-FACING fleet unit: the unit's OWNER company must be one of the caller's (else answered like a missing unit, D2/D3). */
+export async function readFleetUnitFor(db: Queryable, actor: RentalActor, fleetUnitId: string) {
+  const { rows } = await db.query(`SELECT 1 FROM eos_rental.fleet_units WHERE tenant_id = $1 AND id = $2 AND owner_operating_company_key = ANY($3::text[])`,
+    [actor.tenantId, fleetUnitId, requireCompanyAuthority(actor)]);
+  if (!rows[0]) refuse("FLEET_UNIT_NOT_FOUND", "NOT_FOUND", "no rental fleet unit with that id");
+  return readFleetUnitOn(db, actor.tenantId, fleetUnitId);
+}
+
 function termsView(t: Record<string, any>) {
   return Object.freeze({ version: Number(t.version), changeKind: String(t.change_kind), rateMinor: String(t.rate_minor), billingFrequency: String(t.billing_frequency),
     expectedEndDate: dateText(t.expected_end_date), deliveryChargeMinor: t.delivery_charge_minor === null ? null : String(t.delivery_charge_minor),
@@ -687,16 +756,16 @@ function termsView(t: Record<string, any>) {
 }
 
 export async function readFleetUnit(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_READ);
-  return readFleetUnitOn(pool, actor.tenantId, text(input.fleetUnitId, "fleetUnitId"));
+  authorize(actor, RENTAL_READ);
+  return readFleetUnitFor(pool, actor, text(input.fleetUnitId, "fleetUnitId"));
 }
 export async function readRentalAgreement(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_READ);
-  return readRentalAgreementOn(pool, actor.tenantId, text(input.agreementId, "agreementId"));
+  authorize(actor, RENTAL_READ);
+  return readRentalAgreementFor(pool, actor, text(input.agreementId, "agreementId"));
 }
 
 export async function listRentalAgreements(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_READ);
+  const keys = authorize(actor, RENTAL_READ);
   only(input, ["status"]);
   if (input.status !== undefined && !["DRAFT", "ACTIVE", "CLOSED", "CANCELLED"].includes(String(input.status))) refuse("STATUS_INVALID", "INVALID_INPUT", "status is DRAFT, ACTIVE, CLOSED or CANCELLED");
   const { rows } = await pool.query(
@@ -706,18 +775,19 @@ export async function listRentalAgreements(pool: Pool, actor: RentalActor, input
        FROM eos_rental.rental_agreements g
        LEFT JOIN eos_crm.accounts a ON a.tenant_id = g.tenant_id AND a.id = g.account_id
        JOIN LATERAL (SELECT * FROM eos_rental.rental_agreement_terms x WHERE x.agreement_id = g.id ORDER BY version DESC LIMIT 1) t ON TRUE
-      WHERE g.tenant_id = $1 AND ($2::text IS NULL OR g.status = $2) ORDER BY g.created_at DESC LIMIT 200`, [actor.tenantId, input.status ?? null]);
+      WHERE g.tenant_id = $1 AND ($2::text IS NULL OR g.status = $2) AND g.operating_company_key = ANY($3::text[]) ORDER BY g.created_at DESC LIMIT 200`,
+    [actor.tenantId, input.status ?? null, keys]);
   return Object.freeze({ items: rows.map((r) => ({ id: String(r.id), number: String(r.rental_agreement_number), status: String(r.status), operatingCompanyKey: String(r.operating_company_key),
     customer: { accountId: String(r.account_id), name: r.account_name ?? null }, startDate: dateText(r.start_date), expectedEndDate: dateText(r.expected_end_date),
     rateMinor: String(r.rate_minor), billingFrequency: String(r.billing_frequency), currency: String(r.currency), unitsOut: Number(r.units_out) })) });
 }
 
 export async function listFleetUnits(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
-  requireCapability(actor, RENTAL_READ);
+  const keys = authorize(actor, RENTAL_READ);
   only(input, ["availability"]);
   if (input.availability !== undefined && !RENTAL_AVAILABILITY.includes(input.availability as never)) refuse("AVAILABILITY_INVALID", "INVALID_INPUT", `availability is one of ${RENTAL_AVAILABILITY.join(", ")}`);
-  const { rows } = await pool.query(`SELECT id FROM eos_rental.fleet_units WHERE tenant_id = $1 AND ($2::text IS NULL OR availability = $2) ORDER BY display_name, id LIMIT 500`,
-    [actor.tenantId, input.availability ?? null]);
+  const { rows } = await pool.query(`SELECT id FROM eos_rental.fleet_units WHERE tenant_id = $1 AND ($2::text IS NULL OR availability = $2)
+      AND owner_operating_company_key = ANY($3::text[]) ORDER BY display_name, id LIMIT 500`, [actor.tenantId, input.availability ?? null, keys]);
   const items: ReturnType<typeof fleetUnitSummary>[] = [];
   for (const r of rows) {
     const { events: _e, inspections: _i, ...summary } = await readFleetUnitOn(pool, actor.tenantId, String(r.id));
@@ -731,17 +801,15 @@ export async function listFleetUnits(pool: Pool, actor: RentalActor, input: Reco
  * needs service, due back, being returned, awaiting inspection, and what has a billing exception. Dates are the owning
  * company's business date (the governed resolver), never a UTC cut.
  *
- * `companyKeys` (SERVER-ONLY, never from request input -- the /operations/rental route passes three arguments): when given,
- * every row is narrowed to those operating companies (a fleet unit by its OWNER company, everything agreement-borne by the
- * agreement's company). My Work passes the caller's EOS Core company authority (DECISIONS #235); omitted = unchanged.
+ * Every row is narrowed to the caller's companies (actor.companyKeys, resolved server-side -- the route and My Work both pass
+ * EOS Core company authority): a fleet unit by its OWNER company, everything agreement-borne by the agreement's company.
  */
-export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input: Record<string, unknown>, companyKeys: readonly string[] | null = null) {
-  requireCapability(actor, RENTAL_READ);
+export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input: Record<string, unknown>) {
+  const ck = authorize(actor, RENTAL_READ);
   only(input, ["dueWithinDays"]);
   const within = input.dueWithinDays === undefined ? 7 : Number(input.dueWithinDays);
   if (!Number.isInteger(within) || within < 0 || within > 90) refuse("DUE_WINDOW_INVALID", "INVALID_INPUT", "dueWithinDays is 0..90");
   const t = actor.tenantId;
-  const ck = companyKeys === null ? null : [...companyKeys];
   const { rows: units } = await pool.query(`SELECT id FROM eos_rental.fleet_units WHERE tenant_id = $1 AND ($2::text[] IS NULL OR owner_operating_company_key = ANY($2::text[])) ORDER BY display_name, id LIMIT 1000`, [t, ck]);
   const fleet: ReturnType<typeof fleetUnitSummary>[] = [];
   for (const u of units) {
