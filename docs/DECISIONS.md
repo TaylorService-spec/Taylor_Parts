@@ -8590,3 +8590,35 @@ Fixture: the existing synthetic dispatcher, which works both companies' technici
   - `jobsDispatchFlow`: Dispatch from Jobs, Schedule via the shared dialog with the governed default, capability gating fail-closed, one shared runner;
   - `dispatchNorthStarBoard`: governed default, no-slot explanation with alternative, stale-on-submit re-check;
   - `jobsDispatchList` and `zonedTime` (including a daylight-saving zone).
+
+## #240 — The Dispatcher Board draws in the governed business time zone and offers placement only to schedule-capability holders (2026-10-16)
+
+**Status: OWNER DIRECTED ("CONTINUE AND RECONCILE TRACKER", item 8, 2026-10-16).** Completes two follow-ups #239 left open, within the approved dispatch scope. Neither needs the Firebase authentication cutover.
+
+**Why.**
+- **The grid used the browser's clock.** The day, the 7a–5p band, week starts and date labels came from the browser's time zone, while the Schedule dialog (#239) and every placement check use the company's governed zone. For a viewer outside Arizona the two disagreed.
+- **The Board offered Schedule controls by role.** The Board's access gate is the session role; for Firebase-signed-in users that role comes from Firestore. So a user who could open the Board but did not hold `workOrder.lifecycle.schedule` was offered Schedule…, drag, move, resize and reassign, and the server then refused the command.
+
+**Rule.**
+- **One Board clock** (`domain/boardClock.js`). Every day and hour question the Board asks goes through it: geometry, week days, URL dates and labels. Day steps go by the calendar, so they are DST-safe.
+  - While the Board is mounted, the clock is the governed `business_time_zone` of the caller's companies.
+  - That zone is read from `readMyCompanyAuthority`, which now also returns each authorized company's `businessTimeZone`. It describes the company and widens nothing.
+  - If the caller's companies use several zones, or none can be read, the Board uses the browser's zone and says so in words.
+  - With no zone set the clock is the browser's, so other screens that share these helpers are unchanged.
+- **Placement controls follow governed capabilities.** Schedule…, card and chip dragging, keyboard move/resize and reassign are offered only when `readMyWorkOrderCapabilities` includes `workOrder.lifecycle.schedule`.
+  - They are withheld while capabilities are unknown (fail closed). A caller without the capability is told that scheduling is not part of their access. This is the same rule as the Jobs page (#239).
+  - The server still re-checks every command.
+
+**Unchanged (tracked).**
+- The Board's own entry gate, the session role (Firestore-backed for Firebase sign-ins), is Auth-cutover scope and is untouched.
+- `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads (#2110 follow-up).
+- No grant, role, identity, migration or Firebase change.
+
+**Proof.**
+- `boardClock.test.mjs`: Phoenix day, band and week start wherever the browser is; a DST zone steps by the calendar; with no zone set the result is identical to before.
+- `dispatchNorthStarBoard`:
+  - a caller without the schedule capability sees the board with no placement control and the reason in words;
+  - unknown capabilities fail closed;
+  - the day is drawn in a governed zone a day away from the test machine's;
+  - the browser-zone fallback is stated.
+- `rentalPostgres` pins the new `businessTimeZone` field.
