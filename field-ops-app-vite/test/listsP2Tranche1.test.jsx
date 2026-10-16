@@ -95,8 +95,8 @@ describe("Manufacturers reads the whole collection, so it claims no boundary", (
   it("no row navigation, because there is no Manufacturer record route", () => {
     expect(manufacturerIndexList.rowNavigationTo ?? null).toBeNull();
     expect(code(MANUFACTURERS)).not.toMatch(/onRowClick/);
-    // The rows carry governed row ACTIONS instead — the affordance this object genuinely has.
-    expect(MANUFACTURERS).toMatch(/rowActions/);
+    // No row actions either: the Firebase write affordances were removed (Firebase exit PR-B) and the page is read-only.
+    expect(code(MANUFACTURERS)).not.toMatch(/rowActions/);
   });
 });
 

@@ -239,7 +239,7 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
           // CAPABILITY FIRST: without rental.agreement.read the read itself refuses, before any company fact is consulted.
           const authority = actor.capabilities.has(RENTAL_READ) ? await resolveCompanyAuthority(pool, actor.tenantId, actor.principalId) : null;
           if (authority !== null && authority.companyKeys.length === 0) return notAuthorized(key, "no operating-company authority");
-          const ws = await readRentalWorkspace(pool, actor, {}, authority?.companyKeys ?? []);
+          const ws = await readRentalWorkspace(pool, { ...actor, companyKeys: authority?.companyKeys ?? [] }, {});
           const items: Item[] = [
             ...ws.dueBack.map((d) => ({ id: d.agreementId, kind: "rentalAgreement", label: d.number, detail: d.overdue ? `overdue by ${-d.daysUntilDue} day(s)` : `due back in ${d.daysUntilDue} day(s)`,
               status: d.overdue ? "OVERDUE" : "DUE_BACK", severity: "ATTENTION", path: "/rental" })),

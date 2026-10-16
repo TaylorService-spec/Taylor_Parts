@@ -201,7 +201,7 @@ const KNOWN_UNSTYLED = new Set([
   // the locked 1c frame draws that timeline as a Source · Date · Event table, which renders through
   // the shared `ns-table` grammar. Both classes were used nowhere else, so they are no longer
   // used-but-unstyled — they are simply gone.
-  "fo-technician-save-error",
+  // "fo-technician-save-error" left with NewTechnicianModal.jsx (Firebase exit PR-A, 2026-10-15).
   "fo-tone-muted",
   "fo-wizard",
   "fo-wizard-step-label",

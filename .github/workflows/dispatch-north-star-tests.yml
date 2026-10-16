@@ -25,6 +25,14 @@ on:
   pull_request:
     paths:
       - "field-ops-app-vite/src/modules/dispatcherBoard/**"
+      - "field-ops-app-vite/src/modules/dispatch/**"
+      - "field-ops-app-vite/src/domain/jobsDispatchList.js"
+      - "field-ops-app-vite/src/domain/zonedTime.js"
+      - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
+      - "field-ops-app-vite/src/services/workOrderService.ts"
+      - "field-ops-app-vite/test/jobsDispatchFlow.test.jsx"
+      - "field-ops-app-vite/test/jobsDispatchList.test.mjs"
+      - "field-ops-app-vite/test/zonedTime.test.mjs"
       - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
       - "field-ops-app-vite/src/domain/schedulingRefusal.js"
       - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
@@ -42,6 +50,14 @@ on:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/modules/dispatcherBoard/**"
+      - "field-ops-app-vite/src/modules/dispatch/**"
+      - "field-ops-app-vite/src/domain/jobsDispatchList.js"
+      - "field-ops-app-vite/src/domain/zonedTime.js"
+      - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
+      - "field-ops-app-vite/src/services/workOrderService.ts"
+      - "field-ops-app-vite/test/jobsDispatchFlow.test.jsx"
+      - "field-ops-app-vite/test/jobsDispatchList.test.mjs"
+      - "field-ops-app-vite/test/zonedTime.test.mjs"
       - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
       - "field-ops-app-vite/src/domain/schedulingRefusal.js"
       - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
@@ -100,10 +116,21 @@ jobs:
         run: npx vitest run test/dispatchNorthStarBoard.test.jsx
         working-directory: field-ops-app-vite
 
+      - name: Jobs page dispatch flow — same commands, dialog and governed default as the Board (vitest + jsdom)
+        run: npx vitest run test/jobsDispatchFlow.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Jobs grouping and governed-time-zone conversion (node:test)
+        run: node --test test/jobsDispatchList.test.mjs test/zonedTime.test.mjs
+        working-directory: field-ops-app-vite
+
       - name: Lint the touched surfaces (oxlint)
         run: >-
           npx oxlint
           src/modules/dispatcherBoard
+          src/modules/dispatch
+          src/domain/jobsDispatchList.js
+          src/domain/zonedTime.js
           src/domain/dispatchBoardGeometry.js
           src/domain/schedulingRefusal.js
           src/hooks/useTechnicianAvailability.js

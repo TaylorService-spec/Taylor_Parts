@@ -18,6 +18,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -147,6 +148,8 @@ test("the Service activation authority delta, applied through Administration and
     };
     const dispatcher = await person("uid-sa-dispatcher", ["dispatcher"]);
     const serviceManager = await person("uid-sa-fieldmgr", ["fieldManager"]);
+    // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
+    await grantSyntheticCompanyAuthority(pool, TENANT, dispatcher.principalId, ["taylor", "ventana"]);
     const techA = await person("uid-sa-tech-a", ["technician"], { id: "emp-sa-a" });
     const techB = await person("uid-sa-tech-b", ["technician"], { id: "emp-sa-b" });
     const techVentana = await person("uid-sa-tech-v", ["technician"], { id: "emp-sa-v", company: "ventana" });

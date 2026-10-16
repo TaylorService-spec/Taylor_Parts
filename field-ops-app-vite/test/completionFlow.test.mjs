@@ -14,7 +14,7 @@
 //     attributes, release-gate wiring, and the untouched assigned ->
 //     in_progress direct transition.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   COMPLETE_ASSIGNED_JOB,
   newIdempotencyKey,
@@ -255,7 +255,6 @@ await okAsync("DIRECT-WRITE REGRESSION: the flow's only mutation-capable effect 
 
 // ---- structural assertions on the impure integration files -----------------
 
-const svc = readFileSync(new URL("../src/services/completionService.js", import.meta.url), "utf8");
 const fieldMode = readFileSync(new URL("../src/modules/mobile/FieldMode.jsx", import.meta.url), "utf8");
 const gate = readFileSync(new URL("../src/config/trustedCompletion.js", import.meta.url), "utf8");
 const flowSrc = readFileSync(new URL("../src/domain/completionFlow.js", import.meta.url), "utf8");
@@ -266,18 +265,19 @@ function stripComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/\/\/[^\n]*$/gm, "");
 }
 
-ok("completionService/completionFlow perform no direct Firestore write and no client audit write", () => {
-  for (const [name, src] of [["completionService", stripComments(svc)], ["completionFlow", stripComments(flowSrc)]]) {
+ok("completionFlow performs no direct Firestore write and no client audit write", () => {
+  // Firebase exit PR-B (2026-10-15): services/completionService.js, the orphaned completeAssignedJob callable binding,
+  // was deleted -- nothing imported it since FieldMode moved to the governed transition (F0 below).
+  assert.equal(existsSync(new URL("../src/services/completionService.js", import.meta.url)), false, "the orphaned completion callable client is back");
+  for (const [name, src] of [["completionFlow", stripComments(flowSrc)]]) {
     assert.doesNotMatch(src, /updateDoc|setDoc|deleteDoc|runTransaction|writeBatch|addDoc/, name);
     assert.doesNotMatch(src, /jobActions/, name);
     assert.doesNotMatch(src, /auditEvent/i, `${name} must not write audit data client-side`);
     assert.doesNotMatch(src, /TECHNICIANS_COLLECTION|fieldops_technicians/, `${name} must not touch technician records`);
   }
-  assert.match(svc, /httpsCallable\(functions, COMPLETE_ASSIGNED_JOB\)/);
 });
 
-ok("no workOrderId is ever sent by the completion client", () => {
-  assert.doesNotMatch(stripComments(svc), /workOrderId/);
+ok("no workOrderId is ever sent by the completion flow", () => {
   // completionFlow mentions workOrderId only in the explanatory comment
   // distinguishing it from jobId -- never as code:
   assert.doesNotMatch(stripComments(flowSrc), /workOrderId/m);
@@ -291,9 +291,9 @@ ok("no workOrderId is ever sent by the completion client", () => {
 // transition -- the same governed path as every other lifecycle step, rather
 // than a separate completion mechanism.
 //
-// The pure completionFlow module and completionService above are UNCHANGED and
-// still asserted: the completeAssignedJob callable remains deployed and governs
-// the legacy cascade until the separately-authorized retirement package. What
+// The pure completionFlow module above is UNCHANGED and still asserted. Its impure
+// completeAssignedJob binding (services/completionService.js) had no importer and was
+// deleted by the Firebase exit (PR-B); the callable itself is a server-side retirement. What
 // changed is only which flow FieldMode uses, so the assertions below now
 // describe the governed one.
 // ---------------------------------------------------------------------------

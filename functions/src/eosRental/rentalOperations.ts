@@ -16,12 +16,22 @@ import {
   inspectRentalUnit, listFleetUnits, listRentalAgreements, readFleetUnit, readRentalAgreement, readRentalWorkspace, receiveRentalReturn, recordRentalCharge,
   releaseRentalReservation, reserveRentalUnit, setFleetUnitAvailability,
 } from "./rental";
+import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
 
 export const RENTAL_ROUTE = "/operations/rental";
 
 type Op = (deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) => Promise<unknown>;
-const run = (fn: (pool: WorkOrderOperationDeps["pool"], actor: WorkOrderCaller["actor"], input: Record<string, unknown>) => Promise<unknown>): Op =>
-  (deps, caller, input) => fn(deps.pool, caller.actor, input);
+/**
+ * COMPANY AUTHORITY, server-side and once per request (P0 rental security, DECISIONS #236): the caller's EOS Core company
+ * authority (eosOps/companyAuthority.ts) is attached to the actor here -- request input can never supply or widen it. Each
+ * operation still checks its own rental capability FIRST, then refuses without company authority (D1).
+ */
+const withCompanyAuthority = async (deps: WorkOrderOperationDeps, caller: WorkOrderCaller) => {
+  const authority = await resolveCompanyAuthority(deps.pool, caller.actor.tenantId, caller.actor.principalId);
+  return Object.freeze({ ...caller.actor, companyKeys: authority.companyKeys, companyIds: authority.companies, scopedHeld: caller.operational?.scopedHeld });
+};
+const run = (fn: (pool: WorkOrderOperationDeps["pool"], actor: WorkOrderCaller["actor"] & { companyKeys: readonly string[] }, input: Record<string, unknown>) => Promise<unknown>): Op =>
+  async (deps, caller, input) => fn(deps.pool, await withCompanyAuthority(deps, caller), input);
 
 export const EOS_RENTAL_OPERATIONS: Readonly<Record<string, Op>> = Object.freeze({
   // reads
@@ -34,7 +44,7 @@ export const EOS_RENTAL_OPERATIONS: Readonly<Record<string, Op>> = Object.freeze
   designateFleetUnit: run(designateFleetUnit),
   setFleetUnitAvailability: run(setFleetUnitAvailability),
   // agreement
-  createRentalAgreement: (deps, caller, input) => createRentalAgreement(deps.pool, caller.actor, input, deps.now),
+  createRentalAgreement: async (deps, caller, input) => createRentalAgreement(deps.pool, await withCompanyAuthority(deps, caller), input, deps.now),
   activateRentalAgreement: run(activateRentalAgreement),
   amendRentalAgreementTerms: run(amendRentalAgreementTerms),
   endRentalAgreement: run(endRentalAgreement),

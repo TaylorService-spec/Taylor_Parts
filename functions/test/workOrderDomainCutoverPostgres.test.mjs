@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 // The governed list query (listWorkOrders { query }) suite: its own database and world, run with this CI job.
 import "./support/workOrderListQuerySuite.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -164,6 +165,8 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
   const ROUND_THE_CLOCK = Object.fromEntries(["0", "1", "2", "3", "4", "5", "6"].map((d) => [d, [{ start: "00:00", end: "24:00" }]]));
   const configureHours = (employeeId) => availability.setTechnicianWorkingHours(deps, { actor: actor(P.dispatcher) },
     { employeeId, timeZone: "UTC", weeklyHours: ROUND_THE_CLOCK, reason: "synthetic acceptance availability" });
+  // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
+  await grantSyntheticCompanyAuthority(pool, T, "prn-dispatcher", ["taylor"]);
   for (const e of ["emp-a", "emp-b", "emp-c"]) await configureHours(e);
   let seq = 0;
   const newWo = async (status = "READY_TO_DISPATCH", extra = {}) => {

@@ -10,7 +10,6 @@ import path from "node:path";
 
 vi.mock("../../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
 vi.mock("../../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
-vi.mock("../../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
 vi.mock("../../src/hooks/useAccountNames", () => ({ useAccountNames: vi.fn() }));
 vi.mock("../../src/hooks/useSessionActivityFeed", () => ({ useSessionActivityFeed: vi.fn(() => []) }));
 vi.mock("../../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
