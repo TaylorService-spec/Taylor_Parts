@@ -20,7 +20,6 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
 // The board reads the GOVERNED technician roster (listWorkOrderTechnicians), keyed by Employee id.
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
 vi.mock("../src/hooks/useAccountNames", () => ({ useAccountNames: vi.fn() }));
 vi.mock("../src/hooks/useSessionActivityFeed", () => ({ useSessionActivityFeed: vi.fn(() => []) }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
@@ -35,7 +34,6 @@ vi.mock("../src/services/schedulingCommandClient.js", () => ({
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard.jsx";
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
 import { useAccountNames } from "../src/hooks/useAccountNames";
 import { useAuth } from "../src/auth/AuthContext";
 import { transitionWorkOrder } from "../src/services/workOrderService";
@@ -233,10 +231,8 @@ describe("availability is rendered truthfully", () => {
     // reads, so a direct query would fail closed and look like a bug.
     setup();
     await waitFor(() => expect(readTechnicianAvailability).toHaveBeenCalled());
-    expect(useFirestoreCollection).not.toHaveBeenCalledWith("technician_working_availability");
-    expect(useFirestoreCollection).not.toHaveBeenCalledWith("technician_blocked_time");
-    // Work Order cutover: the board reads NO Firestore collection at all -- not even fieldops_technicians.
-    expect(useFirestoreCollection).not.toHaveBeenCalled();
+    // Work Order cutover: the board reads NO Firestore collection at all. The Firestore collection hook it once used
+    // (hooks/useFirestoreCollection.js) was deleted by the Firebase exit, so there is no subscription left to assert against.
   });
 });
 

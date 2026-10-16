@@ -60,7 +60,6 @@ const CONFORMANT_WORKSPACES = [
   "modules/inventoryRole/PartsAssociateHome.jsx", // Wave 4
   "modules/inventoryRole/PartsManagerHome.jsx", // Wave 4
   "modules/inventoryRole/WarehouseManagerHome.jsx", // Wave 4
-  "modules/technicians/Technicians.jsx", // Wave 5
   "modules/technicianDashboard/TechnicianDashboard.jsx", // Wave 5
 ];
 // Non-workspace conformant surfaces (peer-object cards etc.) — status-standardized, but not shell hosts.

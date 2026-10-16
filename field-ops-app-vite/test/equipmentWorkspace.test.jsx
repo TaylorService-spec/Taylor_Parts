@@ -72,7 +72,6 @@ vi.mock("../src/hooks/useLocationReferenceResolver", () => ({
 vi.mock("../src/hooks/useAccountPicker", () => ({
   useAccountPicker: () => ({ state: "EMPTY", options: [], truncated: false, message: null, loading: false, error: null }),
 }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: () => ({ data: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentForAccount: () => ({ data: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useLocationsForAccount", () => ({ useLocationsForAccount: () => ({ data: [], loading: false, error: null, retry: vi.fn() }) }));
 

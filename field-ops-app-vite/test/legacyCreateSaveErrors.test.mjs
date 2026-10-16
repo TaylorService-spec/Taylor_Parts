@@ -4,7 +4,7 @@
 //
 // Run: node test/legacyCreateSaveErrors.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
-import { jobSaveErrorMessage, technicianSaveErrorMessage } from "../src/domain/legacyCreateSaveErrors.js";
+import { jobSaveErrorMessage } from "../src/domain/legacyCreateSaveErrors.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -26,13 +26,6 @@ ok("job: unknown / raw Error -> generic copy, no leak", () => {
   noLeak(jobSaveErrorMessage({ code: "internal" }));
   noLeak(jobSaveErrorMessage(new Error("FirebaseError: permission-denied at documents/fieldops_jobs/abc123XYZ456")));
   noLeak(jobSaveErrorMessage(null));
-});
-ok("technician: blocked / denied / unknown -> safe copy, no leak", () => {
-  assert.match(technicianSaveErrorMessage({ blocked: true }), /disabled/i);
-  assert.match(technicianSaveErrorMessage({ code: "permission-denied" }), /permission/i);
-  for (const e of [{ blocked: true }, { code: "permission-denied" }, { code: "unavailable" }, null, undefined]) {
-    noLeak(technicianSaveErrorMessage(e));
-  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);
