@@ -17,6 +17,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -120,6 +121,8 @@ test("the Service Office + Technician journey through the EOS API", { skip: SKIP
   };
   const office = await person("uid-sj-fieldmgr", ["fieldManager"]);
   const dispatcher = await person("uid-sj-dispatcher", ["dispatcher"]);
+  // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
+  await grantSyntheticCompanyAuthority(pool, TENANT, office.principalId, ["taylor", "ventana"]);
   const techA = await person("uid-sj-tech-a", ["technician"], { id: "emp-sj-a", name: "Alex Field" });
   const techB = await person("uid-sj-tech-b", ["technician"], { id: "emp-sj-b", name: "Bo Field" });
   const techV = await person("uid-sj-tech-v", ["technician"], { id: "emp-sj-v", company: "ventana" });
