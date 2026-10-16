@@ -47,7 +47,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Owner decisions SCH-D1..D4 in the design doc; Lane UX shared compact components (reuse, not fork)
 - Expected outcome:    governed schedule visible/editable from the Employee record; board names link by employeeId with return state; subdued elapsed time; nonworking / unconfigured time drawn, never defaulted
 - Protected boundaries:no schema, permission, role or business-rule change and no merge/deploy without Owner approval
-- Lifecycle stage:     DESIGNED
+- Lifecycle stage:     SANDBOX BUILD — PR-1 (presentation-only board corrections) open for review; PR-2 blocked on G-9; PR-3 after PR-1; PR-4 deferred
 
 - Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
 - Agent/session:       Claude Code Lane A session · Role: builder

@@ -17,13 +17,18 @@ import {
   blockedMinutesInBand,
   bucketByDay,
   bucketBlockedByDay,
+  dayAvailableMinutes,
   dayBand,
+  dayLoadCapacity,
   dayOccupancy,
+  dayTimeState,
   fleetBookedPercent,
   fortnightDays,
   isPlaced,
   occupiedDays,
   laneCapacity,
+  laneTimeSpans,
+  nowLinePercent,
   placeInBand,
   placedBlockedTime,
   placementWindow,
@@ -304,17 +309,133 @@ describe("blocked minutes are the union of overlapping facts, not their sum", ()
 
 // ---------------------------------------------------------------------------------------------
 describe("the shift line", () => {
-  const weekly = { [new Date(BAND.startMillis).getDay()]: [{ start: "07:00", end: "12:00" }, { start: "13:00", end: "16:00" }] };
+  // The server's own instants for the day (readTechnicianAvailability.workingIntervals): already
+  // resolved in the schedule's zone and by company precedence. The line never re-reads weeklyHours.
+  const splitDay = {
+    availabilityState: "CONFIGURED",
+    workingIntervals: [
+      { startMillis: localAt(7), endMillis: localAt(12) },
+      { startMillis: localAt(13), endMillis: localAt(16) },
+    ],
+    notConfiguredIntervals: [],
+  };
 
   it("reports the outer bounds of a split day", () => {
     // An unpaid lunch is two intervals. The line reports 7a-4p and the GAP shows in the grid, rather
     // than the line inventing a summary the record does not make.
-    assert.equal(shiftLabel({ workingAvailability: { weeklyHours: weekly } }, BAND), "7a–4p");
+    assert.equal(shiftLabel(splitDay, BAND), "7a–4p");
   });
 
   it("is null when no schedule is recorded, so the caller can say so in words", () => {
     assert.equal(shiftLabel(null, BAND), null);
-    assert.equal(shiftLabel({ workingAvailability: null }, BAND), null);
+    assert.equal(shiftLabel({ availabilityState: "NOT_CONFIGURED", workingIntervals: [] }, BAND), null);
+  });
+
+  it("labels each day by the schedule that governs THAT day (G-5)", () => {
+    // A schedule superseded mid-week: Monday 7-4, Tuesday 6-2. The old label read the schedule in
+    // force at the start of the read and printed 7a–4p for both.
+    const view = {
+      availabilityState: "CONFIGURED", notConfiguredIntervals: [],
+      workingIntervals: [
+        { startMillis: localAt(7), endMillis: localAt(16) },
+        { startMillis: localAt(6, 0, 1), endMillis: localAt(14, 0, 1) },
+      ],
+    };
+    assert.equal(shiftLabel(view, dayBand(localAt(12))), "7a–4p");
+    assert.equal(shiftLabel(view, dayBand(localAt(12, 0, 1))), "6a–2p");
+  });
+
+  it("renders half hours", () => {
+    const view = { availabilityState: "CONFIGURED", notConfiguredIntervals: [],
+      workingIntervals: [{ startMillis: localAt(7, 30), endMillis: localAt(16, 30) }] };
+    assert.equal(shiftLabel(view, BAND), "7:30a–4:30p");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+describe("working, not working, and no schedule are three different facts (G-2)", () => {
+  const configured = {
+    availabilityState: "CONFIGURED",
+    workingIntervals: [
+      { startMillis: localAt(7), endMillis: localAt(12) },
+      { startMillis: localAt(12, 30), endMillis: localAt(16) },
+    ],
+    notConfiguredIntervals: [],
+    blockedTime: [],
+  };
+
+  it("draws the evening and the break as not working, and nothing as unconfigured", () => {
+    const spans = laneTimeSpans(configured, BAND); // band 7a–5p
+    assert.equal(spans.configured, true);
+    assert.deepEqual(spans.nonWorking.map((s) => [s.startMillis, s.endMillis]),
+      [[localAt(12), localAt(12, 30)], [localAt(16), localAt(17)]]);
+    assert.equal(spans.unconfigured.length, 0);
+  });
+
+  it("an Employee with no schedule is unconfigured across the whole band — never a default shift", () => {
+    for (const view of [null, { availabilityState: "NOT_CONFIGURED", workingIntervals: [], notConfiguredIntervals: [] }]) {
+      const spans = laneTimeSpans(view, BAND);
+      assert.equal(spans.configured, false);
+      assert.equal(spans.nonWorking.length, 0, "absent is not 'off'");
+      assert.deepEqual(spans.unconfigured.map((s) => [s.startMillis, s.endMillis]), [[BAND.startMillis, BAND.endMillis]]);
+    }
+  });
+
+  it("a schedule starting mid-range leaves the earlier minutes unconfigured, not off", () => {
+    const view = { ...configured, notConfiguredIntervals: [{ startMillis: localAt(0), endMillis: localAt(10) }] };
+    const spans = laneTimeSpans(view, BAND);
+    assert.deepEqual(spans.unconfigured.map((s) => [s.startMillis, s.endMillis]), [[localAt(7), localAt(10)]]);
+    assert.ok(spans.nonWorking.every((s) => s.startMillis >= localAt(10)));
+  });
+
+  it("classifies whole days for the Week and 2-week cells", () => {
+    const day = startOfDayMillis(localAt(9));
+    assert.equal(dayTimeState(configured, day), "working");
+    assert.equal(dayTimeState({ ...configured, workingIntervals: [] }, day), "nonWorking");
+    assert.equal(dayTimeState(null, day), "unconfigured");
+  });
+});
+
+describe("the 2-week band divides by THAT day's hours (G-11)", () => {
+  const day = startOfDayMillis(localAt(9));
+  const view = {
+    availabilityState: "CONFIGURED", notConfiguredIntervals: [],
+    workingIntervals: [
+      { startMillis: localAt(7), endMillis: localAt(16) },
+      { startMillis: localAt(7, 0, 1), endMillis: localAt(16, 0, 1) },
+    ],
+    blockedTime: [{ startMillis: localAt(12), endMillis: localAt(13) }, { startMillis: localAt(12, 30), endMillis: localAt(13) }],
+    // The whole read's figure: never the denominator for one day.
+    availableMinutes: 9999,
+  };
+
+  it("available minutes are that day's working minus the union of blocked time", () => {
+    assert.equal(dayAvailableMinutes(view, day), 8 * 60);
+  });
+
+  it("is unknown when any minute of the day has no schedule", () => {
+    assert.equal(dayAvailableMinutes({ ...view, notConfiguredIntervals: [{ startMillis: localAt(0), endMillis: localAt(8) }] }, day), null);
+    assert.equal(dayAvailableMinutes(null, day), null);
+  });
+
+  it("a 4h job on an 8h day is 50%, not 4h over the whole fortnight", () => {
+    const c = dayLoadCapacity(view, [scheduledWo("x", localAt(8), localAt(12))], day);
+    assert.equal(c.percentBooked, 50);
+  });
+});
+
+describe("the band follows recorded hours (G-4) and the now-line", () => {
+  it("a 05:00 shift widens the band so its first hours are drawn", () => {
+    const view = { availabilityState: "CONFIGURED", notConfiguredIntervals: [], blockedTime: [],
+      workingIntervals: [{ startMillis: localAt(5), endMillis: localAt(13) }] };
+    const band = dayBand(localAt(12), dayOccupancy([], [view]));
+    assert.equal(new Date(band.startMillis).getHours(), 5);
+  });
+
+  it("the now-line sits inside the band, and is absent outside it", () => {
+    assert.equal(nowLinePercent(BAND, localAt(12)), 50);
+    assert.equal(nowLinePercent(BAND, localAt(18)), null);
+    assert.equal(nowLinePercent(BAND, localAt(6)), null);
   });
 });
 

@@ -58,6 +58,7 @@ There is a separate hardcoded **7a–5p display band**. It sets which hours the 
 | G-8 | **One-day adjusted shifts cannot be expressed.** Unavailability can only *remove* time. Extending or moving one day's hours means ending and replacing the weekly schedule, and a bounded schedule cannot be inserted: `technician_working_schedules_end_is_complete` makes a set `effective_to` imply "ended". | migration `1764320000000`; `workOrderAvailability.ts:598-680` |
 | G-9 (company boundary, for the security lane) | `setTechnicianWorkingHours` checks only that the `operatingCompanyId` is ACTIVE for the tenant (`:538-544`). It does not check that the Employee works for that company, or that the caller's company authority covers it. The DECISIONS #235 rollout should cover these operations. **This lane does not change company-authority code.** | `workOrderAvailability.ts:616-621` |
 | G-10 | A holder of `employee.record.read` that is **only operating-company-scoped** does not appear in the flat Workforce capability offer, so such a caller would get no link (fails closed). | `employeeReadKernel.ts:63,127`; `myWorkforceCapabilities.ts` |
+| G-11 (found while building PR-1) | **The 2-week band divided each day's bookings by the available minutes of the whole four-week read.** Every day therefore looked nearly empty. | `DispatchViews.jsx` (`laneCapacity(availability, …)` per day) |
 
 ---
 
@@ -115,10 +116,25 @@ Add a sixth tab, `?tab=schedule`, "Work Schedule", to `UserDetail.jsx`. Its body
 | **SCH-D3** | **Adjusted shifts** (extend or move one day) | **A.** The additive override table (§3.3) plus one precedence rung. · **B.** Defer: managers end and replace the weekly schedule, and reductions use unavailability. | **A** as a separate PR-4 after PR-1 to PR-3 land. |
 | **SCH-D4** | **Scoped** `employee.record.read` holders (G-10) | **A.** No link for them (fails closed) until the Workforce offer reports scoped holdings. · **B.** Extend the offer with per-company holdings. | **A**. B belongs with the security lane's #235 work. |
 
+**Owner rulings (2026-10-15):**
+- **SCH-D1 APPROVED**: the existing scheduling capability controls edits.
+- **SCH-D2 APPROVED, as amended**: scheduling roles **intersected with** Employee and company read visibility. The PR-2 read therefore needs both:
+  - `workOrder.lifecycle.schedule` or `workOrder.lifecycle.dispatch`;
+  - the caller's Employee record visibility (`employee.record.read`) and the #235 company authority (`resolveCompanyAuthority`, `functions/src/eosOps/companyAuthority.ts`) covering that Employee's operating company.
+
+  Missing either one shows the refused state, never a partial schedule.
+- **SCH-D3 APPROVED**: one-day overrides are deferred to a separate PR-4.
+- **SCH-D4 APPROVED**: unauthorized Employee links fail closed.
+
+Also ruled:
+- Presentation-only board corrections may begin; that is PR-1.
+- **Work Schedule editing (PR-2) stays blocked until the G-9 server-side company protection is proven.** G-9 belongs to the security lane, and the Scheduling lane does not implement it.
+- Presentation, the schedule UI, navigation and the optional migration stay separate PRs.
+
 ### 3.5 Decisions taken under governance (presentation-only; logged here)
 
 1. Recurring breaks are **interval gaps**, and one-off breaks are the `LUNCH` unavailability kind. Paid and unpaid break accounting is out of scope (Technician Labor + Cost Accounting is deferred).
-2. The board's display band is derived from the union of the working intervals of the lanes in view, widened by occupancy as today. The 7a–5p constant stays **only** as a fallback for when no lane in view has a schedule. It is a drawing window and never colours any lane as "working".
+2. *(As built in PR-1.)* The board's display band is the 7a–5p drawing window **widened** by every lane's working intervals, as well as by placements and blocked time. It is never narrowed below that floor. A stable window keeps the hour header familiar, and existing placements outside it still widen the band so they are drawn. Under DECISION 5, which supersedes ND-20 for EOS, the server **refuses** placements outside recorded hours (`OUTSIDE_WORKING_HOURS`), and the board offers no extra targets for them. The window is never used as anyone's hours: minutes outside a recorded shift are drawn as *not working*, and lanes without a schedule are drawn as *no schedule*.
 3. The lane label is derived from the server's `workingIntervals` for the drawn day. This fixes G-5 with no server change.
 
 ---
@@ -180,7 +196,7 @@ Legend: ▒ elapsed  ░ not working  ▚ unavailable (PTO, training…)  ■ bo
 | State | Treatment (tokens only; no new hex) | Notes |
 |---|---|---|
 | **Elapsed** (today, before now) | flat `var(--color-surface-sunken)` at ~0.45 opacity, **no pattern**. Work-order chips in the elapsed region drop to 0.85 opacity. | Replaces `index.css:7026-7033`. Still `pointer-events:none`; drop refusal is unchanged (`isSlotSelectable`). |
-| **Not working** (configured, outside `workingIntervals`, including breaks) | solid `var(--verenward-stone-sunken)` | New, from `workingIntervals` (G-2). A drop is still *offered*; the server warns or refuses per ND-20. |
+| **Not working** (configured, outside `workingIntervals`, including breaks) | solid `var(--verenward-stone-sunken)` | New, from `workingIntervals` (G-2). The server refuses placements here (`OUTSIDE_WORKING_HOURS`, DECISION 5). |
 | **Unavailable** (blocked time) | **keeps** the existing 135° hatch, and is now the *only* hatched thing | Unchanged rules at `index.css:6763-6769`; the legend swatch stays bound to the same rule. |
 | **Booked** | unchanged evergreen chip | — |
 | **No schedule recorded** (`notConfiguredIntervals`) | 1px dashed top/bottom lane border, no fill; the name cell shows a compact `⚠ No schedule` marker (an InfoTip: "No governed working schedule. Placements are refused until one is recorded.") that links to `?tab=schedule` when the link rule in §4 passes | Never a default shift. The lane-line text "Shift not recorded" is shortened to "No schedule". |
@@ -200,6 +216,11 @@ Each PR is verified locally (unit tests plus a Vite fixture screenshot), pushed 
 | **PR-2 Employee Work Schedule tab** (read + existing write commands) | §3.2 tab; editor and exceptions over the **existing** commands; offer gated by SCH-D1 A / SCH-D2 A | new `EmployeeWorkSchedule.jsx`, one tab entry in `UserDetail.jsx`, a pure `domain/employeeWorkSchedule.js` (form ↔ `weeklyHours`, break gaps) | Domain: weekly-grid ↔ `weeklyHours` round-trip, overlap and 6-interval limits mirror the server refusals, the no-default rule (an empty form submits nothing). Component: no-schedule honest state; read refused shows the "scheduling roles" state; editor hidden without `workOrder.lifecycle.schedule`; the submit payload equals the command contract; each server refusal code renders its sentence. Postgres: existing `workOrderAvailabilityPostgres.test.mjs` unchanged. | SCH-D1, SCH-D2 |
 | **PR-3 Scheduler → Employee links** | §4 link plus `returnTo`; the marker links to `?tab=schedule` | `DispatchLaneGrid.jsx`, the Week/2 Weeks identity cells, `UserDetail.jsx` back control, a tiny `safeReturnTo()` | Link is present only with Administration visible **and** `employee.record.read`; absent while loading or failed; href uses employeeId (a name change does not change the href); `returnTo` rejects absolute, protocol-relative and non-board paths; Back restores view, date and filter (router test). | SCH-D4 |
 | **PR-4 (optional) Adjusted-shift overrides** | additive table plus a precedence rung plus `set/endTechnicianDayOverride` commands plus a tab section | migration, `workOrderAvailability.ts`, tests | Postgres: precedence (override > company > company-wide), append/end-only triggers, placement accept/refuse inside an extended day, read surfaces the override in `workingIntervals`. | SCH-D3 = A; schema plus business-rule review |
+
+**PR-1 as built (2026-10-15).**
+- **Frames.** Before and after renders of the real board with synthetic fixture data are in `docs/design/scheduling-board/frames/` (`before-day`, `after-day`, `before-week`, `after-week`). They come from `field-ops-app-vite/test/__visual__/renderDispatcherBoard.test.jsx` (`VISUAL=1`), so no server or credentials are involved.
+- **Fixed alongside:** G-11 (the 2-week denominator). The unreachable placeholder map view and its CSS were removed.
+- **Not in PR-1:** the Lane UX `InfoTip` component, which is still in open PR #2106. The marker and the Map reason therefore use `title` plus screen-reader text, and swap to `InfoTip` once #2106 merges.
 
 **Not in scope:** company-authority enforcement on the schedule commands (G-9, security lane / #235); production schedule data entry (an operator task after PR-2 ships); Firebase anything; the functional Map (§7, separately approved).
 
@@ -276,3 +297,76 @@ The Map tab stays in place so the gap stays visible (the North Star rule: neithe
 - `DISPATCH_VIEW.MAP` is removed from the reachable views, and `?view=map` falls back to Day.
 - The placeholder `DispatchMapView` is deleted because nothing can reach it any more.
 - No backend, provider or dependency change.
+
+**Owner rulings (2026-10-15):**
+- **MAP-D1**: build the basic map only **after Work Order company isolation is verified**.
+- **MAP-D2**: MapLibre is provisionally accepted; validate the provider terms and hosting costs (§7.5).
+- **MAP-D3**: external geocoding of customer addresses is **NOT YET AUTHORIZED**.
+- **MAP-D4**: the separate governed backend design is approved (§7.6). Its implementation needs its own review.
+- In the interim, show an honest unavailable Map state. That is §7.4, built in PR-1.
+
+### 7.5 MAP-D2 validation: MapLibre, tiles and hosting
+
+Prices are indicative as of this writing. Re-quote from each vendor's current price sheet before any spending approval.
+
+**Terms**
+
+| Component | Licence / terms | What it requires of us |
+|---|---|---|
+| MapLibre GL JS (the renderer) | BSD-3-Clause, open source | Keep the licence notice in the bundle's third-party notices. No key, account or usage fee. |
+| Basemap data (OpenStreetMap) | ODbL 1.0 | Show "© OpenStreetMap contributors" on the map. Rendered tiles are a *produced work*, so share-alike applies only if we publish a derived **database**, which we do not. |
+| Protomaps basemap (OSM → one PMTiles file, plus styles, fonts and sprites) | Tooling and styles are open source (BSD-style). The data stays ODbL. | Download a build and extract our region with the `pmtiles` CLI. No per-request licence. |
+| OSM's public tile server (`tile.openstreetmap.org`) | Tile Usage Policy forbids heavy or production use | **Not used.** It is the reason self-hosting is required. |
+
+**Hosting estimate (option A: self-hosted PMTiles)**
+- **Size.** A regional extract, for example Arizona plus a margin up to zoom 15, is about 1–3 GB. The full planet is over 100 GB and is not needed.
+- **Where it lives.** It needs object storage that supports HTTP range requests and CORS. For example:
+  - Cloudflare R2: about $0.015/GB-month, no egress fees, and read operations cost a few cents per 100k.
+  - AWS S3 plus CloudFront: about $0.023/GB-month plus egress per GB.
+  - It cannot go on Vercel or GitHub Pages, because the file is beyond their static-asset limits. It cannot go on the EOS API (Render) without paying API bandwidth.
+- **Load.** One dispatcher map session makes about 100–300 range requests. At 20 dispatchers × 20 sessions a day, that is roughly 3–4 million requests a month.
+- **Order of magnitude:** under $5 a month on R2 for storage plus reads, plus a one-time engineering cost to build and refresh the extract. A quarterly refresh is enough for a basemap.
+- **Data exposure:** none. Tiles are public basemap data, so the bucket can be public-read. No job, customer or technician data ever touches the tile host, and there are no browser keys.
+
+**Coordinates without external geocoding (MAP-D3 is not authorized).** Without geocoding, every job would show as "location unavailable". The authorized-today path is **manual coordinates**. On the customer location record, a person with the existing location-edit authority places or confirms the pin on the self-hosted map. It is stored with `coordinate_source = 'MANUAL'`. No address leaves EOS. A geocoder can be added later behind MAP-D3, storing `coordinate_source = 'GEOCODED'`.
+
+### 7.6 MAP-D4: governed backend design (design approved; implementation needs its own review)
+
+Two backend PRs, each with its own review. The frontend map follows only after both, and only after Work Order company isolation is verified (MAP-D1).
+
+**B-1. Coordinates on the location (additive migration plus one command)**
+- **Columns on `eos_crm.account_locations`** (all nullable): `latitude NUMERIC(9,6)`, `longitude NUMERIC(9,6)`, `coordinate_source TEXT CHECK (IN ('MANUAL','GEOCODED'))`, `coordinate_quality TEXT CHECK (IN ('EXACT','APPROXIMATE'))`, `coordinates_address_hash TEXT`, `coordinates_recorded_by TEXT`, `coordinates_recorded_at TIMESTAMPTZ`.
+- **CHECKs:** latitude is between -90 and 90 and longitude between -180 and 180; either all coordinate fields are null or the core four (latitude, longitude, source, hash) are all set.
+- **Address hash:** SHA-256 of the normalized `street|city|state|postal_code`, taken when the coordinates are recorded.
+- **Command `setAccountLocationCoordinates`** `{ locationId, latitude, longitude, quality, reason }`. It runs under the **existing** location-edit capability (no new capability; the PR names it after a resolver check). It is audited like every location change. Clearing the coordinates is the same command with nulls and a reason.
+- **No backfill and no geocoding job** (MAP-D3).
+
+**B-2. The map read `listWorkOrderMapPoints` (Work Order route)**
+- **Gate:**
+  - `workOrder.record.read`, exactly as `listWorkOrders` (`workOrderQueries.ts:200`);
+  - **AND** company authority: `resolveCompanyAuthority(db, tenantId, principalId).companyKeys`, applied as `w.operating_company_key = ANY($keys)`;
+  - empty authority refuses; it never returns an empty map that looks complete.
+- **Input:** `{ from, to }`, with the window capped at 31 days. Optional filters: `statuses[]`, `assigneeEmployeeId`, `operatingCompanyKey` (refused if it is not among the caller's keys), `includeUnscheduled`. Also `limit ≤ 500`.
+- **Output per job:**
+  - `workOrderId`, `workOrderNumber`, `status`, `scheduledStart/End` (null when unscheduled), `assigneeEmployeeId` and display name, `operatingCompanyKey`, `customerId/Name`, `locationId/Name`;
+  - `point: { latitude, longitude, quality, source } | null`;
+  - `unavailableReason ∈ { NO_COORDINATES, ADDRESS_CHANGED }` when `point` is null. `ADDRESS_CHANGED` means the stored hash no longer matches the current address, so a moved customer is never pinned at the old address.
+- **The page result carries `hasMore`** and no total (#172).
+- **Never returns:** any technician position, Employee address or derived route.
+- **Tests (Postgres):**
+  - a Taylor-only caller sees no Ventana points;
+  - an empty authority is refused;
+  - an operating-company filter outside the caller's authority is refused;
+  - missing coordinates and a stale hash return `point: null` with the right reason;
+  - unscheduled jobs are included only on request;
+  - `hasMore` at the limit.
+
+**F-1. The map view (frontend; after B-1, B-2 and verified isolation)**
+- MapLibre, lazy-loaded only when the Map view opens, with the self-hosted PMTiles style.
+- Pins for scheduled and unscheduled jobs; APPROXIMATE points are drawn hollow.
+- A "Location unavailable" list that links to each Work Order.
+- Filters (date, technician, company, status) through the same URL-state module as the board.
+- The pin preview has "Open work order" and, when the Customers domain is visible, "Open customer". Both target ids are re-checked by their own governed reads.
+- The legend reads "Job sites, not technician positions".
+- Re-enabling the Map control replaces §7.4 in the same PR.
+

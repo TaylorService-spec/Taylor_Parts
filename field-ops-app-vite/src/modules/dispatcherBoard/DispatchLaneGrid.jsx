@@ -5,6 +5,8 @@ import {
   bandHours,
   blockedMinutesInBand,
   laneCapacity,
+  laneTimeSpans,
+  nowLinePercent,
   placeInBand,
   placedBlockedTime,
   pastFractionOfBand,
@@ -70,6 +72,10 @@ function DispatchLaneGrid({
   // Only today has one: pastFractionOfBand answers 0 for a future day and 1 for a finished one.
   const now = Number.isFinite(nowMillis) ? nowMillis : Date.now();
   const pastFraction = pastFractionOfBand(band, now);
+  const nowPercent = nowLinePercent(band, now);
+  const nowLine = nowPercent == null ? null : (
+    <div className="ns-dispatch-now" style={{ left: `${nowPercent}%` }} aria-hidden="true" />
+  );
 
   return (
     <div className="ns-dispatch-grid">
@@ -79,6 +85,7 @@ function DispatchLaneGrid({
           {hours.map((h) => (
             <div key={h.hour} className="ns-dispatch-grid__hour">{h.label}</div>
           ))}
+          {nowLine}
         </div>
       </div>
 
@@ -90,6 +97,9 @@ function DispatchLaneGrid({
         const shift = shiftLabel(availability, band);
         const blocked = placedBlockedTime(availability, band);
         const blockedMinutes = blockedMinutesInBand(availability, band);
+        // G-2: what the schedule says about every minute that is not a placement or a block.
+        const spans = laneTimeSpans(availability, band);
+        const noSchedule = !availabilityLoading && !spans.configured;
         const canAccept = Boolean(draggingWorkOrder);
         const isDragOver = dragOverLaneId === tech.id;
 
@@ -100,6 +110,7 @@ function DispatchLaneGrid({
               <div className="ns-dispatch-lane__meta">
                 <LaneMeta
                   shift={shift}
+                  configured={spans.configured}
                   capacity={capacity}
                   blockedMinutes={blockedMinutes}
                   availabilityLoading={availabilityLoading}
@@ -108,13 +119,24 @@ function DispatchLaneGrid({
             </div>
 
             <div
-              className={`ns-dispatch-lane${isDragOver && canAccept ? " ns-dispatch-lane--over" : ""}`}
+              className={`ns-dispatch-lane${isDragOver && canAccept ? " ns-dispatch-lane--over" : ""}${noSchedule ? " ns-dispatch-lane--unconfigured" : ""}`}
               style={{ backgroundSize: `${100 / hours.length}% 100%` }}
               data-technician-id={tech.id}
               onDragOver={canAccept ? (e) => { e.preventDefault(); onDragOverLane?.(tech.id); } : undefined}
               onDragLeave={canAccept ? () => onDragLeaveLane?.(tech.id) : undefined}
               onDrop={canAccept ? (e) => { e.preventDefault(); onDropOnLane?.(tech.id, dropFractionOf(e)); } : undefined}
             >
+              {/* Schedule background first, under everything: not-working minutes (evenings, the gap of a
+                  split day) and minutes no schedule governs at all. Neither is ever a default shift. */}
+              {availabilityLoading ? null : spans.nonWorking.map((s) => (
+                <div key={`off-${s.startMillis}`} className="ns-dispatch-lane__off" aria-hidden="true"
+                  style={{ left: `${s.leftPercent}%`, width: `${s.widthPercent}%` }} />
+              ))}
+              {availabilityLoading || noSchedule ? null : spans.unconfigured.map((s) => (
+                <div key={`nc-${s.startMillis}`} className="ns-dispatch-lane__unconfigured" aria-hidden="true"
+                  style={{ left: `${s.leftPercent}%`, width: `${s.widthPercent}%` }} />
+              ))}
+
               {pastFraction > 0 ? (
                 <div
                   className="ns-dispatch-lane__past"
@@ -149,7 +171,7 @@ function DispatchLaneGrid({
                     key={wo.id}
                     className={`ns-dispatch-chip ns-dispatch-chip--wo${
                       selectedWorkOrderId === wo.id ? " ns-dispatch-chip--selected" : ""
-                    }${isBusy ? " ns-dispatch-chip--busy" : ""}`}
+                    }${isBusy ? " ns-dispatch-chip--busy" : ""}${window.endMillis <= now ? " ns-dispatch-chip--elapsed" : ""}`}
                     style={{ left: `${geometry.leftPercent}%`, width: `${geometry.widthPercent}%` }}
                     draggable={!isBusy}
                     onClick={() => onSelectWorkOrder?.(wo.id)}
@@ -229,6 +251,7 @@ function DispatchLaneGrid({
                   </button>
                 );
               })}
+              {nowLine}
             </div>
           </div>
         );
@@ -259,8 +282,8 @@ function laneChipLabel(wo, technicianName, geometry) {
 /**
  * The lane's second line: shift · % booked · blocked.
  *
- * THE RULE THIS COMPONENT EXISTS TO HOLD. A technician with no recorded availability renders
- * "Shift not recorded" and NO percentage. Not 0%, not "—%", not "0 of 0". Percent booked over an
+ * THE RULE THIS COMPONENT EXISTS TO HOLD. A technician with no recorded availability renders "No
+ * schedule" and NO percentage. Not 0%, not "—%", not "0 of 0". Percent booked over an
  * unknown denominator is unanswerable, and rendering it as zero would report a fact about our data
  * entry as though it were a fact about the business — every technician looking permanently free on
  * the day the collection ships and nobody has filled it in.
@@ -268,11 +291,21 @@ function laneChipLabel(wo, technicianName, geometry) {
  * Booked HOURS still render in that case, because they are known: they come from committed
  * placements. Only the ratio is withheld.
  */
-function LaneMeta({ shift, capacity, blockedMinutes, availabilityLoading }) {
+function LaneMeta({ shift, configured, capacity, blockedMinutes, availabilityLoading }) {
   if (availabilityLoading) return <span className="ns-dispatch-lane__meta-muted">Loading availability…</span>;
 
   const parts = [];
-  parts.push(shift ?? "Shift not recorded");
+  // Three different facts, three different words: hours, a recorded day off, or no record at all.
+  // The last is the compact missing-schedule marker — never a default 7a–5p.
+  if (!configured) {
+    parts.push(
+      <span key="ns" className="ns-dispatch-lane__noschedule" title={NO_SCHEDULE_REASON}>
+        No schedule<span className="sr-only">: {NO_SCHEDULE_REASON}</span>
+      </span>,
+    );
+  } else {
+    parts.push(shift ?? "Not working today");
+  }
   if (capacity.percentBooked != null) {
     parts.push(`${capacity.percentBooked}% booked`);
   } else if (capacity.bookedMinutes > 0) {
@@ -282,9 +315,16 @@ function LaneMeta({ shift, capacity, blockedMinutes, availabilityLoading }) {
 
   const strained = capacity.percentBooked != null && capacity.percentBooked >= 70;
   return (
-    <span className={strained ? "ns-dispatch-lane__meta-strained" : undefined}>{parts.join(" · ")}</span>
+    <span className={strained ? "ns-dispatch-lane__meta-strained" : undefined}>
+      {parts.map((p, i) => (
+        <span key={i}>{i > 0 ? " · " : ""}{p}</span>
+      ))}
+    </span>
   );
 }
+
+const NO_SCHEDULE_REASON =
+  "No governed working schedule is recorded for this person. Placements are refused until one is recorded.";
 
 function formatHours(minutes) {
   const hours = minutes / 60;

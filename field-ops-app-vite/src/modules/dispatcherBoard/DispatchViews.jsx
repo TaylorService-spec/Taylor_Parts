@@ -1,12 +1,13 @@
-import { memo } from "react";
+import { memo, useId } from "react";
 
 import {
   bucketBlockedByDay,
   bucketByDay,
-  dayBand,
+  dayLoadCapacity,
+  dayTimeState,
   fortnightDays,
-  laneCapacity,
   occupiedDays,
+  startOfDayMillis,
   weekDays,
 } from "../../domain/dispatchBoardGeometry.js";
 import { blockedKindChipLabel } from "../../domain/schedulingRefusal.js";
@@ -25,12 +26,15 @@ export const DISPATCH_VIEW = Object.freeze({
   DAY: "DAY",
   WEEK: "WEEK",
   FORTNIGHT: "FORTNIGHT",
-  MAP: "MAP",
 });
 
 const VIEW_ORDER = [DISPATCH_VIEW.DAY, DISPATCH_VIEW.WEEK, DISPATCH_VIEW.FORTNIGHT];
 
+export const MAP_UNAVAILABLE_REASON =
+  "No map provider or job coordinates are configured yet. Day, Week and 2 weeks are the scheduling views.";
+
 export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anchorMillis, onAnchorChange, isToday, children }) {
+  const mapReasonId = useId();
   const label = {
     [DISPATCH_VIEW.DAY]: `Day · ${dayLabel}`,
     [DISPATCH_VIEW.WEEK]: `Week · ${weekLabel}`,
@@ -58,28 +62,32 @@ export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anch
           move the anchor directly, the board could only ever show the next fortnight, so a job
           scheduled five weeks out was unreachable. Steps by a day in Day view and by a week in the
           other two, because that is the unit each of them is drawn in. */}
-      {view === DISPATCH_VIEW.MAP ? null : (
-        <div className="ns-dispatch-views__nav">
-          <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, -1))} aria-label={view === DISPATCH_VIEW.DAY ? "Previous day" : "Previous week"}>‹</button>
-          <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(Date.now())} disabled={isToday}>Today</button>
-          <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, 1))} aria-label={view === DISPATCH_VIEW.DAY ? "Next day" : "Next week"}>›</button>
-          <label className="ns-dispatch-views__jump">
-            <span className="ns-dispatch-views__jump-label">Go To</span>
-            <input type="date" value={toDateInput(anchorMillis)} onChange={(e) => { const t = fromDateInput(e.target.value); if (t != null) onAnchorChange?.(t); }} />
-          </label>
-        </div>
-      )}
+      <div className="ns-dispatch-views__nav">
+        <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, -1))} aria-label={view === DISPATCH_VIEW.DAY ? "Previous day" : "Previous week"}>‹</button>
+        <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(Date.now())} disabled={isToday}>Today</button>
+        <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, 1))} aria-label={view === DISPATCH_VIEW.DAY ? "Next day" : "Next week"}>›</button>
+        <label className="ns-dispatch-views__jump">
+          <span className="ns-dispatch-views__jump-label">Go To</span>
+          <input type="date" value={toDateInput(anchorMillis)} onChange={(e) => { const t = fromDateInput(e.target.value); if (t != null) onAnchorChange?.(t); }} />
+        </label>
+      </div>
+      {/* MAP — HONESTLY UNAVAILABLE (Owner, 2026-10-15). It used to be an active-looking tab that
+          switched to a paragraph. No map provider, job coordinates or map read exist yet
+          (docs/architecture/employee-work-schedule-design.md §7), so the control stays where the
+          design puts it — the gap stays visible — but says it is unavailable and does nothing.
+          aria-disabled rather than `disabled`, so keyboard and screen-reader users can still reach
+          it and hear why. */}
       <button
         type="button"
-        role="tab"
-        aria-selected={view === DISPATCH_VIEW.MAP}
-        className={`ns-dispatch-views__tab ns-dispatch-views__tab--standalone${
-          view === DISPATCH_VIEW.MAP ? " ns-dispatch-views__tab--on" : ""
-        }`}
-        onClick={() => onChange(DISPATCH_VIEW.MAP)}
+        aria-disabled="true"
+        aria-describedby={mapReasonId}
+        className="ns-dispatch-views__tab ns-dispatch-views__tab--standalone ns-dispatch-views__tab--unavailable"
+        title={MAP_UNAVAILABLE_REASON}
+        onClick={(e) => e.preventDefault()}
       >
-        Map · locations
+        Map · not available
       </button>
+      <span id={mapReasonId} className="sr-only">{MAP_UNAVAILABLE_REASON}</span>
       {children ? <><span className="ns-dispatch-views__spacer" />{children}</> : null}
     </div>
   );
@@ -143,7 +151,7 @@ function WeekViewImpl({
                 <div
                   key={d.dateMillis}
                   role="cell"
-                  className={`ns-dispatch-week__cell${canDrop ? " ns-dispatch-week__cell--droppable" : ""}${d.isWeekend ? " ns-dispatch-week__cell--weekend" : ""}`}
+                  className={`ns-dispatch-week__cell${canDrop ? " ns-dispatch-week__cell--droppable" : ""}${d.isWeekend ? " ns-dispatch-week__cell--weekend" : ""}${dayStateClass(availability, d.dateMillis, nowMillis)}`}
                   onDragOver={canDrop ? (e) => e.preventDefault() : undefined}
                   onDrop={canDrop ? (e) => { e.preventDefault(); onDropOnTechnicianDay?.(tech.id, d.dateMillis); } : undefined}
                   onClick={() => onSelectDay?.(d.dateMillis)}
@@ -157,7 +165,7 @@ function WeekViewImpl({
                     </span>
                   ))}
                   {entries.length === 0 && blocks.length === 0 ? (
-                    <span className="ns-dispatch-week__open">open</span>
+                    <span className="ns-dispatch-week__open">{EMPTY_DAY_WORDS[dayTimeState(availability, d.dateMillis)]}</span>
                   ) : null}
                 </div>
               );
@@ -214,11 +222,10 @@ function TwoWeekLoadImpl({
           <div className="ns-dispatch-load__row" role="row" key={tech.id}>
             <div className="ns-dispatch-load__identity" role="rowheader">{identity.name}</div>
             {days.map((d, i) => {
-              const band = dayBand(d.dateMillis);
               const placed = (byDay.get(d.dateMillis) ?? []).map((e) => e.workOrder);
-              // Availability is read for the whole visible range, so the same view answers every
-              // day in it; capacity is recomputed per day band from that one read.
-              const capacity = laneCapacity(availability, placed, band);
+              // Availability is read for the whole visible range; each day's capacity divides that
+              // day's bookings by THAT DAY's available minutes, never the whole range's (G-11).
+              const capacity = dayLoadCapacity(availability, placed, d.dateMillis);
               const blocked = (blockedByDay.get(d.dateMillis) ?? []).length > 0;
               return (
                 <button
@@ -226,10 +233,10 @@ function TwoWeekLoadImpl({
                   key={d.dateMillis}
                   className={`ns-dispatch-load__cell${blocked ? " ns-dispatch-load__cell--blocked" : ""}${
                     i === weekBreakIndex - 1 ? " ns-dispatch-load__weekbreak" : ""
-                  }`}
+                  }${dayStateClass(availability, d.dateMillis, nowMillis)}`}
                   data-load={loadBucket(capacity.percentBooked)}
                   onClick={() => onSelectDay?.(d.dateMillis)}
-                  aria-label={loadCellLabel(identity.name, d, capacity, blocked)}
+                  aria-label={loadCellLabel(identity.name, d, capacity, blocked, dayTimeState(availability, d.dateMillis))}
                 >
                   {capacity.percentBooked == null ? (
                     <span className="ns-dispatch-load__unknown">—</span>
@@ -245,30 +252,6 @@ function TwoWeekLoadImpl({
       <p className="ns-dispatch-load__legend">
         Darker is more booked. A dash means no working hours are recorded for that day, which is not
         the same as an empty one. Click a day to open it.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Map view — the staged slot, rendered truthfully.
- *
- * The artifact draws a Map tab and describes it as "the same day in space". EOS has no routing,
- * travel-time, GPS or geocoding authority, and none is being built here — building one would be a
- * whole product, not a presentation migration. So the slot keeps its position and its tab, and says
- * exactly what is missing.
- *
- * Neither faked nor dropped, per the rule the North Star sources set out: omitting it would hide the
- * gap as effectively as faking it would fill it, and a reader could not tell an absent capability
- * from an absent design.
- */
-function MapViewImpl() {
-  return (
-    <div className="ns-dispatch-map" role="region" aria-label="Map">
-      <p className="ns-dispatch-map__note">
-        Location-based dispatch is not available. Placing work by travel time or route needs routing
-        and location authority that this system does not have yet — the day, week and two-week views
-        are the scheduling surfaces meanwhile.
       </p>
     </div>
   );
@@ -304,6 +287,16 @@ function shortDayHeading(day) {
   return `${d.toLocaleDateString(undefined, { weekday: "narrow" })} ${d.getDate()}`;
 }
 
+/** What an empty Week cell says. "open" only where the schedule records working time. */
+const EMPTY_DAY_WORDS = Object.freeze({ working: "open", nonWorking: "off", unconfigured: "no schedule" });
+
+/** Elapsed (a day already over), not working, or no schedule — the same three states the lanes draw. */
+function dayStateClass(availability, dayStartMillis, nowMillis) {
+  const state = dayTimeState(availability, dayStartMillis);
+  const over = Number.isFinite(nowMillis) && startOfDayMillis(nowMillis) > dayStartMillis;
+  return `${over ? " ns-dispatch-day--elapsed" : ""}${state === "working" ? "" : ` ns-dispatch-day--${state === "nonWorking" ? "off" : "unconfigured"}`}`;
+}
+
 function hoursText(minutes) {
   if (minutes == null) return "";
   const hours = minutes / 60;
@@ -318,14 +311,14 @@ function loadBucket(percent) {
   return "low";
 }
 
-function loadCellLabel(name, day, capacity, blocked) {
+function loadCellLabel(name, day, capacity, blocked, state) {
   const when = new Date(day.dateMillis).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
   if (capacity.percentBooked == null) {
-    return `${name}, ${when}: no working hours recorded${blocked ? ", has blocked time" : ""}`;
+    const why = state === "nonWorking" ? "not a working day" : state === "working" ? "no available hours" : "no working schedule recorded";
+    return `${name}, ${when}: ${why}${blocked ? ", has blocked time" : ""}`;
   }
   return `${name}, ${when}: ${capacity.percentBooked}% booked${blocked ? ", has blocked time" : ""}`;
 }
 
 export const DispatchWeekView = memo(WeekViewImpl);
 export const DispatchTwoWeekLoad = memo(TwoWeekLoadImpl);
-export const DispatchMapView = memo(MapViewImpl);
