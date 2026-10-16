@@ -50,6 +50,7 @@ import {
 } from "./workOrderLifecycle";
 import type { WorkOrderOp } from "./workOrderOperationTypes";
 import { notQuarantined } from "./workOrderQuarantine";
+import { resolveCompanyAuthority } from "./companyAuthority";
 import {
   WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION,
 } from "./workOrderAssignmentAuthority";
@@ -527,20 +528,36 @@ async function requireActiveMember(client: PoolClient, actor: LifecycleActor): P
   if (rows.length === 0) refuse("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
 }
 
-async function requireEmployee(db: Db, tenantId: string, employeeId: unknown): Promise<{ id: string; operatingCompanyId: string }> {
+/**
+ * G-9 COMPANY AUTHORITY (Owner authorization 2026-10-15; DECISIONS #237): the schedule COMMANDS act only on Employees of the
+ * caller's operating companies (EOS Core company authority, eosOps/companyAuthority.ts -- resolved server-side inside the
+ * command's transaction, after the capability and membership checks). None fails closed. Out of scope == unknown: an
+ * Employee, a company or an unavailability outside the caller's companies is refused exactly like one that does not exist,
+ * and every refusal precedes any write.
+ */
+async function requireCompanyAuthority(client: PoolClient, actor: LifecycleActor): Promise<readonly string[]> {
+  const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+  return authority.companies;
+}
+
+async function requireEmployee(db: Db, tenantId: string, employeeId: unknown, companies: readonly string[]): Promise<{ id: string; operatingCompanyId: string }> {
   if (!ID_SHAPE(employeeId)) refuse("EMPLOYEE_ID_REQUIRED", "INVALID_INPUT", "employeeId is required and must be a governed Employee id");
   const { rows } = await db.query(
-    `SELECT id, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [tenantId, employeeId]);
+    `SELECT id, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2 AND operating_company_id = ANY($3::text[])`,
+    [tenantId, employeeId, [...companies]]);
   if (rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
   return { id: rows[0].id, operatingCompanyId: rows[0].operating_company_id };
 }
 
-async function requireActiveCompany(db: Db, tenantId: string, companyId: unknown): Promise<string> {
+async function requireActiveCompany(db: Db, tenantId: string, companyId: unknown, companies: readonly string[]): Promise<string> {
   if (!ID_SHAPE(companyId)) refuse("OPERATING_COMPANY_ID_INVALID", "INVALID_INPUT", "operatingCompanyId must be a governed operating company id");
   const { rows } = await db.query(
     `SELECT 1 FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`,
     [tenantId, companyId]);
-  if (rows.length === 0) refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE for this tenant");
+  if (rows.length === 0 || !companies.includes(companyId as string)) {
+    refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE for this tenant");
+  }
   return companyId as string;
 }
 
@@ -617,8 +634,9 @@ export const setTechnicianWorkingHours: WorkOrderOp = async (deps, caller, input
 
   return inTransaction(deps, async (client) => {
     await requireActiveMember(client, actor);
-    const employee = await requireEmployee(client, actor.tenantId, i.employeeId);
-    const operatingCompanyId = companyScope === null ? null : await requireActiveCompany(client, actor.tenantId, companyScope);
+    const companies = await requireCompanyAuthority(client, actor);
+    const employee = await requireEmployee(client, actor.tenantId, i.employeeId, companies);
+    const operatingCompanyId = companyScope === null ? null : await requireActiveCompany(client, actor.tenantId, companyScope, companies);
     await lockEmployeePlacement(client, actor.tenantId, employee.id);
     const open = await client.query(
       `SELECT id, to_char(effective_from, 'YYYY-MM-DD') AS effective_from FROM eos_workforce.technician_working_schedules
@@ -684,7 +702,8 @@ export const recordTechnicianUnavailability: WorkOrderOp = async (deps, caller, 
   const now = (deps.now ?? (() => new Date()))();
   return inTransaction(deps, async (client) => {
     await requireActiveMember(client, actor);
-    const employee = await requireEmployee(client, actor.tenantId, i.employeeId);
+    const companies = await requireCompanyAuthority(client, actor);
+    const employee = await requireEmployee(client, actor.tenantId, i.employeeId, companies);
     await lockEmployeePlacement(client, actor.tenantId, employee.id);
     const id = `tua_${randomUUID()}`;
     await client.query(
@@ -718,8 +737,11 @@ export const endTechnicianUnavailability: WorkOrderOp = async (deps, caller, inp
   const now = (deps.now ?? (() => new Date()))().getTime();
   return inTransaction(deps, async (client) => {
     await requireActiveMember(client, actor);
+    const companies = await requireCompanyAuthority(client, actor);
     const found = await client.query(
-      `SELECT employee_id FROM eos_workforce.technician_unavailability WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, i.unavailabilityId]);
+      `SELECT u.employee_id FROM eos_workforce.technician_unavailability u
+         JOIN eos_workforce.employees e ON e.tenant_id = u.tenant_id AND e.id = u.employee_id
+        WHERE u.tenant_id = $1 AND u.id = $2 AND e.operating_company_id = ANY($3::text[])`, [actor.tenantId, i.unavailabilityId, [...companies]]);
     if (found.rows.length === 0) refuse("UNAVAILABILITY_NOT_FOUND", "NOT_FOUND", "no such unavailability in this tenant");
     await lockEmployeePlacement(client, actor.tenantId, found.rows[0].employee_id);
     const { rows } = await client.query(

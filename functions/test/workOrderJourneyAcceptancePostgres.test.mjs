@@ -17,6 +17,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -108,6 +109,9 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
   const SVC_MGR = await persona({ subject: "svcmgr", capabilities: [...WO_KEYS("fieldManager"), ...PROPOSED_OFFICE] });
   const SVC_MGR_BASELINE = await persona({ subject: "svcmgr-baseline", capabilities: WO_KEYS("fieldManager") });
   const DISPATCHER = await persona({ subject: "dispatcher", capabilities: [...WO_KEYS("dispatcher"), ...PROPOSED_OFFICE] });
+  // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
+  await grantSyntheticCompanyAuthority(pool, T,
+    (await q("SELECT id FROM eos_policy.principals WHERE external_subject = $1", [DISPATCHER])).rows[0].id, ["taylor"]);
   const TECH_A = await persona({ subject: "tech-a", capabilities: [...WO_KEYS("technician"), ...PROPOSED_TECHNICIAN],
     employee: { id: "emp-j-a", name: "Avery Tech" } });
   const TECH_B = await persona({ subject: "tech-b", capabilities: [...WO_KEYS("technician"), ...PROPOSED_TECHNICIAN],

@@ -8511,3 +8511,41 @@ This PR isolates only the Analysis-backed My Work sections and the `rental` sect
 Plus `field-ops-app-vite/test/rentalWorkspace.test.jsx`: authorized company options only, no create without authority, Finance-only rendering.
 
 **Coverage still open** (#235 acceptance): Ventana-only and Taylor-only Finance personas, and Ventana rental data in nonprod, for live runtime negatives. Creating them needs separate approval.
+
+## #237 — OWNER: G-9 scheduling company security — the schedule commands enforce EOS Core company authority (2026-10-15)
+
+**Status: OWNER AUTHORIZED for preparation and implementation (2026-10-15).** Merge and deployment need a separate Owner authorization. Scheduling PR-2 (Work Schedule editing) stays blocked until this is reviewed, authorized, deployed to nonprod and verified.
+
+**Why.** The Scheduling lane's finding G-9 (`docs/architecture/employee-work-schedule-design.md`): `setTechnicianWorkingHours`, `recordTechnicianUnavailability` and `endTechnicianUnavailability` checked tenant, capability and membership only.
+- Any holder of `workOrder.lifecycle.schedule` could change another company's Employee's hours or time off.
+- They could also scope a schedule to any active company.
+
+**Rule** (`functions/src/eosOps/workOrderAvailability.ts`, EOS Core company authority #235, `resolveCompanyAuthority`).
+- Resolution happens inside each command's transaction, after the capability and membership checks. It is server-side and never taken from input.
+- **No company authority** gives `COMPANY_AUTHORITY_REQUIRED` (403). It fails closed.
+- **The Employee:** set hours and record unavailability need the Employee's home company (`employees.operating_company_id`) to be one of the caller's companies.
+- **The unavailability:** ending one is reached through its Employee's company.
+- **Out of scope == unknown:**
+  - an Employee outside the caller's companies answers `EMPLOYEE_NOT_FOUND`;
+  - an unavailability outside them answers `UNAVAILABILITY_NOT_FOUND`;
+  - in each case the code, category and message are identical to those for a nonexistent record.
+- **A schedule scoped to a company** outside the caller's companies answers exactly like an unknown or inactive company (`OPERATING_COMPANY_NOT_GOVERNED`), even for the caller's own Employee.
+- **Every refusal precedes any write.**
+
+**Unchanged.**
+- The capability rule (DECISION 5): writes need `workOrder.lifecycle.schedule`.
+- The append/close-only history.
+- The placement checks.
+- No new authorization engine, grant, role or identity change.
+
+**Not covered** (the board read; tracked with the Work Order list isolation): `readTechnicianAvailability` and `findAvailableTechnicianSlots` stay tenant-wide reads, gated by schedule or dispatch capability.
+
+**Proof** (`functions/test/workOrderAvailabilityPostgres.test.mjs` G-9). It covers:
+- for all three commands, outside the caller's companies ≡ nonexistent (code, category, message);
+- an out-of-company schedule scope ≡ an unknown company;
+- no authority refused, after the capability check;
+- **a snapshot proves no mutation on refusal**;
+- the positive cases, including explicit cross-company authority.
+
+Fixture: the existing synthetic dispatcher, which works both companies' technicians in that suite, now holds explicit authority (a linked Taylor Employee plus a Ventana `operatingCompany` assignment). The new schedulers are synthetic.
+- **Service suites** that call these commands as synthetic schedulers (service journey, service activation, Work Order journey, domain cutover, field context, labor, quarantine, technician job context, customer self-scheduling) now grant that synthetic scheduler explicit company authority through `test/support/syntheticAvailability.mjs` `grantSyntheticCompanyAuthority`. It covers exactly the companies of the technicians the scheduler configures. No canonical persona is widened.

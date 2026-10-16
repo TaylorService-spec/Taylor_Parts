@@ -36,6 +36,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        #2105 (merged `93bec3b7`, DECISIONS #235)
 - Expected outcome:    no cross-company rental read, write or replay; out-of-company == missing; Finance-withheld receivables
 - Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
+- Lifecycle stage:     MERGED `94f420c4` (#2107); nonprod deployed; runtime proof partial (cross-company untestable live; D5 PARTIAL)
+
+- Capability:          G-9 scheduling company security — schedule commands under EOS Core company authority (Owner authorization 2026-10-15, DECISIONS #237)
+- Agent/session:       Claude Code EOS controller / security lane · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `work/eos-g9-schedule-company-security` · `D:/eos-sec-g9`
+- Base commit:         `7a1c4cd7`
+- Owned paths:         `functions/src/eosOps/workOrderAvailability.ts` (command company checks) · `functions/test/workOrderAvailabilityPostgres.test.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` (rebase after #2107, which also appends to DECISIONS)
+- Dependencies:        #2105 (DECISIONS #235) merged; Scheduling PR-2 waits on this
+- Expected outcome:    no cross-company schedule or unavailability write; out-of-company == missing; no mutation on refusal
+- Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
 - Lifecycle stage:     SANDBOX BUILD
 
 - Capability:          EOS Core Company Authority V1 — Analysis / My Work company isolation (Owner security ruling 2026-10-15, DECISIONS #235)
