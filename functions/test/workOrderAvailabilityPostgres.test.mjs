@@ -544,4 +544,66 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.ok((await op("endTechnicianUnavailability", P.dispatcher, { unavailabilityId: vBlock, reason: "back" })).withdrawn);
   });
 
+  await t.test("suggestWorkOrderPlacement: the earliest valid FUTURE window in the company's business time zone, under the commands' company rules", async () => {
+    // FIX JOBS AND DISPATCH (Owner 2026-10-16): the Schedule dialog's default. Taylor's governed business time zone is Phoenix.
+    await q(`UPDATE eos_policy.tenant_operating_companies SET business_time_zone = 'America/Phoenix' WHERE tenant_id = $1 AND operating_company_id = 'taylor'`, [T]);
+    await employee("emp-sg-a");
+    await employee("emp-sg-b");                       // eligible, no hours recorded
+    await employee("emp-sg-v", { company: "ventana" }); // another company's technician
+    await op("setTechnicianWorkingHours", P.dispatcher,
+      { employeeId: "emp-sg-a", timeZone: "America/Phoenix", effectiveFrom: "2030-10-01", weeklyHours: WEEKDAYS("07:00", "15:00") });
+    const suggest = (actor, input, at = null) => availability.suggestWorkOrderPlacement(at ? { pool, now: () => new Date(at) } : deps, { actor }, input);
+    const refusal = async (promise) => {
+      try { await promise; } catch (e) { return [e.code, e.category, e.message]; }
+      return assert.fail("expected a refusal");
+    };
+    const counts = async () => JSON.stringify((await q(`SELECT
+        (SELECT count(*)::int FROM eos_workforce.technician_working_schedules) s,
+        (SELECT count(*)::int FROM eos_workforce.technician_unavailability) u,
+        (SELECT count(*)::int FROM eos_ops.work_orders WHERE status::text = 'SCHEDULED') sch`)).rows[0]);
+
+    const wo = await newWo("taylor");
+    const before = await counts();
+    // NOW is 05:0x in Phoenix on a Tuesday: the earliest 2-hour window for emp-sg-a is 07:00 Phoenix (14:00Z), stated in Phoenix.
+    const a = await suggest(P.dispatcher, { workOrderId: wo, employeeId: "emp-sg-a" });
+    assert.equal(a.outcome, "SLOT_FOUND");
+    assert.equal(a.timeZone, "America/Phoenix");
+    assert.equal(a.operatingCompanyId, "taylor");
+    assert.deepEqual([a.suggestion.employeeId, a.suggestion.start, a.suggestion.end], ["emp-sg-a", "2030-10-01T14:00:00.000Z", "2030-10-01T16:00:00.000Z"]);
+    // Never in the past: at 07:05 Phoenix the earliest start is 07:15, rounded UP onto the 15-minute grid.
+    const late = await suggest(P.dispatcher, { workOrderId: wo, employeeId: "emp-sg-a" }, "2030-10-01T14:05:00Z");
+    assert.equal(late.suggestion.start, "2030-10-01T14:15:00.000Z");
+    // No hours recorded: said so, and the earliest window of someone ELIGIBLE IN THE WORK ORDER'S COMPANY is offered instead.
+    const b = await suggest(P.dispatcher, { workOrderId: wo, employeeId: "emp-sg-b" });
+    assert.deepEqual([b.outcome, b.suggestion], ["NOT_CONFIGURED", null]);
+    assert.ok(b.alternative, "an alternative is named");
+    const altCompany = (await q(`SELECT operating_company_id c FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [T, b.alternative.employeeId])).rows[0].c;
+    assert.equal(altCompany, "taylor", "never another company's technician");
+    // Another company's technician and an unknown one answer alike.
+    const v = await suggest(P.dispatcher, { workOrderId: wo, employeeId: "emp-sg-v" });
+    const nope = await suggest(P.dispatcher, { workOrderId: wo, employeeId: "emp-sg-nope" });
+    assert.deepEqual([v.outcome, v.suggestion, nope.outcome], ["NOT_SCHEDULABLE", null, "NOT_SCHEDULABLE"]);
+    // Without a technician: the earliest window of anyone eligible in the company, in the future.
+    const any = await suggest(P.dispatcher, { workOrderId: wo });
+    assert.equal(any.outcome, "SLOT_FOUND");
+    assert.ok(Date.parse(any.suggestion.start) > NOW);
+    assert.equal(await counts(), before, "a suggestion writes nothing");
+
+    // A window already held is not offered to another job; a job being MOVED does not collide with its own window.
+    const { wo: held } = await schedule("emp-sg-a", "2030-10-01T14:00:00Z", "2030-10-01T16:00:00Z");
+    assert.equal((await suggest(P.dispatcher, { workOrderId: wo, employeeId: "emp-sg-a" })).suggestion.start, "2030-10-01T16:00:00.000Z");
+    assert.equal((await suggest(P.dispatcher, { workOrderId: held, employeeId: "emp-sg-a" })).suggestion.start, "2030-10-01T14:00:00.000Z");
+
+    // Company authority, the G-9 way: a Work Order outside the caller's companies == a nonexistent one.
+    const ventanaWo = await newWo("ventana");
+    assert.deepEqual(await refusal(suggest(P.schedT, { workOrderId: ventanaWo })), await refusal(suggest(P.schedT, { workOrderId: "wo-nope" })));
+    assert.equal((await refusal(suggest(P.schedT, { workOrderId: ventanaWo })))[0], "WORK_ORDER_NOT_FOUND");
+    assert.equal((await suggest(P.dispatcher, { workOrderId: ventanaWo })).operatingCompanyId, "ventana", "explicit Ventana authority reaches it");
+    assert.equal((await refusal(suggest(P.schedNone, { workOrderId: wo })))[0], "COMPANY_AUTHORITY_REQUIRED");
+    assert.equal((await refusal(suggest(P.nobody, { workOrderId: wo })))[0], "CAPABILITY_MISSING", "capability first");
+    // A finished Work Order is not offered a placement.
+    await q(`UPDATE eos_ops.work_orders SET status = 'CANCELLED' WHERE id = $1`, [ventanaWo]);
+    assert.equal((await refusal(suggest(P.dispatcher, { workOrderId: ventanaWo })))[0], "WORK_ORDER_NOT_SCHEDULABLE");
+  });
+
 });

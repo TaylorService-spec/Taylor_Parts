@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Jobs + Dispatcher Board on one governed scheduling path; Schedule dialog defaults to a valid future time (Owner "FIX JOBS AND DISPATCH" 2026-10-16, DECISIONS #239)
+- Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `fix/jobs-dispatch-and-schedule-default` · `D:/eos-dispatch-fix`
+- Base commit:         `5e4afa12`
+- Owned paths:         `modules/dispatch/Dispatch.jsx` · `modules/dispatcherBoard/{DispatcherBoard,PlacementDialog,ReadyToScheduleQueue}.jsx` · `modules/dispatcherBoard/usePlacementCommands.js` · `domain/{jobsDispatchList,zonedTime}.js` · `functions/src/eosOps/workOrderAvailability.ts` (suggestWorkOrderPlacement only) · their tests
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` · `workOrderOperations.ts` / client op lists · `.github/workflows/dispatch-north-star-tests.yml` · `test/suites.json` · `index.css` (3 Jobs rules)
+- Dependencies:        coordinated with Scheduling PR-2 (it edits workOrderAvailability.ts elsewhere; holds DECISIONS #238) and the Firebase-exit lane (AuthContext untouched)
+- Expected outcome:    Jobs dispatches/schedules; dialog never opens on a past time; same commands/authority/availability on both surfaces
+- Protected boundaries:no merge or deploy without Owner exact-head authorization; no role, grant, identity, migration or Firebase change
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          P0 rental company security — all 18 /operations/rental operations under EOS Core company authority (Owner rulings D1–D8 2026-10-15, DECISIONS #236)
 - Agent/session:       Claude Code EOS controller / security lane · Role: builder; Lane D: independent reviewer
 - Branch / worktree:   `work/eos-rental-company-security` · `D:/eos-sec-rental`

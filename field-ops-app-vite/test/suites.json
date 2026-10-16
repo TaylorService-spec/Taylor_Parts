@@ -250,6 +250,14 @@
       "runner": "node --test"
     },
     {
+      "file": "test/jobsDispatchList.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/zonedTime.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/displayTimestamp.test.mjs",
       "runner": "node"
     },

@@ -64,7 +64,7 @@ export function onWorkOrderMutation(listener: (workOrderId: string | null) => vo
 }
 
 const READ_OPERATIONS = new Set(["readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
-  "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities", "readWorkOrderAuthorityStatus", "readTechnicianAvailability", "findAvailableTechnicianSlots",
+  "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities", "readWorkOrderAuthorityStatus", "readTechnicianAvailability", "findAvailableTechnicianSlots", "suggestWorkOrderPlacement",
   "readTechnicianExecutionStats", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown"]);
 
 async function run<T = unknown>(operation: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -609,6 +609,23 @@ export async function findAvailableTechnicianSlots(input: {
 }): Promise<{ slots: { employeeId: string; displayName: string | null; start: string; end: string }[]; truncated: boolean;
   notConfiguredEmployeeIds: string[] }> {
   return run("findAvailableTechnicianSlots", { ...input });
+}
+
+export interface PlacementSlot { employeeId: string; displayName: string | null; start: string; end: string }
+export interface PlacementSuggestion {
+  workOrderId: string; timeZone: string; operatingCompanyId: string; durationMinutes: number; searchedFrom: string; searchedTo: string;
+  outcome: "SLOT_FOUND" | "NO_OPEN_TIME" | "NOT_CONFIGURED" | "NOT_SCHEDULABLE";
+  suggestion: PlacementSlot | null; alternative: PlacementSlot | null;
+}
+
+/**
+ * The governed placement DEFAULT for one Work Order (server suggestWorkOrderPlacement): the earliest window the placement
+ * check would accept, in the company's business time zone. The Board and the Jobs page both open the Schedule dialog with it.
+ */
+export async function suggestWorkOrderPlacement(input: {
+  workOrderId: string; employeeId?: string | null; durationMinutes?: number;
+}): Promise<PlacementSuggestion> {
+  return run("suggestWorkOrderPlacement", { ...input });
 }
 
 // ─────────────────────────────────────── operational aggregates ───────────────────────────────────────
