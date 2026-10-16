@@ -694,6 +694,10 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     for (const bad of ["", "   ", 5, null]) refused(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: bad }), 400, "ACCOUNT_INVALID", JSON.stringify(bad));
     // The filter grants nothing: no key, no rows, whatever account is named.
     refused(await fn(techP, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct }), 403, "CAPABILITY_REQUIRED");
+    // Sales holds finance.payment.read FLAT (migration 1761609600000 L157-158) but no Finance company assignment, so it
+    // reaches NO company: naming its own customer's Account reads nothing.
+    assert.equal((await capabilitiesForRoleKeys(pool, TENANT, ["salesperson"])).has("finance.payment.read"), true, "precondition: sales holds the view key flat");
+    for (const c of ["taylor", "ventana", "consolidated"]) refused(await fn(salesP, "listObligations", { operatingCompanyId: c, crmAccountId: acct }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE", `sales ${c}`);
   });
 
   // ── COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; Financials Workspace P0 correction 2026-10-14) ──
