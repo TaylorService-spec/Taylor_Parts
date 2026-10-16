@@ -5,7 +5,7 @@
 // screen, and the page must own no unbounded read.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const listState = { presentation: null };
@@ -14,8 +14,15 @@ const summaryState = { summary: null, state: "LOADING" };
 vi.mock("../src/hooks/useMetadataList", () => ({
   useMetadataList: () => ({ presentation: listState.presentation, loadMore: vi.fn(), retry: vi.fn() }),
 }));
+const summaryRetry = vi.fn();
 vi.mock("../src/hooks/useAccountPortfolioSummary", () => ({
-  useAccountPortfolioSummary: () => ({ ...summaryState, retry: vi.fn() }),
+  useAccountPortfolioSummary: () => ({ ...summaryState, retry: summaryRetry }),
+}));
+// The create path: the form is reduced to one submit, and the governed create resolves a record.
+const createSpy = vi.fn(async (values) => ({ id: "a-new", name: values.name, status: "PROSPECT" }));
+vi.mock("../src/domain/accounts", () => ({ createAccount: (values) => createSpy(values) }));
+vi.mock("../src/modules/accounts/AccountForm", () => ({
+  default: ({ onSubmit }) => <button type="button" onClick={() => onSubmit({ name: "Harbor Bistro" })}>Submit test customer</button>,
 }));
 // If the page ever reacquires a collection subscription, this mock is the tripwire: the
 // import would resolve and the test asserting it is unused would fail.
@@ -46,6 +53,8 @@ const renderPage = () => render(<MemoryRouter><AccountsList /></MemoryRouter>);
 
 beforeEach(() => {
   subscribeSpy.mockClear();
+  summaryRetry.mockClear();
+  createSpy.mockClear();
   listState.presentation = readyList([{ id: "a1", name: "Northside Foods" }]);
   summaryState.summary = null;
   summaryState.state = "LOADING";
@@ -77,6 +86,17 @@ describe("Customers surface", () => {
     // No PostgreSQL CRM aggregate exists yet: say so, and offer no retry that cannot succeed.
     expect(screen.getByText(/totals are not available yet/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
+  });
+
+  it("a successful create refetches the list and the portfolio summary, and does not throw", async () => {
+    // #2112 review: the summary refetch is part of the create flow; dropping its binding threw a ReferenceError.
+    summaryState.state = "UNAVAILABLE";
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "New Customer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit test customer" }));
+    await waitFor(() => expect(screen.getByText("Customer Harbor Bistro created.")).toBeTruthy());
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(summaryRetry).toHaveBeenCalledTimes(1);
   });
 
   it("a denied summary says so, and does not read as missing data", () => {

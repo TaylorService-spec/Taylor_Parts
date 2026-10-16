@@ -95,7 +95,7 @@ export default function AccountsList() {
     })));
   };
 
-  const { summary, state: summaryState } = useAccountPortfolioSummary();
+  const { summary, state: summaryState, retry: retrySummary } = useAccountPortfolioSummary();
 
   // OWNER IS RESOLVED LIVE, NOT READ FROM THE SNAPSHOT. `accountOwner` stores
   // assignedToDisplayName alongside the id, and AccountDetail deliberately ignores it in favour of
