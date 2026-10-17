@@ -46,15 +46,30 @@ async function withClient(url, fn) {
 test("Security Role assignment scope: governed runtime, fail closed, never global", { skip: SKIP, concurrency: 1 }, async (t) => {
   const name = `scope_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   let pool;
+  // TEARDOWN MUST WAIT FOR THE SOCKETS, NOT JUST FOR end(). pg-pool 3.x resolves end() as soon as it has ASKED each
+  // client to close (Pool._remove drops the client, then calls client.end() without waiting). The forced DROP below
+  // then terminates any backend that has not yet processed its Terminate, and that client -- ending, its pool's error
+  // listener gone -- surfaces 57P01 "terminating connection due to administrator command" as an uncaughtException,
+  // attributed to whichever subtest opened it (the concurrency subtest, which grows the pool to 16). So every client
+  // the pool opens is tracked, and teardown waits until the pool has emitted `remove` (fired from client.end's
+  // callback, i.e. once the socket is closed) for each of them before dropping the database.
+  const openClients = new Set();
+  let allClosed = null;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    if (pool) {
+      const drained = openClients.size ? new Promise((done) => { allClosed = done; }) : null;
+      await pool.end();
+      await drained;
+    }
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: url, max: 16 });
+  pool.on("connect", (client) => openClients.add(client));
+  pool.on("remove", (client) => { openClients.delete(client); if (openClients.size === 0) allClosed?.(); });
   const q = (s, v = []) => pool.query(s, v);
   const repo = new PostgresPolicyRepository(pool);
 
