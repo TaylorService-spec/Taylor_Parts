@@ -73,24 +73,14 @@ test("the writer requires exactly the capabilities the Firestore Manufacturer co
   }
 });
 
-test("this change adds no migration: the applied set is the one the base commit had", () => {
+test("the Manufacturer authority has exactly one migration", () => {
   const files = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
   const manufacturerMigrations = files.filter((f) => /manufacturer/i.test(f));
   assert.deepEqual(manufacturerMigrations, ["1761782400000_manufacturer-catalog-authority.sql"],
     "the Manufacturer authority has exactly one migration and this lane adds none");
-  // No file claims a slot after the last one the base commit carried.
-  const newest = files[files.length - 1];
-  // Raised 2026-09-26 for the Administration control plane (1762646400000) -- an unrelated lane's
-  // migration; the Manufacturer assertion above is what this test is about.
-  // Raised again for the workflow control plane (1762732800000), likewise unrelated.
-  // Raised again for the Functional Role authority (1762819200000), likewise unrelated.
-  // Raised again for the tenant sales channel activation (1762905600000, lane GA), likewise unrelated.
-  // Raised again for the direct-exception cell lock (1762992000000, lane DX), likewise unrelated.
-  // Raised again for the Administrator staffing capability (1763078400000, Owner ruling R1), likewise unrelated.
-  // Raised again for the Catalog + Reorder activation candidate (1763164800000 .. 1763596800000), likewise unrelated.
-  // Raised again for accepted main (#2001 multilane 1763683200000 .. 1764129600000; #2002 EOS identity 1764200000000),
-  // likewise unrelated. The Catalog + Reorder reconciliation onto main adds no migration.
-  assert.ok(Number(newest.split("_")[0]) <= 1764200000000, `an unexpected newest migration ${newest}`);
+  // A "newest migration <= X" pin used to follow here. It said nothing about Manufacturers and was raised by hand for ten
+  // unrelated lanes, then went stale unseen because no workflow ran this file. The migration chain's order and count are
+  // migrationLedgerOrderGuard's job; this file keeps the Manufacturer assertion only.
 });
 
 // ════════════════════ no Firebase, no delete, not wired ════════════════════

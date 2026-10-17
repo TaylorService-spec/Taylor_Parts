@@ -33,7 +33,7 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
   let world;
   const extraPools = [];
   t.after(async () => {
-    for (const p of extraPools) await p.end();
+    for (const p of extraPools) await endPoolAndDrain(p);
     await endPoolAndDrain(world?.pool);
     await db.drop();
   });
