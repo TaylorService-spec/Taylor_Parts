@@ -137,7 +137,7 @@ test("the baseline declares the ACTIVATED authority, and still says what nonprod
   // ...and the OTHER question is still answerable without arithmetic in somebody's head.
   assert.equal(AUTHORITY_BASELINE_NONPROD_MEASURED_TOTAL, 387);
   assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG, CONTROL_PLANE, ADMINISTRATOR_STAFFING, GOVERNED_CONFIGURATION, "migration:1764510000000", "migration:1764520000000",
-    "migration:1764580000000", "migration:1764590000000"],
+    "migration:1764580000000", "migration:1764590000000", "migration:1764600000000"],
     "the activation vehicle, the Administration control plane, the Administrator staffing capability and the #204 governed configuration holders are authored beyond the 387 measurement");
 });
 

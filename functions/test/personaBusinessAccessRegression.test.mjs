@@ -638,7 +638,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // (9 since 1762646400000: admin.securityPolicy.write, rolesPermissions/editSecurityPolicy).
     const admin = await resolve(["admin"], NO_DIMENSIONS);
     // 9 -> 12 since #204 (1764500000000): financeConfiguration/manage, systemConfiguration/manage, salesDiscountAuthority/manage.
-    assert.equal(objectAccessOf(admin.capabilities).kinds.ADMIN_ACTION, 12);
+    // 12 -> 13 since #244 (1764600000000): dataImport/stage, an ADMIN_ACTION held by admin only.
+    assert.equal(objectAccessOf(admin.capabilities).kinds.ADMIN_ACTION, 13);
     assert.equal(admin.surfaces.filter((s) => s.startsWith("administration.")).length, 8);
     // What the dispatcher IS for, so the denial is not mistaken for having no authority: Dispatch.
     assert.equal(dispatcher.surfaces.includes("service.dispatch"), true);

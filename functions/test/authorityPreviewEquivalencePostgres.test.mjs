@@ -217,10 +217,14 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
       R({ objectKey: "supplierCatalogItem", roleKey: "purchasingManager", mode: "GRANT" }), { outcome: "WOULD_APPLY" });
     assert.ok(report.perAction.some((a) => a.outcome === "ALREADY_HELD") && report.perAction.some((a) => a.outcome === "GRANTED"));
   });
-  await t.test("C3 object-wide GRANT where every action is refused: NO_OP with REFUSED per action", async () => {
-    const { report } = await step("C3 all refused", ADMIN, "applyObjectWideRoleAuthority",
-      R({ objectKey: "dataImport", roleKey: "owner", mode: "GRANT" }), { outcome: "NO_OP" });
-    assert.ok(report.perAction.length > 0 && report.perAction.every((a) => a.outcome === "REFUSED" && a.refusalCode === "SYSTEM_INVARIANT"));
+  // dataImport has TWO actions since #244 (1764600000000): execute (Owner ruling A, locked) and stage (admin-only by parity with
+  // the Firebase catalog, NOT locked), so an object-wide grant to Owner is no longer "every action refused": execute is
+  // REFUSED as a system invariant and stage is GRANTED. No Object is left whose every action is locked for Owner.
+  await t.test("C3 object-wide GRANT where one action is refused (Owner ruling A) and one is not: REFUSED + GRANTED per action", async () => {
+    const { report } = await step("C3 one refused", ADMIN, "applyObjectWideRoleAuthority",
+      R({ objectKey: "dataImport", roleKey: "owner", mode: "GRANT" }), { outcome: "WOULD_APPLY" });
+    assert.deepEqual(report.perAction.map((a) => [a.capabilityKey, a.outcome, a.refusalCode ?? null]).sort(),
+      [["admin.dataImport.execute", "REFUSED", "SYSTEM_INVARIANT"], ["admin.dataImport.stage", "GRANTED", null]]);
   });
   await t.test("C3 object-wide PARTIAL refusal: some actions GRANTED, one REFUSED, in one call", async () => {
     // The Owner holds dispatcher, so reorder.request.assign (Owner ruling A) is refused at the principal; the other
