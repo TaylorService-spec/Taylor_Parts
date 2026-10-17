@@ -24,7 +24,7 @@
 
 ## Tips and common problems
 
-- **"Work order not found."** The link is stale or the work order was removed. Use the button to go back to the list.
+- **"Work order not found."** The link is stale, the work order was removed, or it belongs to an operating company you are not authorized for. You only see your companies' work orders: your own company, plus any company your administrator has assigned you. Another company's work order looks exactly like one that does not exist. Use the button to go back to the list.
 - The **Inventory** section is labeled "Visual only — no inventory engine connected yet." Planned parts are shown for reference; they don't reserve or move stock.
 - The lifecycle action buttons on this page (Mark Ready, Schedule, Dispatch, etc.) are covered in *Move a work order through its lifecycle*. They can't complete yet — see that guide.
 
