@@ -24,8 +24,11 @@ export const EOS_KEY_FOR_FIREBASE_ID = Object.freeze({
   // Same words, same Object, identical holders (admin, owner, reportViewer) -- migration 1762300800000.
   "report.definition.read": "reportDefinition.read",
   // Owner ruling recorded in credEquivalence.ts: finance.read split into finance.invoice.read / finance.payment.read.
-  // The Account's receivables area is the invoice side of that split.
-  "finance.read": "finance.invoice.read",
+  // F7c (DECISIONS #245): the Account's receivables area now READS the Finance register (listObligations), whose view key is
+  // finance.payment.read -- so that is the key this gate is asked under, the gate following the read it opens. The Owner's
+  // split gave BOTH keys to exactly the 14 Roles that held finance.read (migration 1761609600000), so the holders are identical
+  // to the invoice.read mapping F1 used and nobody gains or loses the door. The server still decides company reach per read.
+  "finance.read": "finance.payment.read",
   // Data Import staging. NOT a registration: the Data Import screen is reached through the EOS surface administration.dataImport,
   // which is earned by admin.dataImport.execute, and the holders are the same (admin only; Firebase gives stage to admin and nobody
   // else). execute is already Owner-excluded (Owner ruling A), so asking stage under this name widens no EOS grant and creates no
@@ -51,11 +54,11 @@ export const FIREBASE_IDS_WITHOUT_EOS_TWIN = Object.freeze({
   "inventory.location.bin.read": "Warehouse Racking (administration/warehouseRacking): NAV_SURFACE_GAPS; bins move with F6.",
   "inventory.location.bin.manage": "Warehouse Racking (administration/warehouseRacking): NAV_SURFACE_GAPS; bins move with F6.",
   "inventory.balance.read": "Only My Dashboard cards and the legacy phone shell read it; neither is reachable under the EOS source.",
-  "finance.visibility.self": "Only My Dashboard cards read it; not reachable under the EOS source. The AR callable re-checks reach.",
-  "finance.visibility.team": "Only My Dashboard cards read it; not reachable under the EOS source. The AR callable re-checks reach.",
-  "finance.visibility.businessUnit": "Only My Dashboard cards read it; not reachable under the EOS source. The AR callable re-checks reach.",
-  "finance.visibility.company": "Only My Dashboard cards read it; not reachable under the EOS source. The AR callable re-checks reach.",
-  "finance.visibility.consolidated": "Only My Dashboard cards read it; not reachable under the EOS source. The AR callable re-checks reach.",
+  "finance.visibility.self": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
+  "finance.visibility.team": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
+  "finance.visibility.businessUnit": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
+  "finance.visibility.company": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
+  "finance.visibility.consolidated": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
   "financialPolicy.profile.read": "Read by no mounted control: AdminFinancialPolicy reads the EOS finance.policy operations directly. read -> finance.policy.read is the only like-for-like pair; it is not translated because nothing asks.",
   "financialPolicy.profile.configure": "Read by no mounted control, and configure -> finance.policy.prepare is not a same-meaning equivalence (configure is a deployment-time act on a DRAFT or APPROVED profile; prepare drafts and submits).",
   "administration.emailIntake.read": "Declared, never consulted: the Email & Communications door is earned by inboundWork.intake.manage.",

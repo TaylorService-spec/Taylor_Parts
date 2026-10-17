@@ -1,4 +1,5 @@
 import { useAccountAr } from "../../hooks/useAccountAr.js";
+import { ACCOUNT_AR_RECORD_NOUN } from "../../access/accountArSource.js";
 import { accountArView, ACCOUNT_AR_STATE } from "../../domain/accountArView.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
@@ -68,6 +69,9 @@ const AR_SORT_COLUMNS = Object.freeze({
 export default function AccountArSection({ accountId }) {
   const { loading, errorStatus, result } = useAccountAr(accountId);
   const view = accountArView({ loading, errorStatus, result });
+  // What one row is called: "Invoice" (Firebase source) or "Receivable" (EOS source, DECISIONS #245). Known at build time.
+  const noun = view.recordNoun ?? ACCOUNT_AR_RECORD_NOUN;
+  const nounLower = noun.toLowerCase();
   // The server's own flag, read — never `companyIds.length > 1` recomputed here.
   const showCompany = view.company?.supplied === true && view.company.spansMultipleCompanies === true;
   const { sort, toggle, sorted: sortedRows } = useTableSort({ rows: view.rows ?? EMPTY_ROWS, columns: AR_SORT_COLUMNS });
@@ -81,7 +85,7 @@ export default function AccountArSection({ accountId }) {
       <div className="ns-section__head">
         <h2 className="ns-section__title">Accounts Receivable</h2>
         <span className="ns-section__meta">
-          · per invoice — multi-currency balances list per currency, never summed
+          · per {nounLower} — multi-currency balances list per currency, never summed
         </span>
       </div>
       {view.kind === ACCOUNT_AR_STATE.LOADING && <p className="ns-state">Loading receivables…</p>}
@@ -91,7 +95,7 @@ export default function AccountArSection({ accountId }) {
       {view.kind === ACCOUNT_AR_STATE.UNAVAILABLE && (
         <p className="ns-state">Receivables couldn’t be read. Try again later.</p>
       )}
-      {view.kind === ACCOUNT_AR_STATE.EMPTY && <p className="ns-state">No invoices on this account.</p>}
+      {view.kind === ACCOUNT_AR_STATE.EMPTY && <p className="ns-state">No {nounLower}s on this account.</p>}
       {view.kind === ACCOUNT_AR_STATE.READY && (
         <>
           {showCompany ? (
@@ -107,10 +111,10 @@ export default function AccountArSection({ accountId }) {
           ) : null}
           <div className="ns-table-wrap">
             <table className="ns-table ns-table--cards">
-              <caption className="fo-sr-only">Invoices on this account</caption>
+              <caption className="fo-sr-only">{noun}s on this account</caption>
               <thead>
                 <tr>
-                  <SortableHeader columnKey="invoice" label="Invoice" sort={sort} onSort={toggle} />
+                  <SortableHeader columnKey="invoice" label={noun} sort={sort} onSort={toggle} />
                   {showCompany ? <SortableHeader columnKey="company" label="Company" sort={sort} onSort={toggle} /> : null}
                   <SortableHeader columnKey="position" label="Position" sort={sort} onSort={toggle} />
                   <SortableHeader columnKey="outstanding" label="Outstanding" sort={sort} onSort={toggle} className="ns-num" />
@@ -119,13 +123,13 @@ export default function AccountArSection({ accountId }) {
               <tbody>
                 {sortedRows.map((row) => (
                   <tr key={row.key}>
-                    <td data-label="Invoice">{row.invoiceNumber}</td>
+                    <td data-label={noun}>{row.invoiceNumber}</td>
                     {showCompany ? (
                       // `companyLabel` is null ONLY when the row carries no company field at all,
                       // which cannot happen while showCompany is true — the summary and the rows
                       // come from the same response. The fallback states the gap rather than
                       // printing an empty cell that reads as "none".
-                      <td data-label="Company">{row.companyLabel ?? "Company not supplied for this invoice"}</td>
+                      <td data-label="Company">{row.companyLabel ?? `Company not supplied for this ${nounLower}`}</td>
                     ) : null}
                     <td data-label="Position">
                       <span className={`ns-tone ns-tone--${row.tone}`}>

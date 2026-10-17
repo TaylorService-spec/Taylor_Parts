@@ -18,6 +18,7 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountArSection.jsx"
       - "field-ops-app-vite/test/accountAttentionProjection.test.mjs"
       - "field-ops-app-vite/test/accountAttentionSection.test.jsx"
+      - "field-ops-app-vite/test/accountArPrincipalIsolation.test.jsx"
       - ".github/workflows/account-attention-projection-tests.yml"
   push:
     branches: [main]
@@ -31,6 +32,7 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountArSection.jsx"
       - "field-ops-app-vite/test/accountAttentionProjection.test.mjs"
       - "field-ops-app-vite/test/accountAttentionSection.test.jsx"
+      - "field-ops-app-vite/test/accountArPrincipalIsolation.test.jsx"
       - ".github/workflows/account-attention-projection-tests.yml"
   workflow_dispatch:
 
@@ -67,7 +69,7 @@ jobs:
         run: node test/accountAttentionProjection.test.mjs
         working-directory: field-ops-app-vite
       - name: AccountAttentionSection render tests (vitest + jsdom)
-        run: npx vitest run test/accountAttentionSection.test.jsx
+        run: npx vitest run test/accountAttentionSection.test.jsx test/accountArPrincipalIsolation.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the touched surfaces (oxlint)
         run: npx oxlint src/domain/accountAttentionProjection.js src/domain/accountWorkOrders.js src/hooks/useAccountAttentionWorkOrders.js src/modules/accounts/AccountAttentionSection.jsx src/modules/accounts/AccountArSection.jsx

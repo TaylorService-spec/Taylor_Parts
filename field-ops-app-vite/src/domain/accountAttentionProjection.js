@@ -99,7 +99,7 @@ export function accountArAttentionItems(arView, { accountId } = {}) {
         .map((r) => ({
           attentionItemId: `account:ar:${accountId}:${r.key}`,
           domain: "ar",
-          objectType: "invoice",
+          objectType: arView.recordNoun === "Receivable" ? "receivable" : "invoice",
           objectId: r.key,
           accountId,
           attentionType: ACCOUNT_ATTENTION_TYPE.ACTION_ITEM,
@@ -112,6 +112,7 @@ export function accountArAttentionItems(arView, { accountId } = {}) {
           sectionLabel: "Accounts Receivable",
           reason: "OVERDUE",
           invoiceNumber: r.invoiceNumber ?? r.key,
+          recordNoun: arView.recordNoun ?? "Invoice",
           outstandingText: r.outstandingText ?? null,
           daysOverdueText: r.daysOverdueText ?? null,
           deepLink: `/customers/${accountId}#account-ar-section`,
