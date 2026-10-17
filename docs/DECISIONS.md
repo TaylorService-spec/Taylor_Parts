@@ -8697,6 +8697,7 @@ Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refus
   - This is grant-bearing (Owner ruling E): the authority baseline goes 481 → 487 in the same change.
   - **Explicit API restriction, not parity.** A principal holding `crmActivityContributor` ALONE, without `customer.record.read`, can no longer read or create activity through the API. That principal could reach the Firestore callables directly. That it could not open the Account page does not establish API parity, so this is stated as a restriction for Lane D's review.
   - Admin and owner hold `customer.record.read`. **No customer-read grant is added** to compensate.
+  - **Administration projects it.** `crmActivity` is declared in the governed Object catalog (`capabilityGovernedObjects.json`): no fields and **no CRED verb**. A derived R cell would overstate the read, which also needs `customer.record.read`. Administration lists the Object and shows both capabilities under it. The contributor Role is assigned only through the governed preview → assignRole path.
 - **Client.** `services/crmActivityClient.js` replaces the callable client, with no Firebase fallback; the hooks and the section are unchanged in contract. Actor names resolve by EOS Principal id.
 
 **Existing data is NOT moved.** An empty `eos_crm.activities` is not a completed data transition. Prepared:
