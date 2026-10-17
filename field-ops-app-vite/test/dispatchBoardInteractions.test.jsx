@@ -14,7 +14,7 @@
 // The last two are invariants rather than features: they are the things that would still "work" if
 // they were broken, which is exactly why they are asserted rather than trusted.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
@@ -171,17 +171,37 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 // Owner "DISPATCH BOARD INTERACTIONS" (2026-10-17): tap/click placement as the alternative to dragging, the employee
 // review opened from a lane name (Board state restored on Back), and Dispatch offered only with its capability.
 describe("tap placement — the alternative to dragging", () => {
-  it("'Place on a lane' then a click on a lane proposes the SAME Schedule a drop proposes", async () => {
-    transitionWorkOrder.mockResolvedValue({ id: QUEUE_WO.id, status: "SCHEDULED", warnings: [] });
-    const { container } = setup();
-    const card = (await screen.findByText(/WO-2026-001239/)).closest("article");
-    fireEvent.click(within(card).getByRole("button", { name: "Place on a lane" }));
-    expect(screen.getByText(/click a time on a technician/i)).toBeTruthy();
-    fireEvent.click(container.querySelector('[data-technician-id="tech-a"]'), { clientX: 0 });
-    await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
-    const [id, action, extra] = transitionWorkOrder.mock.calls[0];
-    expect([id, action, extra.scheduledTechId]).toEqual([QUEUE_WO.id, "Schedule", "tech-a"]);
-    expect(screen.queryByText(/click a time on a technician/i)).toBeNull();
+  it("'Place on a lane' then a click on a lane proposes the SAME Schedule a drop at that point proposes", async () => {
+    // jsdom lays nothing out: give every lane a real width so the click position means a time.
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 1000, height: 74, right: 1000, bottom: 74, x: 0, y: 0 });
+    try {
+      transitionWorkOrder.mockResolvedValue({ id: QUEUE_WO.id, status: "SCHEDULED", warnings: [] });
+      const { container } = setup();
+      const laneA = () => container.querySelector('[data-technician-id="tech-a"]');
+      const card = (await screen.findByText(/WO-2026-001239/)).closest("article");
+      // the drop at 60% of the lane...
+      fireEvent.dragStart(card);
+      fireEvent.dragOver(laneA());
+      // jsdom's drag events carry no pointer position; a real browser's always do.
+      const dropEvent = createEvent.drop(laneA());
+      Object.defineProperty(dropEvent, "clientX", { value: 100 });
+      fireEvent(laneA(), dropEvent);
+      await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalledTimes(1));
+      // ...and the tap at the same point
+      fireEvent.click(within(card).getByRole("button", { name: "Place on a lane" }));
+      expect(screen.getByText(/click a time on a technician/i)).toBeTruthy();
+      fireEvent.click(laneA(), { clientX: 100 });
+      await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalledTimes(2));
+      const [drop, tap] = transitionWorkOrder.mock.calls;
+      expect(tap[0]).toBe(QUEUE_WO.id);
+      expect(tap[1]).toBe("Schedule");
+      expect(tap[2].scheduledTechId).toBe("tech-a");
+      expect(tap[2].scheduledStart).toBe(drop[2].scheduledStart);
+      expect(tap[2].scheduledEnd).toBe(drop[2].scheduledEnd);
+      // the point decides the time: 10% of a 7a–5p band is 8:00, not the band start
+      expect(tap[2].scheduledStart).toBe(todayAt(8));
+      expect(screen.queryByText(/click a time on a technician/i)).toBeNull();
+    } finally { rect.mockRestore(); }
   });
 
   it("a click on a lane does nothing unless a work order is armed; Esc disarms", async () => {
@@ -230,12 +250,23 @@ describe("employee review from a lane name", () => {
 });
 
 describe("dispatch follows its own capability", () => {
+  // A SCHEDULED work order is one Dispatch is allowed from, so only the capability decides (positive control below).
+  const openScheduledPreview = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: /WO-2026-001248/ }));
+    await screen.findByRole("heading", { name: "WO-2026-001248" });
+  };
+
   it("a caller without workOrder.lifecycle.dispatch is offered no Dispatch picker", async () => {
     useMyWorkOrderCapabilities.mockReturnValue({ status: "ready", has: (k) => k !== "workOrder.lifecycle.dispatch" });
     setup();
-    fireEvent.click(await screen.findByText(/WO-2026-001239/));
-    await screen.findByRole("heading", { name: "WO-2026-001239" });
+    await openScheduledPreview();
     expect(screen.queryByLabelText("Select technician to dispatch")).toBeNull();
+  });
+
+  it("a caller WITH workOrder.lifecycle.dispatch is offered the Dispatch picker on the same work order", async () => {
+    setup();
+    await openScheduledPreview();
+    expect(screen.getByLabelText("Select technician to dispatch")).toBeTruthy();
   });
 });
 
