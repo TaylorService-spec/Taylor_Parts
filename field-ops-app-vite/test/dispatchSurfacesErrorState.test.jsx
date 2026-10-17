@@ -26,6 +26,10 @@ vi.mock("../src/hooks/useAccountReferenceResolver", () => ({ useAccountReference
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
 vi.mock("../src/shared/ui/WorkOrderAuthorityNotice.jsx", () => ({ default: () => null }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
+// The Board's availability read: no failure unless a test says so.
+vi.mock("../src/hooks/useTechnicianAvailability", () => ({
+  useTechnicianAvailability: vi.fn(() => ({ byTechnicianId: new Map(), loading: false, error: null, refresh: () => {} })),
+}));
 // MyWorkspace mounts WorkflowWork; answer its client locally so nothing settles after jsdom is torn down.
 vi.mock("../src/services/workflowRuntimeClient", () => ({ callWorkflowRuntimeApi: vi.fn(async () => ({ ok: true, result: { items: [], total: 0, truncated: false } })) }));
 
@@ -33,6 +37,7 @@ import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useMetadataList } from "../src/hooks/useMetadataList";
 import { useWorkOrderTechnicians } from "../src/hooks/useWorkOrderTechnicians";
 import { useAuth } from "../src/auth/AuthContext";
+import { useTechnicianAvailability } from "../src/hooks/useTechnicianAvailability";
 import WorkOrdersList from "../src/modules/workOrders/WorkOrdersList";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard";
@@ -231,5 +236,36 @@ describe("COMPANY_AUTHORITY_REQUIRED is a stated refusal on every Work Order sur
     await findByText("Dana Dispatch", { selector: "dd" });
     expect(container.textContent.includes(`Not available to you — ${reason}`)).toBe(true);
     expect(container.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED|Nothing here|no work/i);
+  });
+});
+
+// The Board's availability paragraph: a REFUSED read says the refusal; only a genuine outage says "could not be read".
+describe("DispatcherBoard -- the availability read: refusal vs outage", () => {
+  const board = (availabilityError) => {
+    useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    useTechnicianAvailability.mockReturnValue({ byTechnicianId: new Map(), loading: false, error: availabilityError, refresh: () => {} });
+    render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
+    return screen.getAllByRole("alert").map((a) => a.textContent).join(" | ");
+  };
+
+  it("no company authority: the stated refusal, never 'the server still enforces both'", () => {
+    const text = board({ status: "forbidden", code: "COMPANY_AUTHORITY_REQUIRED" });
+    expect(text).toMatch(/No operating company is linked to your login/);
+    expect(text).not.toMatch(/still enforces both|could not be read/);
+    expect(text).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("another refusal (no capability): the classified refusal", () => {
+    const text = board({ status: "forbidden", code: "CAPABILITY_MISSING" });
+    expect(text).toMatch(/You do not have permission to view these working hours and blocked time./);
+    expect(text).not.toMatch(/still enforces both/);
+  });
+
+  it("a genuine outage keeps the outage sentence", () => {
+    const text = board({ status: "unavailable", code: "UNAVAILABLE" });
+    expect(text).toMatch(/Working hours and blocked time could not be read, so shifts and capacity are not shown./);
+    expect(text).toMatch(/Scheduling still works and the server still enforces both./);
   });
 });
