@@ -8864,6 +8864,8 @@ So merging empties nothing. The **production** copy (Firestore `manufacturers` �
 - The exported `resolveEffectiveAccessCallable` Cloud Function is **not** removed (production still uses it; removal needs a GATED equivalence record).
 - `firestore.rules`: untouched.
 
+**Open for the Owner (not decided here).** Because `admin.dataImport.stage` is admin-only by parity and not locked, a governed administrator can now grant it to Owner (an object-wide grant of the `dataImport` Object grants `stage` and still refuses `execute`). Locking `owner × admin.dataImport.stage` as a system invariant is a protected-policy change that needs an Owner ruling; this change does not make it.
+
 **Exit ratchet.** The frontend `firebase_functions_client` and `firestore_client` baselines each lose `metadata/definitions/accountPageComponents.js` (the Account page carried its own copy of the shell's `accessVersion` subscription and callable client; it now shares the one in `access/useReportCapabilities.js`): 242 → 240 (functions client 14 → 13, Firestore client 9 → 8). `auth/employeeSession.js`, `hooks/useCurrentTechnician.js` and `access/useReportCapabilities.js` stay in the baseline **because production and the other environments without an EOS API still use them**; they leave when those environments do.
 
 **Proof.**
