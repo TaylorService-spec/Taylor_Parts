@@ -2,7 +2,7 @@
 
 **What this lets you do:** see the governed working hours and time off for one Employee, on the same records the Dispatch board and placement checks use.
 
-**Where:** Administration → Users → open an Employee → **Work Schedule** tab (`/administration/users/<employee>?tab=schedule`).
+**Where:** Administration → Employees & Users → open an Employee → **Work Schedule** tab (`/administration/users/<employee>?tab=schedule`).
 
 ## Who can see it
 

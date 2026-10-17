@@ -96,27 +96,21 @@ Check a transfer against what you are physically holding, then send it or receiv
 at the origin, receiving at the destination — the screen asks which you are at, and will not let you
 commit from the wrong end.
 
-A transfer to a **truck** works the same way and reads as a truck: the warehouse sends it, and the
-technician accepts it at their van.
+The screen lists the transfers that are waiting to be sent or received, each shown as an origin and a
+destination. A transfer to a **truck** reads as a truck (the word "truck" followed by its code), so it is not
+mistaken for a move between two buildings. Pick a transfer, scan what you are holding, and press
+**Send this transfer** or **Receive this transfer**.
 
-**If you are a technician who receives onto your truck**, the list is titled *Incoming to* your truck
-and shows only transfers already on their way to **your** truck — nothing else. Pick one, confirm you
-are at the truck, scan what arrived, and press **Receive this transfer**. If the screen says instead:
+If the list is empty it says "No transfers are waiting to be sent or received." If it could not be
+loaded it says so (for example "Transfer orders could not be loaded, so none can be scanned right
+now.") and that is not the same as there being nothing to do.
 
-- **No active truck is assigned to you** — a dispatcher needs to assign your truck before anything can
-  be received onto it.
-- **More than one truck is assigned to you** — nothing can be received until a dispatcher corrects it.
-- **You are offline** — incoming transfers need a connection to load. Reconnect and press **Try again**.
-  A receipt you already pressed while offline shows *pending sync*; it is not received until it syncs.
-- **Nothing is on its way to your truck right now** — the list loaded and there is genuinely nothing
-  incoming.
-
-**You need:** authority to send or receive transfers. A technician needs the *Inventory Transfer
-Receiver* Role and exactly one active truck assigned to them.
+**You need:** authority to send or receive transfers. Without it the screen lists *Send or receive a
+transfer* under **Not Available to You**.
 
 ### Count what is on the shelf
 
-Scan everything you can find of one part at one location, then submit what you saw.
+Scan a bin, then everything on it, and submit what you saw.
 
 **You will not be shown what was expected until after you submit.** That is deliberate — knowing the
 number first tells you when to stop looking. Counting changes nothing on its own; a manager reviews
@@ -131,7 +125,15 @@ Scan the bin you are stowing into, scan what goes in it, confirm.
 **Stock counts do not change.** Putting something away records *where it is*, not *what there is* —
 the warehouse still owns it either way.
 
-**You need:** authority to record placements, and to look up bins.
+**You need:** authority to record placements, authority to move stock, and authority to look up bins.
+
+### Move stock
+
+Put stock away, move it between bins, take it out of a bin, or send it to a truck. Scan everything
+that is going, then confirm once. Sending to a truck also needs authority to create and send
+transfers; without it, the truck choice is not offered.
+
+**You need:** authority to move stock, and to look up bins.
 
 ### Pick and stage for a job
 
@@ -140,7 +142,8 @@ recorded — the button tells you exactly what it is about to do, and you can sa
 
 **Picking does not hold the stock.** It stays available to other jobs until this one is dispatched.
 
-**You need:** the same authority as put-away.
+**You need:** authority to record placements, and to look up bins. (Picking does not need the
+authority to move stock that put-away does.)
 
 ### Scan parts for my work order
 
@@ -151,12 +154,14 @@ unchanged — see [Parts scanner](parts-scanner.md).
 
 ## What is *not* here
 
-**Returns** and **serialized install or removal** are not on this screen — not greyed out, not
-"coming soon", simply absent. Returns can be *taken in* (that is a returns desk, not a scanning job),
-but deciding what happens to a returned item is a separate step that does not exist yet. Serialized
-install and removal have no command behind them at all.
+**Serialized install or removal** is not on this screen — not greyed out, not "coming soon", simply
+absent. It has no command behind it at all.
 
-Showing you a disabled button for either would suggest it exists and that you merely lack permission.
+**Returns** are listed, but not as something you can start. **Take a return in** appears under
+**Not Available to You** with the words "Taking a return in is not yet available in EOS. This is not
+a permission you are missing: no one can be granted it until it moves to EOS." Asking an administrator
+for access will not change that. Deciding what happens to a returned item is a separate step that does
+not exist yet.
 
 Barcode matching is **built but not switched on**. Until it is, scanning a barcode tells you that
 identifier lookup is unavailable in this environment — it does *not* tell you the barcode is
@@ -175,7 +180,7 @@ When it is switched on, these are the answers you may see, and none of them mean
 ## If a workflow you expected is missing
 
 You will always have at least **Look something up**. Anything else you expected but cannot see is
-listed under **Not available to you**, with the reason — and each reason has a different fix:
+listed under **Not Available to You**, with the reason — and each reason has a different fix:
 
 | What it says | What it means | What fixes it |
 | --- | --- | --- |
@@ -183,6 +188,7 @@ listed under **Not available to you**, with the reason — and each reason has a
 | Receiving is built and you are authorized, but it is not switched on in this environment yet | Nothing is wrong with your access — the receiving backend has not been deployed and enabled here | Deployment and activation, which is an operator action |
 | Work order scanning is for technicians working an assigned job | You are not a technician, or your account has no technician record | An administrator links your account to a technician record |
 | You have no assigned work orders to scan against right now | You are a technician, but nothing is assigned to you | A dispatcher assigns you work |
+| Taking a return in is not yet available in EOS | This is not a permission you are missing: returns have not moved to EOS yet | Nothing yet. No one can be granted it until it moves to EOS |
 
 The distinction between the first two rows matters: being told you lack permission when the real
 reason is that a feature is switched off would send you to ask for access you may already have.
@@ -221,9 +227,9 @@ If your scanner double-fires, the second one is ignored. Scanning the same part 
 ### Leaving before you have finished
 
 Counting and transfer verification build up on the phone and are only sent when you press submit.
-If you press **← All scanning workflows** with scans still unsent, the screen stops you and says how
+If you press **← All Scanning Workflows** with scans still unsent, the screen stops you and says how
 many: *"3 scans have not been submitted. Leaving discards them."* You then choose — **Discard and
-leave**, or **Keep counting**. Nothing is thrown away because you brushed the wrong part of the screen.
+Leave**, or **Keep Counting**. Nothing is thrown away because you brushed the wrong part of the screen.
 
 Putting stock away and picking are different: each item is sent as you scan it, so there is nothing
 to lose by walking away.

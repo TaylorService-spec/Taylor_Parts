@@ -2,10 +2,10 @@
 
 **What this lets you do:** Work through the list of Work Orders by what needs doing next: schedule the waiting ones, move or reassign the scheduled ones, and dispatch them to the technician.
 
-**Who can do it:** Admin and Dispatcher can open the screen. Each button appears only if your access allows it: **Schedule…**, **Move…**, **Reassign…** need scheduling access, and **Dispatch to …** needs dispatch access. Technicians do not see this screen.
+**Who can do it:** People with dispatch access, normally Admin and Dispatcher, can open the screen. Each button appears only if your access allows it: **Schedule…**, **Move…**, **Reassign…** need scheduling access, and **Dispatch to …** needs dispatch access. Technicians do not see this screen.
 
 **Before you start**
-- Open **Service > Dispatch > Jobs**. (Do not confuse it with **Job Assignments** under Work Management, which is a read-only list.)
+- Open **Service > Dispatch > Jobs**. The page heading reads **Dispatch**. (Do not confuse it with **Job Assignments** under Work Management, which is a read-only list.)
 - The screen groups Work Orders under headings, in the order you would work them: **Scheduled — ready to dispatch**, **Waiting to be scheduled**, **In the field**, **Not ready to schedule yet**, **Finished or cancelled**. Empty groups are not shown.
 
 ## Schedule a waiting Work Order
