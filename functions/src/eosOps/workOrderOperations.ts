@@ -22,7 +22,7 @@ import {
 } from "./workOrderScheduling";
 import { recordWorkOrderExecution } from "./workOrderExecution";
 import { setPartsPlan } from "./workOrderPartsPlanAuthority";
-import { readWorkOrderDetail, listWorkOrders, listMyAssignedWorkOrders, listWorkOrderTechnicians, listWorkOrderOperatingCompanies } from "./workOrderQueries";
+import { readWorkOrderDetail, listWorkOrders, describeWorkOrderListQuery, listMyAssignedWorkOrders, listWorkOrderTechnicians, listWorkOrderOperatingCompanies } from "./workOrderQueries";
 import type { WorkOrderOp as Op } from "./workOrderOperationTypes";
 import * as availability from "./workOrderAvailability";
 import * as labor from "./workOrderLabor";
@@ -57,6 +57,7 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   readWorkOrder: (deps, caller, input) => (only(input, ["workOrderId"]),
     readWorkOrderDetail({ pool: deps.pool, reader: deps.reader }, caller.operational, input)),
   listWorkOrders: (deps, caller, input) => listWorkOrders({ pool: deps.pool }, caller.actor, input),
+  describeWorkOrderListQuery: (deps, caller, input) => describeWorkOrderListQuery({ pool: deps.pool }, caller.actor, input),
   listMyAssignedWorkOrders: (deps, caller, input) => listMyAssignedWorkOrders({ pool: deps.pool, reader: deps.reader }, caller.operational, input),
   listWorkOrderTechnicians: (deps, caller, input) => (only(input, ["workOrderId"]), listWorkOrderTechnicians({ pool: deps.pool }, caller.actor, input)),
   listWorkOrderOperatingCompanies: (deps, caller, input) => (only(input, []), listWorkOrderOperatingCompanies({ pool: deps.pool }, caller.actor)),
@@ -127,7 +128,7 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
 export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "readWorkOrderAuthorityStatus";
 
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
-  "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
+  "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "describeWorkOrderListQuery", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
   "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities",
   "readTechnicianAvailability", "findAvailableTechnicianSlots", "suggestWorkOrderPlacement", "readWorkOrderLabor", "readWorkOrderFieldContext",
   "readWorkOrderReadiness", "readTechnicianExecutionStats", "listInstallableEquipmentForWorkOrder", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",

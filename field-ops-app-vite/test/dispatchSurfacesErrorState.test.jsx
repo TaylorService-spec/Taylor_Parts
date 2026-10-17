@@ -26,6 +26,8 @@ vi.mock("../src/hooks/useAccountReferenceResolver", () => ({ useAccountReference
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
 vi.mock("../src/shared/ui/WorkOrderAuthorityNotice.jsx", () => ({ default: () => null }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
+// MyWorkspace mounts WorkflowWork; answer its client locally so nothing settles after jsdom is torn down.
+vi.mock("../src/services/workflowRuntimeClient", () => ({ callWorkflowRuntimeApi: vi.fn(async () => ({ ok: true, result: { items: [], total: 0, truncated: false } })) }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useMetadataList } from "../src/hooks/useMetadataList";
@@ -34,6 +36,8 @@ import { useAuth } from "../src/auth/AuthContext";
 import WorkOrdersList from "../src/modules/workOrders/WorkOrdersList";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard";
+import Jobs from "../src/modules/jobs/Jobs.jsx";
+import MyWorkspace from "../src/modules/workspace/MyWorkspace.jsx";
 
 const PERMISSION_ERROR = { code: "permission-denied" };
 
@@ -158,5 +162,74 @@ describe("DispatcherBoard -- error is not swallowed into the empty state", () =>
     );
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.queryByText(/no technicians exist yet\./i)).toBeNull();
+  });
+});
+
+// EOS Core company authority (DECISIONS #235; #2110 company-isolates the office Work Order list). A caller who holds
+// workOrder.record.read but no operating company is REFUSED (403 COMPANY_AUTHORITY_REQUIRED). Every surface must SAY
+// so, in words, with the remedy -- never render an empty "no work orders" queue and never show the raw code.
+describe("COMPANY_AUTHORITY_REQUIRED is a stated refusal on every Work Order surface", () => {
+  const COMPANY_REFUSAL = { code: "FORBIDDEN", reason: "COMPANY_AUTHORITY_REQUIRED", status: 403 };
+  const SAID = /No operating company is linked to your login/;
+
+  it("Work Orders list: the denied state carries the reason", async () => {
+    const { buildListPresentation } = await import("../src/metadata/listPresentation.js");
+    const { workOrderEntity, workOrderIndexList } = await import("../src/metadata/definitions/workOrder.js");
+    const { COMPANY_AUTHORITY_MESSAGE } = await import("../src/domain/workOrderOutcome.js");
+    useMetadataList.mockReturnValue({
+      presentation: buildListPresentation({ def: workOrderIndexList, entity: workOrderEntity, errorStatus: "denied", errorDetail: COMPANY_AUTHORITY_MESSAGE }),
+      rows: [], loadMore: () => {}, retry: () => {}, descriptorErrors: [],
+    });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
+    render(<MemoryRouter><WorkOrdersList /></MemoryRouter>);
+    expect(screen.getByRole("alert").textContent).toMatch(SAID);
+    expect(screen.queryByText(/nothing here yet/i)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("Dispatch: the alert says why", () => {
+    useWorkOrders.mockReturnValue({ data: [], loading: false, error: COMPANY_REFUSAL });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
+    render(<Dispatch />);
+    expect(screen.getByRole("alert").textContent).toMatch(SAID);
+    expect(screen.queryByText(/no work orders yet\./i)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("Dispatcher Board: the alert says why", () => {
+    useWorkOrders.mockReturnValue({ data: [], loading: false, error: COMPANY_REFUSAL });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    render(<MemoryRouter><DispatcherBoard /></MemoryRouter>);
+    expect(screen.getAllByRole("alert").some((a) => SAID.test(a.textContent))).toBe(true);
+    expect(screen.queryByText(/no work orders exist yet\./i)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("Jobs: the refusal says why", () => {
+    useWorkOrders.mockReturnValue({ data: [], loading: false, error: COMPANY_REFUSAL });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    render(<MemoryRouter><Jobs /></MemoryRouter>);
+    expect(document.body.textContent).toMatch(SAID);
+    expect(screen.queryByText(/no work orders yet./i)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("My Work: the dispatch queue section states the server's refusal, never an empty queue", async () => {
+    // myWork.ts guarded() turns the 403 into NOT_AUTHORIZED with the server's sentence as the reason (pinned server-side
+    // in functions/test/support/workOrderListQuerySuite.mjs).
+    const reason = "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment";
+    const work = {
+      me: { principalId: "p1", employeeId: "e1", displayName: "Dana Dispatch", jobRole: { id: "service-coordinator-dispatcher", label: "Dispatcher" } },
+      persona: { key: "service-coordinator-dispatcher", label: "Dispatcher", fromJobRole: true, analysisArea: "service" },
+      operatingCompanyId: null, aiRequired: false,
+      sections: [{ key: "dispatchQueue", title: "Work to schedule and dispatch", status: "NOT_AUTHORIZED", reason, hasMore: false, items: [] }],
+    };
+    const callApi = vi.fn(async () => ({ ok: true, result: work }));
+    const { container, findByText } = render(<MemoryRouter><MyWorkspace callApi={callApi} /></MemoryRouter>);
+    await findByText("Dana Dispatch", { selector: "dd" });
+    expect(container.textContent.includes(`Not available to you — ${reason}`)).toBe(true);
+    expect(container.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED|Nothing here|no work/i);
   });
 });

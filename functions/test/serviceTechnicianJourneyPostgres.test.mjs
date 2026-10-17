@@ -119,10 +119,14 @@ test("the Service Office + Technician journey through the EOS API", { skip: SKIP
     }
     return { subject, principalId };
   };
-  const office = await person("uid-sj-fieldmgr", ["fieldManager"]);
+  // The office list is company-scoped (EOS Core company authority, DECISIONS #235): the field manager is a Taylor
+  // Employee, unqualified, so never a technician candidate.
+  const office = await person("uid-sj-fieldmgr", ["fieldManager"], { id: "emp-sj-office", name: "Office Manager", qualified: false });
   const dispatcher = await person("uid-sj-dispatcher", ["dispatcher"]);
   // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
   await grantSyntheticCompanyAuthority(pool, TENANT, office.principalId, ["taylor", "ventana"]);
+  // The availability READS are company-scoped too (#2110, the same EOS Core rule): the dispatcher reads Taylor's slots.
+  await grantSyntheticCompanyAuthority(pool, TENANT, dispatcher.principalId, ["taylor"]);
   const techA = await person("uid-sj-tech-a", ["technician"], { id: "emp-sj-a", name: "Alex Field" });
   const techB = await person("uid-sj-tech-b", ["technician"], { id: "emp-sj-b", name: "Bo Field" });
   const techV = await person("uid-sj-tech-v", ["technician"], { id: "emp-sj-v", company: "ventana" });

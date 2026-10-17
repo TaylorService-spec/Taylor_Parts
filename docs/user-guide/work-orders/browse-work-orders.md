@@ -21,6 +21,9 @@
 
 ## Tips and common problems
 
+- **You only see your company's work orders.** The list shows work orders for the operating companies you're authorized for. That's your own company (from your employee record), plus any company your administrator has assigned to you. Work orders of other companies don't appear, and searching or filtering won't find them.
+- **The list says you have no company access.** Your login isn't linked to an active employee record, so the list can't tell which company's work to show. Ask your administrator to link your login to your employee record.
+
 - **The list is empty.** New work orders can't be created yet in the live app (the create step isn't switched on — see *Create a work order*), so until that changes there may be nothing here to show. An empty list is expected, not a fault.
 - The status shown is the real, saved status of the work order — it's not a guess based on jobs.
 
