@@ -1,0 +1,16 @@
+diff --git a/docs/architecture/firebase-shim-consumer-census.json b/docs/architecture/firebase-shim-consumer-census.json
+index cb05542b8..85fa38cea 100644
+--- a/docs/architecture/firebase-shim-consumer-census.json
++++ b/docs/architecture/firebase-shim-consumer-census.json
+@@ -9,9 +9,9 @@
+     "noNewBusinessAuthorityBehindAShim": true
+   },
+   "observed": {
+-    "scannedFiles": 1664,
++    "scannedFiles": 1665,
+     "shimsDiscovered": 2,
+-    "alreadyFencedConsumers": 18,
++    "alreadyFencedConsumers": 17,
+     "insulationNotGoverned": "Read hooks, query services and domain commands that use Firestore internally and return data are NOT shims and their callers are NOT censused -- see authorityExports."
+   },
+   "shims": [

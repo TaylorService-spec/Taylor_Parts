@@ -1,0 +1,21 @@
+diff --git a/docs/architecture/capability-graph.json b/docs/architecture/capability-graph.json
+index e1b0634c8..82d5a83b3 100644
+--- a/docs/architecture/capability-graph.json
++++ b/docs/architecture/capability-graph.json
+@@ -3723,6 +3723,7 @@
+         "exportedCallables": [],
+         "serverReferences": [
+           "functions/src/access/governedBusinessRoles.ts",
++          "functions/src/eosOps/returnIntake.ts",
+           "functions/src/inventoryReturns/returnIntakeCommand.ts"
+         ],
+         "clientReferences": [
+@@ -3732,7 +3733,7 @@
+           "field-ops-app-vite/src/access/shellCapabilityGates.js",
+           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
+         ],
+-        "serverReferenceCount": 2,
++        "serverReferenceCount": 3,
+         "clientReferenceCount": 5,
+         "evidence": "SERVER_REFERENCED"
+       },

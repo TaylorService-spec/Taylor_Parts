@@ -1,0 +1,12 @@
+fix(firebase-exit): PR-A retire the unrouted legacy Technicians screen and its Firebase chain (265 -> 261)
+
+Deletes Technicians.jsx, NewTechnicianModal.jsx, domain/jobActions.js,
+firebase/collectionStore.js, lib/firebaseSafe.js and
+hooks/useFirestoreCollection.js. No nav item carries legacyKey
+"technicians", so LEGACY_COMPONENTS.technicians was unreachable, and the
+six files formed a closed import chain. Exit baseline 265 -> 261, shim
+registry 4 -> 2. Business requirements and their EOS Core owners are
+recorded in the new frontend dormant-client retirement ledger. The lane
+is registered in ACTIVE_WORKSTREAMS. No runtime change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

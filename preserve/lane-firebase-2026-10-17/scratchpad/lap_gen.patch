@@ -1,0 +1,12 @@
+diff --git a/docs/governance/precedence-sweep.json b/docs/governance/precedence-sweep.json
+index d7ebcfd76..65a11a0eb 100644
+--- a/docs/governance/precedence-sweep.json
++++ b/docs/governance/precedence-sweep.json
+@@ -3386,5 +3386,5 @@
+  "reverseSweep": {
+   "missingDecidedMappings": []
+  },
+- "decisionsFileSha": "sha256:c4aca4de2a7106b622fad247d81023bc504e2c1b66a2993e6e4bf92664124da3"
++ "decisionsFileSha": "sha256:c8ea3b31b246f6c394fc40455d069b77d75a705130cd0da5c4f85cf6580e2256"
+ }
+\ No newline at end of file

@@ -1,0 +1,16 @@
+fix(firebase-exit): PR-C Timestamp-only type imports -> a structural TimestampShape (257 -> 247)
+
+Ten record-type modules imported the Firestore Timestamp type only to
+name a field's type. They now import a structural TimestampShape from a
+declaration file (functions/src/types/timestampShape.d.ts and its
+field-ops-app-vite twin), which emits nothing. The parityFixtures.ts
+platform substitution in syncAccessContracts.mjs is retired because both
+copies now import the same relative path. Exit baseline 257 -> 247
+(frontend firestore 12 -> 10, server admin_firestore 166 -> 158).
+
+Proven no runtime change: functions/lib (1391 files) and the vite dist
+(213 files, built from git-archive trees so the commit stamp is equal)
+are byte-identical before and after; version.json differs only in
+buildTime.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

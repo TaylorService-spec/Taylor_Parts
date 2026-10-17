@@ -1,0 +1,14 @@
+fix(firebase-exit): F3 delete the Firestore list source and the callable list fallback (247 -> 245)
+
+metadata/firestoreListSource.js is deleted: no mounted list (account,
+equipment, salesOrder, supplier, warehouse, workOrder) and no RELATED
+section (Opportunities, Sales Orders, Contacts, Locations) reads a
+CLIENT_DIRECT entity; useMetadataList and MetadataRecordPage now resolve
+CLIENT_DIRECT to no source and fail closed. callableListSource.js loses
+its httpsCallable fallback: every readCallable they resolve is one of the
+four EOS Commercial lists, and any other name now throws instead of
+calling Firebase. No screen changes. The receiving callable client is NOT
+removed (Controller ruling DQ-034 keeps that domain; recorded in the
+ledger). Baseline 247 -> 245, shim fenced consumers 19 -> 18.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
