@@ -36,7 +36,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (test-only). Repo-wide `endPoolAndDrain` helper is a SEPARATE later PR, after #2110 and Scheduling PR-2
 - Expected outcome:    the teardown flake no longer fails CI
 - Protected boundaries:none beyond standing delivery authority
-- Lifecycle stage:     INTEGRATION (#2120, Lane D approved)
+- Lifecycle stage:     MERGED `bd77a454` (#2120); repo-wide endPoolAndDrain helper is a separate follow-up PR
 
 - Capability:          Honest refusal wording — Jobs (Job Assignments) and My Dashboard Service Attention classify refusals through workOrderOutcome.js (FORBIDDEN → denied, COMPANY_AUTHORITY_REQUIRED → company-authority message, NOT_YET_ACTIVATED → not enabled; outages keep retry copy)
 - Agent/session:       Claude Code Lane C · Role: builder; Lane D: independent reviewer; controller merges
