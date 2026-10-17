@@ -57,14 +57,14 @@ async function invokeCommercialList(name, payload) {
 // pattern, because those two client modules are request-shaped for the hooks that already
 // consume them (useAccountOpportunities.js / useAccountSalesOrders.js), not for a query
 // descriptor.
+//
+// FIREBASE EXIT F3 (2026-10-17): the Firebase callable fallback is gone. Every readCallable a mounted list or RELATED
+// section resolves is one of the four Commercial lists above; the other registered names (getManufacturerCatalog,
+// listAccountInvoiceAr, ...) stay in CALLABLE_SOURCES only so the list-view validator keeps recognizing them, and are
+// never read through this module. Reaching one now throws instead of calling Firebase.
 async function invokeCallable(name, payload) {
   if (Object.prototype.hasOwnProperty.call(COMMERCIAL_EOS_LISTS, name)) return invokeCommercialList(name, payload);
-  const [{ httpsCallable }, { functions }] = await Promise.all([
-    import("firebase/functions"),
-    import("../firebase/firebase.js"),
-  ]);
-  const res = await httpsCallable(functions, name)(payload);
-  return res?.data;
+  throw Object.assign(new Error(`callableListSource: "${name}" has no EOS source; the Firebase callable path is retired`), { code: "unavailable" });
 }
 
 // httpsCallable errors carry a `functions/`-prefixed code (e.g. "functions/permission-denied"),

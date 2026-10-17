@@ -18,7 +18,6 @@
         "field-ops-app-vite/src/hooks/useEmployeeDirectory.js",
         "field-ops-app-vite/src/hooks/useInventoryActions.js",
         "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js",
-        "field-ops-app-vite/src/metadata/firestoreListSource.js",
         "field-ops-app-vite/src/services/operationsQueries.ts"
       ],
       "firebase_functions_client": [
@@ -30,7 +29,6 @@
         "field-ops-app-vite/src/domain/reporting/reportExecutionSeam.js",
         "field-ops-app-vite/src/domain/reporting/savedReportService.js",
         "field-ops-app-vite/src/firebase/firebase.js",
-        "field-ops-app-vite/src/metadata/callableListSource.js",
         "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js",
         "field-ops-app-vite/src/services/binCommandClient.js",
         "field-ops-app-vite/src/services/crmActivityCallableClient.js",

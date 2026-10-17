@@ -98,3 +98,20 @@ The server callables (`completeAssignedJob`, `createManufacturer`, `updateManufa
 - **Inventory Action History** on Part Detail and the Warehouse Manager home reads Firestore `inventory_actions`. The Owner's ruling of 2026-08-30 is: "retire new writes, keep existing history readable".
 - These legacy notes are **not** ledger movements, so EOS movement history does not replace them.
 - Keeping them readable without Firebase needs an archive in PostgreSQL. That is a migration plus a data copy, which is Owner- and operator-gated.
+
+## F3: dormant list-source code (2026-10-17, exit baseline 247 → 245)
+
+| Removed | Proof that nothing reachable used it |
+| --- | --- |
+| `metadata/firestoreListSource.js` (the Firestore page reader behind `readVia: "CLIENT_DIRECT"`) | **Mounted lists.** `useMetadataList` is mounted only for account, equipment, salesOrder, supplier, warehouse and workOrder. All of them are `EOS_API` or `CALLABLE`. **Related lists.** `MetadataRecordPage`'s only RELATED_LIST sections are Account's Opportunities and Sales Orders (`CALLABLE`) and Contacts and Locations (`EOS_API`). **Other record pages.** The Equipment and Sales Agreement record pages declare no RELATED_LIST. **Result.** A `CLIENT_DIRECT` entity now resolves to no source and fails closed (the existing "could not be loaded" state), exactly like an unknown `readVia`. |
+| The `httpsCallable` fallback in `metadata/callableListSource.js` | **Reachable names.** Every `readCallable` that a mounted list or RELATED section resolves is one of the four EOS Commercial lists: `listOpportunityContext`, `listOpportunitiesForAccount`, `listSalesOrderIndex`, `listSalesOrdersForAccount`. **Other registered names.** `getManufacturerCatalog`, `listAccountInvoiceAr`, `equipmentCompatibilityReadCallable` and `getSalesAgreementForOpportunity` stay in `CALLABLE_SOURCES` only for the list-view validator. Nothing reads them through this module. Reaching one now throws instead of calling Firebase. |
+
+No screen changes. The two record-page and list-hook routing suites now use a registered CALLABLE source in place of the Firestore one, and they assert that `CLIENT_DIRECT` fails closed.
+
+### Planned for F3 but not removed: the receiving callable client
+`services/receivingCallableClient.js` is flag-dead: `RECEIVING_TRANSPORT_READY` is false in all five environments. It was **not** removed:
+- **The Controller ruling keeps the domain.** Ruling DQ-034 (2026-10-01) says the canonical supplier-PO receiving domain "is kept, not deleted".
+- **Its consumers depend on the client's answers.** MyDashboard, Receiving, MultiScanReceiving and the warehouse offline bindings all render its UNAVAILABLE outcome.
+- **No EOS replacement exists yet.** EOS has no canonical supplier-PO receive. Reorder-PO receiving is already EOS (`receiveReorderStock`).
+
+Removing it needs a ruling: retire canonical supplier-PO receiving, or build its EOS receive.
