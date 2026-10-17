@@ -394,16 +394,14 @@ export const NAV_DOMAINS = [
       // dispatchers the screen rather than tidy their menu -- an authorization change, and one that
       // should not ride along with a rename. Revisit once it is known whether dispatchers use it.
       { key: "partMaster", label: "Catalog Admin", path: "part-master" },
-      // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
-      // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
-      // NOTE: the `manufacturers` collection read is still Rules-closed (the governed read-authority
-      // decision is DEFERRED to the Owner -- it interacts with the R-1 legacy-surface convergence gate),
-      // so the workspace read fails closed to a denied state until resolved. Wave 6 (2026-08-15): hidden
-      // from normal navigation for the SAME reason as Cycle Counts/Back Orders -- unlike Part Master, this
-      // is not even a "still legitimate, just redundant" case: because the read is Rules-closed to EVERY
-      // persona, no one can use this screen at all today (confirmed by repository audit). Route/component/
-      // commands/Rules/tests unchanged; restore once the Manufacturer read-authority decision (see the
-      // parts-ux-redesign-blueprint.md §14d architecture writeup) is made and built.
+      // Manufacturer administration workspace (catalog reference object Parts link to). No legacyKey: an explicit
+      // App.jsx branch; admin/dispatcher via the legacy default (production, unchanged).
+      // EOS SOURCE (Manufacturers R-1 Option A, Owner-approved; Firebase exit F5, 2026-10-17): the door is the
+      // existing `inventory.catalog` surface, earned by inventory.catalog.read -- the SAME capability its list
+      // read requires, together with inventory.manufacturer.read (not held by every catalog.read Role -- DECISIONS #241,
+      // an open Owner decision: those principals reach the door and are refused the list). Before this the row had
+      // no surface, so the EOS source refused it to every principal, Administrator included. It stays navHidden:
+      // the screen is reached from Catalog, not added to the rail.
       { key: "manufacturers", label: "Manufacturers", path: "manufacturers", navHidden: true },
       // THE WAREHOUSE / PARTS HANDHELD. Its own nav item, gated by the union of the station
       // capabilities the workflows behind it actually use -- never a coarse "warehouse user" id.
@@ -791,6 +789,8 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "analysis/analysis": ["analysis.workspace"],
   // Inventory
   "inventory/parts": ["inventory.catalog"],
+  // R-1 Option A: the door follows its read's capability (inventory.catalog.read).
+  "inventory/manufacturers": ["inventory.catalog"],
   "inventory/partMaster": ["inventory.catalogAdmin"],
   "inventory/warehouseWorkspace": ["warehouse.picking"],
   "inventory/warehouses": ["warehouse.management"],
@@ -873,7 +873,6 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "service/scheduling": "dispatchSchedule was retired as a policy Object; no governed surface is distinct from service.dispatch.",
   "service/dispatchScheduling": "Same as scheduling -- a retired duplicate of the Dispatcher Board.",
   "service/warranty": "No warranty domain, no capability, no backend.",
-  "inventory/manufacturers": "The manufacturers read is Rules-closed for every persona; inventory.manufacturer.read is registered but the screen cannot be used by anyone.",
   "inventory/backOrders": "Route stub with no backend capability of any kind.",
   "inventoryRole/manager": "THIS DOMAIN IS THE LEGACY CONSTRUCT ITSELF. `operationalRoleAccess` reads employees/{id}.operationalRoles, the exact Firebase business authority the Work Eligibility / Operational Scope decomposition replaces. It is deliberately NOT given a governed surface: reproducing it would reproduce the thing being retired.",
   "inventoryRole/warehouse": "See inventoryRole/manager.",
@@ -1113,7 +1112,7 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "service/dispatchScheduling",
   "service/warranty",
   "inventory/partMaster", // (CUTOVER) inventory.catalog
-  "inventory/manufacturers",
+  "inventory/manufacturers", // (CUTOVER) inventory.catalog -- R-1 Option A, 2026-10-17
   "inventory/warehouses", // (CUTOVER) warehouse.management
   "inventory/truckInventory", // (CUTOVER) inventory.balances
   "inventory/receiving", // (CUTOVER) receiving.checkIn
@@ -1346,9 +1345,16 @@ export function effectivePlaceholderRegister(operationalContext) {
 // The SAME row becomes a CUTOVER row -- the `purchasing/suppliers` and `administration/financialPolicy` precedent. The register
 // stays 62 (production's legacy destination set is unchanged); ungoverned 40 -> 39; cutover 22 -> 23, because the row that
 // crossed over is not new. Recorded for Owner confirmation in the PR #2091 report.
+//
+// ════════ 2026-10-17 -- A FOURTH ROW CHANGED KIND; NO ROW WAS ADDED (MANUFACTURERS R-1 OPTION A, FIREBASE EXIT F5) ════════
+//
+// `inventory/manufacturers` had no surface (the read was Firebase-only). Its list now reads eos_ops.manufacturers under
+// inventory.catalog.read, so the destination earns the existing `inventory.catalog` surface. The SAME row becomes a CUTOVER
+// row; the register stays 62 (production's legacy destination set is unchanged); ungoverned 39 -> 38; cutover 23 -> 24.
+// Owner-approved as Manufacturers R-1 Option A (lane-b manufacturers-r1-read-authority-2026-10-16).
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
-export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 39;
-export const NAV_CUTOVER_PLACEHOLDER_CEILING = 23;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 38;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 24;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.

@@ -41,6 +41,10 @@ import {
 import {
   readPart, readPartsByIds, searchParts, countParts, listEquipmentModels, type PartSearchFilters,
 } from "./postgresCatalogReads.js";
+import { createManufacturer, updateManufacturer, changeManufacturerStatus } from "./postgresManufacturerWriter.js";
+import {
+  MANUFACTURER_READ, ManufacturerReadError, getManufacturer, listManufacturersPage, searchManufacturers,
+} from "../eosOps/manufacturerAuthority.js";
 
 /** Reads: bounded by construction. Nothing here can return the whole catalogue. */
 export const CATALOG_READ_OPERATIONS = Object.freeze([
@@ -52,6 +56,11 @@ export const CATALOG_READ_OPERATIONS = Object.freeze([
   "probePartAlias",
   "lookupScannedPart",
   "listEquipmentModels",
+  // Firebase exit F5: the Manufacturer reference list. Bounded (MANUFACTURER_LIST_MAX, with `truncated`), not paged:
+  // it replaces getManufacturerCatalog, which returned the whole collection to every Part form.
+  "listManufacturers",
+  "getManufacturer",
+  "searchManufacturers",
 ] as const);
 export type CatalogReadOperation = (typeof CATALOG_READ_OPERATIONS)[number];
 
@@ -83,6 +92,14 @@ export const CATALOG_READ_REQUIREMENTS: Readonly<Record<CatalogReadOperation, re
   listPartAliases: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
   probePartAlias: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
   lookupScannedPart: [CATALOG_READ_CAPABILITY],
+  // BOTH keys: inventory.catalog.read is what the retired getManufacturerCatalog checked, and inventory.manufacturer.read
+  // is the PostgreSQL authority's own (manufacturerAuthority.ts). Requiring both is never wider than either path. MEASURED, the
+  // two are NOT held by the same Roles: migration 1761782400000 granted the second to the nineteen Roles that held the first
+  // THEN, and Roles that gained catalog.read later (commercialSharedContext, technician, equipmentInstaller,
+  // inventoryLookupReader) did not get it -- those principals are refused here. The Owner decision is open (DECISIONS #241).
+  listManufacturers: [CATALOG_READ_CAPABILITY, MANUFACTURER_READ],
+  getManufacturer: [CATALOG_READ_CAPABILITY, MANUFACTURER_READ],
+  searchManufacturers: [CATALOG_READ_CAPABILITY, MANUFACTURER_READ],
 });
 
 /** OD-T6: the resolve-only right the alias half of the scanner lookup requires (registered in PostgreSQL 2026-10-01). */
@@ -104,6 +121,10 @@ export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
   "createPartAlias",
   "deactivatePartAlias",
   "reactivatePartAlias",
+  // Firebase exit F5: postgresManufacturerWriter.ts (inventory.catalog.manage; status needs inventory.catalog.activate).
+  "createManufacturer",
+  "updateManufacturer",
+  "changeManufacturerStatus",
 ] as const);
 export type CatalogMutationOperation = (typeof CATALOG_MUTATION_OPERATIONS)[number];
 
@@ -288,6 +309,14 @@ export async function executeCatalogOperation(
           cursor: input.cursor as never,
         })));
 
+      case "listManufacturers":
+        return ok(await listManufacturersPage(deps.pool, actor));
+      case "getManufacturer":
+        return ok(await getManufacturer(deps.pool, actor, str(input.manufacturerId)));
+      case "searchManufacturers":
+        return ok(await searchManufacturers(deps.pool, actor, str(input.term),
+          typeof input.limit === "number" ? { limit: input.limit } : undefined));
+
       // ---- WRITES ----
       case "createPart":
         return ok(await createPart(commandDeps, actor, { part: input.part }));
@@ -310,6 +339,17 @@ export async function executeCatalogOperation(
       case "reactivatePartAlias":
         return ok(await reactivatePartAlias(commandDeps, actor, { aliasId: input.aliasId, expectedVersion: input.expectedVersion }));
 
+      case "createManufacturer":
+        return ok(await createManufacturer(commandDeps, actor, { manufacturer: input.manufacturer }));
+      case "updateManufacturer":
+        return ok(await updateManufacturer(commandDeps, actor, {
+          manufacturerId: input.manufacturerId, expectedUpdatedAt: input.expectedUpdatedAt, name: input.name,
+        }));
+      case "changeManufacturerStatus":
+        return ok(await changeManufacturerStatus(commandDeps, actor, {
+          manufacturerId: input.manufacturerId, expectedUpdatedAt: input.expectedUpdatedAt, newStatus: input.newStatus,
+        }));
+
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Catalog operation" };
     }
@@ -319,6 +359,11 @@ export async function executeCatalogOperation(
     }
     if (err instanceof PostgresCatalogWriterInactiveError) {
       return { ok: false, operation: request.operation, code: "PRECONDITION_FAILED", message: err.message };
+    }
+    // The transport already required MANUFACTURER_READ, so a FORBIDDEN here is the authority agreeing; INVALID_INPUT
+    // is a malformed id or search term.
+    if (err instanceof ManufacturerReadError) {
+      return { ok: false, operation: request.operation, code: err.category, message: err.message };
     }
     if (err instanceof PrincipalContextError) {
       return { ok: false, operation: request.operation, code: "FORBIDDEN", message: err.refusal };

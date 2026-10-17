@@ -40,6 +40,10 @@ export const CATALOG_READ_OPERATIONS = Object.freeze([
   "probePartAlias",
   "lookupScannedPart",
   "listEquipmentModels",
+  // Firebase exit F5: the Manufacturer reference list is BOUNDED server-side (MANUFACTURER_LIST_MAX, with `truncated`).
+  "listManufacturers",
+  "getManufacturer",
+  "searchManufacturers",
 ]);
 
 export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
@@ -49,6 +53,9 @@ export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
   "createPartAlias",
   "deactivatePartAlias",
   "reactivatePartAlias",
+  "createManufacturer",
+  "updateManufacturer",
+  "changeManufacturerStatus",
 ]);
 
 const ALL = new Set([...CATALOG_READ_OPERATIONS, ...CATALOG_MUTATION_OPERATIONS]);

@@ -21,20 +21,20 @@ test("manufacturerQueries.js never imports firebase/firestore or the client db h
   assert.equal(/getDocs|collection\(db/.test(src), false);
 });
 
-test("manufacturerQueries.js reads exclusively through the trusted getManufacturerCatalog client seam", () => {
+test("manufacturerQueries.js reads exclusively through the EOS Catalog API client seam (Firebase exit F5)", () => {
   assert.match(src, /fetchManufacturerCatalog/);
-  assert.match(src, /manufacturerReadCallableClient/);
+  assert.match(src, /manufacturerCatalogClient/);
 });
 
 // Import for real (pure module, no firebase import at module scope thanks to the lazy-import pattern
-// manufacturerReadCallableClient.js already uses).
+// manufacturerCatalogClient.js uses for the Catalog API client).
 const { fetchManufacturerList } = await import("../src/services/manufacturerQueries.js");
 
 // Reach into the callable client's module cache is not possible without mocking the dynamic import,
 // so these behavioral cases exercise fetchManufacturerList's OWN mapping logic directly against a
 // monkeypatched fetchManufacturerCatalog via module mocking is unavailable in plain node:test --
 // instead, prove the mapping contract by re-deriving it from the same shapes
-// manufacturerReadCallableClient.js documents it returns, keeping this test dependency-free.
+// manufacturerCatalogClient.js documents it returns, keeping this test dependency-free.
 function mapResultLikeFetchManufacturerList({ result, errorStatus }) {
   if (errorStatus) return { ok: false, code: errorStatus === "denied" ? "permission-denied" : "unavailable" };
   if (!result || result.status !== "ready" || !Array.isArray(result.manufacturers)) return { ok: false, code: "unavailable" };
