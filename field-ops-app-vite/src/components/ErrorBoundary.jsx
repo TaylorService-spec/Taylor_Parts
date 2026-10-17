@@ -2,6 +2,7 @@ import React from "react";
 import FailureState from "../shared/ui/FailureState.jsx";
 import Button from "../shared/ui/primitives/Button.jsx";
 import { buildCrashDiagnostic, diagnosticsVisible, formatCrashSummary } from "../diagnostics/crashDiagnostics.js";
+import { reloadOnceForStaleBundle } from "../diagnostics/staleBundleReload.js";
 
 // Root error boundary (mounted in main.jsx ABOVE AuthProvider and App, so it catches
 // every render crash in the application).
@@ -26,7 +27,7 @@ import { buildCrashDiagnostic, diagnosticsVisible, formatCrashSummary } from "..
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, resetKey: 0, retryCount: 0, diagnostic: null, copied: false };
+    this.state = { hasError: false, resetKey: 0, retryCount: 0, diagnostic: null, copied: false, reloading: false };
     this.handleRetry = this.handleRetry.bind(this);
     this.handleReload = this.handleReload.bind(this);
     this.handleCopy = this.handleCopy.bind(this);
@@ -39,6 +40,13 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
+    // A STALE BUNDLE AFTER A DEPLOY is not a crash: a lazy route chunk the old index names no longer exists. Reload ONCE
+    // (guarded in sessionStorage, so it can never loop) -- see diagnostics/staleBundleReload.js.
+    if (reloadOnceForStaleBundle(error)) {
+      console.warn("UI: a newer build is deployed; reloading once to load it.");
+      this.setState({ reloading: true });
+      return;
+    }
     // A CRASH NOBODY CAN DESCRIBE IS A RUMOUR, NOT A BUG REPORT.
     //
     // This logged the error and the component stack and nothing else. A user hit this boundary in
@@ -98,6 +106,9 @@ export default class ErrorBoundary extends React.Component {
   }
 
   render() {
+    if (this.state.hasError && this.state.reloading) {
+      return <p className="fo-muted" role="status">Loading the latest version…</p>;
+    }
     if (this.state.hasError) {
       const repeated = this.state.retryCount > 0;
       const { diagnostic } = this.state;

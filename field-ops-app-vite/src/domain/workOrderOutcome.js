@@ -178,3 +178,18 @@ export function inventoryBoundaryMessage(value) {
   const code = inventoryBoundaryCode(value);
   return code ? INVENTORY_BOUNDARY_MESSAGES[code] : null;
 }
+
+/**
+ * The availability read on the Dispatcher Board (useTechnicianAvailability) fails as `{ status, code }` -- the client
+ * category lower-cased and the server's stable code (schedulingCommandClient.js). A REFUSAL (UNAUTHORIZED: no company
+ * authority, a missing capability, ...) is said as the refusal it is, with its remedy; anything else is an outage, for
+ * which this returns null and the Board keeps its "could not be read ... the server still enforces both" sentence.
+ */
+export function availabilityReadRefusalMessage(error) {
+  if (!error) return null;
+  const failure = { code: String(error.status ?? "").toUpperCase(), reason: typeof error.code === "string" ? error.code : null };
+  const outcome = classifyWorkOrderOutcome(failure);
+  return outcome.kind === WORK_ORDER_OUTCOME.UNAUTHORIZED
+    ? workOrderOutcomeMessage(outcome, { mode: "load", entity: "working hours and blocked time" })
+    : null;
+}
