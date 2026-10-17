@@ -222,6 +222,39 @@ test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, fo
       R({ objectKey: "dataImport", roleKey: "owner", mode: "GRANT" }), { outcome: "NO_OP" });
     assert.ok(report.perAction.length > 0 && report.perAction.every((a) => a.outcome === "REFUSED" && a.refusalCode === "SYSTEM_INVARIANT"));
   });
+  // FIREBASE EXIT F1 (DECISIONS #244). The client asks the Firebase id admin.dataImport.stage under admin.dataImport.execute
+  // (field-ops-app-vite/src/access/eosCapabilityAccess.js). That mapping is only honest while, ON EOS, execute is held by admin alone
+  // and is locked for the Owner everywhere an administrator could grant it. Proved here against the real engine, previews only.
+  await t.test("F1: on EOS admin.dataImport.execute is held only by admin and locked for owner (Role, principal, object-wide); stage is not an EOS capability", async () => {
+    const holders = (await q(
+      `SELECT r.key FROM eos_policy.role_capabilities rc
+         JOIN eos_policy.roles r ON r.id = rc.role_id JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+        WHERE rc.tenant_id = $1 AND c.key = 'admin.dataImport.execute' ORDER BY r.key`, [A])).rows.map((r) => r.key);
+    assert.deepEqual(holders, ["admin"]);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = 'admin.dataImport.stage'`)).rows[0].n, 0,
+      "stage is NOT registered: nothing exists to grant, to Owner or anyone");
+    const { FORBIDDEN_ROLE_CAPABILITY_PAIRS } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
+    assert.ok(FORBIDDEN_ROLE_CAPABILITY_PAIRS.some((p) => p.roleKey === "owner" && p.capabilityKey === "admin.dataImport.execute" && p.invariantClass === "OWNER_GOVERNANCE"));
+    const preview = async (operation, input) => {
+      const previewed = await call(ADMIN, "previewAuthorityChange", { change: { operation, input } });
+      assert.equal(previewed.ok, true, JSON.stringify(previewed));
+      return previewed.data;
+    };
+    const atRole = await preview("grantObjectActionToRole", R({ objectKey: "dataImport", actionKey: "execute", roleKey: "owner" }));
+    assert.equal(atRole.outcome, "WOULD_REFUSE");
+    assert.equal(atRole.refusal.code, "SYSTEM_INVARIANT");
+    const atPrincipal = await preview("grantObjectActionToPrincipal", R({ objectKey: "dataImport", actionKey: "execute", principalId: P.a.owner }));
+    assert.equal(atPrincipal.outcome, "WOULD_REFUSE");
+    assert.equal(atPrincipal.refusal.code, "SYSTEM_INVARIANT");
+    const objectWide = await preview("applyObjectWideRoleAuthority", R({ objectKey: "dataImport", roleKey: "owner", mode: "GRANT" }));
+    assert.equal(objectWide.outcome, "NO_OP", "every dataImport action is refused for Owner, so an object-wide grant changes nothing");
+    assert.ok(objectWide.perAction.length > 0 && objectWide.perAction.every((a) => a.outcome === "REFUSED" && a.refusalCode === "SYSTEM_INVARIANT"));
+    // and the preview itself changed nothing
+    assert.deepEqual((await q(
+      `SELECT r.key FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id
+         JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+        WHERE rc.tenant_id = $1 AND c.key = 'admin.dataImport.execute' ORDER BY r.key`, [A])).rows.map((r) => r.key), ["admin"]);
+  });
   await t.test("C3 object-wide PARTIAL refusal: some actions GRANTED, one REFUSED, in one call", async () => {
     // The Owner holds dispatcher, so reorder.request.assign (Owner ruling A) is refused at the principal; the other
     // reorderRequest actions are granted, each in its own savepoint -- exactly the per-action atomicity of the commit.
