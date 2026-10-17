@@ -1906,23 +1906,8 @@ button:hover {
 .fo-brand--onLight .fo-brand__wordmark { color: var(--color-text-primary); }
 .fo-brand--onLight .fo-brand__platform { color: var(--color-text-secondary); opacity: 1; }
 
-/* Implementation identity. Deliberately a SEPARATE element from the brand
-   lockup: Taylor Parts identifies the deployment, and must never be replaced by
-   or merged into the parent-brand naming. */
-.fo-implementation {
-  display: flex; flex-direction: column; line-height: 1.2;
-  padding-left: 14px; margin-left: 14px;
-  border-left: 1px solid rgba(185, 193, 190, 0.28);
-}
-.fo-implementation__name { font-size: 13px; font-weight: 600; color: var(--color-text-inverse); }
-.fo-implementation__context {
-  font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--verenward-moon);
-}
 @media (max-width: 720px) {
   .fo-brand__platform { display: none; }
-  .fo-implementation { padding-left: 10px; margin-left: 10px; }
-  .fo-implementation__context { display: none; }
 }
 
 /* Gate 2 -- the brand now sits in a fixed-width vertical rail rather than a
@@ -1931,19 +1916,12 @@ button:hover {
    - `white-space: nowrap` on the platform line overflowed the compact rail
      (it clipped "ENTERPRISE OPERATIONS OS" at tablet width). In a column there
      is room to wrap, so it wraps.
-   - the 720px rules hide the platform and deployment context because a phone's
-     horizontal header had no room. The drawer is a tall column that does, and
-     the deployment identity is exactly what a user needs to see there. */
-.fo-rail__brand .fo-brand,
-.fo-rail__brand .fo-implementation { max-width: 100%; min-width: 0; }
+   - the 720px rule hides the platform line because a phone's horizontal header
+     had no room. The drawer is a tall column that does. */
+.fo-rail__brand .fo-brand { max-width: 100%; min-width: 0; }
 .fo-rail__brand .fo-brand__platform {
   white-space: normal; display: block; overflow-wrap: anywhere;
 }
-.fo-rail__brand .fo-implementation__context { display: block; }
-/* The implementation block sits BELOW the lockup in the rail, so its divider
-   becomes a left rule against the rail edge rather than a separator between
-   two side-by-side identities. */
-.fo-rail__brand .fo-implementation { padding-left: 10px; margin-left: 2px; }
 
 @media (max-width: 1199.98px) and (min-width: 900px) {
   /* Compact rail: shrink the platform line rather than dropping it, so the
@@ -8746,6 +8724,9 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
   font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--color-text-inverse);
   text-decoration: underline; text-underline-offset: 3px; }
 .fo-rail-identity__profile:focus-visible { outline: 2px solid var(--color-text-inverse); outline-offset: 2px; }
+/* The global a:hover paints links brand evergreen -- the rail's own colour -- so the link vanished on hover.
+   Keep it legible on the rail, with the same hover wash as Sign Out. */
+.fo-rail-identity__profile:hover { color: var(--color-text-inverse); background: rgba(255, 255, 255, 0.14); }
 @media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
   .fo-rail-identity__profile { min-height: 0; }
 }
