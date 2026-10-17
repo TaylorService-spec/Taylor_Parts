@@ -100,15 +100,20 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
                  (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
                VALUES ($1,$2,$3,$4,$5,'OPERATOR_ASSERTED','active','fixture','journey fixture')`,
         [`lnk-${subject}`, T, principalId, employee.id, employee.company ?? "taylor"]);
-      await q(`INSERT INTO eos_workforce.employee_work_eligibility (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
-               VALUES ($1,$2,$3,'SERVICE_TECHNICIAN',now(),'fixture')`, [`we-${subject}`, T, employee.id]);
+      if (employee.qualified !== false) {
+        await q(`INSERT INTO eos_workforce.employee_work_eligibility (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+                 VALUES ($1,$2,$3,'SERVICE_TECHNICIAN',now(),'fixture')`, [`we-${subject}`, T, employee.id]);
+      }
     }
     return subject;
   };
 
   const SVC_MGR = await persona({ subject: "svcmgr", capabilities: [...WO_KEYS("fieldManager"), ...PROPOSED_OFFICE] });
   const SVC_MGR_BASELINE = await persona({ subject: "svcmgr-baseline", capabilities: WO_KEYS("fieldManager") });
-  const DISPATCHER = await persona({ subject: "dispatcher", capabilities: [...WO_KEYS("dispatcher"), ...PROPOSED_OFFICE] });
+  // The office list is company-scoped (EOS Core company authority, DECISIONS #235): the dispatcher is a Taylor Employee,
+  // unqualified, so it is never a technician candidate.
+  const DISPATCHER = await persona({ subject: "dispatcher", capabilities: [...WO_KEYS("dispatcher"), ...PROPOSED_OFFICE],
+    employee: { id: "emp-j-dispatcher", name: "Dana Dispatch", qualified: false } });
   // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
   await grantSyntheticCompanyAuthority(pool, T,
     (await q("SELECT id FROM eos_policy.principals WHERE external_subject = $1", [DISPATCHER])).rows[0].id, ["taylor"]);

@@ -179,6 +179,26 @@ test("a chip re-resolves its label, so a shared link never shows a storage token
   assert.equal(describeCriterion(parsed.filters[0], entity()), "Status: Active");
 });
 
+test("an IS-ANY-OF filter survives the URL as a LIST -- the Work Orders 'Open work' view reloads and shares intact", async () => {
+  const { workOrderEntity, workOrderIndexList } = await import("../src/metadata/definitions/workOrder.js");
+  const open = workOrderIndexList.savedViews.find((v) => v.id === "open").filters[0];
+  const c = addFilter(EMPTY_CRITERIA, makeCriterion({ fieldId: open.fieldId, operator: open.operator, value: open.value }));
+  const parsed = fromSearchParams(toSearchParams(c).toString(), workOrderIndexList, workOrderEntity);
+  assert.deepEqual(parsed.dropped, []);
+  assert.ok(Array.isArray(parsed.filters[0].value), "was the single string 'CREATED,READY_TO_DISPATCH,...'");
+  assert.deepEqual(parsed.filters[0].value, [...open.value]);
+  assert.equal(JSON.stringify(parsed.filters[0].value), JSON.stringify(open.value), "so the saved-view highlight matches after a reload");
+  assert.equal(describeCriterion(makeCriterion({ fieldId: "status", operator: "IN", value: ["CREATED", "SCHEDULED"] }), workOrderEntity),
+    `Status: ${workOrderEntity.fields.find((f) => f.id === "status").enumLabels.CREATED}, ${workOrderEntity.fields.find((f) => f.id === "status").enumLabels.SCHEDULED}`);
+  // A link written by the OLD encoder (the whole list percent-encoded as one value) still reads back as the list.
+  const legacy = fromSearchParams(`f=status:IN:${encodeURIComponent(encodeURIComponent("CREATED,SCHEDULED"))}`, workOrderIndexList, workOrderEntity);
+  assert.deepEqual(legacy.filters[0].value, ["CREATED", "SCHEDULED"]);
+  // A member containing a comma is not split.
+  const comma = toSearchParams(addFilter(EMPTY_CRITERIA, makeCriterion({ fieldId: "status", operator: "IN", value: ["A,B", "C"] }))).toString();
+  assert.deepEqual(fromSearchParams(comma, makeListViewDefinition({ ...workOrderIndexList, filters: [makeFilter({ fieldId: "status", operators: ["IN"] })] }),
+    workOrderEntity).filters[0].value, ["A,B", "C"]);
+});
+
 test("criteria transitions replace rather than stack, and clearing clears the search too", () => {
   let c = addFilter(EMPTY_CRITERIA, makeCriterion({ fieldId: "status", operator: "EQUALS", value: "ACTIVE" }));
   c = addFilter(c, makeCriterion({ fieldId: "status", operator: "EQUALS", value: "RETIRED" }));

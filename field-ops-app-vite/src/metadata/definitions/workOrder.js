@@ -60,6 +60,7 @@ export const workOrderEntity = makeEntityDefinition({
       entityId: "workOrder",
       label: "Work Order",
       type: "STRING",
+      searchable: true,
       sortable: true,
     }),
     makeFieldDefinition({
@@ -90,6 +91,7 @@ export const workOrderEntity = makeEntityDefinition({
       entityId: "workOrder",
       label: "Customer",
       type: "REFERENCE",
+      searchable: true,
       referenceTo: "account",
       filterable: true,
       operators: ["EQUALS"],
@@ -147,6 +149,7 @@ export const workOrderEntity = makeEntityDefinition({
       entityId: "workOrder",
       label: "Location",
       type: "REFERENCE",
+      searchable: true,
       referenceTo: "location",
       description: "Where the work happens. A reference; the site name lives on the location.",
     }),

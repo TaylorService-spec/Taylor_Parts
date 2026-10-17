@@ -535,7 +535,7 @@ async function requireActiveMember(client: PoolClient, actor: LifecycleActor): P
  * Employee, a company or an unavailability outside the caller's companies is refused exactly like one that does not exist,
  * and every refusal precedes any write.
  */
-async function requireCompanyAuthority(client: PoolClient, actor: LifecycleActor): Promise<readonly string[]> {
+async function requireCompanyAuthority(client: Db, actor: LifecycleActor): Promise<readonly string[]> {
   const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
   return authority.companies;
@@ -781,24 +781,30 @@ const scheduleView = (s: WorkingSchedule) => Object.freeze({
 /** The schedulable technicians: the SAME predicate as the technician picker (workOrderQueries.listWorkOrderTechnicians). */
 async function schedulableEmployees(
   db: Db, tenantId: string, companyId: string | null, qualification: string, onlyIds: readonly string[] | null,
+  /** The caller's EOS Core companies; null only where a caller has no Principal (customer self-scheduling) and companyId is fixed. */
+  companies: readonly string[] | null = null,
 ): Promise<{ id: string; displayName: string | null; operatingCompanyId: string }[]> {
   const { rows } = await db.query(
     `SELECT e.id, e.display_name, e.operating_company_id FROM eos_workforce.employees e
       WHERE e.tenant_id = $1 AND ($2::text IS NULL OR e.operating_company_id = $2) AND e.employment_status::text = ANY($3::text[])
         AND ($5::text[] IS NULL OR e.id = ANY($5::text[]))
+        AND ($6::text[] IS NULL OR e.operating_company_id = ANY($6::text[]))
         AND EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
                      WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id AND l.status = 'active')
         AND EXISTS (SELECT 1 FROM eos_workforce.employee_work_eligibility q
                      WHERE q.tenant_id = e.tenant_id AND q.employee_id = e.id AND q.qualification_code = $4 AND q.effective_to IS NULL)
       ORDER BY e.display_name NULLS LAST, e.id LIMIT ${MAX_READ_EMPLOYEES}`,
-    [tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], qualification, onlyIds === null ? null : [...onlyIds]]);
+    [tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], qualification, onlyIds === null ? null : [...onlyIds],
+      companies === null ? null : [...companies]]);
   return rows.map((r) => ({ id: r.id, displayName: r.display_name ?? null, operatingCompanyId: r.operating_company_id }));
 }
 
 /**
  * Working hours and unavailability for a range (at most 31 days), per Employee, computed by the SAME calendar the
- * placement check uses. Named `employeeIds` are read as they are (any Employee of the tenant; unknown ids are
- * reported, not guessed); without them, every schedulable technician (optionally of one company).
+ * placement check uses. Named `employeeIds` are read as they are (any Employee of the caller's operating companies;
+ * unknown ids -- and ids outside those companies, identically -- are reported in notFoundEmployeeIds, not guessed); without
+ * them, every schedulable technician of the caller's companies (optionally of one of them). EOS Core company authority
+ * (#235, the G-9 rule) is required: none = COMPANY_AUTHORITY_REQUIRED.
  *
  * `workingAvailability: null` / `availableMinutes: null` mean NOT CONFIGURED anywhere in the range -- never zero.
  */
@@ -823,15 +829,18 @@ export const readTechnicianAvailability: WorkOrderOp = async (deps, caller, inpu
   const companyFilter = (i.operatingCompanyId as string | undefined) ?? null;
   const range: Interval = { start, end };
   const pool = deps.pool;
+  // EOS Core company authority (#235; the G-9 rule): only Employees of the caller's companies are read. A named Employee outside
+  // them lands in notFoundEmployeeIds exactly like an unknown id, and a company outside them reads exactly like an unknown one.
+  const companies = await requireCompanyAuthority(pool, actor);
 
   let employees: { id: string; displayName: string | null; operatingCompanyId: string }[];
   if (ids === null) {
-    employees = await schedulableEmployees(pool, actor.tenantId, companyFilter, WORK_ORDER_ASSIGNMENT_QUALIFICATION, null);
+    employees = await schedulableEmployees(pool, actor.tenantId, companyFilter, WORK_ORDER_ASSIGNMENT_QUALIFICATION, null, companies);
   } else {
     const { rows } = await pool.query(
       `SELECT id, display_name, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[])
-        AND ($3::text IS NULL OR operating_company_id = $3) ORDER BY display_name NULLS LAST, id`,
-      [actor.tenantId, ids, companyFilter]);
+        AND ($3::text IS NULL OR operating_company_id = $3) AND operating_company_id = ANY($4::text[]) ORDER BY display_name NULLS LAST, id`,
+      [actor.tenantId, ids, companyFilter, [...companies]]);
     employees = rows.map((r) => ({ id: r.id, displayName: r.display_name ?? null, operatingCompanyId: r.operating_company_id }));
   }
   const empIds = employees.map((e) => e.id);
@@ -990,13 +999,17 @@ export const findAvailableTechnicianSlots: WorkOrderOp = async (deps, caller, in
 
   const client = await deps.pool.connect();
   try {
+    // EOS Core company authority (#235; the G-9 rule). A company outside the caller's is refused EXACTLY like one that is not
+    // ACTIVE and keyed (one code, one message), and the candidates are that company's Employees only.
+    const companies = await requireCompanyAuthority(client, actor);
+    const notGoverned = (): never =>
+      refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE and keyed for Work Orders in this tenant");
+    if (!companies.includes(companyId)) notGoverned();
     try {
       // The company must hold Work Orders at all: ACTIVE and keyed (the symmetric resolver), never inferred.
       await resolveOperatingCompanyKeyForCompany(client, actor.tenantId, companyId);
     } catch (err) {
-      if (err instanceof OperatingCompanyBindingError) {
-        refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE and keyed for Work Orders in this tenant");
-      }
+      if (err instanceof OperatingCompanyBindingError) notGoverned();
       throw err;
     }
     const base = Object.freeze({
