@@ -238,6 +238,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/employeeWorkSchedule.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/dispatchRiskVocabulary.test.mjs",
       "runner": "node"
     },
@@ -255,6 +259,10 @@
     },
     {
       "file": "test/zonedTime.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/boardClock.test.mjs",
       "runner": "node --test"
     },
     {

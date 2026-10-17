@@ -77,11 +77,17 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
 export async function readMyCompanyAuthority(db: Db, tenantId: string, principalId: string) {
   const authority = await resolveCompanyAuthority(db, tenantId, principalId);
   if (authority.companies.length === 0) return Object.freeze({ companies: Object.freeze([]), gap: authority.gap });
-  const { rows } = await db.query<{ id: string; key: string }>(
-    `SELECT operating_company_id AS id, operating_company_key AS key FROM eos_policy.tenant_operating_company_keys
-      WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id = ANY($2::text[]) ORDER BY 1, 2`, [tenantId, [...authority.companies]]);
+  // businessTimeZone: the company's governed business time zone (tenant_operating_companies), so a screen drawing the
+  // caller's companies' day (the Dispatcher Board grid) draws it in that zone, not the browser's. Describes the company.
+  const { rows } = await db.query<{ id: string; key: string; tz: string }>(
+    `SELECT k.operating_company_id AS id, k.operating_company_key AS key, c.business_time_zone AS tz
+       FROM eos_policy.tenant_operating_company_keys k
+       JOIN eos_policy.tenant_operating_companies c ON c.tenant_id = k.tenant_id AND c.operating_company_id = k.operating_company_id
+      WHERE k.tenant_id = $1 AND k.status = 'ACTIVE' AND k.operating_company_id = ANY($2::text[]) ORDER BY 1, 2`, [tenantId, [...authority.companies]]);
   return Object.freeze({
-    companies: Object.freeze(rows.map((r) => Object.freeze({ operatingCompanyId: String(r.id), operatingCompanyKey: String(r.key) }))),
+    companies: Object.freeze(rows.map((r) => Object.freeze({
+      operatingCompanyId: String(r.id), operatingCompanyKey: String(r.key), businessTimeZone: String(r.tz),
+    }))),
     gap: authority.gap,
   });
 }

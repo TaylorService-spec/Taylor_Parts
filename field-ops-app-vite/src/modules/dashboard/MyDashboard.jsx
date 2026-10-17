@@ -49,6 +49,8 @@ import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSumma
 import { fetchReorderWarehouseOptions } from "../../services/reorderApiClient.js";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders.js";
+import { classifyWorkOrderOutcome, WORK_ORDER_OUTCOME } from "../../domain/workOrderOutcome.js";
+import { loadErrorMessage } from "../../domain/loadErrorMessage.js";
 import {
   workOrderAttentionItems,
   groupWorkOrderAttentionItemsBySection,
@@ -267,9 +269,15 @@ function AccountPortfolioModule({ summary, state }) {
 // The projection output is computed ONCE at the dashboard and passed in, because the same sections
 // answer both this module's tiles and three FIRM goal actuals. Two derivations of one projection is
 // how a tile and the goal beside it come to disagree.
-function ServiceAttentionModule({ grouped, loading, error }) {
+export function ServiceAttentionModule({ grouped, loading, error }) {
   if (loading) return <HonestState state={HONEST_STATE.LOADING} subject="Service attention" />;
   if (error) {
+    // A REFUSAL IS NOT AN OUTAGE. "Could not be read just now" invites a retry that will be refused again; the one Work
+    // Order outcome classifier says which it is, and its copy carries COMPANY_AUTHORITY_REQUIRED's remedy. Never a raw code.
+    const outcome = classifyWorkOrderOutcome(error);
+    const detail = loadErrorMessage(error, { entity: "work orders" });
+    if (outcome.kind === WORK_ORDER_OUTCOME.UNAUTHORIZED) return <HonestState state={HONEST_STATE.DENIED} subject="Service attention" detail={detail} />;
+    if (outcome.kind === WORK_ORDER_OUTCOME.NOT_YET_ACTIVATED) return <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Service attention" detail={detail} />;
     return <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Service attention" detail="Work orders could not be read just now." />;
   }
 

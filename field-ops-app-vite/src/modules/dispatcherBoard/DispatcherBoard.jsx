@@ -9,6 +9,9 @@ import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { suggestWorkOrderPlacement } from "../../services/workOrderService";
+import { callWorkspaceApi } from "../../services/workspaceApiClient";
+import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities";
+import { boardTimeZone, formatDay, formatInstant, setBoardTimeZone } from "../../domain/boardClock.js";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import {
   SLOT_MS,
@@ -81,8 +84,34 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 // Gate). `useTechnicianAvailability` is the trusted projection and the only source of shift lines,
 // hatched blocked time and every percentage on this page. A technician with no record reads as
 // UNKNOWN and renders as "No schedule" with no percentage — never 0%.
-export default function DispatcherBoard() {
+/** The governed capability every placement gesture on this board needs (Schedule, Move, Resize, Reassign, Return). */
+const SCHEDULE_CAPABILITY = "workOrder.lifecycle.schedule";
+/** Dispatch from the preview needs its own capability -- the same rule as the Jobs page (DECISIONS #239). */
+const DISPATCH_CAPABILITY = "workOrder.lifecycle.dispatch";
+
+export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {}) {
   const { role } = useAuth();
+  // WHAT IS OFFERED follows the caller's governed capabilities (readMyWorkOrderCapabilities), failing closed while
+  // unknown -- the same rule the Jobs page uses (DECISIONS #239). The server still re-checks every command.
+  const caps = useMyWorkOrderCapabilities();
+  const canSchedule = caps.has(SCHEDULE_CAPABILITY);
+
+  // THE GRID'S CLOCK: the governed business time zone of the caller's companies (readMyCompanyAuthority), so the day,
+  // the hour band and the dates are the company's, not the browser's. One zone across the caller's companies is used;
+  // none or several -> the browser's zone, and the board says so. Set during render so every geometry call below
+  // draws in it; cleared on unmount so other screens keep the browser clock.
+  const [companyZones, setCompanyZones] = useState(null);
+  useEffect(() => {
+    let live = true;
+    callWorkspace("readMyCompanyAuthority", {}).then((res) => {
+      if (!live) return;
+      setCompanyZones(res?.ok ? [...new Set((res.result.companies ?? []).map((c) => c.businessTimeZone).filter(Boolean))] : []);
+    });
+    return () => { live = false; };
+  }, [callWorkspace]);
+  const governedZone = companyZones?.length === 1 ? companyZones[0] : null;
+  setBoardTimeZone(governedZone);
+  useEffect(() => () => setBoardTimeZone(null), []);
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   // The GOVERNED roster (listWorkOrderTechnicians): lane ids are EMPLOYEE ids, the same ids the governed
   // Work Orders' assignedTechId / scheduledTechId carry. NOT fieldops_technicians (whose ids never match).
@@ -94,7 +123,8 @@ export default function DispatcherBoard() {
   // from a Work Order or an Employee record returns to the same board. Selection and drag state are
   // gestures, not places, and stay in memory.
   const [searchParams, setSearchParams] = useSearchParams();
-  const { view, anchorMillis, technicianFilter } = useMemo(() => readBoardUrlState(searchParams, Date.now()), [searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock the date parse reads
+  const { view, anchorMillis, technicianFilter } = useMemo(() => readBoardUrlState(searchParams, Date.now()), [searchParams, governedZone]);
   // Stepping through days REPLACES the entry (Back should not walk every day you clicked past);
   // changing view or filter pushes one.
   const updateBoardUrl = useCallback((patch, { replace = false } = {}) => {
@@ -104,6 +134,23 @@ export default function DispatcherBoard() {
   const setAnchorMillis = useCallback((t) => updateBoardUrl({ anchorMillis: t }, { replace: true }), [updateBoardUrl]);
   const setTechnicianFilter = useCallback((f) => updateBoardUrl({ technicianFilter: f }), [updateBoardUrl]);
   const openDay = useCallback((d) => updateBoardUrl({ anchorMillis: d, view: DISPATCH_VIEW.DAY }), [updateBoardUrl]);
+  // EMPLOYEE REVIEW: a lane name opens that technician's schedule and work -- the week view filtered to them, with
+  // their placed work listed. `back` holds the board exactly as it was (date, view, filters) for the return. It shows
+  // only what the board already read for this caller (company-isolated, capability-gated server-side); it opens no
+  // Employee record and reads nothing new.
+  const focusId = searchParams.get("focus");
+  const reviewTechnician = useCallback((techId) => {
+    setSearchParams((prev) => {
+      const next = writeBoardUrlState(prev, { ...readBoardUrlState(prev, Date.now()), view: DISPATCH_VIEW.WEEK, technicianFilter: new Set([techId]) }, Date.now());
+      next.set("focus", techId);
+      next.set("back", prev.has("focus") ? prev.get("back") ?? "" : prev.toString());
+      return next;
+    });
+  }, [setSearchParams]);
+  const endReview = useCallback(
+    () => setSearchParams(new URLSearchParams(searchParams.get("back") ?? "")),
+    [searchParams, setSearchParams],
+  );
   // The current-time line and the elapsed region move with the clock, not only with data: one
   // re-render a minute keeps them honest on a board left open all day.
   const [, setMinuteTick] = useState(0);
@@ -131,7 +178,8 @@ export default function DispatcherBoard() {
       return { startMillis: anchorMillis - 7 * 86_400_000, endMillis: anchorMillis + 14 * 86_400_000 };
     }
     return { startMillis: startOfDayMillis(anchorMillis), endMillis: startOfDayMillis(anchorMillis) + 86_400_000 };
-  }, [view, anchorMillis]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock these day computations read
+  }, [view, anchorMillis, governedZone]);
 
   const {
     byTechnicianId: availabilityByTechnicianId,
@@ -185,7 +233,8 @@ export default function DispatcherBoard() {
       list.sort((a, b) => placementWindow(a).startMillis - placementWindow(b).startMillis);
     }
     return map;
-  }, [placedWorkOrders, view, anchorMillis]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock these day computations read
+  }, [placedWorkOrders, view, anchorMillis, governedZone]);
 
   // The drawn hour band, WIDENED by whatever this day actually holds.
   //
@@ -204,7 +253,8 @@ export default function DispatcherBoard() {
 
   const band = useMemo(
     () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
-    [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock these day computations read
+    [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId, governedZone],
   );
 
   // Scored for the queue AND for whatever is selected.
@@ -265,11 +315,10 @@ export default function DispatcherBoard() {
       : PLACEMENT_INTENT.REASSIGN;
   }, []);
 
-  const handleDropOnLane = useCallback(
-    (technicianId, fraction) => {
-      const workOrder = dragging;
-      setDragging(null);
-      setDragOverLaneId(null);
+  // ONE placement path for both hands: a drop and a tap ("Place on a lane", then click a time) land here with the
+  // work order, the lane and where on the lane, and go through the same checks and governed commands.
+  const placeOnLane = useCallback(
+    (workOrder, technicianId, fraction) => {
       if (!workOrder) return;
 
       const intent = intentForDrop(workOrder, technicianId);
@@ -324,8 +373,36 @@ export default function DispatcherBoard() {
           : { intent, workOrder, technicianId, startMillis: dropped.startMillis, endMillis: dropped.endMillis },
       );
     },
-    [dragging, intentForDrop, band, runPlacement, setBoardMessage],
+    [intentForDrop, band, runPlacement, setBoardMessage],
   );
+
+  const handleDropOnLane = useCallback(
+    (technicianId, fraction) => {
+      const workOrder = dragging;
+      setDragging(null);
+      setDragOverLaneId(null);
+      placeOnLane(workOrder, technicianId, fraction);
+    },
+    [dragging, placeOnLane],
+  );
+
+  // TAP / CLICK PLACEMENT — the alternative to dragging (touch screens have no HTML drag at all). "Place on a lane"
+  // arms one work order; the next click on a lane places it there through placeOnLane; Esc or Cancel disarms.
+  const [placing, setPlacing] = useState(null);
+  const handleTapOnLane = useCallback(
+    (technicianId, fraction) => {
+      const workOrder = placing;
+      setPlacing(null);
+      placeOnLane(workOrder, technicianId, fraction);
+    },
+    [placing, placeOnLane],
+  );
+  useEffect(() => {
+    if (!placing) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setPlacing(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placing]);
 
   /**
    * VC-2/VC-3 — direct manipulation of a placed chip, pointer or keyboard, same governed command.
@@ -430,8 +507,8 @@ export default function DispatcherBoard() {
     );
   }
 
-  const dayLabel = new Date(anchorMillis).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
-  const weekLabel = new Date(anchorMillis).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const dayLabel = formatDay(anchorMillis, { weekday: "short", day: "numeric" });
+  const weekLabel = formatDay(anchorMillis, { month: "short", day: "numeric" });
 
   return (
     <div className="ns-page ns-dispatch">
@@ -442,6 +519,13 @@ export default function DispatcherBoard() {
       >
         <p className="ns-dispatch__live">
           <span className="ns-dispatch__live-dot" aria-hidden="true" /> Refreshes every 30 seconds, and right after your own changes
+        </p>
+        <p className="ns-dispatch__zone">
+          Times are in {boardTimeZone()}
+          {companyZones !== null && !governedZone
+            ? companyZones.length > 1 ? " (your browser's zone; your companies keep different business time zones)" : " (your browser's zone; the company's could not be read)"
+            : ""}
+          .
         </p>
       </WorkspaceIdentity>
 
@@ -455,11 +539,19 @@ export default function DispatcherBoard() {
         <li><span className="ns-dispatch__swatch ns-dispatch__swatch--elapsed" aria-hidden="true" />Elapsed — not a target</li>
         <li><span className="ns-dispatch__swatch ns-dispatch__swatch--now" aria-hidden="true" />Now</li>
       </ul>
-      <p className="ns-dispatch__rule">
-        Drag a queue card onto a lane to schedule, between lanes to reassign, back to the queue to return
-        it; drag a chip&rsquo;s trailing edge to resize. Focused chip: <kbd>←</kbd>/<kbd>→</kbd> 15 min
-        (<kbd>Shift</kbd> = 1 h), <kbd>Alt</kbd>+arrow resizes, <kbd>R</kbd> reassigns.
-      </p>
+      {caps.status === "ready" && !canSchedule ? (
+        <p className="fo-muted" role="status">You can see the board, but scheduling is not part of your access.</p>
+      ) : null}
+      {canSchedule ? (
+        <p className="ns-dispatch__rule">
+          Drag a queue card onto a lane to schedule, between lanes to reassign, back to the queue to return
+          it; drag a chip&rsquo;s trailing edge to resize. No drag? Use <b>Place on a lane</b>, then click a time.
+          Focused chip: <kbd>←</kbd>/<kbd>→</kbd> 15 min (<kbd>Shift</kbd> = 1 h), <kbd>Alt</kbd>+arrow resizes,
+          <kbd>R</kbd> reassigns. Click a technician&rsquo;s name to review their schedule and work.
+        </p>
+      ) : (
+        <p className="ns-dispatch__rule">Click a technician&rsquo;s name to review their schedule and work.</p>
+      )}
 
       <DispatchViewSwitcher
         view={view}
@@ -515,6 +607,22 @@ export default function DispatcherBoard() {
         </p>
       ) : null}
 
+      {placing ? (
+        <p className="ns-dispatch-placing" role="status">
+          <span>Placing <b>{placing.woNumber}</b>: click a time on a technician&rsquo;s lane (day view). Esc cancels.</span>
+          <button type="button" className="fo-button fo-button--tertiary" onClick={() => setPlacing(null)}>Cancel</button>
+        </p>
+      ) : null}
+
+      {focusId ? (
+        <TechnicianReview
+          name={resolveTechnicianIdentity(focusId, { technicians: technicians ?? [] })?.name ?? "This technician"}
+          workOrders={placedWorkOrders.filter((wo) => wo.scheduledTechId === focusId)}
+          onSelectWorkOrder={setSelectedId}
+          onBack={endReview}
+        />
+      ) : null}
+
       {workOrdersLoading || techniciansLoading ? (
         <p className="ns-dispatch__loading">Loading the board…</p>
       ) : (
@@ -528,8 +636,8 @@ export default function DispatcherBoard() {
               availabilityFailed={Boolean(availabilityError)}
               band={band}
               draggingWorkOrder={dragging}
-              onDropOnLane={handleDropOnLane}
-              onDragStartWorkOrder={setDragging}
+              onDropOnLane={canSchedule ? handleDropOnLane : undefined}
+              onDragStartWorkOrder={canSchedule ? setDragging : undefined}
               onDragEndWorkOrder={() => { setDragging(null); setDragOverLaneId(null); setQueueDragOver(false); }}
               onSelectWorkOrder={setSelectedId}
               selectedWorkOrderId={selectedId}
@@ -537,9 +645,12 @@ export default function DispatcherBoard() {
               onDragOverLane={setDragOverLaneId}
               onDragLeaveLane={() => setDragOverLaneId(null)}
               busyWorkOrderId={busyWorkOrderId}
-              onAdjustPlacement={adjustPlacement}
-              onReassignRequest={(wo) => setPendingReason({ intent: PLACEMENT_INTENT.REASSIGN, workOrder: wo, technicianId: wo.scheduledTechId ?? null })}
+              onAdjustPlacement={canSchedule ? adjustPlacement : undefined}
+              onReassignRequest={canSchedule ? (wo) => setPendingReason({ intent: PLACEMENT_INTENT.REASSIGN, workOrder: wo, technicianId: wo.scheduledTechId ?? null }) : undefined}
               slotMillis={SLOT_MS}
+              placingWorkOrder={canSchedule ? placing : null}
+              onTapLane={canSchedule ? handleTapOnLane : undefined}
+              onSelectTechnician={reviewTechnician}
             />
           ) : null}
 
@@ -553,6 +664,7 @@ export default function DispatcherBoard() {
               nowMillis={Date.now()}
               draggingWorkOrder={dragging}
               onSelectDay={openDay}
+              onSelectTechnician={reviewTechnician}
               onDropOnTechnicianDay={(technicianId, dateMillis) => {
                 const workOrder = dragging;
                 setDragging(null);
@@ -613,7 +725,7 @@ export default function DispatcherBoard() {
             customerNames={customerNames}
             selectedWorkOrderId={selectedId}
             onSelectWorkOrder={setSelectedId}
-            onOpenPlacementPicker={(wo) =>
+            onOpenPlacementPicker={canSchedule ? (wo) =>
               setPendingPlacement({
                 intent: PLACEMENT_INTENT.SCHEDULE,
                 workOrder: wo,
@@ -621,9 +733,10 @@ export default function DispatcherBoard() {
                 // No guessed start: the dialog asks suggestWorkOrderPlacement for the earliest valid window.
                 startMillis: null,
                 durationMinutes: wo.estimatedDurationMinutes ?? 120,
-              })
+              }) : undefined
             }
-            onDragStartWorkOrder={setDragging}
+            onDragStartWorkOrder={canSchedule ? setDragging : undefined}
+            onStartPlacing={canSchedule ? (wo) => { setPlacing(wo); if (view !== DISPATCH_VIEW.DAY) setView(DISPATCH_VIEW.DAY); } : undefined}
             onDragEndWorkOrder={() => { setDragging(null); setDragOverLaneId(null); setQueueDragOver(false); }}
             isDragOver={queueDragOver}
             canReturnToQueue={Boolean(dragging && dragging.status === "SCHEDULED")}
@@ -659,7 +772,8 @@ export default function DispatcherBoard() {
               technicians={technicians ?? []}
               recommendations={recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? []}
               // DISPATCH — deliberately still reachable here; the same governed transition the Jobs page uses.
-              onDispatchToTechnician={(workOrder, technicianId) => dispatchTo(workOrder, technicianId)}
+              onDispatchToTechnician={caps.has(DISPATCH_CAPABILITY) ? (workOrder, technicianId) => dispatchTo(workOrder, technicianId) : undefined}
+              onStartPlacing={canSchedule ? (wo) => { setPlacing(wo); if (view !== DISPATCH_VIEW.DAY) setView(DISPATCH_VIEW.DAY); } : undefined}
               isDispatching={busyWorkOrderId === selectedWorkOrder.id}
             />
           ) : null}
@@ -710,11 +824,42 @@ function reasonPromptContext(pending, technicians) {
   if (pending.intent === PLACEMENT_INTENT.REASSIGN) {
     return `${pending.workOrder.woNumber} → ${name}, keeping its current time.`;
   }
-  const at = new Date(pending.startMillis).toLocaleString(undefined, {
+  const at = formatInstant(pending.startMillis, {
     weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
   const minutes = Math.round((pending.endMillis - pending.startMillis) / 60_000);
   return `${pending.workOrder.woNumber} → ${name}, ${at} for ${minutes} min.`;
+}
+
+/**
+ * One technician's schedule and work, opened from a lane name. The week view below is already filtered to them (their
+ * working hours, blocked time and placements); this lists their placed work in the loaded range, earliest first.
+ */
+function TechnicianReview({ name, workOrders, onSelectWorkOrder, onBack }) {
+  const rows = [...workOrders]
+    .map((wo) => ({ wo, window: placementWindow(wo) }))
+    .sort((a, b) => (a.window?.startMillis ?? Infinity) - (b.window?.startMillis ?? Infinity));
+  return (
+    <section className="ns-dispatch-focus" aria-label={`${name}: schedule and work`}>
+      <div className="ns-dispatch-focus__head">
+        <h2 className="ns-dispatch-focus__title">{name} — schedule and work</h2>
+        <button type="button" className="fo-button fo-button--secondary" onClick={onBack}>Back to the board</button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="fo-muted">No scheduled work for {name} in the weeks shown.</p>
+      ) : (
+        <ul className="ns-dispatch-focus__list">
+          {rows.map(({ wo, window }) => (
+            <li key={wo.id} className="ns-dispatch-focus__item">
+              <button type="button" className="ns-dispatch-lane__name--link" onClick={() => onSelectWorkOrder(wo.id)}>{wo.woNumber}</button>
+              <span>{window ? formatInstant(window.startMillis, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "No window"}</span>
+              <span className="fo-muted">{statusWords(wo.status)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function millisOf(value) {

@@ -65,6 +65,9 @@ function DispatchLaneGrid({
   onReassignRequest,
   slotMillis = SLOT_MS,
   nowMillis,
+  placingWorkOrder = null,
+  onTapLane,
+  onSelectTechnician,
 }) {
   const hours = bandHours(band);
   const resizeOriginRef = useRef(null);
@@ -105,12 +108,18 @@ function DispatchLaneGrid({
         const spans = laneTimeSpans(availability, band);
         const noSchedule = !scheduleUnknown && !spans.configured;
         const canAccept = Boolean(draggingWorkOrder);
+        const canTap = Boolean(placingWorkOrder) && Boolean(onTapLane);
         const isDragOver = dragOverLaneId === tech.id;
 
         return (
           <div className="ns-dispatch-grid__row" key={tech.id}>
             <div className="ns-dispatch-lane__identity">
-              <div className="ns-dispatch-lane__name">{identity.name}</div>
+              {onSelectTechnician ? (
+                <button type="button" className="ns-dispatch-lane__name ns-dispatch-lane__name--link" onClick={() => onSelectTechnician(tech.id)}
+                  title="Review this technician's schedule and work">{identity.name}</button>
+              ) : (
+                <div className="ns-dispatch-lane__name">{identity.name}</div>
+              )}
               <div className="ns-dispatch-lane__meta">
                 <LaneMeta
                   shift={shift}
@@ -124,12 +133,14 @@ function DispatchLaneGrid({
             </div>
 
             <div
-              className={`ns-dispatch-lane${isDragOver && canAccept ? " ns-dispatch-lane--over" : ""}${noSchedule ? " ns-dispatch-lane--unconfigured" : ""}`}
+              className={`ns-dispatch-lane${isDragOver && canAccept ? " ns-dispatch-lane--over" : ""}${noSchedule ? " ns-dispatch-lane--unconfigured" : ""}${canTap ? " ns-dispatch-lane--placing" : ""}`}
               style={{ backgroundSize: `${100 / hours.length}% 100%` }}
               data-technician-id={tech.id}
               onDragOver={canAccept ? (e) => { e.preventDefault(); onDragOverLane?.(tech.id); } : undefined}
               onDragLeave={canAccept ? () => onDragLeaveLane?.(tech.id) : undefined}
               onDrop={canAccept ? (e) => { e.preventDefault(); onDropOnLane?.(tech.id, dropFractionOf(e)); } : undefined}
+              // TAP PLACEMENT: while a work order is armed, a click on the lane (not on a chip) places it at that time.
+              onClick={canTap ? (e) => { if (e.target.closest?.(".ns-dispatch-chip")) return; onTapLane(tech.id, dropFractionOf(e)); } : undefined}
             >
               {/* Schedule background first, under everything: not-working minutes (evenings, the gap of a
                   split day) and minutes no schedule governs at all. Neither is ever a default shift. */}
@@ -178,7 +189,7 @@ function DispatchLaneGrid({
                       selectedWorkOrderId === wo.id ? " ns-dispatch-chip--selected" : ""
                     }${isBusy ? " ns-dispatch-chip--busy" : ""}${window.endMillis <= now ? " ns-dispatch-chip--elapsed" : ""}`}
                     style={{ left: `${geometry.leftPercent}%`, width: `${geometry.widthPercent}%` }}
-                    draggable={!isBusy}
+                    draggable={!isBusy && Boolean(onDragStartWorkOrder)}
                     onClick={() => onSelectWorkOrder?.(wo.id)}
                     onDragStart={(e) => {
                       // Optional: a synthetic drag event (and jsdom) carries no dataTransfer. The

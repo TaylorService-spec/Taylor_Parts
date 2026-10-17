@@ -128,3 +128,20 @@ test("the module is dependency-free (node-importable, no Firebase, no React)", (
   const src = readFileSync(new URL("../src/domain/workOrderOutcome.js", import.meta.url), "utf8");
   assert.equal(/^import /m.test(src), false);
 });
+
+test("COMPANY_AUTHORITY_REQUIRED is said in words, with its remedy -- on every surface that renders loadErrorMessage", async () => {
+  const { COMPANY_AUTHORITY_MESSAGE, COMPANY_AUTHORITY_REQUIRED, classifyWorkOrderOutcome: classify, workOrderOutcomeMessage: say } =
+    await import("../src/domain/workOrderOutcome.js");
+  // The shape a refused listWorkOrders throws (WorkOrderApiError): client category FORBIDDEN, server code as `reason`.
+  const refusal = { code: "FORBIDDEN", reason: COMPANY_AUTHORITY_REQUIRED, status: 403 };
+  assert.equal(classify(refusal).kind, "UNAUTHORIZED");
+  assert.equal(say(classify(refusal), { mode: "load", entity: "work orders" }), COMPANY_AUTHORITY_MESSAGE);
+  assert.equal(say(classify(refusal), { mode: "action" }), `${COMPANY_AUTHORITY_MESSAGE} Nothing was changed.`);
+  // Jobs, Dispatch, the Dispatcher Board and Control Tower all render loadErrorMessage(error, ...).
+  const load = loadErrorMessage(refusal, { entity: "work orders" });
+  assert.match(load, /^No operating company is linked to your login, so no company's work orders can be shown\./);
+  assert.match(load, /An administrator can link your login to your employee record, or assign you an operating company\./);
+  assert.doesNotMatch(load, /COMPANY_AUTHORITY_REQUIRED|no work orders yet|not yet activated/i, "never a raw code, never an empty-list sentence");
+  // A plain refusal keeps the generic wording -- the specific sentence is only for the specific reason.
+  assert.equal(loadErrorMessage({ code: "FORBIDDEN", reason: "CAPABILITY_MISSING" }, { entity: "work orders" }), "You do not have permission to view these work orders.");
+});

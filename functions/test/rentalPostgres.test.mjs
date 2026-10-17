@@ -444,7 +444,7 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.deepEqual((await rental.listRentalAgreements(pool, otherTenant, {})).items, []);
 
     // D6: the caller's own company options, from EOS Core.
-    assert.deepEqual(ok(await call(gm, WS_ROUTE, "readMyCompanyAuthority", {})).companies, [{ operatingCompanyId: "taylor", operatingCompanyKey: "taylor" }]);
+    assert.deepEqual(ok(await call(gm, WS_ROUTE, "readMyCompanyAuthority", {})).companies, [{ operatingCompanyId: "taylor", operatingCompanyKey: "taylor", businessTimeZone: "UTC" }]); // the governed zone (column default UTC here)
     assert.deepEqual(ok(await call(dispX, WS_ROUTE, "readMyCompanyAuthority", {})).companies.map((c) => c.operatingCompanyId), ["taylor", "ventana"]);
     assert.deepEqual(ok(await call(unlinkedGm, WS_ROUTE, "readMyCompanyAuthority", {})).companies, []);
     refused(await call(gm, WS_ROUTE, "readMyCompanyAuthority", { operatingCompanyId: "ventana" }), 400, "FIELD_NOT_ACCEPTED");

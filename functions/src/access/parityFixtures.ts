@@ -21,7 +21,7 @@
 // frontend packages because there is no shared-module tooling in this repo. It is
 // maintained as ONE canonical source and mechanically synchronized by
 // scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "../types/timestampShape";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import type { RoleAssignment } from "../types/access";
 import type { ShadowComparisonInput } from "./shadowParityHarness";

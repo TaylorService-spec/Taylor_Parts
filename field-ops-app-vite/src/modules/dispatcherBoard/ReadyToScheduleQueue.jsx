@@ -37,6 +37,7 @@ function ReadyToScheduleQueue({
   onSelectWorkOrder,
   onOpenPlacementPicker,
   onDragStartWorkOrder,
+  onStartPlacing,
   onDragEndWorkOrder,
   isDragOver,
   onDragOverQueue,
@@ -100,7 +101,7 @@ function ReadyToScheduleQueue({
                 className={`ns-dispatch-card${wo.id === selectedWorkOrderId ? " ns-dispatch-card--selected" : ""}${
                   isBusy ? " ns-dispatch-card--busy" : ""
                 }`}
-                draggable={!isBusy}
+                draggable={!isBusy && Boolean(onDragStartWorkOrder)}
                 onDragStart={() => onDragStartWorkOrder?.(wo)}
                 onDragEnd={onDragEndWorkOrder}
                 onClick={() => onSelectWorkOrder?.(wo.id)}
@@ -131,13 +132,24 @@ function ReadyToScheduleQueue({
                       No technicians available to recommend
                     </span>
                   )}
-                  <Button
-                    variant="tertiary"
-                    onClick={(e) => { e.stopPropagation(); onOpenPlacementPicker?.(wo); }}
-                    disabled={isBusy}
-                  >
-                    Schedule…
-                  </Button>
+                  {onOpenPlacementPicker ? (
+                    <Button
+                      variant="tertiary"
+                      onClick={(e) => { e.stopPropagation(); onOpenPlacementPicker(wo); }}
+                      disabled={isBusy}
+                    >
+                      Schedule…
+                    </Button>
+                  ) : null}
+                  {onStartPlacing ? (
+                    <Button
+                      variant="tertiary"
+                      onClick={(e) => { e.stopPropagation(); onStartPlacing(wo); }}
+                      disabled={isBusy}
+                    >
+                      Place on a lane
+                    </Button>
+                  ) : null}
                 </div>
               </article>
             );

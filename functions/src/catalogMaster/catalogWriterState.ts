@@ -162,7 +162,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     entry: "createManufacturer",
     reachedFrom: Object.freeze([
       "callable createManufacturer (functions/src/index.ts -> manufacturerCallables.ts createManufacturerCallable)",
-      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (create)",
+      "client manufacturerCommandClient.js (create): removed from the repository in Firebase exit PR-B, 2026-10-16 (it was flag-dead behind MANUFACTURER_WRITE_READY=false)",
     ]),
   }),
   "manufacturer.update": Object.freeze({
@@ -170,7 +170,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     entry: "updateManufacturer",
     reachedFrom: Object.freeze([
       "callable updateManufacturer (manufacturerCallables.ts updateManufacturerCallable)",
-      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (update)",
+      "client manufacturerCommandClient.js (update): removed from the repository in Firebase exit PR-B, 2026-10-16 (it was flag-dead behind MANUFACTURER_WRITE_READY=false)",
     ]),
   }),
   "manufacturer.changeStatus": Object.freeze({
@@ -178,7 +178,7 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     entry: "changeManufacturerStatus",
     reachedFrom: Object.freeze([
       "callable changeManufacturerStatus (manufacturerCallables.ts changeManufacturerStatusCallable)",
-      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (changeStatus)",
+      "client manufacturerCommandClient.js (changeStatus): removed from the repository in Firebase exit PR-B, 2026-10-16 (it was flag-dead behind MANUFACTURER_WRITE_READY=false)",
     ]),
   }),
 

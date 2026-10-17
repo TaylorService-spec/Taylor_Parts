@@ -1906,23 +1906,8 @@ button:hover {
 .fo-brand--onLight .fo-brand__wordmark { color: var(--color-text-primary); }
 .fo-brand--onLight .fo-brand__platform { color: var(--color-text-secondary); opacity: 1; }
 
-/* Implementation identity. Deliberately a SEPARATE element from the brand
-   lockup: Taylor Parts identifies the deployment, and must never be replaced by
-   or merged into the parent-brand naming. */
-.fo-implementation {
-  display: flex; flex-direction: column; line-height: 1.2;
-  padding-left: 14px; margin-left: 14px;
-  border-left: 1px solid rgba(185, 193, 190, 0.28);
-}
-.fo-implementation__name { font-size: 13px; font-weight: 600; color: var(--color-text-inverse); }
-.fo-implementation__context {
-  font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--verenward-moon);
-}
 @media (max-width: 720px) {
   .fo-brand__platform { display: none; }
-  .fo-implementation { padding-left: 10px; margin-left: 10px; }
-  .fo-implementation__context { display: none; }
 }
 
 /* Gate 2 -- the brand now sits in a fixed-width vertical rail rather than a
@@ -1931,19 +1916,12 @@ button:hover {
    - `white-space: nowrap` on the platform line overflowed the compact rail
      (it clipped "ENTERPRISE OPERATIONS OS" at tablet width). In a column there
      is room to wrap, so it wraps.
-   - the 720px rules hide the platform and deployment context because a phone's
-     horizontal header had no room. The drawer is a tall column that does, and
-     the deployment identity is exactly what a user needs to see there. */
-.fo-rail__brand .fo-brand,
-.fo-rail__brand .fo-implementation { max-width: 100%; min-width: 0; }
+   - the 720px rule hides the platform line because a phone's horizontal header
+     had no room. The drawer is a tall column that does. */
+.fo-rail__brand .fo-brand { max-width: 100%; min-width: 0; }
 .fo-rail__brand .fo-brand__platform {
   white-space: normal; display: block; overflow-wrap: anywhere;
 }
-.fo-rail__brand .fo-implementation__context { display: block; }
-/* The implementation block sits BELOW the lockup in the rail, so its divider
-   becomes a left rule against the rail edge rather than a separator between
-   two side-by-side identities. */
-.fo-rail__brand .fo-implementation { padding-left: 10px; margin-left: 2px; }
 
 @media (max-width: 1199.98px) and (min-width: 900px) {
   /* Compact rail: shrink the platform line rather than dropping it, so the
@@ -3960,48 +3938,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    contrast ratio is introduced here. */
 
 /* -- Manufacturers.jsx -- */
-/* flex-wrap: a space-between row with no wrap has nowhere to put its second child once the two no
-   longer fit, so the action button simply left the header -- measured 11px past its own container at
-   320px. Wrapping is what every other header row in this file already does. */
-.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.fo-mfr__title { margin: 0; }
-.fo-mfr__btn-primary { padding: var(--space-2) 14px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
+/* The page is a read-only list since Firebase exit PR-B; its create / rename / status panel, outcome
+   banners, badges and buttons were removed, and their rules with them. */
 .fo-mfr__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
-.fo-mfr__notice { background: var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--font-size-sm); margin-bottom: var(--space-2); }
-
-.fo-mfr__badge { padding: 2px var(--space-2); border-radius: 12px; font-size: var(--font-size-sm); font-weight: 600; }
-.fo-mfr__badge--active { background: var(--color-success-surface); color: var(--color-success); } /* 4.5:1+, same pairing used repo-wide */
-.fo-mfr__badge--inactive { background: var(--color-warning-surface); color: var(--color-warning); } /* 4.5:1+, same pairing used repo-wide */
-
-.fo-mfr__outcome { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; font-size: var(--font-size-sm); }
-.fo-mfr__outcome--applied { background: var(--color-success-surface); color: var(--color-success); }
-.fo-mfr__outcome--replayed { background: var(--color-surface-sunken); color: var(--color-info); }
-.fo-mfr__outcome--noop { background: var(--color-border); color: var(--color-text-primary); }
-.fo-mfr__outcome--denied { background: var(--color-danger-surface); color: var(--color-danger); }
-.fo-mfr__outcome--invalid { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-mfr__outcome--conflict { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-mfr__outcome--not-found { background: var(--color-danger-surface); color: var(--color-danger); }
-.fo-mfr__outcome--unavailable { background: var(--color-border); color: var(--color-text-primary); }
-.fo-mfr__outcome--error { background: var(--color-danger-surface); color: var(--color-danger); }
-
-.fo-mfr__panel { border: 1px solid var(--color-border); border-radius: 8px; padding: var(--space-4); margin: var(--space-2) 0; background: var(--color-surface-elevated); }
-.fo-mfr__panel-header { display: flex; justify-content: space-between; align-items: center; }
-.fo-mfr__panel-title { margin: 0; font-size: var(--font-size-base); }
-.fo-mfr__close-btn { border: none; background: none; cursor: pointer; font-size: var(--font-size-lg); color: var(--color-text-secondary); }
-
-.fo-mfr__status-desc { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
-.fo-mfr__status-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.fo-mfr__status-btn { padding: var(--space-2) 14px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
-.fo-mfr__status-btn--disabled { cursor: not-allowed; }
-
-.fo-mfr__form { max-width: 420px; }
-.fo-mfr__field { margin-bottom: 10px; }
-.fo-mfr__label { display: block; font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-bottom: var(--space-1); }
-.fo-mfr__input { padding: 6px; font-size: var(--font-size-sm); width: 100%; box-sizing: border-box; }
-.fo-mfr__form-actions { display: flex; gap: var(--space-2); }
-.fo-mfr__btn-submit { padding: var(--space-2) 16px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
-.fo-mfr__btn-submit--disabled { background: var(--color-info-surface); cursor: not-allowed; }
-.fo-mfr__btn-secondary { padding: var(--space-2) 16px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
 
 /* -- PartMasterList.jsx -- */
 .fo-pml__part-number { font-family: monospace; }
@@ -6755,6 +6694,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .ns-dispatch__live { display: flex; align-items: center; gap: 7px; margin: 0;
   font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+/* The Board names the zone its grid is drawn in (DECISIONS #240). */
+.ns-dispatch__zone { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 .ns-dispatch__live-dot { width: 7px; height: 7px; border-radius: 50%;
   background: var(--color-success); flex: none; }
 
@@ -6796,9 +6737,12 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch__loading, .ns-dispatch-denied { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 
 /* --- the lane grid ------------------------------------------------------- */
-.ns-dispatch-grid { margin-bottom: 22px; }
+/* The lanes scroll INSIDE the grid (sticky hour header) so the ready queue beneath stays on screen beside them: a
+   drag from a queue card must be able to reach every lane without the page scrolling the lanes away. */
+.ns-dispatch-grid { margin-bottom: 22px; max-height: 55vh; overflow-y: auto; }
 .ns-dispatch-grid__head { display: grid; grid-template-columns: 170px minmax(0, 1fr);
-  border-bottom: 2px solid var(--verenward-evergreen); }
+  border-bottom: 2px solid var(--verenward-evergreen);
+  position: sticky; top: 0; z-index: 3; background: var(--verenward-stone-card); }
 .ns-dispatch-grid__hours { display: grid; grid-template-columns: repeat(10, 1fr); }
 .ns-dispatch-grid__hour { padding: 4px 6px; font: 600 10.5px var(--font-interface);
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
@@ -6808,6 +6752,21 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .ns-dispatch-lane__identity { padding: 14px 12px 14px 0; min-width: 0; }
 .ns-dispatch-lane__name { font-size: 13.5px; font-weight: 700; }
+/* A lane or week-row name opens that technician's schedule-and-work review. */
+.ns-dispatch-lane__name--link { padding: 0; border: 0; background: none; color: inherit; font: inherit;
+  font-size: 13.5px; font-weight: 700; text-align: left; cursor: pointer; text-decoration: underline;
+  text-decoration-color: var(--verenward-border-strong); text-underline-offset: 3px; }
+.ns-dispatch-lane__name--link:hover, .ns-dispatch-lane__name--link:focus-visible { text-decoration-color: currentColor; }
+/* Tap placement armed: every lane is a target. */
+.ns-dispatch-lane--placing { cursor: copy; outline: 1px dashed var(--verenward-border-strong); outline-offset: -1px; }
+.ns-dispatch-placing { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px;
+  padding: 8px 12px; border-left: 3px solid var(--verenward-evergreen); background: var(--verenward-stone-card); }
+.ns-dispatch-focus { margin: 0 0 14px; padding: 10px 12px; border-left: 3px solid var(--verenward-evergreen);
+  background: var(--verenward-stone-card); }
+.ns-dispatch-focus__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ns-dispatch-focus__title { margin: 0; font-size: 15px; }
+.ns-dispatch-focus__list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.ns-dispatch-focus__item { display: flex; gap: 10px; font-size: 13px; }
 .ns-dispatch-lane__meta { font-size: 11.5px; color: var(--color-text-secondary); }
 .ns-dispatch-lane__meta-muted { color: var(--color-text-muted); }
 .ns-dispatch-lane__meta-strained { color: var(--color-brand-accent); }
@@ -6863,9 +6822,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* --- week + fortnight ---------------------------------------------------- */
 .ns-dispatch-week, .ns-dispatch-load { margin-bottom: 22px; }
+.ns-dispatch-week { max-height: 55vh; overflow-y: auto; }
 .ns-dispatch-week__head, .ns-dispatch-week__row { display: grid;
   grid-template-columns: 150px repeat(7, minmax(0, 1fr)); }
-.ns-dispatch-week__head { border-bottom: 2px solid var(--verenward-evergreen); }
+.ns-dispatch-week__head { border-bottom: 2px solid var(--verenward-evergreen);
+  position: sticky; top: 0; z-index: 3; background: var(--verenward-stone-card); }
 .ns-dispatch-week__row { border-bottom: 1px solid var(--verenward-border); }
 .ns-dispatch-week__dayhead { padding: 4px 8px; font: 600 10.5px var(--font-interface);
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
@@ -8785,6 +8746,9 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
   font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--color-text-inverse);
   text-decoration: underline; text-underline-offset: 3px; }
 .fo-rail-identity__profile:focus-visible { outline: 2px solid var(--color-text-inverse); outline-offset: 2px; }
+/* The global a:hover paints links brand evergreen -- the rail's own colour -- so the link vanished on hover.
+   Keep it legible on the rail, with the same hover wash as Sign Out. */
+.fo-rail-identity__profile:hover { color: var(--color-text-inverse); background: rgba(255, 255, 255, 0.14); }
 @media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
   .fo-rail-identity__profile { min-height: 0; }
 }
@@ -9204,3 +9168,14 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-admin .fo-admin-row--selected .fo-admin-rowselect { color: var(--color-text-primary); text-decoration: none; }
 
 /* END ADMINISTRATION SCOPE -- new Administration rules go above this line, under .fo-admin. */
+
+/* ── Employee record · Work Schedule tab (Scheduling PR-2) ─────────────────────────────────── */
+.fo-work-schedule { display: grid; gap: 4px; }
+.fo-work-schedule__current + .fo-work-schedule__current { margin-top: 16px; }
+.fo-work-schedule__none { margin: 0; max-width: 72ch; }
+.fo-work-schedule__week { max-width: 640px; }
+.fo-work-schedule__week th { width: 4.5rem; text-align: left; font-weight: 600; }
+.fo-work-schedule__history, .fo-work-schedule__exceptions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fo-work-schedule__form { display: grid; gap: 10px; max-width: 760px; margin-top: 10px; }
+.fo-work-schedule__interval, .fo-work-schedule__inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-end: 8px; }
+.fo-work-schedule__actions { margin: 4px 0 16px; }

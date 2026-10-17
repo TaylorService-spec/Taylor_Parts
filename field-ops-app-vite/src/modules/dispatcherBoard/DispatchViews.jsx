@@ -11,6 +11,7 @@ import {
   weekDays,
 } from "../../domain/dispatchBoardGeometry.js";
 import { blockedKindChipLabel } from "../../domain/schedulingRefusal.js";
+import { addDays, atWall, formatDay, wall } from "../../domain/boardClock.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 
 // Dispatch North Star P1 · frames 1a and 1e — the view switcher and the coarser-grain views.
@@ -113,6 +114,7 @@ function WeekViewImpl({
   onSelectDay,
   draggingWorkOrder,
   onDropOnTechnicianDay,
+  onSelectTechnician,
 }) {
   // ALL SEVEN DAYS. schedulingWorkspace.buildWeekDays says why in its own comment -- a job scheduled
   // on a weekend is never silently hidden, because a hidden job is a correctness bug -- and filtering
@@ -143,7 +145,12 @@ function WeekViewImpl({
 
         return (
           <div className="ns-dispatch-week__row" role="row" key={tech.id}>
-            <div className="ns-dispatch-week__identity" role="rowheader">{identity.name}</div>
+            <div className="ns-dispatch-week__identity" role="rowheader">
+              {onSelectTechnician ? (
+                <button type="button" className="ns-dispatch-lane__name--link" onClick={() => onSelectTechnician(tech.id)}
+                  title="Review this technician's schedule and work">{identity.name}</button>
+              ) : identity.name}
+            </div>
             {days.map((d) => {
               const entries = byDay.get(d.dateMillis) ?? [];
               const blocks = blockedByDay.get(d.dateMillis) ?? [];
@@ -259,34 +266,31 @@ function TwoWeekLoadImpl({
   );
 }
 
-/** Step the anchor by the unit the current view is drawn in. DST-safe via the Date API. */
+/** Step the anchor by the unit the current view is drawn in. DST-safe: by calendar on the Board's clock. */
 function stepAnchor(anchorMillis, view, direction) {
-  const d = new Date(anchorMillis);
-  d.setDate(d.getDate() + direction * (view === DISPATCH_VIEW.DAY ? 1 : 7));
-  return d.getTime();
+  return addDays(anchorMillis, direction * (view === DISPATCH_VIEW.DAY ? 1 : 7));
 }
 
 function toDateInput(millis) {
-  const d = new Date(millis);
+  const w = wall(millis);
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${w.y}-${pad(w.mo)}-${pad(w.d)}`;
 }
 
-/** Parsed as LOCAL midnight, matching how the rest of the board buckets days. */
+/** Parsed as midnight on the Board's clock (noon, then normalized by the caller), matching how the board buckets days. */
 function fromDateInput(value) {
   if (!value) return null;
   const [y, m, day] = value.split("-").map(Number);
   if (!y || !m || !day) return null;
-  return new Date(y, m - 1, day, 12, 0, 0, 0).getTime();
+  return atWall(y, m, day, 12);
 }
 
 function dayHeading(day) {
-  return new Date(day.dateMillis).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+  return formatDay(day.dateMillis, { weekday: "short", day: "numeric" });
 }
 
 function shortDayHeading(day) {
-  const d = new Date(day.dateMillis);
-  return `${d.toLocaleDateString(undefined, { weekday: "narrow" })} ${d.getDate()}`;
+  return `${formatDay(day.dateMillis, { weekday: "narrow" })} ${wall(day.dateMillis).d}`;
 }
 
 /** What an empty Week cell says. "open" only where the schedule records working time. */
@@ -316,7 +320,7 @@ function loadBucket(percent) {
 }
 
 function loadCellLabel(name, day, capacity, blocked, state) {
-  const when = new Date(day.dateMillis).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+  const when = formatDay(day.dateMillis, { weekday: "long", month: "short", day: "numeric" });
   if (capacity.percentBooked == null) {
     const why = state === "unknown" ? "schedule could not be read"
       : state === "nonWorking" ? "not a working day" : state === "working" ? "no available hours" : "no working schedule recorded";
