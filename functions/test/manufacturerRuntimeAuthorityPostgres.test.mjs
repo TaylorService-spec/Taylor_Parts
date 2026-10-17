@@ -143,16 +143,16 @@ test("the reconciliation reads and reports; it modifies no dependent data", () =
   }
 });
 
-test("the PostgreSQL Manufacturer writer stays unwired -- even with the Catalog ACTIVE, it is a separate authorized step", () => {
-  // Window step 18 activates the PostgreSQL CATALOG (Parts, aliases). The Manufacturer writer is NOT part of it: wiring it
-  // remains its own authorized change, so while the legacy Firestore catalog writers are FROZEN, Manufacturer writes are
-  // unavailable rather than silently re-routed.
+test("the PostgreSQL Manufacturer writer is wired through the Catalog API only (Firebase exit F5)", () => {
+  // F5 is the authorized step that wires it: the ONE importer is the Render Catalog transport, behind the same ACTIVE
+  // authority and DQ-034 hold as the Part writers. Nothing else in src/ reaches it.
   assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE");
   const importers = walk(resolve(FUNCTIONS_DIR, "src"))
-    .filter((f) => !f.includes(`${"src"}/catalogMaster`) && !f.endsWith("catalogMaster"))
-    .filter((f) => /postgresManufacturerWriter/.test(readFileSync(f, "utf8")));
-  assert.deepEqual(importers, [], "activating the PostgreSQL Manufacturer writer is a separate authorized step");
-  // And no client cutover: the legacy Firestore read service and callables are untouched by this change.
+    .filter((f) => !f.endsWith("postgresManufacturerWriter.ts"))
+    .filter((f) => /from "\.\/postgresManufacturerWriter/.test(readFileSync(f, "utf8")))
+    .map((f) => f.replace(/\\/g, "/").replace(/^.*\/src\//, "src/"));
+  assert.deepEqual(importers, ["src/catalogMaster/catalogHttp.ts"]);
+  // The legacy Firestore read service is not repointed: the client moved off it instead (F5), and it retires with its callable.
   const legacyRead = readFileSync(resolve(FUNCTIONS_DIR, "src/partMaster/manufacturerReadService.ts"), "utf8");
   assert.match(legacyRead, /INVENTORY_CATALOG_READ_CAPABILITY = "inventory\.catalog\.read"/);
   assert.equal(legacyRead.includes("eos_ops.manufacturers"), false, "the legacy read must not have been pointed at PostgreSQL");
@@ -516,7 +516,10 @@ test("Manufacturer runtime authority, in PostgreSQL", { skip: SKIP, concurrency:
     assert.deepEqual(all.map((m) => m.id), ["m-icetro", "m-taylor", "m-soft"], "ordered by normalized name");
     assert.deepEqual(all.map((m) => m.provenance), ["NATIVE", "NATIVE", "NATIVE"]);
     const one = await readSeam.getManufacturer(pool, reader, "m-icetro");
-    assert.deepEqual({ ...one }, { id: "m-icetro", name: "Icetro Inc", status: "ACTIVE", provenance: "NATIVE" });
+    const { updatedAt, ...rest } = one;
+    assert.deepEqual(rest, { id: "m-icetro", name: "Icetro Inc", status: "ACTIVE", provenance: "NATIVE" });
+    // F5: the read hands out the writer's concurrency token, rendered exactly as the writer compares it.
+    assert.match(updatedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/);
   });
 
   // ──────────────────── reconciliation, against real rows ────────────────────

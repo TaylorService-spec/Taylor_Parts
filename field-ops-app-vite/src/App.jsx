@@ -612,12 +612,10 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "inventory" && item.key === "partMaster") {
     return <PartMasterList />;
   }
-  // Manufacturer administration workspace (catalog reference object Parts link to; read + FAIL-CLOSED
-  // write). Closes the referential gap Part write created. Same posture as Part Master: no legacyKey ->
-  // admin/dispatcher via navConfig's PLACEHOLDER_DEFAULT_ROLES default; catalog write authority
-  // (inventory.catalog.manage/.activate) enforced server-side; the `manufacturers` read is still
-  // Rules-closed (governed read-authority DEFERRED to the Owner -- R-1 legacy-surface interaction) so the
-  // read fails closed until resolved.
+  // Manufacturer administration workspace (catalog reference object Parts link to). Same posture as Part
+  // Master: no legacyKey -> admin/dispatcher via navConfig's PLACEHOLDER_DEFAULT_ROLES default on the legacy
+  // source; on the EOS source the `inventory.catalog` surface (R-1 Option A). Reads and writes go through the
+  // EOS Catalog API (Firebase exit F5), authorized server-side.
   if (domain.key === "inventory" && item.key === "manufacturers") {
     return <Manufacturers />;
   }

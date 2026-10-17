@@ -1,37 +1,52 @@
-# View manufacturers (read-only)
+# View and manage manufacturers
 
-**What this lets you do:** See the list of manufacturers that Parts link to, with each one's status.
+**What this lets you do:** See the manufacturers that Parts link to, add a new one, correct a name, and make one Active or Inactive.
 
-**Who can do it:** It depends on your EOS environment.
+**Who can do it:**
+- **Opening the page and seeing the list:** anyone whose access includes reading the parts catalog (the same access that opens **Inventory > Parts**).
+- **Adding a manufacturer or correcting a name:** you also need catalog management access.
+- **Making a manufacturer Active or Inactive:** you also need catalog activation access.
 
-- **In some EOS environments, nobody can open this page.** Every account, including administrators, sees **"Manufacturers isn't available to your role"**. Access to the page has not been connected yet, and that decision is pending. If you see this message, there is nothing you can change on your side.
-- **In other environments,** the page is open to Admin and Dispatcher, and only if your access includes reading the parts catalog. If it does not, the page says so (see below).
-
-The rest of this guide describes what the page shows when it does open.
+Every change is checked by the server. If your access does not include it, the page tells you, and nothing changes.
 
 **Before you start**
 - The Manufacturers page has no entry in the left navigation. Reach it at **Inventory > Manufacturers** (web address `/inventory/manufacturers`), for example from a bookmark or a link.
 
-## Steps
+## See the list
 
 1. Open the page. The title is **Manufacturers**, with a count such as "12 manufacturers" once the list has loaded.
 2. Read the table. It has two columns, **Name** and **Status**.
 3. To reorder the list, click the **Name** or **Status** column heading. Click again to reverse the order.
 
-## What you can and cannot do here
+## Add a manufacturer
 
-- **You can:** look at every manufacturer and sort by name or status.
-- **You cannot:** add a manufacturer, rename one, or change its status. There are no buttons for these, because the page is read-only. The page says: "Governed manufacturer reference records that Parts link to. This page is read-only."
-- **You cannot** open a manufacturer. Rows do not click through to a detail page, and there is no "load more" (the whole list is shown at once).
-- Adding and editing manufacturers is **not yet available**. It is planned to return later; ask an administrator if you need a manufacturer changed.
+1. Click **New Manufacturer** (top right).
+2. Enter the **Manufacturer ID** (the identifier Parts use to refer to it) and the **Name**.
+3. Click **Create Manufacturer**. On success the panel closes, the list reloads and the page says **Saved.** A new manufacturer starts as **Active**.
+
+## Correct a manufacturer's name
+
+1. On the manufacturer's row, click **Rename**.
+2. Change the **Name** and click **Save Name**. If the name is unchanged, the page says **No changes to save.**
+
+## Make a manufacturer Active or Inactive
+
+1. On the manufacturer's row, click **Status**. The panel shows the current status.
+2. Click **Make Inactive** (or **Make Active**).
+
+An Inactive manufacturer is kept, because Parts and equipment may still refer to it. It is no longer offered when you pick a manufacturer for a Part. Manufacturers are never deleted.
 
 ## Tips / common problems
 
-- **"Manufacturers isn't available to your role"** (instead of the page). In your environment the page is not open to anyone yet. See "Who can do it" above.
-- **"No manufacturers are recorded yet."** The list loaded and is empty.
-- **"You do not have access to Manufacturers. Contact an administrator if you believe this is an error."** Your account cannot read the parts catalog.
+- **"You are not authorized to make this change."** Your access lets you see manufacturers but not make this change. Ask an administrator.
+- **"This manufacturer changed since you loaded it, or that identifier is already in use. Reload and retry."** Someone else changed it first, or the Manufacturer ID you entered already exists. Reload the page and try again.
+- **"Some fields are missing or invalid."** Both fields are required, and a name can be at most 200 characters.
+- **"Already recorded (no change)."** The same change had already been saved, for example after a retry.
+- **"Manufacturers isn't available to your role"** (instead of the page). Your access does not include reading the parts catalog.
+- **"No manufacturers are recorded yet."** The list loaded and is empty. Use **New Manufacturer** to add the first one.
+- **"You do not have access to Manufacturers."** Your account cannot read the manufacturer list.
 - **"Manufacturers are currently unavailable. Try again later."** The list could not be loaded. Click **Try again**, or come back later.
-- **"N malformed records excluded."** Some records were unreadable and are left out of the list and the count. They need to be reviewed by an administrator.
+- **"More manufacturers exist than this list shows."** The list has reached its size limit, so no count is printed. Ask an administrator.
 
 ## Related
 - [Manage part identifiers](./manage-part-identifiers.md) (manufacturer part numbers are tied to a manufacturer)

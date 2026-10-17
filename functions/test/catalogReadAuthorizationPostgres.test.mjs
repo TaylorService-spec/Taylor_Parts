@@ -36,7 +36,8 @@ test("the Catalog read capability table names inventory.catalog.read for every r
   const extra = new Set(ops.flatMap((op) => http.CATALOG_READ_REQUIREMENTS[op]).filter((k) => k !== READ));
   // lookupScannedPart's alias half is gated INSIDE the read on inventory.catalog.alias.read (OD-T6, 2026-10-01): without it
   // the half is not run and the answer says aliasDenied -- the legacy lookupScannedPart contract.
-  assert.deepEqual([...extra].sort(), ["inventory.catalog.manage"]);
+  // inventory.manufacturer.read is the PostgreSQL Manufacturer authority's own registered key (F5).
+  assert.deepEqual([...extra].sort(), ["inventory.catalog.manage", "inventory.manufacturer.read"]);
   assert.equal(http.CATALOG_ALIAS_READ_CAPABILITY, "inventory.catalog.alias.read");
 });
 
@@ -97,6 +98,10 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
   const memberOnly = await makeActor("t1", "fb-member", []);
   const otherCap = await makeActor("t1", "fb-other", ["customer.record.read"]);
   const aliasAdmin = await makeActor("t1", "fb-alias-admin", [READ, "inventory.catalog.manage"]);
+  const MFR_READ = "inventory.manufacturer.read";
+  const mfrReader = await makeActor("t1", "fb-mfr-reader", [READ, MFR_READ]);
+  const mfrAdmin = await makeActor("t1", "fb-mfr-admin", [READ, MFR_READ, "inventory.catalog.manage", "inventory.catalog.activate"]);
+  const mfrReaderT2 = await makeActor("t2", "fb-mfr-reader-t2", [READ, MFR_READ]);
 
   // Fixture data, written through the governed writers (their own capability checks, not the transport's).
   const W_CAPS = new Set(["inventory.catalog.manage", "inventory.catalog.activate", "equipment.model.manage"]);
@@ -123,7 +128,41 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
     countParts: {}, listEquipmentModels: {}, listPartAliases: { partId: "CW-P-0001" },
     probePartAlias: { aliasType: "MANUFACTURER_PART_NUMBER", rawValue: "X-1", manufacturerId: "acme" },
     lookupScannedPart: { rawValue: "CW-P-0001" },
+    listManufacturers: {}, getManufacturer: { manufacturerId: "m-taylor" }, searchManufacturers: { term: "tay" },
   };
+
+  await t.test("F5: the Manufacturer list and its writes, through the Catalog API, under their own capabilities", async () => {
+    // Writes: inventory.catalog.manage creates and renames; inventory.catalog.activate changes status. A reader is refused.
+    const denied = await call(mfrReader, "createManufacturer", { manufacturer: { manufacturerId: "m-taylor", name: "Taylor" } });
+    assert.deepEqual([denied.status, denied.body.code], [403, "FORBIDDEN"]);
+    const created = await call(mfrAdmin, "createManufacturer", { manufacturer: { manufacturerId: "m-taylor", name: "Taylor" } });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    assert.equal(created.body.result.manufacturerId, "m-taylor");
+    // Reads need BOTH keys: inventory.catalog.read alone is refused.
+    const narrow = await call(readerT1, "listManufacturers");
+    assert.deepEqual([narrow.status, narrow.body.code], [403, "FORBIDDEN"]);
+    const list = await call(mfrReader, "listManufacturers");
+    assert.equal(list.status, 200, JSON.stringify(list.body));
+    assert.equal(list.body.result.truncated, false);
+    assert.deepEqual(list.body.result.manufacturers.map((m) => [m.id, m.name, m.status]), [["m-taylor", "Taylor", "ACTIVE"]]);
+    const token = list.body.result.manufacturers[0].updatedAt;
+    assert.equal(token, created.body.result.updatedAt, "the list hands out the writer's own concurrency token");
+    const renamed = await call(mfrAdmin, "updateManufacturer", { manufacturerId: "m-taylor", expectedUpdatedAt: token, name: "Taylor Company" });
+    assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
+    const stale = await call(mfrAdmin, "updateManufacturer", { manufacturerId: "m-taylor", expectedUpdatedAt: token, name: "Taylor Co" });
+    assert.deepEqual([stale.status, stale.body.code], [409, "CONFLICT"], "a stale token is refused");
+    const off = await call(mfrAdmin, "changeManufacturerStatus", { manufacturerId: "m-taylor", expectedUpdatedAt: renamed.body.result.updatedAt, newStatus: "INACTIVE" });
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    const one = await call(mfrReader, "getManufacturer", INPUT.getManufacturer);
+    assert.deepEqual([one.body.result.name, one.body.result.status], ["Taylor Company", "INACTIVE"]);
+    const found = await call(mfrReader, "searchManufacturers", INPUT.searchManufacturers);
+    assert.deepEqual(found.body.result.map((m) => m.id), ["m-taylor"]);
+    const blank = await call(mfrReader, "searchManufacturers", { term: " " });
+    assert.deepEqual([blank.status, blank.body.code], [400, "INVALID_INPUT"]);
+    // Tenant isolation: the other tenant sees none of it.
+    const other = await call(mfrReaderT2, "listManufacturers");
+    assert.deepEqual(other.body.result.manufacturers, []);
+  });
 
   await t.test("ALLOWED: a Principal holding inventory.catalog.read is answered", async () => {
     const s = await call(readerT1, "searchParts", { query: "fan" });

@@ -115,3 +115,15 @@ No screen changes. The two record-page and list-hook routing suites now use a re
 - **No EOS replacement exists yet.** EOS has no canonical supplier-PO receive. Reorder-PO receiving is already EOS (`receiveReorderStock`).
 
 Removing it needs a ruling: retire canonical supplier-PO receiving, or build its EOS receive.
+
+## F5: Manufacturers move to the EOS Catalog API (2026-10-17, exit baseline 245 → 244)
+
+| Removed | Replaced by |
+| --- | --- |
+| `services/manufacturerReadCallableClient.js` (`getManufacturerCatalog`) | `services/manufacturerCatalogClient.js` → `/operations/catalog` `listManufacturers`, which reads `eos_ops.manufacturers` and needs `inventory.catalog.read` and `inventory.manufacturer.read`. Its consumers (the Manufacturers screen, Part Detail, Parts List and the Part write modal, through `useManufacturerCatalog` / `manufacturerQueries`) keep their envelope. |
+
+**Restored, on EOS.** The New Manufacturer, Rename and Status flow that PR-B removed now calls `createManufacturer` / `updateManufacturer` / `changeManufacturerStatus` on the Catalog API (`postgresManufacturerWriter.ts`). See DECISIONS #241.
+
+**Merge precondition.** `eos_ops.manufacturers` must hold the Firestore manufacturers on nonprod first. It was measured empty, and there is no operator copy script yet.
+
+**Server callables kept.** `getManufacturerCatalog` and the three write callables stay deployed and frozen until an operator undeploy (reserved).
