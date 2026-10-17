@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 import { fetchAccountInvoiceAr } from "../services/financeReadCallableClient.js";
+import { fetchAccountReceivablesFromEos } from "../services/eosAccountReceivablesClient.js";
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
+
+// WHICH SOURCE ANSWERS, decided once at BUILD time (Firebase exit F7c, DECISIONS #245) by the same compile-time flag F1 uses
+// (access/eosSessionSource.js): where an EOS API is declared the Account's receivables are the Finance register's RECEIVABLE
+// obligations (listObligations); everywhere else -- production declares none -- the Firebase callable is the SOLE source, exactly
+// as before. There is no runtime fallback in either direction.
+export const fetchAccountAr = EOS_SESSION_SOURCE ? fetchAccountReceivablesFromEos : fetchAccountInvoiceAr;
 
 // One-shot read of an account's AR projection. Own loading/error state (mirrors
 // hooks/useAccountServiceActivity.js's cancelled-guard shape) so a slow/failed AR read
@@ -31,7 +39,7 @@ function sharedFetch(accountId) {
   const existing = inFlightByAccountId.get(accountId);
   if (existing) return existing;
 
-  const request = fetchAccountInvoiceAr(accountId).finally(() => {
+  const request = fetchAccountAr(accountId).finally(() => {
     // Cleared on settle — success or failure. Leaving a rejected promise cached would
     // pin a transient failure for every later consumer of this account.
     inFlightByAccountId.delete(accountId);

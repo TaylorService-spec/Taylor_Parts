@@ -14,6 +14,10 @@
       "runner": "node"
     },
     {
+      "file": "test/accountReceivablesEos.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/accountLineOfBusiness.test.mjs",
       "runner": "node"
     },

@@ -221,7 +221,7 @@ describe("F1 capability feed: one-shot, refetched on events, settled deny", () =
   afterEach(() => cleanup());
 
   it("asks resolveMyCapabilities once, holds exactly what the answer lists, and translates only same-meaning Firebase ids", async () => {
-    const client = clientSequence(caps("customer.record.read", "inboundWork.request.read", "finance.invoice.read", "reportDefinition.read"));
+    const client = clientSequence(caps("customer.record.read", "inboundWork.request.read", "finance.payment.read", "reportDefinition.read"));
     const { result } = renderHook(() => useEosCapabilityFeed({ uid: "u1" }, { client }));
     expect(result.current.status).toBe(EOS_CAPABILITY_STATE.LOADING);
     expect(result.current.hasCapability("customer.record.read")).toBe(false); // loading holds nothing
@@ -230,7 +230,7 @@ describe("F1 capability feed: one-shot, refetched on events, settled deny", () =
     expect(client.call.mock.calls[0][0]).toBe("resolveMyCapabilities");
     expect(result.current.hasCapability("customer.record.read")).toBe(true);
     expect(result.current.hasCapability("service.inboundWork.read")).toBe(true); // -> inboundWork.request.read
-    expect(result.current.hasCapability("finance.read")).toBe(true); // -> finance.invoice.read (Owner split, credEquivalence.ts)
+    expect(result.current.hasCapability("finance.read")).toBe(true); // -> finance.payment.read (the key listObligations applies; same holders as invoice.read, F7c)
     expect(result.current.hasCapability("report.definition.read")).toBe(true); // -> reportDefinition.read
     expect(result.current.hasCapability("report.definition.create")).toBe(false); // no EOS twin: denied, never inferred
     expect(result.current.hasCapability("admin.userStatus.write")).toBe(false);
@@ -359,7 +359,7 @@ describe("F1 consumers: the EOS branch replaces Firebase, the Firebase branch is
     const { SessionAccessContext } = await import("../src/access/sessionAccess.js");
     const subscribeAccessVersion = vi.fn(() => () => {});
     const callFeed = vi.fn(async () => ({ data: {} }));
-    const access = { eosSource: true, settled: true, reload: () => {}, holds: (k) => ["crm.activity.read", "finance.invoice.read"].includes(k) };
+    const access = { eosSource: true, settled: true, reload: () => {}, holds: (k) => ["crm.activity.read", "finance.payment.read"].includes(k) };
     const wrapper = ({ children }) => <SessionAccessContext.Provider value={access}>{children}</SessionAccessContext.Provider>;
     const { result } = renderHook(() => useAccountPageCapabilityDecisions({ uid: "u1" }, { eosSource: true, subscribeAccessVersion, callFeed }), { wrapper });
     expect(result.current).toEqual({ "crm.activity.read": true, "finance.read": true, "opportunity.read": false, "salesOrder.read": false });
