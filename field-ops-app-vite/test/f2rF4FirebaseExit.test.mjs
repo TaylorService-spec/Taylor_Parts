@@ -70,20 +70,30 @@ test("domain/employees.js is gone; the Firestore employee directory is the Finan
       "modules/financials/FinancialsAccountsReceivable.jsx",
       "modules/financials/FinancialsEmployeePerformance.jsx",
       "modules/financials/FinancialsInvoiceDetail.jsx",
-      "modules/inventory/PartDetail.jsx", // only InventoryActionsPanel (the legacy notes), which is not rendered under EOS
+      "modules/inventory/PartDetail.jsx", // only InventoryActionsPanel (the frozen notes); disabled when EOS is the source
     ],
   );
 });
 
-test("the frozen inventory_actions listener is reachable only behind the build-time seam", () => {
+test("the frozen notes stay READABLE under EOS (interim, D-246-1): labelled, read-only, from their current source", () => {
   assert.deepEqual(
     importersOf("hooks/useInventoryActions").sort(),
     ["modules/inventory/PartDetail.jsx", "modules/inventoryRole/WarehouseManagerHome.jsx"],
   );
   const detail = read("modules/inventory/PartDetail.jsx");
-  assert.match(detail, /\{!EOS_SESSION_SOURCE && \(\s*<section className="ns-band ns-band--reference">\s*<details className="ns-parts-rail__item">\s*<summary>Inventory Action History<\/summary>/);
+  // Rendered under BOTH sources; only the title differs, and the label is the one constant.
+  assert.match(detail, /<details className="ns-parts-rail__item">\s*<summary>\{EOS_SESSION_SOURCE \? LEGACY_INVENTORY_NOTES_LABEL : "Inventory Action History"\}<\/summary>\s*<InventoryActionsPanel/);
+  assert.ok(!/\{!EOS_SESSION_SOURCE && \(\s*<section/.test(detail), "the disclosure must not be hidden under EOS");
+  assert.match(read("domain/constants.js"), /LEGACY_INVENTORY_NOTES_LABEL = "Legacy notes \(frozen 2026-08-30; not stock movements\)";/);
+  // The Firestore employees listen is disabled under EOS; the governed actor read is disabled under Firebase.
+  assert.match(detail, /useEmployeeDirectory\(\{ enabled: !EOS_SESSION_SOURCE \}\)/);
+  assert.match(detail, /useGovernedEmployeeDirectory\(\{ enabled: EOS_SESSION_SOURCE, actorSubjects:/);
   const warehouse = read("modules/inventoryRole/WarehouseManagerHome.jsx");
-  assert.match(warehouse, /EOS_SESSION_SOURCE\s*\?\s*<PartMovementPanel[^>]*\/>\s*:\s*<PartActivityPanel/);
+  assert.match(warehouse, /EOS_SESSION_SOURCE\s*\?\s*\(\s*<>\s*<PartMovementPanel[^>]*\/>[\s\S]*?<summary>\{LEGACY_INVENTORY_NOTES_LABEL\}<\/summary>\s*<PartActivityPanel[^>]*legacyOnly \/>[\s\S]*?:\s*<PartActivityPanel/);
+  // Read-only: the reader hook is the only export and holds no write (also pinned by inventoryActionRetirementContract).
+  const hook = read("hooks/useInventoryActions.js").replace(/^\s*\/\/.*$/gm, "");
+  assert.deepEqual([...hook.matchAll(/^export\s+function\s+([A-Za-z0-9_]+)/gm)].map((m) => m[1]), ["useInventoryActionsForPart"]);
+  assert.doesNotMatch(hook, /\b(addDoc|setDoc|updateDoc|deleteDoc|writeBatch)\b/);
 });
 
 test("the movement history asks the governed read for one Part, bounded, and never falls back", () => {

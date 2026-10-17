@@ -1,8 +1,9 @@
 // ONE PART'S MOVEMENT HISTORY, FROM THE EOS INVENTORY LEDGER (Firebase exit F2-remainder, DECISIONS #246).
 //
-// This is what the Warehouse Manager's "Part Activity" panel reads where EOS is the session source. It replaces the
+// This is what the Warehouse Manager's "Part Activity" panel reads where EOS is the session source, in place of the
 // Firestore `inventory_actions` listener (hooks/useInventoryActions.js), a FROZEN collection whose writes stopped on
-// 2026-08-30 and which was never a record of stock movement. The source here is the opposite: eos_ops.inventory_movements,
+// 2026-08-30 and which was never a record of stock movement. (The frozen notes themselves stay readable beside it, labelled,
+// until Owner decision D-246-1.) The source here is the opposite: eos_ops.inventory_movements,
 // the sole quantity-mutating record, read through the governed readInventoryMovements for exactly this Part.
 //
 // The server decides everything that matters: the capability (inventory.transaction.read, the one the Warehouse Manager's

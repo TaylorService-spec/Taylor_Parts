@@ -318,6 +318,9 @@ export const QUANTITY_SOURCE = {
 // means not reusing or mutating inventory_transactions, not that a
 // new, distinct audit trail can't exist alongside it.
 export const INVENTORY_ACTIONS_COLLECTION = "inventory_actions";
+// The plain label of the frozen inventory_actions notes wherever they are shown beside the EOS ledger (Firebase exit F2-remainder,
+// DECISIONS #246, interim until D-246-1): they are history, never stock movement.
+export const LEGACY_INVENTORY_NOTES_LABEL = "Legacy notes (frozen 2026-08-30; not stock movements)";
 
 export const INVENTORY_ACTION_TYPE = {
   RECEIVE_STOCK: "RECEIVE_STOCK",

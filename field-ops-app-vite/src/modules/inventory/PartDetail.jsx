@@ -39,7 +39,7 @@ import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurc
 import { usePurchaseOrderSupplierOptions } from "../../hooks/usePurchaseOrderSupplierOptions";
 import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
-import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
+import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import FailureState from "../../shared/ui/FailureState";
@@ -1256,7 +1256,13 @@ function InventoryActionsPanel({ partId }) {
   // `actionsError` is threaded to LoadingEmptyState below so a read failure no
   // longer renders as "No inventory actions logged yet."
   const { data: recentActions, loading, error: actionsError } = useInventoryActionsForPart(partId);
-  const { byUserId: employeeDirectory } = useEmployeeDirectory();
+  // WHO WROTE A NOTE. A legacy note stores the acting FIREBASE uid. Where Firebase is the source the Firestore directory names it
+  // (as before). Where EOS is the source the governed resolvePrincipalDisplayNames names it, by external subject, for exactly the
+  // uids on the notes (no Firestore employees listen, no Employee-name fallback); a refusal reads "Unknown user". Both hooks are
+  // always called; the one that is not the source is disabled and reads nothing.
+  const firebaseDirectory = useEmployeeDirectory({ enabled: !EOS_SESSION_SOURCE });
+  const governedDirectory = useGovernedEmployeeDirectory({ enabled: EOS_SESSION_SOURCE, actorSubjects: recentActions.map((a) => a.createdBy) });
+  const employeeDirectory = EOS_SESSION_SOURCE ? governedDirectory.byUserId : firebaseDirectory.byUserId;
   // UI corrections item C: the ten most recent notes (the read's order is the default) sort on the client.
   const latestActions = useMemo(() => recentActions.slice(0, 10), [recentActions]);
   const actionSortColumns = useMemo(() => ({
@@ -2075,18 +2081,16 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             where it is scoped, without spending 260px of a 1,050px budget on a panel that is
             consulted rather than scanned. Same treatment, same reasoning, as the workspace rail's
             queues. */}
-        {/* FIREBASE EXIT F2-remainder (DECISIONS #246): the legacy notes are the Firestore `inventory_actions` collection --
-            frozen since 2026-08-30 and readable only through Firebase. Where EOS is the session source this disclosure is not
-            rendered: the part's movement history is the Activity band above, the EOS inventory ledger, and the frozen notes are
-            not presented as activity. Keeping them readable without Firebase needs an archive (a data copy), which is held. */}
-        {!EOS_SESSION_SOURCE && (
-          <section className="ns-band ns-band--reference">
-            <details className="ns-parts-rail__item">
-              <summary>Inventory Action History</summary>
-              <InventoryActionsPanel partId={resolvedPartId} />
-            </details>
-          </section>
-        )}
+        {/* FIREBASE EXIT F2-remainder (DECISIONS #246), INTERIM until Owner decision D-246-1. The legacy notes are the Firestore
+            `inventory_actions` collection, frozen since 2026-08-30. The Owner's ruling keeps them READABLE, so this disclosure is
+            rendered under EOS too, read-only, from the same source (hooks/useInventoryActions.js), and plainly labelled. The
+            Activity band above remains the EOS ledger; the notes are never presented as activity. */}
+        <section className="ns-band ns-band--reference">
+          <details className="ns-parts-rail__item">
+            <summary>{EOS_SESSION_SOURCE ? LEGACY_INVENTORY_NOTES_LABEL : "Inventory Action History"}</summary>
+            <InventoryActionsPanel partId={resolvedPartId} />
+          </details>
+        </section>
       </div>
     </div>
   );
