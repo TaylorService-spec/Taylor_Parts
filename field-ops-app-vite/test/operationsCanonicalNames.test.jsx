@@ -27,9 +27,11 @@ vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
 vi.mock("../src/services/operationsQueries", () => ({
   fetchInventoryTransactions: async () => [], fetchWarehouses: async () => [],
-  fetchTransferOrders: async () => [], fetchTransferOrderDocs: async () => [], fetchSuppliers: async () => [], fetchSupplierCatalog: async () => [],
+  fetchTransferOrders: async () => [], fetchTransferOrderDocs: async () => [],
   fetchProcurementPurchaseOrders: async () => [],
 }));
+// Firebase exit F2: the Procurement panel's supplier list and catalog are EOS reads.
+vi.mock("../src/services/partsOperationsReads.js", () => ({ fetchSupplierList: async () => [], fetchSupplierCatalogForParts: async () => [] }));
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({
   normalizeLedgerTransaction: (t) => t, generateInventoryHealthDashboard: () => [], computeAvailableStockByPart: () => new Map(),
 }));

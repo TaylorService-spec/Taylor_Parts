@@ -74,3 +74,27 @@ The server callables (`completeAssignedJob`, `createManufacturer`, `updateManufa
 | Create, rename, activate and deactivate a Manufacturer, with optimistic concurrency and a separate activate authority | `functions/src/catalogMaster/postgresManufacturerWriter.ts` (`inventory.catalog.manage` for create and rename; `inventory.catalog.activate` for status; `updated_at` as the concurrency token). Reads: `functions/src/eosOps/manufacturerAuthority.ts` (`listManufacturers` / `getManufacturer` / `searchManufacturers`, `inventory.manufacturer.read`). | Built and tested, **not routed**. Next step: add Catalog API operations for the writer and the reads, then point the Manufacturers page at them. |
 | See a Part's on-hand, reserved, available and on-order quantities while scanning | An EOS Core inventory balance read over `eos_ops` stock, injected into `LookupScan` as `deps.fetchBalance` | **No EOS read yet.** The scan screen states the balance is unavailable, as it always has. |
 | An exact header count on a list | Each object's own count authority, passed as `options.count` (the Part Master's Catalog `countParts` today) | Live. Other lists show no count until they have one. |
+
+## F2: Operations dashboard procurement reads move to EOS (2026-10-17)
+
+| Read | Before | Now |
+| --- | --- | --- |
+| Supplier names in the Procurement panel | Firestore `suppliers` (`operationsQueries.fetchSuppliers`) | EOS `listSuppliers` (`partsOperationsReads.fetchSupplierList`), `supplier.record.read` |
+| Supplier catalog for draft proposals | The whole Firestore `supplier_catalog` (`fetchSupplierCatalog`) | Each recommended Part's governed terms: EOS `listPartSupplierItems` (`fetchSupplierCatalogForParts`), `inventory.supplierTerms.read` |
+
+### Behaviour on the governed terms
+- **Supplier choice.** The draft engine still suggests the **cheapest available** supplier when prices are readable in one currency.
+- **When cost is withheld.** Cost is the COMMERCIAL field group (DECISIONS #210 / #230). When a caller lacks `inventory.catalog.cost.read`, the cost is withheld and the engine suggests the **preferred** supplier with no price estimate. It never invents a price.
+- **Availability.** An item is "available" when it is ACTIVE and its availability is AVAILABLE.
+- **Refusals.** A refused read is reported inside the Procurement panel, as before.
+
+`fetchSuppliers` and `fetchSupplierCatalog` are deleted. `operationsQueries.ts` stays in the exit baseline for the reads below.
+
+### Firebase reads still in `operationsQueries.ts`, and why
+- **`fetchWarehouses` (Firestore `warehouses`).** Its only caller is the Warehouse Racking planner. It moves with the planner in slice F6 (Owner decisions D1–D10).
+- **`fetchInventoryTransactions` (Firestore `inventory_transactions`).** Its only caller is the Parts shadow-parity diagnostics screen, which compares the Firebase ledger with EOS. **Open question for the Owner:** retire it with Firebase, or keep it as an archived comparison.
+
+### Not moved, because a ruling governs it
+- **Inventory Action History** on Part Detail and the Warehouse Manager home reads Firestore `inventory_actions`. The Owner's ruling of 2026-08-30 is: "retire new writes, keep existing history readable".
+- These legacy notes are **not** ledger movements, so EOS movement history does not replace them.
+- Keeping them readable without Firebase needs an archive in PostgreSQL. That is a migration plus a data copy, which is Owner- and operator-gated.

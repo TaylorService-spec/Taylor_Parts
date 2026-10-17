@@ -52,23 +52,32 @@ const reorderCalls = [];
 // Admin full-access defect (2026-10-09): when set, the governed queue read refuses as it does for a caller without the
 // REORDER_QUEUE Operational Scope.
 let refuseQueue = false;
-// Supplier read isolation (2026-10-09): the supplier list / supplier catalog are still Firestore reads. A session without
-// Firebase sign-in (an EOS-only persona session) is refused them with Firestore's own message.
-const failCollections = new Set();
-const FIRESTORE_DENIED = "Missing or insufficient permissions.";
-let supplierDocs = [];
-vi.mock("../src/services/reorderApiClient.js", () => ({
-  reorderApiClient: {
-    call: async (operation, input) => {
-      reorderCalls.push({ operation, input });
-      if (refuseQueue && operation === "readReorderQueue") {
-        return { ok: false, code: "FORBIDDEN", message: "reading the Reorder queue requires the REORDER_QUEUE Operational Scope" };
-      }
-      if (operation === "readReorderPurchaseOrders") return { ok: true, result: { purchaseOrders: [FIXTURE_PO] } };
-      return { ok: true, result: [{ ...FIXTURE_REQUEST, id: FIXTURE_REQUEST.id }] };
-    },
-  },
-}));
+// Supplier read isolation (2026-10-09), now on EOS (Firebase exit F2, 2026-10-17): the supplier list is EOS listSuppliers
+// and the supplier catalog is each recommended Part's governed terms (listPartSupplierItems). Each can be refused on its
+// own, with the server's own message.
+const refuseOps = new Set();
+const EOS_REFUSED = "this read requires a capability the caller does not hold";
+let supplierRows = [];
+// listPartSupplierItems answers per Part: a list of items, or { refuse: code } for that Part only.
+let termsByPart = {};
+vi.mock("../src/services/reorderApiClient.js", () => {
+  const call = async (operation, input) => {
+    reorderCalls.push({ operation, input });
+    if (refuseQueue && operation === "readReorderQueue") {
+      return { ok: false, code: "FORBIDDEN", message: "reading the Reorder queue requires the REORDER_QUEUE Operational Scope" };
+    }
+    if (refuseOps.has(operation)) return { ok: false, code: "FORBIDDEN", message: EOS_REFUSED };
+    if (operation === "readReorderPurchaseOrders") return { ok: true, result: { purchaseOrders: [FIXTURE_PO] } };
+    if (operation === "listSuppliers") return { ok: true, result: { items: supplierRows.map((s) => ({ supplierId: s.id, name: s.name })) } };
+    if (operation === "listPartSupplierItems") {
+      const terms = termsByPart[input.partId] ?? [];
+      if (terms.refuse) return { ok: false, code: terms.refuse, message: `refused ${input.partId}` };
+      return { ok: true, result: { partId: input.partId, items: terms } };
+    }
+    return { ok: true, result: [{ ...FIXTURE_REQUEST, id: FIXTURE_REQUEST.id }] };
+  };
+  return { reorderApiClient: { call }, callReorderApi: call };
+});
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({
   collection: (_db, name) => ({ __collection: name }),
@@ -79,11 +88,6 @@ vi.mock("firebase/firestore", () => ({
   limit: () => ({}),
   getDocs: async (q) => {
     queriedCollections.push(q.__collection);
-    if (failCollections.has(q.__collection)) throw Object.assign(new Error(FIRESTORE_DENIED), { code: "permission-denied" });
-    if (q.__collection === "suppliers") {
-      const docs = supplierDocs.map((d) => ({ id: d.id, data: () => ({ name: d.name }) }));
-      return { docs, forEach: (fn) => docs.forEach(fn) };
-    }
     // Every Firestore collection is empty in this fixture: the procurement rows can only come from the
     // governed reads above.
     return { docs: [], forEach: () => {} };
@@ -93,8 +97,9 @@ vi.mock("firebase/firestore", () => ({
 afterEach(() => {
   cleanup();
   refuseQueue = false;
-  failCollections.clear();
-  supplierDocs = [];
+  refuseOps.clear();
+  supplierRows = [];
+  termsByPart = {};
   generateDraftsCalls.length = 0;
   queriedCollections.length = 0;
   reorderCalls.length = 0;
@@ -129,8 +134,14 @@ describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)
 // ---- Part 2: Operations.jsx wires the live fetch into ProcurementPanel ----------
 // The dashboard's INVENTORY truth is EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): stock
 // health from the governed on-hand / movement loader, warehouses from eos_ops, transfer orders from the EOS list.
+// One Part needs reordering, so the Procurement panel reads that Part's governed supplier terms.
 vi.mock("../src/hooks/useInventoryLedger.js", () => ({
-  loadEosInventoryHealth: async () => ({ transactions: [], healthEntries: [], integrity: { state: "COMPLETE", reason: null, unavailablePartIds: [] } }),
+  loadEosInventoryHealth: async () => ({
+    transactions: [],
+    healthEntries: [{ partId: "PART-99", stock: { availableStock: 1 }, usage: null,
+      recommendation: { urgency: "HIGH", recommendedOrderQty: 4, daysRemaining: Infinity } }],
+    integrity: { state: "COMPLETE", reason: null, unavailablePartIds: [] },
+  }),
 }));
 vi.mock("../src/services/inventoryLocationClient.js", () => ({ fetchInventoryWarehouseOptions: async () => [] }));
 vi.mock("../src/services/transferCommandClient.js", () => ({ listTransferOrderDocs: async () => ({ items: [], truncated: false }) }));
@@ -142,6 +153,7 @@ vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({
   normalizeLedgerTransaction: (t) => t,
   generateInventoryHealthDashboard: () => [],
   computeAvailableStockByPart: () => new Map(),
+  hasUsageHistory: () => false,
 }));
 vi.mock("../src/domain/warehouseReconciliationEngine", () => ({
   detectStockDiscrepancies: () => [],
@@ -188,9 +200,9 @@ describe("Operations -- a refused Reorder queue read stays inside the Procuremen
   });
 });
 
-// Supplier read isolation (2026-10-09, nonprod evidence): an EOS-only Administrator session was refused the Firestore
-// supplier reads and the WHOLE Overview showed "Failed to load: Missing or insufficient permissions." Each supplier read
-// now fails on its own, inside the Procurement panel; every EOS panel and the purchase orders still render.
+// Supplier read isolation (2026-10-09, nonprod evidence): an EOS-only Administrator session was refused the then-Firestore
+// supplier reads and the WHOLE Overview showed "Failed to load". Each supplier read -- EOS since Firebase exit F2 -- fails
+// on its own, inside the Procurement panel; every other panel and the purchase orders still render.
 describe("Operations -- a refused supplier read stays inside the Procurement panel", () => {
   const renderOverview = async () => {
     const Operations = (await import("../src/modules/operations/Operations.jsx")).default;
@@ -205,10 +217,10 @@ describe("Operations -- a refused supplier read stays inside the Procurement pan
   };
 
   it("the supplier LIST refused: names say unavailable, drafts still render, nothing else blanks", async () => {
-    failCollections.add("suppliers");
+    refuseOps.add("listSuppliers");
     await renderOverview();
     otherPanelsRender();
-    const note = screen.getByText(`Supplier names aren't available: ${FIRESTORE_DENIED}`);
+    const note = screen.getByText(`Supplier names aren't available: ${EOS_REFUSED}`);
     expect(note.hasAttribute("data-suppliers-unavailable")).toBe(true);
     expect(screen.getByText("Supplier name unavailable")).toBeTruthy(); // never "Unknown supplier" or the raw id
     expect(screen.queryByText("sup-1")).toBeNull();
@@ -216,10 +228,10 @@ describe("Operations -- a refused supplier read stays inside the Procurement pan
   });
 
   it("the supplier CATALOG refused: draft proposals are said unavailable, not 'No supplier available' rows", async () => {
-    failCollections.add("supplier_catalog");
+    refuseOps.add("listPartSupplierItems");
     await renderOverview();
     otherPanelsRender();
-    const note = screen.getByText(`Draft proposals aren't available: the supplier catalog could not be read (${FIRESTORE_DENIED}).`);
+    const note = screen.getByText(`Draft proposals aren't available: the supplier catalog could not be read (${EOS_REFUSED}).`);
     expect(note.hasAttribute("data-supplier-catalog-unavailable")).toBe(true);
     expect(generateDraftsCalls).toEqual([]); // no drafts are generated from an empty stand-in catalog
     expect(screen.queryByText("PART-88")).toBeNull();
@@ -228,8 +240,8 @@ describe("Operations -- a refused supplier read stays inside the Procurement pan
   });
 
   it("both supplier reads AND the Reorder queue refused: each is said in place; the EOS panels still render", async () => {
-    failCollections.add("suppliers");
-    failCollections.add("supplier_catalog");
+    refuseOps.add("listSuppliers");
+    refuseOps.add("listPartSupplierItems");
     refuseQueue = true;
     const Operations = (await import("../src/modules/operations/Operations.jsx")).default;
     render(<Operations accessVersion={1} />);
@@ -243,13 +255,67 @@ describe("Operations -- a refused supplier read stays inside the Procurement pan
   });
 
   it("both supplier reads succeed: no unavailable notes, drafts render with the resolved supplier name", async () => {
-    supplierDocs = [{ id: "sup-1", name: "Northwind Parts" }];
+    supplierRows = [{ id: "sup-1", name: "Northwind Parts" }];
     await renderOverview();
     otherPanelsRender();
     expect(screen.getByText("Northwind Parts")).toBeTruthy();
     expect(screen.getByText("PART-88")).toBeTruthy();
     expect(generateDraftsCalls).toHaveLength(1);
+    // Both are EOS reads: the recommended Part's terms were read, and no Firestore supplier collection was touched.
+    expect(reorderCalls.filter((c) => c.operation === "listPartSupplierItems").map((c) => c.input)).toEqual([{ partId: "PART-99" }]);
+    expect(queriedCollections).not.toContain("suppliers");
+    expect(queriedCollections).not.toContain("supplier_catalog");
     expect(screen.queryByText(/aren't available/)).toBeNull();
     expect(screen.queryByText("Supplier name unavailable")).toBeNull();
+  });
+});
+
+// ---- Firebase exit F2: the supplier catalog is the governed EOS part-supplier terms --------------------------------
+const item = (over) => ({ itemId: `${over.partId}__${over.supplierId}`, status: "ACTIVE", availability: "AVAILABLE", preferred: false,
+  cost: "10.00", currency: "USD", ...over });
+
+describe("fetchSupplierCatalogForParts (EOS listPartSupplierItems, per recommended Part)", () => {
+  it("maps each governed item to the draft engine's shape; a withheld cost is null, never a number", async () => {
+    termsByPart = {
+      "P-1": [item({ partId: "P-1", supplierId: "s-a", cost: "12.50" }), item({ partId: "P-1", supplierId: "s-b", availability: "UNAVAILABLE" })],
+      "P-2": [item({ partId: "P-2", supplierId: "s-a", cost: undefined, currency: undefined, preferred: true })], // COMMERCIAL withheld
+    };
+    const { fetchSupplierCatalogForParts } = await vi.importActual("../src/services/partsOperationsReads.js");
+    const rows = await fetchSupplierCatalogForParts(["P-1", "P-2", "P-1"]);
+    expect(reorderCalls.filter((c) => c.operation === "listPartSupplierItems").map((c) => c.input.partId)).toEqual(["P-1", "P-2"]);
+    expect(rows).toEqual([
+      { id: "P-1__s-a", supplierId: "s-a", partId: "P-1", unitPrice: 12.5, currency: "USD", available: true, preferred: false },
+      { id: "P-1__s-b", supplierId: "s-b", partId: "P-1", unitPrice: 10, currency: "USD", available: false, preferred: false },
+      { id: "P-2__s-a", supplierId: "s-a", partId: "P-2", unitPrice: null, currency: null, available: true, preferred: true },
+    ]);
+  });
+
+  it("a Part the Catalog does not hold contributes nothing; any other refusal fails the whole catalog", async () => {
+    const { fetchSupplierCatalogForParts } = await vi.importActual("../src/services/partsOperationsReads.js");
+    termsByPart = { "P-1": [item({ partId: "P-1", supplierId: "s-a" })], "P-GONE": { refuse: "NOT_FOUND" } };
+    expect((await fetchSupplierCatalogForParts(["P-1", "P-GONE"])).map((r) => r.id)).toEqual(["P-1__s-a"]);
+    termsByPart = { "P-1": { refuse: "FORBIDDEN" } };
+    await expect(fetchSupplierCatalogForParts(["P-1"])).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("generateProcurementDrafts over governed terms", () => {
+  const rec = (partId) => ({ partId, recommendedQuantity: 3, urgency: "HIGH", source: "EPIC3_ANALYTICS" });
+  it("picks the cheapest available item when prices are readable in one currency (the rule it always had)", async () => {
+    const { generateProcurementDrafts } = await vi.importActual("../src/domain/procurementDraftEngine");
+    const drafts = generateProcurementDrafts([rec("P-1")], [
+      { id: "a", supplierId: "s-a", partId: "P-1", unitPrice: 9, currency: "USD", available: true, preferred: true },
+      { id: "b", supplierId: "s-b", partId: "P-1", unitPrice: 7, currency: "USD", available: true, preferred: false },
+      { id: "c", supplierId: "s-c", partId: "P-1", unitPrice: 1, currency: "USD", available: false, preferred: false },
+    ]);
+    expect(drafts[0]).toMatchObject({ suggestedSupplierId: "s-b", estimatedUnitPrice: 7, estimatedTotalCost: 21 });
+  });
+  it("cost withheld: the PREFERRED supplier is suggested and no price is estimated", async () => {
+    const { generateProcurementDrafts } = await vi.importActual("../src/domain/procurementDraftEngine");
+    const drafts = generateProcurementDrafts([rec("P-1")], [
+      { id: "a", supplierId: "s-a", partId: "P-1", unitPrice: null, available: true, preferred: false },
+      { id: "b", supplierId: "s-b", partId: "P-1", unitPrice: null, available: true, preferred: true },
+    ]);
+    expect(drafts[0]).toMatchObject({ suggestedSupplierId: "s-b", estimatedUnitPrice: null, estimatedTotalCost: null });
   });
 });
