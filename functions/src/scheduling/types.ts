@@ -12,7 +12,7 @@
 // Both collections are Admin-SDK-only: firestore.rules denies all client read AND write, matching the
 // `sales_orders` / `opportunities` / `cycle_counts` posture. The Dispatch board reads them through a
 // trusted read path, never directly.
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "../types/timestampShape";
 
 export const TECHNICIAN_WORKING_AVAILABILITY_COLLECTION = "technician_working_availability";
 export const TECHNICIAN_BLOCKED_TIME_COLLECTION = "technician_blocked_time";

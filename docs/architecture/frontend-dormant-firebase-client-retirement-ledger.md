@@ -61,7 +61,7 @@ feature listed here comes back only on its EOS Core path, never by restoring the
 
 | Item | Why it stays |
 | --- | --- |
-| `domain/manufacturerWrite.js` and `domain/completionFlow.js` | Pure modules, no Firebase. They record the input shaping, the status transitions, the outcome vocabulary and the idempotent / ambiguous-result recovery rules. They have no runtime consumer now; they are kept as the tested specification for the EOS cutover to reuse or delete. |
+| `domain/completionFlow.js` | A pure module, no Firebase. It records the idempotent / ambiguous-result recovery rules for completion. It has no runtime consumer now; it is kept as the tested specification for the EOS cutover to reuse or delete. (`domain/manufacturerWrite.js` was kept at first, then deleted in the PR-C refresh after Lane D confirmed only its own test imported it; the governed rules live in `postgresManufacturerWriter.ts`.) |
 | `INVENTORY_BALANCE_READ_READY` in `config/environments.json` | Still a required readiness key (`scripts/resolveEnvironment.mjs`, `functions/test/scannerReleaseReadiness.test.mjs`). `config/inventoryBalanceReadiness.js` still supplies `INVENTORY_BALANCE_UNAVAILABLE_REASON` to `domain/partsNorthStar.js`. |
 
 The server callables (`completeAssignedJob`, `createManufacturer`, `updateManufacturer`, `changeManufacturerStatus`, `getPartBalance`) are not touched here. Each needs a GATED equivalence record under [firebase-capability-equivalence-gate.md](firebase-capability-equivalence-gate.md) and an operator undeploy.
