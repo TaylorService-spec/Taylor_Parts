@@ -294,10 +294,11 @@ export default function AccountsList() {
       {summaryState === "DENIED" && (
         <p className="fo-muted" role="status">Portfolio totals are not available to you.</p>
       )}
+      {/* Not a transient failure: no PostgreSQL CRM portfolio aggregate exists yet (useAccountPortfolioSummary),
+          so a "Try again" did nothing. Say what is true; the customer list below is unaffected. */}
       {summaryState === "UNAVAILABLE" && (
-        <p className="fo-warning" role="status">
-          Portfolio totals could not be loaded.{" "}
-          <button type="button" className="fo-link-btn" onClick={retrySummary}>Try again</button>
+        <p className="fo-muted" role="status">
+          Portfolio totals are not available yet. The customer list below is unaffected.
         </p>
       )}
 

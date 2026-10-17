@@ -10,7 +10,7 @@
 // Mirrored (not imported -- no shared/monorepo tooling exists in this
 // repo) at field-ops-app-vite/src/types/access.ts. If either file
 // changes, change the other to match.
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "./timestampShape";
 
 // Spec §6: "<domain>.<resource>.<action>", lower-camel segments,
 // immutable once published. This is a nominal string type (not an enum)

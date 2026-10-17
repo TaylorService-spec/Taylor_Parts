@@ -1906,23 +1906,8 @@ button:hover {
 .fo-brand--onLight .fo-brand__wordmark { color: var(--color-text-primary); }
 .fo-brand--onLight .fo-brand__platform { color: var(--color-text-secondary); opacity: 1; }
 
-/* Implementation identity. Deliberately a SEPARATE element from the brand
-   lockup: Taylor Parts identifies the deployment, and must never be replaced by
-   or merged into the parent-brand naming. */
-.fo-implementation {
-  display: flex; flex-direction: column; line-height: 1.2;
-  padding-left: 14px; margin-left: 14px;
-  border-left: 1px solid rgba(185, 193, 190, 0.28);
-}
-.fo-implementation__name { font-size: 13px; font-weight: 600; color: var(--color-text-inverse); }
-.fo-implementation__context {
-  font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--verenward-moon);
-}
 @media (max-width: 720px) {
   .fo-brand__platform { display: none; }
-  .fo-implementation { padding-left: 10px; margin-left: 10px; }
-  .fo-implementation__context { display: none; }
 }
 
 /* Gate 2 -- the brand now sits in a fixed-width vertical rail rather than a
@@ -1931,19 +1916,12 @@ button:hover {
    - `white-space: nowrap` on the platform line overflowed the compact rail
      (it clipped "ENTERPRISE OPERATIONS OS" at tablet width). In a column there
      is room to wrap, so it wraps.
-   - the 720px rules hide the platform and deployment context because a phone's
-     horizontal header had no room. The drawer is a tall column that does, and
-     the deployment identity is exactly what a user needs to see there. */
-.fo-rail__brand .fo-brand,
-.fo-rail__brand .fo-implementation { max-width: 100%; min-width: 0; }
+   - the 720px rule hides the platform line because a phone's horizontal header
+     had no room. The drawer is a tall column that does. */
+.fo-rail__brand .fo-brand { max-width: 100%; min-width: 0; }
 .fo-rail__brand .fo-brand__platform {
   white-space: normal; display: block; overflow-wrap: anywhere;
 }
-.fo-rail__brand .fo-implementation__context { display: block; }
-/* The implementation block sits BELOW the lockup in the rail, so its divider
-   becomes a left rule against the rail edge rather than a separator between
-   two side-by-side identities. */
-.fo-rail__brand .fo-implementation { padding-left: 10px; margin-left: 2px; }
 
 @media (max-width: 1199.98px) and (min-width: 900px) {
   /* Compact rail: shrink the platform line rather than dropping it, so the
@@ -3960,48 +3938,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    contrast ratio is introduced here. */
 
 /* -- Manufacturers.jsx -- */
-/* flex-wrap: a space-between row with no wrap has nowhere to put its second child once the two no
-   longer fit, so the action button simply left the header -- measured 11px past its own container at
-   320px. Wrapping is what every other header row in this file already does. */
-.fo-mfr__header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.fo-mfr__title { margin: 0; }
-.fo-mfr__btn-primary { padding: var(--space-2) 14px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
+/* The page is a read-only list since Firebase exit PR-B; its create / rename / status panel, outcome
+   banners, badges and buttons were removed, and their rules with them. */
 .fo-mfr__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
-.fo-mfr__notice { background: var(--color-border); color: var(--color-text-primary); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--font-size-sm); margin-bottom: var(--space-2); }
-
-.fo-mfr__badge { padding: 2px var(--space-2); border-radius: 12px; font-size: var(--font-size-sm); font-weight: 600; }
-.fo-mfr__badge--active { background: var(--color-success-surface); color: var(--color-success); } /* 4.5:1+, same pairing used repo-wide */
-.fo-mfr__badge--inactive { background: var(--color-warning-surface); color: var(--color-warning); } /* 4.5:1+, same pairing used repo-wide */
-
-.fo-mfr__outcome { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; font-size: var(--font-size-sm); }
-.fo-mfr__outcome--applied { background: var(--color-success-surface); color: var(--color-success); }
-.fo-mfr__outcome--replayed { background: var(--color-surface-sunken); color: var(--color-info); }
-.fo-mfr__outcome--noop { background: var(--color-border); color: var(--color-text-primary); }
-.fo-mfr__outcome--denied { background: var(--color-danger-surface); color: var(--color-danger); }
-.fo-mfr__outcome--invalid { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-mfr__outcome--conflict { background: var(--color-warning-surface); color: var(--color-warning); }
-.fo-mfr__outcome--not-found { background: var(--color-danger-surface); color: var(--color-danger); }
-.fo-mfr__outcome--unavailable { background: var(--color-border); color: var(--color-text-primary); }
-.fo-mfr__outcome--error { background: var(--color-danger-surface); color: var(--color-danger); }
-
-.fo-mfr__panel { border: 1px solid var(--color-border); border-radius: 8px; padding: var(--space-4); margin: var(--space-2) 0; background: var(--color-surface-elevated); }
-.fo-mfr__panel-header { display: flex; justify-content: space-between; align-items: center; }
-.fo-mfr__panel-title { margin: 0; font-size: var(--font-size-base); }
-.fo-mfr__close-btn { border: none; background: none; cursor: pointer; font-size: var(--font-size-lg); color: var(--color-text-secondary); }
-
-.fo-mfr__status-desc { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
-.fo-mfr__status-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.fo-mfr__status-btn { padding: var(--space-2) 14px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
-.fo-mfr__status-btn--disabled { cursor: not-allowed; }
-
-.fo-mfr__form { max-width: 420px; }
-.fo-mfr__field { margin-bottom: 10px; }
-.fo-mfr__label { display: block; font-size: var(--font-size-xs); color: var(--color-text-secondary); margin-bottom: var(--space-1); }
-.fo-mfr__input { padding: 6px; font-size: var(--font-size-sm); width: 100%; box-sizing: border-box; }
-.fo-mfr__form-actions { display: flex; gap: var(--space-2); }
-.fo-mfr__btn-submit { padding: var(--space-2) 16px; font-size: var(--font-size-sm); font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--color-brand-secondary); background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; }
-.fo-mfr__btn-submit--disabled { background: var(--color-info-surface); cursor: not-allowed; }
-.fo-mfr__btn-secondary { padding: var(--space-2) 16px; font-size: var(--font-size-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-elevated); cursor: pointer; }
 
 /* -- PartMasterList.jsx -- */
 .fo-pml__part-number { font-family: monospace; }
@@ -8785,6 +8724,9 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
   font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--color-text-inverse);
   text-decoration: underline; text-underline-offset: 3px; }
 .fo-rail-identity__profile:focus-visible { outline: 2px solid var(--color-text-inverse); outline-offset: 2px; }
+/* The global a:hover paints links brand evergreen -- the rail's own colour -- so the link vanished on hover.
+   Keep it legible on the rail, with the same hover wash as Sign Out. */
+.fo-rail-identity__profile:hover { color: var(--color-text-inverse); background: rgba(255, 255, 255, 0.14); }
 @media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
   .fo-rail-identity__profile { min-height: 0; }
 }

@@ -637,9 +637,9 @@ export const DASHBOARD_MODULES = Object.freeze([
     // `inventory.balance.read` IS activated in platform-sandbox, and `getPartBalance` is deployed.
     // Naming activation as the blocker sent a reader to check a box that is already ticked.
     //
-    // What actually blocks it: (1) the client transport flag INVENTORY_BALANCE_READ_READY is false,
-    // a deliberate separate gate whose flip needs its own authorization and its own bundle release;
-    // and (2) even with it on, the governed reads answer PER PART. A section headed "on hand,
+    // What actually blocks it: (1) there is no client balance read -- the getPartBalance transport
+    // (the only reader of INVENTORY_BALANCE_READ_READY) was deleted by the Firebase exit (PR-B), and the
+    // balance returns only as an EOS Core inventory read; and (2) even with one, the governed reads answer PER PART. A section headed "on hand,
     // reserved and available" is a claim about a whole location, and totalling a page of parts into
     // one would be exactly the partial-number-under-a-complete-name failure this platform has
     // already been bitten by.

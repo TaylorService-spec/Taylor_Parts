@@ -4,7 +4,7 @@
 // real-world ordering -- NOT a vendor integration layer. No field here
 // is ever populated from a live external HTTP call; contactEmail is
 // operator-entered reference data, not an integration endpoint.
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "./timestampShape";
 
 export interface Supplier {
   id: string;
