@@ -103,6 +103,7 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
 
   // ── the completion pass (2026-09-30): each implemented in its own module ──
   readTechnicianAvailability: availability.readTechnicianAvailability,
+  readEmployeeWorkSchedule: availability.readEmployeeWorkSchedule,
   setTechnicianWorkingHours: availability.setTechnicianWorkingHours,
   recordTechnicianUnavailability: availability.recordTechnicianUnavailability,
   endTechnicianUnavailability: availability.endTechnicianUnavailability,
@@ -130,7 +131,7 @@ export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "re
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "describeWorkOrderListQuery", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
   "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities",
-  "readTechnicianAvailability", "findAvailableTechnicianSlots", "suggestWorkOrderPlacement", "readWorkOrderLabor", "readWorkOrderFieldContext",
+  "readTechnicianAvailability", "readEmployeeWorkSchedule", "findAvailableTechnicianSlots", "suggestWorkOrderPlacement", "readWorkOrderLabor", "readWorkOrderFieldContext",
   "readWorkOrderReadiness", "readTechnicianExecutionStats", "listInstallableEquipmentForWorkOrder", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
   ...SELF_SCHEDULING_READ_OPERATIONS,
 ]);

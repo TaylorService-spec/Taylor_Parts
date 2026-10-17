@@ -883,6 +883,71 @@ export const readTechnicianAvailability: WorkOrderOp = async (deps, caller, inpu
   });
 };
 
+// ════════════════════ readEmployeeWorkSchedule (Employee Administration → Work Schedule) ════════════════════
+
+/** History is short in practice; the read still states its own bound rather than trusting that. */
+export const MAX_SCHEDULE_HISTORY = 50;
+// The Employee record read capability, named here rather than imported: only the Workforce transport may import the
+// Workforce read layer (functions/test/employeeRuntimeReads.test.mjs). Same id as employeeDirectoryReads.EMPLOYEE_RECORD_READ.
+const EMPLOYEE_RECORD_READ = "employee.record.read";
+const SCHEDULE_EXCEPTIONS_PAST_DAYS = 30;
+const SCHEDULE_EXCEPTIONS_FUTURE_DAYS = 90;
+
+/**
+ * ONE Employee's governed working schedules and exceptions, for the Employee record's Work Schedule tab.
+ *
+ * SCH-D2 (Owner, 2026-10-15, as amended): scheduling roles INTERSECTED with Employee and company read visibility. So the
+ * caller needs ALL of, decided here on the server:
+ *   1. workOrder.lifecycle.schedule or .dispatch      -- the existing availability-read pair (requireRead);
+ *   2. employee.record.read, held FLAT                -- a holder scoped by assignment only is refused (fails closed,
+ *                                                       SCH-D4), because this read does not evaluate assignment scopes;
+ *   3. EOS Core company authority (DECISIONS #235) covering the Employee's operating company -- an Employee outside the
+ *      caller's companies is refused EXACTLY like one that does not exist (EMPLOYEE_NOT_FOUND), the G-9 rule.
+ *
+ * Deliberately NOT readTechnicianAvailability: that board read is not company-isolated (tracked separately, #2110), so
+ * it cannot be the authority behind a per-Employee record page. This read is the same tables through the same loaders.
+ *
+ * Read-only. Returns every schedule (current, upcoming and ended -- most recent MAX_SCHEDULE_HISTORY, with hasMore) and
+ * the unavailability overlapping [now - 30 days, now + 90 days).
+ */
+export const readEmployeeWorkSchedule: WorkOrderOp = async (deps, caller, input) => {
+  const actor = caller.actor;
+  requireRead(actor, "reading an Employee's work schedule");
+  requireCapability(actor, [EMPLOYEE_RECORD_READ], "reading an Employee's work schedule");
+  const i = acceptOnly(input ?? {}, ["employeeId"]);
+  const authority = await resolveCompanyAuthority(deps.pool, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+  const employee = await requireEmployee(deps.pool, actor.tenantId, i.employeeId, authority.companies);
+
+  const now = (deps.now ?? (() => new Date()))().getTime();
+  const everything: Interval = { start: 3 * DAY, end: now + 3650 * DAY };
+  const exceptionsWindow: Interval = { start: now - SCHEDULE_EXCEPTIONS_PAST_DAYS * DAY, end: now + SCHEDULE_EXCEPTIONS_FUTURE_DAYS * DAY };
+  const [schedules, blocks] = await Promise.all([
+    loadSchedules(deps.pool, actor.tenantId, [employee.id], everything),
+    loadUnavailability(deps.pool, actor.tenantId, [employee.id], exceptionsWindow),
+  ]);
+
+  const newestFirst = [...schedules].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || b.recordedAt - a.recordedAt);
+  const status = (s: WorkingSchedule): "CURRENT" | "UPCOMING" | "ENDED" => {
+    const today = localDateKey(now, s.timeZone);
+    if (s.effectiveFrom > today) return "UPCOMING";
+    return s.effectiveTo === null || today < s.effectiveTo ? "CURRENT" : "ENDED";
+  };
+  return Object.freeze({
+    employeeId: employee.id,
+    operatingCompanyId: employee.operatingCompanyId,
+    schedules: newestFirst.slice(0, MAX_SCHEDULE_HISTORY).map((s) => Object.freeze({
+      ...scheduleView(s), recordedAt: iso(s.recordedAt), status: status(s),
+    })),
+    schedulesHasMore: newestFirst.length > MAX_SCHEDULE_HISTORY,
+    exceptions: blocks.map((b) => Object.freeze({
+      unavailabilityId: b.unavailabilityId, kind: b.kind, startMillis: b.start, endMillis: b.end,
+      scheduledEndMillis: b.scheduledEnd, ended: b.ended, reason: b.reason,
+    })),
+    exceptionsWindow: Object.freeze({ startMillis: exceptionsWindow.start, endMillis: exceptionsWindow.end }),
+  });
+};
+
 // ════════════════════ THE SLOT COMPUTATION (one engine, every caller) ════════════════════
 
 export interface TechnicianSlot { readonly employeeId: string; readonly displayName: string | null; readonly start: number; readonly end: number }

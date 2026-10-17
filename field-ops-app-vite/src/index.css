@@ -9168,3 +9168,14 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-admin .fo-admin-row--selected .fo-admin-rowselect { color: var(--color-text-primary); text-decoration: none; }
 
 /* END ADMINISTRATION SCOPE -- new Administration rules go above this line, under .fo-admin. */
+
+/* ── Employee record · Work Schedule tab (Scheduling PR-2) ─────────────────────────────────── */
+.fo-work-schedule { display: grid; gap: 4px; }
+.fo-work-schedule__current + .fo-work-schedule__current { margin-top: 16px; }
+.fo-work-schedule__none { margin: 0; max-width: 72ch; }
+.fo-work-schedule__week { max-width: 640px; }
+.fo-work-schedule__week th { width: 4.5rem; text-align: left; font-weight: 600; }
+.fo-work-schedule__history, .fo-work-schedule__exceptions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fo-work-schedule__form { display: grid; gap: 10px; max-width: 760px; margin-top: 10px; }
+.fo-work-schedule__interval, .fo-work-schedule__inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-end: 8px; }
+.fo-work-schedule__actions { margin: 4px 0 16px; }
