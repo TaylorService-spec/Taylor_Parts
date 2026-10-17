@@ -145,3 +145,15 @@ test("COMPANY_AUTHORITY_REQUIRED is said in words, with its remedy -- on every s
   // A plain refusal keeps the generic wording -- the specific sentence is only for the specific reason.
   assert.equal(loadErrorMessage({ code: "FORBIDDEN", reason: "CAPABILITY_MISSING" }, { entity: "work orders" }), "You do not have permission to view these work orders.");
 });
+
+test("the Board's availability read: a refusal is said as a refusal; an outage returns null (the Board keeps its outage sentence)", async () => {
+  const { availabilityReadRefusalMessage, COMPANY_AUTHORITY_MESSAGE } = await import("../src/domain/workOrderOutcome.js");
+  // useTechnicianAvailability's error shape: { status: category lower-cased, code: the server's code }.
+  assert.equal(availabilityReadRefusalMessage({ status: "forbidden", code: "COMPANY_AUTHORITY_REQUIRED" }), COMPANY_AUTHORITY_MESSAGE);
+  assert.equal(availabilityReadRefusalMessage({ status: "forbidden", code: "CAPABILITY_MISSING" }),
+    "You do not have permission to view these working hours and blocked time.");
+  for (const outage of [{ status: "unavailable", code: "UNAVAILABLE" }, { status: "internal", code: "INTERNAL" }, { status: "not_activated", code: "NOT_ACTIVATED" }]) {
+    assert.equal(availabilityReadRefusalMessage(outage), null, JSON.stringify(outage));
+  }
+  assert.equal(availabilityReadRefusalMessage(null), null);
+});

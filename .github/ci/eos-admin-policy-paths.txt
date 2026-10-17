@@ -799,6 +799,8 @@ functions/test/eosOpsWarehouseBinPostgres.test.mjs
 functions/test/inventoryCapabilityGrantMigration.test.mjs
 functions/test/invoiceAuthorityPostgres.test.mjs
 functions/test/invoiceTotalsAuthority.test.mjs
+functions/test/invoiceNumberAllocator.test.mjs
+functions/test/invoiceNumberAllocatorPostgres.test.mjs
 functions/test/legacyInventoryMovementMapping.test.mjs
 functions/test/legacyInventoryMovementRun.test.mjs
 functions/test/partBalanceTrackingModeAuthority.test.mjs

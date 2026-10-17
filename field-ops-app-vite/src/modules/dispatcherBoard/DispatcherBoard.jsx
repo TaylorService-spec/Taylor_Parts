@@ -31,6 +31,7 @@ import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { workOrderPastDueItem } from "../../domain/workOrderAttentionProjection.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { availabilityReadRefusalMessage } from "../../domain/workOrderOutcome.js";
 import { readBoardUrlState, writeBoardUrlState } from "../../domain/dispatchBoardUrlState.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import DispatchLaneGrid from "./DispatchLaneGrid.jsx";
@@ -601,9 +602,15 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
         </p>
       ) : null}
       {availabilityError ? (
+        // A REFUSED read (no company authority, no capability) is said as the refusal it is; only a genuine outage gets
+        // the "could not be read" sentence -- telling a refused caller the server "still enforces both" is not the cause.
         <p className="ns-dispatch__failure" role="alert">
-          Working hours and blocked time could not be read, so shifts and capacity are not shown.
-          Scheduling still works and the server still enforces both.
+          {availabilityReadRefusalMessage(availabilityError) ?? (
+            <>
+              Working hours and blocked time could not be read, so shifts and capacity are not shown.
+              Scheduling still works and the server still enforces both.
+            </>
+          )}
         </p>
       ) : null}
 
