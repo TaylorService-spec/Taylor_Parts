@@ -65,7 +65,7 @@ test("offline: the CRM transport is a closed, authenticated envelope routed by s
     const committed = await http.handleCrmRequest(authenticated, { method: "POST", url: "/crm/customer", headers: { authorization: "Bearer ok" }, body: JSON.stringify({ operation, input: {} }) });
     assert.notEqual(JSON.parse(committed.body).code, "POSTGRES_CRM_WRITER_INACTIVE", `${operation}: the committed ACTIVE state passes the gate`);
   }
-  assert.equal(gated, 14, "every CRM operation, including the ownership history read and the Contact import, is behind the gate");
+  assert.equal(gated, 16, "every CRM operation, including the ownership history read, the Contact import and the Account activity read / create, is behind the gate");
   // Composition never supplies the test seam: the committed constant decides in the running API.
   assert.doesNotMatch(readFileSync(resolve(FUNCTIONS_DIR, "src/eosApi/server.ts"), "utf8"), /writerAuthority/);
   // No Firebase module loads with the transport.
