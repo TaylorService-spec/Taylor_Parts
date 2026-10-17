@@ -25,10 +25,10 @@
 // durationMinutes) and ./timestampMillis.js (toMillis). This file adds NO second time-utility system.
 import { toMillis } from "./timestampMillis.js";
 import { buildWeekDays, durationMinutes, startOfWeekMillis } from "./schedulingWorkspace.js";
+import { addDays, atWall, startOfDay, wall } from "./boardClock.js";
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_HOUR = 60 * MS_PER_MINUTE;
-const MS_PER_DAY = 24 * MS_PER_HOUR;
 
 /**
  * The day board's visible hour band, matching the artifact's 7a–4p header.
@@ -41,10 +41,9 @@ const MS_PER_DAY = 24 * MS_PER_HOUR;
 export const DAY_BAND_START_HOUR = 7;
 export const DAY_BAND_END_HOUR = 17;
 
+/** Midnight of the Board-clock day (the governed business zone when the Board set one; see boardClock.js). */
 export function startOfDayMillis(millis) {
-  const d = new Date(millis);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfDay(millis);
 }
 
 /**
@@ -65,26 +64,24 @@ export function startOfDayMillis(millis) {
  */
 export function dayBand(millis, occupancy = []) {
   const dayStart = startOfDayMillis(millis);
-  const at = (hour) => {
-    const d = new Date(dayStart);
-    d.setHours(hour, 0, 0, 0);
-    return d.getTime();
-  };
+  const day = wall(dayStart);
+  const at = (hour) => atWall(day.y, day.mo, day.d, hour);
 
   let startHour = DAY_BAND_START_HOUR;
   let endHour = DAY_BAND_END_HOUR;
-  const dayEnd = dayStart + MS_PER_DAY;
+  const dayEnd = addDays(dayStart, 1);
 
   for (const span of occupancy) {
     if (span?.startMillis == null || span?.endMillis == null) continue;
     // Only what falls on THIS day moves the band; a job running past midnight stretches today to
     // midnight rather than dragging tomorrow's hours onto today's grid.
     if (span.endMillis <= dayStart || span.startMillis >= dayEnd) continue;
-    const from = new Date(Math.max(span.startMillis, dayStart));
-    const to = new Date(Math.min(span.endMillis, dayEnd));
-    startHour = Math.min(startHour, from.getHours());
-    // Round the end UP to the next whole hour so a job ending at 17:30 is fully drawn.
-    const toHour = to.getHours() + (to.getMinutes() > 0 || to.getSeconds() > 0 ? 1 : 0);
+    const fromMs = Math.max(span.startMillis, dayStart);
+    const toMs = Math.min(span.endMillis, dayEnd);
+    startHour = Math.min(startHour, wall(fromMs).h);
+    // Round the end UP to the next whole hour so a job ending at 17:30 is fully drawn. The day's own end is 24.
+    const to = wall(toMs);
+    const toHour = toMs === dayEnd ? 24 : to.h + (to.mi > 0 || toMs % 60_000 > 0 ? 1 : 0);
     endHour = Math.max(endHour, Math.min(toHour, 24));
   }
 
@@ -112,7 +109,7 @@ export function dayOccupancy(workOrders, availabilityViews = []) {
 
 /** The hour labels the grid header renders across whatever band is in force. */
 export function bandHours(band) {
-  const startHour = new Date(band.startMillis).getHours();
+  const startHour = wall(band.startMillis).h;
   const span = Math.max(1, Math.round((band.endMillis - band.startMillis) / MS_PER_HOUR));
   const hours = [];
   for (let i = 0; i < span; i += 1) {
@@ -354,7 +351,7 @@ export function laneTimeSpans(availabilityView, band) {
  * it, "nonWorking" when a schedule governs it and records no working minute, otherwise "working".
  */
 export function dayTimeState(availabilityView, dayStartMillis) {
-  const { working, unconfigured } = partition(availabilityView, dayStartMillis, dayStartMillis + MS_PER_DAY);
+  const { working, unconfigured } = partition(availabilityView, dayStartMillis, addDays(dayStartMillis, 1));
   if (working.length > 0) return "working";
   return unconfigured.length > 0 ? "unconfigured" : "nonWorking";
 }
@@ -368,7 +365,7 @@ export function dayTimeState(availabilityView, dayStartMillis) {
  * WHOLE four-week read, which made every day look nearly empty (G-11).
  */
 export function dayAvailableMinutes(availabilityView, dayStartMillis) {
-  const dayEnd = dayStartMillis + MS_PER_DAY;
+  const dayEnd = addDays(dayStartMillis, 1);
   const { working, unconfigured } = partition(availabilityView, dayStartMillis, dayEnd);
   if (unconfigured.length > 0) return null;
   const blocked = clipSpans(availabilityView.blockedTime ?? [], dayStartMillis, dayEnd);
@@ -384,16 +381,14 @@ export function dayAvailableMinutes(availabilityView, dayStartMillis) {
  */
 export function shiftLabel(availabilityView, band) {
   const dayStart = startOfDayMillis(band.startMillis);
-  const { working } = partition(availabilityView, dayStart, dayStart + MS_PER_DAY);
+  const { working } = partition(availabilityView, dayStart, addDays(dayStart, 1));
   if (working.length === 0) return null;
   return `${clock(working[0].startMillis)}–${clock(working[working.length - 1].endMillis)}`;
 }
 
-/** An instant -> "7a" / "4:30p" in the viewer's local clock. The artifact's lane line reads 7a–4p. */
+/** An instant -> "7a" / "4:30p" on the Board's clock. The artifact's lane line reads 7a–4p. */
 function clock(millis) {
-  const d = new Date(millis);
-  const h = d.getHours();
-  const m = d.getMinutes();
+  const { h, mi: m } = wall(millis);
   const suffix = h < 12 ? "a" : "p";
   const display = h % 12 === 0 ? 12 : h % 12;
   return m ? `${display}:${String(m).padStart(2, "0")}${suffix}` : `${display}${suffix}`;
@@ -438,7 +433,7 @@ export function bucketBlockedByDay(availabilityView, days) {
     let cursor = startOfDayMillis(b.startMillis);
     while (cursor < b.endMillis) {
       if (buckets.has(cursor)) buckets.get(cursor).push(b);
-      cursor += MS_PER_DAY;
+      cursor = addDays(cursor, 1);
     }
   }
   return buckets;
@@ -462,7 +457,7 @@ export function weekDays(anchorMillis, nowMillis) {
  */
 export function fortnightDays(anchorMillis, nowMillis, occupiedDayStarts = new Set()) {
   const first = weekDays(anchorMillis, nowMillis);
-  const second = weekDays(startOfWeekMillis(anchorMillis) + 7 * MS_PER_DAY + MS_PER_HOUR, nowMillis);
+  const second = weekDays(addDays(startOfWeekMillis(anchorMillis), 7), nowMillis);
   return [...first, ...second].filter((d) => !d.isWeekend || occupiedDayStarts.has(d.dateMillis));
 }
 
@@ -476,7 +471,7 @@ export function occupiedDays(workOrders, availabilityViews = []) {
   for (const view of availabilityViews) {
     for (const b of view?.blockedTime ?? []) {
       let cursor = startOfDayMillis(b.startMillis);
-      while (cursor < b.endMillis) { days.add(cursor); cursor += MS_PER_DAY; }
+      while (cursor < b.endMillis) { days.add(cursor); cursor = addDays(cursor, 1); }
     }
   }
   return days;
@@ -488,7 +483,7 @@ export function occupiedDays(workOrders, availabilityViews = []) {
  * divide by that day's available minutes only.
  */
 export function dayLoadCapacity(availabilityView, placedWorkOrders, dayStartMillis) {
-  const day = { startMillis: dayStartMillis, endMillis: dayStartMillis + MS_PER_DAY };
+  const day = { startMillis: dayStartMillis, endMillis: addDays(dayStartMillis, 1) };
   return laneCapacity({ availableMinutes: dayAvailableMinutes(availabilityView, dayStartMillis) }, placedWorkOrders, day);
 }
 

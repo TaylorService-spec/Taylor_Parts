@@ -4,7 +4,7 @@
 
 const pad = (n) => String(n).padStart(2, "0");
 
-function parts(ms, timeZone) {
+export function zonedParts(ms, timeZone) {
   const f = new Intl.DateTimeFormat("en-US", {
     timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
@@ -14,14 +14,14 @@ function parts(ms, timeZone) {
 
 /** The zone's offset from UTC at `ms`, in milliseconds (positive east of Greenwich). */
 function offsetAt(ms, timeZone) {
-  const p = parts(ms, timeZone);
+  const p = zonedParts(ms, timeZone);
   return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000;
 }
 
 /** epoch millis -> "YYYY-MM-DDTHH:mm" as the wall clock reads in `timeZone`. "" for null. */
 export function toZonedInput(ms, timeZone) {
   if (ms == null || !Number.isFinite(ms)) return "";
-  const p = parts(ms, timeZone);
+  const p = zonedParts(ms, timeZone);
   return `${p.y}-${pad(p.mo)}-${pad(p.d)}T${pad(p.h)}:${pad(p.mi)}`;
 }
 
@@ -34,6 +34,12 @@ export function fromZonedInput(value, timeZone) {
   let guess = asUtc - offsetAt(asUtc, timeZone);
   guess = asUtc - offsetAt(guess, timeZone);
   return Number.isFinite(guess) ? guess : null;
+}
+
+/** A wall clock in `timeZone` -> epoch millis. Fields may overflow (day 32, hour 24) and are normalized first. */
+export function zonedWallToMillis(y, mo, d, h, mi, timeZone) {
+  const n = new Date(Date.UTC(y, mo - 1, d, h, mi));
+  return fromZonedInput(`${n.getUTCFullYear()}-${pad(n.getUTCMonth() + 1)}-${pad(n.getUTCDate())}T${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}`, timeZone);
 }
 
 /** "Oct 17, 9:30 AM" in `timeZone`, for sentences. */

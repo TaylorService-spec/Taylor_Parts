@@ -38,6 +38,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:no production change, Firebase deploy, undeploy or authentication cutover; no merge without exact-head Owner authorization
 - Lifecycle stage:     SANDBOX BUILD
 
+- Capability:          Dispatcher Board: governed-zone grid + capability-gated placement controls (Owner "CONTINUE AND RECONCILE TRACKER" item 8, 2026-10-16, DECISIONS #240)
+- Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `fix/board-zoned-grid-capability-controls` · `D:/eos-dispatch-fix`
+- Base commit:         `6a677c42`
+- Owned paths:         `domain/boardClock.js` · `domain/{dispatchBoardGeometry,dispatchBoardUrlState,schedulingWorkspace,zonedTime}.js` (clock routing only) · `modules/dispatcherBoard/{DispatcherBoard,DispatchViews,DispatchLaneGrid,ReadyToScheduleQueue}.jsx` · `functions/src/eosOps/companyAuthority.ts` (readMyCompanyAuthority businessTimeZone) · their tests
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` · `test/suites.json` · `.github/workflows/dispatch-north-star-tests.yml` · `functions/test/rentalPostgres.test.mjs` (one assertion)
+- Dependencies:        none blocking; #2110 owns the tenant-wide availability-read follow-up
+- Expected outcome:    grid in the company's zone; Schedule controls only for schedule-capability holders
+- Protected boundaries:standing delivery authority (green exact-head CI + Lane D); no grant, role, identity, Firebase or production change
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Jobs + Dispatcher Board on one governed scheduling path; Schedule dialog defaults to a valid future time (Owner "FIX JOBS AND DISPATCH" 2026-10-16, DECISIONS #239)
 - Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
 - Branch / worktree:   `fix/jobs-dispatch-and-schedule-default` · `D:/eos-dispatch-fix`

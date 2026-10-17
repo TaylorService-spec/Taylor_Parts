@@ -28,6 +28,10 @@ on:
       - "field-ops-app-vite/src/modules/dispatch/**"
       - "field-ops-app-vite/src/domain/jobsDispatchList.js"
       - "field-ops-app-vite/src/domain/zonedTime.js"
+      - "field-ops-app-vite/src/domain/boardClock.js"
+      - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
+      - "field-ops-app-vite/src/domain/dispatchBoardUrlState.js"
+      - "field-ops-app-vite/test/boardClock.test.mjs"
       - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
       - "field-ops-app-vite/src/services/workOrderService.ts"
       - "field-ops-app-vite/test/jobsDispatchFlow.test.jsx"
@@ -53,6 +57,10 @@ on:
       - "field-ops-app-vite/src/modules/dispatch/**"
       - "field-ops-app-vite/src/domain/jobsDispatchList.js"
       - "field-ops-app-vite/src/domain/zonedTime.js"
+      - "field-ops-app-vite/src/domain/boardClock.js"
+      - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
+      - "field-ops-app-vite/src/domain/dispatchBoardUrlState.js"
+      - "field-ops-app-vite/test/boardClock.test.mjs"
       - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
       - "field-ops-app-vite/src/services/workOrderService.ts"
       - "field-ops-app-vite/test/jobsDispatchFlow.test.jsx"
@@ -121,7 +129,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Jobs grouping and governed-time-zone conversion (node:test)
-        run: node --test test/jobsDispatchList.test.mjs test/zonedTime.test.mjs
+        run: node --test test/jobsDispatchList.test.mjs test/zonedTime.test.mjs test/boardClock.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Lint the touched surfaces (oxlint)
@@ -131,6 +139,7 @@ jobs:
           src/modules/dispatch
           src/domain/jobsDispatchList.js
           src/domain/zonedTime.js
+          src/domain/boardClock.js
           src/domain/dispatchBoardGeometry.js
           src/domain/schedulingRefusal.js
           src/hooks/useTechnicianAvailability.js
