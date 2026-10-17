@@ -13,6 +13,7 @@
 //     when truncated, with the end of the bound reported as "more exist" and never passed off as the end.
 // Pages are cut client-side from the one bounded read; the cursor is an offset into it.
 import { listWorkOrders } from "../services/workOrderService";
+import { COMPANY_AUTHORITY_MESSAGE, COMPANY_AUTHORITY_REQUIRED } from "../domain/workOrderOutcome.js";
 
 export const WORK_ORDER_LIST_READ_BOUND = 200;
 
@@ -71,9 +72,12 @@ export async function fetchPage(descriptor, { cursorDoc = null } = {}, list = li
     res = await list(input);
   } catch (err) {
     const code = err?.code;
+    const reason = typeof err?.reason === "string" ? err.reason : null;
     throw Object.assign(new Error(err?.message ?? "the Work Order list could not be read"), {
       code: code === "FORBIDDEN" || code === "UNAUTHENTICATED" || code === "NOT_SIGNED_IN" ? "permission-denied" : "unavailable",
-      reason: code ?? null,
+      reason: reason ?? code ?? null,
+      // A refusal with a remedy is said in words (useMetadataList threads `detail` into the list's state message).
+      ...(reason === COMPANY_AUTHORITY_REQUIRED ? { detail: COMPANY_AUTHORITY_MESSAGE } : {}),
     });
   }
   const serverOrder = isServerOrder(descriptor?.sort);

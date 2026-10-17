@@ -118,6 +118,7 @@ export const manufacturerEntity = makeEntityDefinition({
       entityId: "manufacturer",
       label: "Name",
       type: "STRING",
+      searchable: true,
       sortable: true,
       description: "Required, non-blank on every governed record. The nameField half of identity; no reference number exists anywhere in this schema.",
     }),

@@ -24,6 +24,9 @@ import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARA
 import { WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION } from "./workOrderAssignmentAuthority";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
+import { resolveCompanyAuthority } from "./companyAuthority";
+import { ListQueryError, appliedListQuery, compileListQuery, describeListQuery, pageOfListQuery, validateListQuery } from "./listQuery";
+import { workOrderListFieldsFor } from "./workOrderListQuery";
 
 const SCHEMA = "eos_ops";
 export const WORK_ORDER_LIST_MAX = 200;
@@ -89,20 +92,23 @@ export interface WorkOrderSummary {
 
 const iso = (v: unknown): string | null => (v === null || v === undefined ? null : new Date(v as string).toISOString());
 
-const SUMMARY_SELECT = `
-  SELECT w.id, w.work_order_number, w.status::text AS status, w.work_order_type::text AS work_order_type, w.priority,
+const SUMMARY_COLUMNS = `
+         w.id, w.work_order_number, w.status::text AS status, w.work_order_type::text AS work_order_type, w.priority,
          w.severity::text AS severity, w.operating_company_key, w.customer_id, acct.name AS customer_name, w.location_id,
          loc.name AS location_name, w.equipment_id, w.sales_order_id, w.scheduled_start, w.scheduled_end,
          a.assignee_employee_id, e.preferred_name AS assignee_preferred_name, e.display_name AS assignee_display_name, e.first_name AS assignee_first_name,
          e.last_name AS assignee_last_name, w.complaint, w.provenance::text AS provenance, w.created_at, w.updated_at,
          w.dispatched_at, w.accepted_at, w.en_route_at, w.arrived_at, w.work_started_at, w.completed_at, w.closed_at,
-         w.diagnosis, w.resolution, w.estimated_duration_minutes
+         w.diagnosis, w.resolution, w.estimated_duration_minutes`;
+// The aliases here (w, a, e, acct, loc) are the ones workOrderListQuery.ts binds its expressions to.
+const SUMMARY_FROM = `
     FROM ${SCHEMA}.work_orders w
     LEFT JOIN ${SCHEMA}.work_order_assignments a
       ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
     LEFT JOIN eos_workforce.employees e ON e.tenant_id = a.tenant_id AND e.id = a.assignee_employee_id
     LEFT JOIN eos_crm.accounts acct ON acct.tenant_id = w.tenant_id AND acct.id = w.customer_id
     LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = w.tenant_id AND loc.id = w.location_id`;
+const SUMMARY_SELECT = `SELECT ${SUMMARY_COLUMNS}${SUMMARY_FROM}`;
 
 function summaryOf(r: Record<string, unknown>): WorkOrderSummary {
   const assigneeName = personName({ preferred_name: r.assignee_preferred_name, display_name: r.assignee_display_name,
@@ -186,21 +192,51 @@ export async function readWorkOrderDetail(
   });
 }
 
+const requireListRead = (actor: LifecycleActor): void => {
+  if (!(actor?.capabilities instanceof Set) || !actor.capabilities.has(WORK_ORDER_RECORD_READ)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `the Work Order list requires ${WORK_ORDER_RECORD_READ}`);
+  }
+};
+
 /**
- * The office list: filter by status, scheduled window, assignee, customer, Equipment, a planned Part, or a search
- * over the Work Order number and customer name. Requires workOrder.record.read held UNCONDITIONALLY (the
- * transport passes the flat set with conditioned keys withheld). Bounded: at most WORK_ORDER_LIST_MAX rows, and
- * `truncated` says when there were more -- never a silent partial list.
+ * EOS CORE COMPANY AUTHORITY (DECISIONS #235; Owner ND-4, 2026-10-15): the office list shows only Work Orders of the
+ * operating companies the caller is authorized for -- the linked Employee's home company plus operatingCompany-scoped
+ * assignments. No authority = no list, refused exactly as Analysis refuses it.
+ */
+async function listCompanyKeys(pool: Pool, actor: LifecycleActor): Promise<readonly string[]> {
+  const authority = await resolveCompanyAuthority(pool, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) {
+    refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
+  }
+  return authority.companyKeys;
+}
+
+const asListInput = (err: unknown): never => {
+  if (err instanceof ListQueryError) refuse(err.code, "INVALID_INPUT", err.message);
+  throw err;
+};
+
+/**
+ * The office list. Two input shapes:
+ *   * `{ query }` -- the governed list query (docs/architecture/object-filter-sort-standard.md): any eligible field's
+ *     filter, a sort with NULLs last both ways, search, and KEYSET pages -- filtered and ordered in SQL before the page
+ *     is cut, never over loaded rows. Returns `hasMore` + `nextCursor`; no counts.
+ *   * the LEGACY filters (status, scheduled window, assignee, customer, Equipment, a planned Part, a search over the
+ *     number and customer name) -- unchanged, one bounded read, `truncated` when there were more.
+ * Both require workOrder.record.read held UNCONDITIONALLY (the transport passes the flat set with conditioned keys
+ * withheld) and both are scoped to the caller's EOS Core company authority.
  */
 export async function listWorkOrders(
   deps: { readonly pool: Pool },
   actor: LifecycleActor,
   input: unknown,
 ): Promise<{ readonly items: readonly WorkOrderSummary[]; readonly truncated: boolean }> {
-  if (!(actor?.capabilities instanceof Set) || !actor.capabilities.has(WORK_ORDER_RECORD_READ)) {
-    refuse("CAPABILITY_MISSING", "FORBIDDEN", `the Work Order list requires ${WORK_ORDER_RECORD_READ}`);
-  }
+  requireListRead(actor);
   const i = (input ?? {}) as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(i, "query")) {
+    if (Object.keys(i).length > 1) refuse("INPUT_FIELD_NOT_ACCEPTED", "INVALID_INPUT", "query cannot be combined with the legacy filters");
+    return listWorkOrdersByQuery(deps, actor, i.query);
+  }
   const extra = Object.keys(i).filter((k) => !["statuses", "scheduledFrom", "scheduledTo", "assigneeEmployeeId", "customerId",
     "equipmentId", "plannedPartId", "search", "limit"].includes(k));
   if (extra.length > 0) refuse("INPUT_FIELD_NOT_ACCEPTED", "INVALID_INPUT", `this read does not accept: ${extra.sort().join(", ")}`);
@@ -234,9 +270,10 @@ export async function listWorkOrders(
   }
   const limit = i.limit === undefined ? 100 : Number(i.limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > WORK_ORDER_LIST_MAX) refuse("LIMIT_INVALID", "INVALID_INPUT", `limit is 1..${WORK_ORDER_LIST_MAX}`);
+  const companyKeys = await listCompanyKeys(deps.pool, actor);
   const { rows } = await deps.pool.query(
     `${SUMMARY_SELECT}
-      WHERE w.tenant_id = $1 AND ${notQuarantined("w")}
+      WHERE w.tenant_id = $1 AND ${notQuarantined("w")} AND w.operating_company_key = ANY($10::text[])
         AND ($2::text[] IS NULL OR w.status::text = ANY($2::text[]))
         AND ($3::timestamptz IS NULL OR w.scheduled_end > $3)
         AND ($4::timestamptz IS NULL OR w.scheduled_start < $4)
@@ -248,8 +285,47 @@ export async function listWorkOrders(
         AND ($9::text IS NULL OR w.work_order_number ILIKE $9 OR acct.name ILIKE $9)
       ORDER BY w.scheduled_start NULLS LAST, w.priority, w.created_at DESC, w.id
       LIMIT ${limit + 1}`,
-    [actor.tenantId, statuses, from, to, assignee, customerId, equipmentId, plannedPartId, search]);
+    [actor.tenantId, statuses, from, to, assignee, customerId, equipmentId, plannedPartId, search, companyKeys]);
   return Object.freeze({ items: Object.freeze(rows.slice(0, limit).map(summaryOf)), truncated: rows.length > limit });
+}
+
+export interface WorkOrderListPage {
+  readonly items: readonly WorkOrderSummary[];
+  /** = hasMore; kept so every consumer of the legacy shape reads the same flag. */
+  readonly truncated: boolean;
+  readonly hasMore: boolean;
+  readonly nextCursor: string | null;
+  readonly applied: ReturnType<typeof appliedListQuery>;
+}
+
+/** The governed list query path of listWorkOrders. Order: capability (caller), company authority, validation, one SQL read. */
+async function listWorkOrdersByQuery(deps: { readonly pool: Pool }, actor: LifecycleActor, raw: unknown): Promise<WorkOrderListPage> {
+  const companyKeys = await listCompanyKeys(deps.pool, actor);
+  const eff = workOrderListFieldsFor(actor.capabilities, companyKeys);
+  let q;
+  try { q = validateListQuery(raw, eff, companyKeys); } catch (err) { asListInput(err); }
+  const params: unknown[] = [actor.tenantId, companyKeys];
+  const c = compileListQuery(eff, q!, params);
+  const { rows } = await deps.pool.query(
+    `SELECT ${SUMMARY_COLUMNS}${c.selectKeys}${SUMMARY_FROM}
+      WHERE w.tenant_id = $1 AND ${notQuarantined("w")} AND w.operating_company_key = ANY($2::text[])
+        ${c.predicates.map((p) => `AND ${p}`).join("\n        ")}
+      ORDER BY ${c.orderBy}
+      LIMIT ${c.limit + 1}`,
+    params);
+  const page = pageOfListQuery(eff, q!, c, rows);
+  return Object.freeze({ items: Object.freeze(page.rows.map(summaryOf)), truncated: page.hasMore, hasMore: page.hasMore,
+    nextCursor: page.nextCursor, applied: appliedListQuery(q!) });
+}
+
+/** The caller's effective filter / sort / search eligibility for the office list -- what the field selector offers. */
+export async function describeWorkOrderListQuery(deps: { readonly pool: Pool }, actor: LifecycleActor, input: unknown) {
+  requireListRead(actor);
+  if (input !== undefined && input !== null && (typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 0)) {
+    refuse("INPUT_FIELD_NOT_ACCEPTED", "INVALID_INPUT", "this read accepts no input");
+  }
+  const companyKeys = await listCompanyKeys(deps.pool, actor);
+  return describeListQuery(workOrderListFieldsFor(actor.capabilities, companyKeys));
 }
 
 /**

@@ -69,6 +69,28 @@ export const DROP_TEXT = Object.freeze({
 
 const PARAM = Object.freeze({ FILTER: "f", SORT: "sort", SEARCH: "q", VIEW: "view" });
 
+// Operators whose value is a LIST ("is any of"). Each member is percent-encoded on its own and the members are joined by
+// a literal comma, so a member containing a comma survives and the list comes back as a list. It used to be written as
+// one `String(array)`, which read back as the single string "A,B" -- every "Open work" link and status-group chip lost
+// its filter on reload or share.
+const LIST_VALUED = new Set(["IN", "NOT_IN", "ARRAY_CONTAINS_ANY"]);
+
+const encodeFilterValue = (c) => {
+  if (Array.isArray(c.value)) return c.value.map((v) => encodeURIComponent(String(v))).join(",");
+  return encodeURIComponent(c.value === null || c.value === undefined ? "" : String(c.value));
+};
+
+/** Throws URIError on a malformed escape, which the caller reports as MALFORMED. */
+const decodeFilterValue = (operator, encoded) => {
+  if (!LIST_VALUED.has(operator)) return decodeURIComponent(encoded);
+  let members = encoded.split(",").map((m) => decodeURIComponent(m));
+  // A link written by the old encoder carries the whole list as ONE escaped member ("A%2CB"). Governed list members are
+  // enum machine values and ids, which never contain a comma, so splitting it is the faithful reading.
+  if (members.length === 1 && members[0].includes(",")) members = members[0].split(",");
+  members = members.filter((m) => m !== "");
+  return members.length === 0 ? "" : members;
+};
+
 /** Empty criteria. Frozen and shared — a list with no criteria is always the same thing. */
 export const EMPTY_CRITERIA = Object.freeze({
   filters: Object.freeze([]),
@@ -100,8 +122,7 @@ export function toSearchParams(criteria, existing = null) {
   for (const key of Object.values(PARAM)) params.delete(key);
 
   for (const c of criteria?.filters ?? []) {
-    const value = c.value === null || c.value === undefined ? "" : String(c.value);
-    params.append(PARAM.FILTER, `${c.fieldId}:${c.operator}:${encodeURIComponent(value)}`);
+    params.append(PARAM.FILTER, `${c.fieldId}:${c.operator}:${encodeFilterValue(c)}`);
   }
   for (const s of criteria?.sort ?? []) {
     params.append(PARAM.SORT, `${s.fieldId}:${s.direction === "DESC" ? "DESC" : "ASC"}`);
@@ -162,7 +183,7 @@ export function fromSearchParams(search, def, entity, { hasCapability = null } =
     const operator = raw.slice(first + 1, second);
     let value;
     try {
-      value = decodeURIComponent(raw.slice(second + 1));
+      value = decodeFilterValue(operator, raw.slice(second + 1));
     } catch {
       drop("filter", fieldId, findField(entity, fieldId), DROP_REASON.MALFORMED);
       continue;
@@ -275,7 +296,9 @@ export function describeCriterion(criterion, entity, valueOptions = null) {
   const label = field?.label ?? criterion?.fieldId;
   const fromOptions = (valueOptions?.[criterion?.fieldId] ?? [])
     .find((o) => String(o.value) === String(criterion?.value))?.label;
-  const fromEnum = field?.enumLabels?.[criterion?.value];
+  const fromEnum = Array.isArray(criterion?.value)
+    ? criterion.value.map((v) => field?.enumLabels?.[v] ?? v).join(", ")
+    : field?.enumLabels?.[criterion?.value];
   // Order of preference: the label captured when it was picked, the picker's current label, the
   // enum's own label, then the raw value — which for a free-text filter IS what the person typed.
   return `${label}: ${criterion?.valueLabel ?? fromOptions ?? fromEnum ?? criterion?.value ?? ""}`;
