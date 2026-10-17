@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { scanJourneyRole, useSessionAccess } from "../../access/sessionAccess.js";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { useMyTrucks } from "../../hooks/useMyTrucks";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
@@ -50,7 +51,8 @@ import { titleCase } from "../../shared/display/displayLabels.js";
 const STATE = { IDLE: "IDLE", SCANNING: "SCANNING", RESOLVING: "RESOLVING", DONE: "DONE" };
 
 export default function PartsScanner({ workOrderId = null, offline: offlineProp = null }) {
-  const { role } = useAuth();
+  // FIREBASE EXIT F1 (G7): where EOS is the session source the technician journey is the work-execution capability, not a role.
+  const role = scanJourneyRole(useSessionAccess(), useAuth().role);
   // Provided by the technician shell when the scanner is opened inside it. Null when the scanner is
   // reached from the shared Scan workspace at desktop widths, where the online path is the right one.
   const provided = useProvidedOfflineRuntime();

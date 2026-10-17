@@ -147,3 +147,13 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 - **Decision (DECISIONS #243):** the read is never wider than the Account read, and the current holders (admin, owner, crmActivityContributor) are mirrored.
 - **Existing Firestore activities are NOT copied.** The census and copy tools (`scripts/exportCrmActivitySnapshot.js`, `scripts/crmActivityCopy.js`) are prepared; the copy runs only on the Owner's go-ahead.
 - **The server callables** stay deployed until an operator undeploy, which is reserved.
+
+## F1: the session and capability feed move to EOS where an EOS API is declared (2026-10-17, exit baseline 242 → 240)
+
+| Removed | Replaced by |
+| --- | --- |
+| `metadata/definitions/accountPageComponents.js`: its own copy of the `users/{uid}.accessVersion` snapshot and the `resolveEffectiveAccessCallable` client (a Firestore client entry and a Functions client entry) | `useFirebaseEffectiveAccess` in `access/useReportCapabilities.js`, shared with the shell (one implementation of the version/feed state machine); where an EOS API is declared the Account page reads the shell's EOS capability set instead |
+
+- **Decision (DECISIONS #244):** the session's identity, capabilities and technician link come from EOS where `config/environments.json` declares an `eosApi`, and from Firebase everywhere else, chosen at build time with no fallback. Production behaviour is unchanged.
+- **Still in the baseline, deliberately:** `auth/employeeSession.js`, `access/useReportCapabilities.js` and `hooks/useCurrentTechnician.js` are the Firebase path of the environments without an EOS API. They leave when those environments do.
+- **The server callable `resolveEffectiveAccessCallable` is not removed** (production uses it; removal needs a GATED equivalence record).

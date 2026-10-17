@@ -7,6 +7,7 @@ import { useSessionActivityFeed } from "../../hooks/useSessionActivityFeed";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
+import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { suggestWorkOrderPlacement } from "../../services/workOrderService";
 import { callWorkspaceApi } from "../../services/workspaceApiClient";
@@ -92,6 +93,12 @@ const DISPATCH_CAPABILITY = "workOrder.lifecycle.dispatch";
 
 export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {}) {
   const { role } = useAuth();
+  // FIREBASE EXIT F1: where EOS is the session source `role` is null, and whether the board renders is the caller's Work Order
+  // dispatch/schedule capability (the same server rule its controls use). The transition table is a status machine; its role
+  // argument only selects the office-action column, so under EOS it is asked as the office ("dispatcher") and each control
+  // is still gated by its own capability below.
+  const access = useSessionAccess();
+  const transitionRole = access.eosSource ? "dispatcher" : role;
   // WHAT IS OFFERED follows the caller's governed capabilities (readMyWorkOrderCapabilities), failing closed while
   // unknown -- the same rule the Jobs page uses (DECISIONS #239). The server still re-checks every command.
   const caps = useMyWorkOrderCapabilities();
@@ -452,7 +459,7 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
     // Only from SCHEDULED, and the client mirror of ACTION_ALLOWED_FROM is what says so. From
     // DISPATCHED onward there is no reverse command — ND-3 still holds past that point, exactly as
     // the artifact's board rules say, and the board must not offer one.
-    if (!getAllowedActions(workOrder.status, role, false).includes("Unschedule")) {
+    if (!getAllowedActions(workOrder.status, transitionRole, false).includes("Unschedule")) {
       setBoardMessage({
         tone: "error",
         text: `${workOrder.woNumber} cannot be returned to the queue — it is ${statusWords(workOrder.status)}.`,
@@ -460,7 +467,7 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
       return;
     }
     setPendingPlacement({ intent: PLACEMENT_INTENT.UNSCHEDULE, workOrder, technicianId: null });
-  }, [dragging, role, setBoardMessage]);
+  }, [dragging, transitionRole, setBoardMessage]);
 
   const confirmPlacement = useCallback(
     async (payload) => {
@@ -500,7 +507,7 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
 
   // ---- honest states (artifact 1c) -----------------------------------------------------------
 
-  if (role !== "admin" && role !== "dispatcher") {
+  if (!sessionDecision(access, SESSION_GATE_KEYS.dispatchBoard, role === "admin" || role === "dispatcher")) {
     return (
       <div className="ns-page">
         <p className="ns-dispatch-denied">The Dispatch Board is not available to you.</p>

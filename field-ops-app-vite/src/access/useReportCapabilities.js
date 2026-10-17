@@ -29,6 +29,10 @@ import {
   SIGNED_OUT_VERSION, IDLE_FEED, isValidObservedVersion, interpretAccessResult, buildHasCapability,
   isAccessResolving,
 } from "./reportCapabilityAccess.js";
+// FIREBASE EXIT F1 (DECISIONS #244): where an EOS API is declared the same answers come from the caller's own EOS
+// capability set (access/useEosCapabilityFeed.js) and the Firebase pair below is not consulted at all.
+import { EOS_SESSION_SOURCE } from "./eosSessionSource.js";
+import { useEosReportCapabilities } from "./useEosCapabilityFeed.js";
 
 const RESOLVE_EFFECTIVE_ACCESS_CALLABLE = "resolveEffectiveAccessCallable";
 
@@ -46,8 +50,12 @@ function defaultCallFeed(permissionIds) {
   return httpsCallable(functions, RESOLVE_EFFECTIVE_ACCESS_CALLABLE)({ permissionIds });
 }
 
-export function useReportCapabilities(user, deps = {}) {
-  const uid = user?.uid ?? null;
+// THE FIREBASE FEED, for any request set. useReportCapabilities (below) asks it for the shell's gates; the Account record
+// page asks it for its own four (metadata/definitions/accountPageComponents.js) -- one implementation of the version/feed
+// state machine, so the two cannot drift. `deps.enabled === false` makes it inert (no subscription, no callable): that is
+// how an environment whose source is EOS keeps these hooks mounted without touching Firebase.
+export function useFirebaseEffectiveAccess(user, deps, permissionIds) {
+  const uid = deps.enabled === false ? null : (user?.uid ?? null);
   const subscribeAccessVersion = deps.subscribeAccessVersion ?? defaultSubscribeAccessVersion;
   const callFeed = deps.callFeed ?? defaultCallFeed;
 
@@ -81,7 +89,7 @@ export function useReportCapabilities(user, deps = {}) {
     setFeed({ status: FEED_STATUS.LOADING, forUid: uid, forVersion: targetVersion, decisions: null });
 
     Promise.resolve()
-      .then(() => callFeed(REPORT_CAPABILITY_REQUEST))
+      .then(() => callFeed(permissionIds))
       .then((res) => {
         if (cancelled) return; // superseded by a newer version/principal -> discard this late response
         const interpreted = interpretAccessResult(res?.data);
@@ -95,7 +103,7 @@ export function useReportCapabilities(user, deps = {}) {
       });
 
     return () => { cancelled = true; };
-  }, [uid, version.status, version.uid, version.version, callFeed]);
+  }, [uid, version.status, version.uid, version.version, callFeed, permissionIds]);
 
   const hasCapability = buildHasCapability({ version, feed }, uid);
   // `accessVersion` is the current observed version (null unless ready); a consumer keys on it to
@@ -105,5 +113,18 @@ export function useReportCapabilities(user, deps = {}) {
   // distinction: an absent capability-gated route falls through to a catch-all REDIRECT, which
   // destroys the requested URL before the decision arrives. See isAccessResolving()'s note.
   const accessResolving = isAccessResolving({ version, feed }, uid);
-  return { hasCapability, accessVersion, accessResolving, versionStatus: version.status, feedStatus: feed.status };
+  // `version` / `feed` are state objects (stable until they change): a caller that memoises on the decisions can key on them.
+  return { hasCapability, accessVersion, accessResolving, versionStatus: version.status, feedStatus: feed.status, version, feed };
+}
+
+/**
+ * The shell's capability answers: the Firebase feed where Firebase is the source, the caller's EOS capability set where an
+ * EOS API is declared (EOS_SESSION_SOURCE). `deps.eosSource` lets a test choose the branch; production never sets it. Both
+ * hooks are always called so the rules of hooks hold; the one that is not the source is inert and makes no request.
+ */
+export function useReportCapabilities(user, deps = {}) {
+  const eos = (deps.eosSource ?? EOS_SESSION_SOURCE) === true;
+  const firebase = useFirebaseEffectiveAccess(user, { ...deps, enabled: !eos }, REPORT_CAPABILITY_REQUEST);
+  const eosAnswer = useEosReportCapabilities(eos ? user : null, deps);
+  return eos ? eosAnswer : firebase;
 }

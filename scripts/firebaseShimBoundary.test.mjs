@@ -320,7 +320,10 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // together (19 -> 18).
   // Firebase exit F7a (2026-10-17): services/returnCommandClient.js now calls EOS, leaving the shim AND the fenced dependency
   // together (18 -> 17).
-  assert.equal(live.observed.alreadyFencedConsumers, 17,
+  // Firebase exit F1 (2026-10-17): metadata/definitions/accountPageComponents.js shares the shell feed's one Firebase
+  // implementation (access/useReportCapabilities.js) instead of carrying its own copy, leaving the shim AND the fenced
+  // dependency together (17 -> 16).
+  assert.equal(live.observed.alreadyFencedConsumers, 16,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

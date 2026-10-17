@@ -46,6 +46,7 @@ field-ops-app-vite/src/modules/financials/FinancialsWorkspace.jsx
 field-ops-app-vite/src/modules/financials/SettlementCorrections.jsx
 field-ops-app-vite/src/services/financeApiClient.js
 functions/test/adminPolicyAuthorization.test.mjs
+functions/test/dataImportStageMappingParity.test.mjs
 functions/test/adminPolicyWorkflow.test.mjs
 functions/test/adminPolicyNoFirebase.test.mjs
 functions/test/adminPolicyPostgres.test.mjs

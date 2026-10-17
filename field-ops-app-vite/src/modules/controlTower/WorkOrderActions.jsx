@@ -1,6 +1,7 @@
 import Autocomplete, { searchLoaded } from "../../shared/ui/Autocomplete.jsx";
 import { useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
+import { WORK_ORDER_ACTION_CAPABILITY, useSessionAccess } from "../../access/sessionAccess.js";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
@@ -109,7 +110,13 @@ export default function WorkOrderActions({ workOrder, role, showStatus = true, e
   const reassigning = Boolean(currentAssignee) && Boolean(selectedTechId) && selectedTechId !== currentAssignee;
 
   const isOwnAssignment = false; // dispatcher-only view -- see header comment
-  const allowedActions = getAllowedActions(workOrder.status, role, isOwnAssignment);
+  // FIREBASE EXIT F1 (G4): where EOS is the session source `role` is null. The transition table still says which actions
+  // are LEGAL from this status; each is then offered only if the caller holds the EOS capability the command enforces
+  // (WORK_ORDER_ACTION_CAPABILITY). Where Firebase is the source this is exactly the role-based answer it always was.
+  const access = useSessionAccess();
+  const allowedActions = access.eosSource
+    ? getAllowedActions(workOrder.status, "dispatcher", isOwnAssignment).filter((action) => access.holds(WORK_ORDER_ACTION_CAPABILITY[action]) === true)
+    : getAllowedActions(workOrder.status, role, isOwnAssignment);
   // Presentation only: keep the canonical resolver's result, but render the
   // non-destructive actions first and the destructive Cancel visually separated.
   const { primary: primaryActions, cancelAllowed, emphasized: emphasizedAction } =

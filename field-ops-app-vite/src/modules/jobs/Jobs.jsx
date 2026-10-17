@@ -6,6 +6,7 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import Button from "../../shared/ui/primitives/Button.jsx";
 import { useAuth } from "../../auth/AuthContext";
+import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
 import { useWorkOrderTechnicianDirectory } from "../../hooks/useWorkOrderTechnicianDirectory.js";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { classifyWorkOrderOutcome, WORK_ORDER_OUTCOME, COMPANY_AUTHORITY_REQUIRED } from "../../domain/workOrderOutcome.js";
@@ -75,9 +76,14 @@ export default function Jobs() {
   // fallback). Without this, a technician (who reaches this page via the "jobs"
   // legacyKey in ROLE_NAV_ACCESS) sees a live-looking primary action that matches
   // no mounted route and silently bounces them to /dashboard via the catch-all.
-  const canCreateWorkOrder = previewHasPermission("workOrder.create", role, {
-    fallback: role === "admin" || role === "dispatcher",
-  });
+  // FIREBASE EXIT F1: where EOS is the session source the button follows the EOS capability the create command enforces.
+  const canCreateWorkOrder = sessionDecision(
+    useSessionAccess(),
+    SESSION_GATE_KEYS.workOrderCreate,
+    previewHasPermission("workOrder.create", role, {
+      fallback: role === "admin" || role === "dispatcher",
+    }),
+  );
 
   // "Nobody is assigned" and "assigned to someone we cannot name" are different facts, and an
   // em dash for both would hide the second one entirely.

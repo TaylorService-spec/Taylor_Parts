@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
 import { OPERATIONAL_ROLE, ROLES } from "../../domain/constants";
 import { Button } from "../ui/primitives/index.js";
 
@@ -39,6 +40,7 @@ import { Button } from "../ui/primitives/index.js";
 // warehouse regardless of what this renders.
 export default function RequestReorderControl({ recommendation, onSubmit, submitting, alreadyRequested, warehouseId }) {
   const { role, operationalRoles } = useAuth();
+  const access = useSessionAccess();
   const [manualQty, setManualQty] = useState("");
 
   if (alreadyRequested) {
@@ -62,10 +64,15 @@ export default function RequestReorderControl({ recommendation, onSubmit, submit
     );
   }
 
-  const isEligible =
+  // FIREBASE EXIT F1 (G6): where EOS is the session source there is no legacy role and no operationalRoles list; the offer
+  // follows reorder.request.create.manual, the capability the manual Reorder command enforces.
+  const isEligible = sessionDecision(
+    access,
+    SESSION_GATE_KEYS.reorderManual,
     role === ROLES.ADMIN ||
     operationalRoles.includes(OPERATIONAL_ROLE.PARTS_MANAGER) ||
-    operationalRoles.includes(OPERATIONAL_ROLE.WAREHOUSE_MANAGER);
+    operationalRoles.includes(OPERATIONAL_ROLE.WAREHOUSE_MANAGER),
+  );
 
   if (!isEligible) {
     return <span className="fo-muted">Requires Parts Manager or Warehouse Manager</span>;

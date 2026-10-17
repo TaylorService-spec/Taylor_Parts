@@ -30,8 +30,40 @@ vi.mock("../src/domain/workOrderWorkflow", async (importOriginal) => ({
 }));
 
 import WorkOrderActions from "../src/modules/controlTower/WorkOrderActions.jsx";
+import { SessionAccessContext } from "../src/access/sessionAccess.js";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+// FIREBASE EXIT F1 (DECISIONS #244, gate G4). Where EOS is the session source the legacy `role` is null; the transition table
+// still says what is LEGAL from the status, and each legal action is then offered only if the caller holds the EOS capability
+// the command enforces. The engine is stubbed to three legal actions, so this proves the filter and nothing else.
+describe("G4 -- office actions follow the caller's EOS Work Order capabilities", () => {
+  const eos = (...held) => ({ eosSource: true, settled: true, reload: () => {}, holds: (k) => held.includes(k) });
+  const renderWith = (access, props = {}) => render(
+    <SessionAccessContext.Provider value={access}>
+      <WorkOrderActions workOrder={wo} role={null} technicians={[]} showStatus={false} {...props} />
+    </SessionAccessContext.Provider>,
+  );
+  const labels = (container) => [...container.querySelectorAll(".wo-action-row .fo-button")].map((b) => b.textContent.trim());
+
+  it("offers exactly the legal actions whose capability is held", () => {
+    const { container } = renderWith(eos("workOrder.lifecycle.ready"));
+    expect(labels(container)).toEqual(["Mark Ready"]);
+  });
+
+  it("offers Schedule on the schedule capability, and Cancel on the cancel capability", () => {
+    expect(labels(renderWith(eos("workOrder.lifecycle.schedule", "workOrder.lifecycle.cancel")).container).sort()).toEqual(["Cancel", "Schedule"]);
+  });
+
+  it("holding nothing offers no action, and a legacy role prop grants nothing under EOS", () => {
+    expect(labels(renderWith(eos(), { role: "admin" }).container)).toEqual([]);
+  });
+
+  it("without the provider (Firebase is the source) the legacy role decides, exactly as before", () => {
+    const { container } = render(<WorkOrderActions workOrder={wo} role="admin" technicians={[]} showStatus={false} />);
+    expect(labels(container)).toEqual(expect.arrayContaining(["Mark Ready", "Schedule", "Cancel"]));
+  });
+});
 
 const wo = { id: "wo-1", woNumber: "WO-1", status: "CREATED", scheduledTechId: "t1" };
 

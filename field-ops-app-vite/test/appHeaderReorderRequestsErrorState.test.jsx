@@ -40,6 +40,7 @@ vi.mock("../src/hooks/useReorderRequests", () => ({
   useMyAssignedReorderRequests: vi.fn(() => reorderHooks.assignedTo),
 }));
 
+import { SessionAccessContext } from "../src/access/sessionAccess.js";
 import NotificationControl from "../src/shared/ui/NotificationControl.jsx";
 import NotificationPanel from "../src/shared/ui/NotificationPanel.jsx";
 import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../src/domain/partsAttentionProjection.js";
@@ -89,6 +90,39 @@ describe("NotificationControl -- a failed reorder-request subscription is not sw
     fireEvent.click(button);
     expect(screen.getByText(/no pending reorder requests/i)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+// FIREBASE EXIT F1 (DECISIONS #244, gate G3). Where EOS is the session source the bell follows the EOS SURFACE
+// inventory.reorderQueue (reorder.request.read plus the REORDER_QUEUE scope, or the Administrator's reach) -- never the bare
+// capability, which the server refuses without the scope, and never the legacy role (null under EOS).
+describe("NotificationControl -- G3 under the EOS source follows the inventory.reorderQueue surface", () => {
+  const eos = ({ holds = [], surfaces = [] }) => ({
+    eosSource: true, settled: true, reload: () => {},
+    holds: (k) => holds.includes(k),
+    grantsSurface: (k) => surfaces.includes(k),
+  });
+  const renderWith = (access) =>
+    render(
+      <SessionAccessContext.Provider value={access}>
+        <MemoryRouter><NotificationControl /></MemoryRouter>
+      </SessionAccessContext.Provider>
+    );
+
+  it("a holder of the surface (scope or Administrator reach) gets the bell", () => {
+    renderWith(eos({ holds: ["reorder.request.read"], surfaces: ["inventory.reorderQueue"] }));
+    expect(screen.getByRole("button", { name: "Notifications" })).toBeTruthy();
+  });
+
+  it("a holder of reorder.request.read WITHOUT the REORDER_QUEUE scope gets NO bell", () => {
+    const { container } = renderWith(eos({ holds: ["reorder.request.read"], surfaces: [] }));
+    expect(screen.queryByRole("button", { name: /Notifications/i })).toBeNull();
+    expect(container.textContent).toBe("");
+  });
+
+  it("the legacy role grants nothing under EOS (the mocked previewer says yes, the surface says no)", () => {
+    renderWith(eos({ holds: [], surfaces: [] }));
+    expect(screen.queryByRole("button", { name: /Notifications/i })).toBeNull();
   });
 });
 

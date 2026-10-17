@@ -255,9 +255,7 @@
 // applyVisibility already requires) — this file passes no permissive default and never widens a
 // denial into a grant.
 
-import { createElement, useEffect, useMemo, useState } from "react";
-import { httpsCallable } from "firebase/functions";
-import { doc, onSnapshot } from "firebase/firestore";
+import { createElement, useMemo } from "react";
 import { componentRegistry } from "../registry.js";
 import { declaredPageCapabilities } from "../pageRuntime.js";
 import { buildListPresentation } from "../listPresentation.js";
@@ -267,17 +265,13 @@ import { opportunityEntity, opportunityRelatedList } from "./opportunity.js";
 import { salesOrderEntity, salesOrderRelatedList } from "./salesOrder.js";
 import { contactEntity, contactRelatedList } from "./contact.js";
 import { locationEntity, locationRelatedList } from "./location.js";
-import { functions, db } from "../../firebase/firebase";
-import { USERS_COLLECTION } from "../../domain/constants";
-import {
-  VERSION_STATUS,
-  FEED_STATUS,
-  SIGNED_OUT_VERSION,
-  IDLE_FEED,
-  isValidObservedVersion,
-  interpretAccessResult,
-  buildHasCapability,
-} from "../../access/reportCapabilityAccess.js";
+// FIREBASE EXIT F1 (DECISIONS #244): the Firebase pair (users/{uid}.accessVersion + resolveEffectiveAccessCallable) lives in
+// ONE place, access/useReportCapabilities.js, shared with the shell; this page no longer carries its own copy. Where an EOS
+// API is declared the answers come from the shell's EOS capability set instead (access/sessionAccess.js).
+import { useFirebaseEffectiveAccess } from "../../access/useReportCapabilities.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
+import { eosKeyForFirebaseId } from "../../access/eosCapabilityAccess.js";
+import { useSessionAccess } from "../../access/sessionAccess.js";
 import AccountHealthStrip from "../../modules/accounts/AccountHealthStrip.jsx";
 import AccountFinancialsSection from "../../modules/accounts/AccountFinancialsSection.jsx";
 import ActivityAndNotesSection from "../../modules/accounts/ActivityAndNotesSection.jsx";
@@ -656,87 +650,34 @@ export function buildAccountRelatedListPresentation({ listId, rows, loading = fa
 // accountPage.js actually declares.
 export const ACCOUNT_PAGE_CAPABILITY_REQUEST = declaredPageCapabilities(accountRecordPage);
 
-const RESOLVE_EFFECTIVE_ACCESS_CALLABLE = "resolveEffectiveAccessCallable";
-
-// Same default firebase-backed seams as useReportCapabilities.js / useOpportunityCapabilities.js;
-// `deps` lets a test inject fakes. Production always uses these real ones.
-function defaultSubscribeAccessVersion(uid, handlers) {
-  return onSnapshot(
-    doc(db, USERS_COLLECTION, uid),
-    (snap) => handlers.next(snap.exists() ? snap.get("accessVersion") : undefined),
-    () => handlers.error(),
-  );
-}
-function defaultCallFeed(permissionIds) {
-  return httpsCallable(functions, RESOLVE_EFFECTIVE_ACCESS_CALLABLE)({ permissionIds });
-}
-
 /**
  * The Account record page's real, fail-closed capability decisions — suitable for
  * MetadataRecordPage's `capabilityDecisions` prop directly.
  *
- * Same two-source freshness contract as useReportCapabilities.js: a live users/{uid}.accessVersion
- * subscription, re-fetched against resolveEffectiveAccessCallable whenever a valid new version is
- * observed, granting ONLY when the feed's resolved version exactly matches the currently observed
- * one. While loading, signed out, erroring, or between an accessVersion bump and the matching
- * re-fetch, every requested id is DENIED — which is exactly the "empty map hides every gated
- * section" contract applyVisibility (pageRuntime.js) already requires; this hook supplies no
- * permissive default and never substitutes `true` for "don't know yet".
+ * Where Firebase is the source this is the same two-source freshness contract as useReportCapabilities.js (a live
+ * users/{uid}.accessVersion subscription, re-fetched against resolveEffectiveAccessCallable, granting ONLY when the feed's
+ * version exactly matches the observed one) -- through the SAME implementation, asked for this page's four ids. Where an EOS
+ * API is declared the decision is the caller's EOS capability set (the shell's one-shot read, refetched on focus / route /
+ * role change): a Firebase id is asked under its EOS name only where the meaning is the same
+ * (access/eosCapabilityAccess.js). While loading, signed out, erroring, or unreadable, every requested id is DENIED — which is
+ * exactly the "empty map hides every gated section" contract applyVisibility (pageRuntime.js) already requires; this hook
+ * supplies no permissive default and never substitutes `true` for "don't know yet".
  */
 export function useAccountPageCapabilityDecisions(user, deps = {}) {
-  const uid = user?.uid ?? null;
-  const subscribeAccessVersion = deps.subscribeAccessVersion ?? defaultSubscribeAccessVersion;
-  const callFeed = deps.callFeed ?? defaultCallFeed;
-
-  const [version, setVersion] = useState(SIGNED_OUT_VERSION);
-  const [feed, setFeed] = useState(IDLE_FEED);
-
-  useEffect(() => {
-    if (!uid) { setVersion(SIGNED_OUT_VERSION); return undefined; }
-    setVersion({ status: VERSION_STATUS.LOADING, uid, version: null });
-    const unsubscribe = subscribeAccessVersion(uid, {
-      next: (rawVersion) => {
-        setVersion(isValidObservedVersion(rawVersion)
-          ? { status: VERSION_STATUS.READY, uid, version: rawVersion }
-          : { status: VERSION_STATUS.ERROR, uid, version: null });
-      },
-      error: () => setVersion({ status: VERSION_STATUS.ERROR, uid, version: null }),
-    });
-    return typeof unsubscribe === "function" ? unsubscribe : undefined;
-  }, [uid, subscribeAccessVersion]);
-
-  useEffect(() => {
-    if (version.status !== VERSION_STATUS.READY || version.uid !== uid || !isValidObservedVersion(version.version)) {
-      setFeed(IDLE_FEED);
-      return undefined;
-    }
-    const targetVersion = version.version;
-    let cancelled = false;
-    setFeed({ status: FEED_STATUS.LOADING, forUid: uid, forVersion: targetVersion, decisions: null });
-
-    Promise.resolve()
-      .then(() => callFeed(ACCOUNT_PAGE_CAPABILITY_REQUEST))
-      .then((res) => {
-        if (cancelled) return;
-        const interpreted = interpretAccessResult(res?.data);
-        setFeed(interpreted.ok
-          ? { status: FEED_STATUS.READY, forUid: uid, forVersion: interpreted.accessVersion, decisions: interpreted.decisions }
-          : { status: FEED_STATUS.ERROR, forUid: uid, forVersion: targetVersion, decisions: null });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setFeed({ status: FEED_STATUS.ERROR, forUid: uid, forVersion: targetVersion, decisions: null });
-      });
-
-    return () => { cancelled = true; };
-  }, [uid, version.status, version.uid, version.version, callFeed]);
-
-  const hasCapability = buildHasCapability({ version, feed }, uid);
-  // A plain { capabilityId: boolean } map — MetadataRecordPage/applyVisibility's expected shape —
-  // built fresh from the same fail-closed gate useReportCapabilities exposes as a function.
-  return useMemo(
-    () => Object.fromEntries(ACCOUNT_PAGE_CAPABILITY_REQUEST.map((id) => [id, hasCapability(id)])),
+  const eos = (deps.eosSource ?? EOS_SESSION_SOURCE) === true;
+  const firebase = useFirebaseEffectiveAccess(user, { ...deps, enabled: !eos }, ACCOUNT_PAGE_CAPABILITY_REQUEST);
+  const access = useSessionAccess();
+  const signedIn = Boolean(user?.uid);
+  const holds = access.holds;
+  // A plain { capabilityId: boolean } map — MetadataRecordPage/applyVisibility's expected shape.
+  const firebaseDecisions = useMemo(
+    () => Object.fromEntries(ACCOUNT_PAGE_CAPABILITY_REQUEST.map((id) => [id, firebase.hasCapability(id)])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [uid, version.status, version.uid, version.version, feed.status, feed.forUid, feed.forVersion, feed.decisions],
+    [user?.uid, firebase.version, firebase.feed],
   );
+  const eosDecisions = useMemo(
+    () => Object.fromEntries(ACCOUNT_PAGE_CAPABILITY_REQUEST.map((id) => [id, signedIn && holds(eosKeyForFirebaseId(id)) === true])),
+    [holds, signedIn],
+  );
+  return eos ? eosDecisions : firebaseDecisions;
 }

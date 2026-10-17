@@ -175,7 +175,9 @@ export default function TechnicianDashboard() {
   const context = (
     <ContextBand
       items={[
-        ...(technician
+        // FIREBASE EXIT F1: the field-status pill is a fieldops_technicians fact with no EOS twin. Where EOS is the source the
+        // technician has no `status`, and the pill is omitted rather than invented.
+        ...(technician && technician.status !== undefined
           ? [{ key: "status", label: "Status", value: <StatusPill tone={technicianStatusTone(technician.status)} label={technicianStatusLabel(technician.status)} /> }]
           : []),
         { key: "active", label: "My Active Work Orders", value: buckets.activeCount },
