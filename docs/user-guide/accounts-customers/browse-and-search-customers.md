@@ -9,7 +9,7 @@
 ## Steps
 
 1. Read the list. Each row is a customer, with columns such as name, status, relationship types, line of business, owner and tags.
-2. To find a customer by name, type in the **Search customers by name (starts with)…** box. It matches names that **start with** what you type, and capital letters matter: "Acme" finds "Acme Foods" but not "The Acme Group" and not "ACME Foods". If a customer you know exists does not appear, try the exact capitalization. A matching customer appears as a button under the box; click it to open the customer's record.
+2. To find a customer by name, type in the **Search customers by name (starts with)…** box. It matches names that **start with** what you type, and capital letters do not matter: "acme" finds "Acme Foods" and "ACME Foods", but not "The Acme Group". A matching customer appears as a button under the box; click it to open the customer's record.
 3. To narrow the list, click one of the status buttons under **Customer portfolio by status**: **Total**, **Active**, **Prospect**, **Inactive** or **Archived**. Click the same one again (or **Total**) to clear it.
 4. **+ Add Filter** offers one filter, **Status**, which does the same as the status buttons in step 3. There are no other filters. The **Sort** control orders the list by name. The page address keeps your filter and sort, so **Back** from a customer returns you to the same list.
 5. Click a row to open the customer's full record.
