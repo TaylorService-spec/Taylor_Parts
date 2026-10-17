@@ -13,6 +13,7 @@
 //
 // Same skip contract as the others: without POLICY_TEST_DATABASE_URL there is no database to prove
 // anything against, so it SKIPS rather than fails.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -82,7 +83,7 @@ const bin = (warehouseId, over = {}, tenant = TENANT_A) => createBin(repoPool(),
 });
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 // ============================ the schema ============================

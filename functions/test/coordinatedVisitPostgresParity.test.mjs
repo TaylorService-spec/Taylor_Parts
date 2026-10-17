@@ -10,6 +10,7 @@
 //
 // Prerequisite: `npm run build` in functions/ (this suite imports the compiled lib/ output).
 // The database half runs only with POLICY_TEST_DATABASE_URL set, with --test-concurrency=1.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -325,7 +326,7 @@ test("coordinated-operations parity, legacy projection vs PostgreSQL", { skip: S
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

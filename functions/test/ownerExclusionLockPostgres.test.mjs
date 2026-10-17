@@ -16,6 +16,7 @@
 // The authoritative check is now re-decided INSIDE the lock, so exactly one command commits and the
 // other is refused with the same SYSTEM_INVARIANT / Owner ruling A refusal as before -- in BOTH orders.
 
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -54,7 +55,7 @@ test("OWNER RULING A is decided under the governance lock (F-1), in PostgreSQL",
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

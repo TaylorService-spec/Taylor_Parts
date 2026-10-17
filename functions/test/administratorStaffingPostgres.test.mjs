@@ -16,6 +16,7 @@
 //   * the capability is neither conditionable nor scopable, and anti-lockout never counts it.
 //
 // Writes ONLY to a database it creates under POLICY_TEST_DATABASE_URL and drops at the end.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -80,7 +81,7 @@ test("Owner ruling R1: Owner staffs the designated Administrator Role for anothe
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

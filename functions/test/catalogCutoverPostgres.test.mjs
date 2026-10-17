@@ -6,6 +6,7 @@
 // set, pinned by name below.
 //
 // Same skip contract as every other Postgres suite: set POLICY_TEST_DATABASE_URL to run.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -64,7 +65,7 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
   runner(["up", String(through027)]);
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

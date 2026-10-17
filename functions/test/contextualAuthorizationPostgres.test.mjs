@@ -2,6 +2,7 @@
 //
 // The thing being defended is a separation: a capability grant says what KIND of action a Principal
 // may perform, and nothing about WHICH records. Every test here is a way the two cannot re-merge.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -33,7 +34,7 @@ test("scope is not stored on either grant table -- structurally, not by conventi
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

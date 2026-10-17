@@ -50,6 +50,7 @@
 //
 // NO MUTATION OF ANYTHING SHARED. Every write below lands in a database this file creates and drops.
 // No fixture is edited, no permission is granted, no nonprod or production row is touched.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -246,7 +247,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   const dbUrl = dbUrlFor(name);
   const pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
 

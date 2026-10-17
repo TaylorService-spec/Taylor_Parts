@@ -12,6 +12,7 @@
 // in `WITHHELD_CONDITIONED_CELLS`, `ACTION_CONTEXT_POLICIES` stays empty, and the production entry
 // point refuses a catalog naming either cell. The technician condition below is modelled inside a
 // throwaway database and a test-local catalog; no nonprod or production row is written anywhere.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -301,7 +302,7 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
@@ -831,7 +832,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
@@ -1333,7 +1334,7 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

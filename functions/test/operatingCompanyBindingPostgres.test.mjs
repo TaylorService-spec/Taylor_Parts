@@ -3,6 +3,7 @@
 // The binding exists because the two vocabularies are NOT the same, and every test below uses a company
 // whose key differs from its id. In nonprod `taylor` happens to bind to key `taylor`, which is precisely
 // why an equality shortcut would go unnoticed there: it would pass. Here it cannot.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -35,7 +36,7 @@ test("operating company <-> eos_ops key binding", { skip: SKIP, concurrency: 1 }
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"], { maxBuffer: 256 * 1024 * 1024,

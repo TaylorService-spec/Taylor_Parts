@@ -3,6 +3,7 @@
 // ACCEPTED live Service authority -- DQ-016, the nine Service grants, labor correction and the ten Inbound Work grants
 // (serviceActivationAuthorityDelta.serviceActivationOperations) -- applied through the Administration API. That is the
 // live nonprod authority state; each suite then applies only the grants its increment proposes, through the same API.
+import { endPoolAndDrain } from "./poolTeardown.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -42,7 +43,7 @@ export async function serviceBaselineTenant(t, { urlBase, tenant, prefix }) {
   let pool;
   await withClient(urlBase, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(urlBase, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

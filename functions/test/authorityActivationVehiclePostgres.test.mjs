@@ -22,6 +22,7 @@
 //    guarded down removes exactly what it wrote, and the down REFUSES when a grant it did not write
 //    still holds one of the capabilities it registered.
 // 5. THE CENSUS BLOCK REFUSES rather than guesses: a database whose premise is false stops it.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -114,7 +115,7 @@ async function standUp(name, { includeActivationMigration = true } = {}) {
 }
 
 async function dropDatabase(pool, name) {
-  await pool?.end();
+  await endPoolAndDrain(pool);
   await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
 }
 

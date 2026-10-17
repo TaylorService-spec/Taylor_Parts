@@ -10,6 +10,7 @@
 //     IN_TRANSIT at dispatch and moved only at receive, one audit per applied act;
 //   * idempotency: create by key (replay / conflict), a repeated transition replays against its own rows.
 // Set POLICY_TEST_DATABASE_URL to run (a dedicated database: this suite resets the schemas it declares).
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -297,4 +298,4 @@ test.after(async () => {
     { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 });
 
-test("teardown", { skip: SKIP }, async () => { await pool?.end(); });
+test("teardown", { skip: SKIP }, async () => { await endPoolAndDrain(pool); });

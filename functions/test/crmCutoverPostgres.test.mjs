@@ -3,6 +3,7 @@
 // Its OWN database, migrated by the normal runner, dropped in ONE t.after that ends the pool first. The copied rows are
 // read back through the governed D1-A authorities (functions/src/eosCrm/**) as well as by SQL. Nothing here asserts
 // which migration is latest. No Firebase, no network beyond the local database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -82,7 +83,7 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);
@@ -379,7 +380,7 @@ test("D3: pinned synthetic seed rows are retained only while exactly as pinned; 
   });
   const pool = new pg.Pool({ connectionString: url, max: 4 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

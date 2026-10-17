@@ -3,6 +3,7 @@
 // (whole_unit) through the one Part policy authority, and applies the Work Order boundary with governed
 // authority: equipment.install + RECORD_ASSIGNMENT (assigned Employee), INSTALL type, WORK_IN_PROGRESS,
 // customer / site / operating company taken from the Work Order. Real postgres:16, its own database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -49,7 +50,7 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],

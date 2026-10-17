@@ -6,6 +6,7 @@
 // eos_policy.role_capabilities, and the two disagreed about 47 of ~70 keys. Every test here is a way
 // that cannot happen again: the Object view, the Role view and the Principal view are all GROUP BYs
 // over the same grant rows.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -45,7 +46,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

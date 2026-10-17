@@ -15,6 +15,7 @@
 //
 // The claims proved here are STRUCTURAL on purpose. "Nobody will put a warehouse in the customer
 // address book" is not a property; "the database has nowhere to put one" is.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -80,7 +81,7 @@ test.after(async () => {
     await query("DELETE FROM eos_crm.contacts WHERE tenant_id = $1", [tenant]);
     await query("DELETE FROM eos_crm.accounts WHERE tenant_id = $1", [tenant]);
   }
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 const columns = (table) => query(

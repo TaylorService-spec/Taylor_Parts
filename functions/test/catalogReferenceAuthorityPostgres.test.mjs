@@ -4,6 +4,7 @@
 // Its OWN database, migrated by the normal runner, dropped in one t.after hook. Catalog identities are inserted
 // directly: no catalog writer exists (migration 026's header). The integration proof hands the authority to the
 // real C2 command services as `deps.catalog`, unmodified.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -55,7 +56,7 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 12 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

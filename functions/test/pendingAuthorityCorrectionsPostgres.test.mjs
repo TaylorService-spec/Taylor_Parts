@@ -33,6 +33,7 @@
 //
 // The database phases WRITE ONLY to POLICY_TEST_DATABASE_URL, a disposable local database.
 // Nothing here reads or writes nonprod.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -586,6 +587,6 @@ test("the rebuild reproduces the ACTIVATED authority exactly, and every activate
         "SELECT count(*)::int AS n FROM eos_policy.capabilities WHERE key = 'reportDefinition.delete'");
       assert.equal(absent[0].n, 0, "reportDefinition.delete must be ungrantable, not merely ungranted");
     } finally {
-      await pool.end();
+      await endPoolAndDrain(pool);
     }
   });

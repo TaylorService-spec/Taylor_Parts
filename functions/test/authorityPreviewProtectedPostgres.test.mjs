@@ -9,6 +9,7 @@
 //   * the Owner as the ACTOR (R1 Administrator staffing) previews WOULD_APPLY, and its refusals are reproduced;
 //   * anti-lockout through a direct exception (C7) and a Role assignment (C9);
 //   * I11 (the last administering assignment) is reproduced by MESSAGE today -- PR 2 (#2074) gives it a code.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -29,7 +30,7 @@ test("GRANT-IMPACT PREVIEW: protected Owner / Administrator invariants", { skip:
   const db = await privateDatabase(URL_BASE, "gip_protected");
   let world;
   let side;
-  t.after(async () => { await side?.end(); await world?.pool.end(); await db.drop(); });
+  t.after(async () => { await side?.end(); await endPoolAndDrain(world?.pool); await db.drop(); });
   world = await buildPreviewWorld(db.url);
   side = new pg.Pool({ connectionString: db.url, max: 2, idleTimeoutMillis: 0 });
   const { q, pool, repo, call, T, P, grant, assign, member } = world;

@@ -2,6 +2,7 @@
 //
 // Its OWN database, migrated by the normal runner, dropped in ONE t.after that ends the pool first. Every record below is
 // written by the real governed operations and read back through them. Nothing here asserts which migration is latest.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -58,7 +59,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);
@@ -527,7 +528,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
       assert.equal(await count("accounts", "name = 'Race Co'"), 1);
       assert.equal(await count("command_receipts", "idempotency_key_hash = $1", [createHash("sha256").update(key, "utf8").digest("hex")]), 1);
     } finally {
-      await racePool.end();
+      await endPoolAndDrain(racePool);
     }
   });
 

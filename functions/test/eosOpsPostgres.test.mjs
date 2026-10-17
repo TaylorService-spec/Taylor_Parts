@@ -7,6 +7,7 @@
 // `test:adminPolicyPostgres` command as the other two resetters -- three files sharing one schema
 // must never run concurrently, and `every suite that resets the schema is covered by that one
 // command` (adminPolicyPostgres.test.mjs) mechanically enforces that this file stays registered.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -677,5 +678,5 @@ test("a line cannot be opened against a sheet that does not exist -- the reason,
 });
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });

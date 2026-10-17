@@ -18,6 +18,7 @@
 // writer state a total at all" is. Migration 008 removes the header aggregate and generates the
 // line arithmetic, so these assert what the SQL boundary itself refuses — not what a command
 // remembers to check.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -287,6 +288,6 @@ test("invoice authority — structural proofs", { skip: SKIP, concurrency: 1 }, 
 
   await q("DELETE FROM eos_finance.invoice_lines WHERE tenant_id = $1", [TENANT]);
   await q("DELETE FROM eos_finance.invoices      WHERE tenant_id = $1", [TENANT]);
-  await pool?.end();
+  await endPoolAndDrain(pool);
   pool = null;
 });

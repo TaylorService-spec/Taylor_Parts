@@ -10,6 +10,7 @@
 //
 // Its OWN database (rr_cut_<uuid12>), migrated by the normal runner, dropped in t.after. Same skip contract as every
 // other Postgres suite: set POLICY_TEST_DATABASE_URL to run.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -122,7 +123,7 @@ test("reorder cutover CLI, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async
   const dir = mkdtempSync(join(tmpdir(), "reorder-cutover-cli-"));
   t.after(async () => {
     rmSync(dir, { recursive: true, force: true });
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
@@ -580,7 +581,7 @@ test("Option B: pinned Sample Company purchasing fixtures are KNOWN_NON_MIGRATED
   const dir = mkdtempSync(join(tmpdir(), "reorder-fixtures-"));
   t.after(async () => {
     rmSync(dir, { recursive: true, force: true });
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

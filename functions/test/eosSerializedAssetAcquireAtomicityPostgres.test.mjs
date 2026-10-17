@@ -15,6 +15,7 @@
 //   * a CONCURRENT duplicate: two simultaneous acquisitions of one serial -> exactly one custody and one movement; the
 //     other is replayed (same intent) or refused (different intent) -- never a raw database error.
 // Writes ONLY to a database it creates under POLICY_TEST_DATABASE_URL and drops at the end.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -48,7 +49,7 @@ test("DQ-019: acquire-existing-unit atomicity, idempotency and concurrency", { s
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],

@@ -6,6 +6,7 @@
 //           unauthenticated caller is refused (401) before any connection is taken.
 //   DQ-030  `listEquipmentModels` serves the Sales Agreement Equipment Model picker from eos_ops.equipment_models,
 //           bounded, tenant-scoped, behind the same capability.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -52,7 +53,7 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     const c = new pg.Client({ connectionString: URL_BASE });
     await c.connect();
     await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

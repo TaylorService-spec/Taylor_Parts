@@ -4,6 +4,7 @@
 // one whose Account is not in eos_crm), then applies 022 and proves: every verified business fact is representable,
 // integrity holds where a value is present, the Account key governs new rows without asserting old ones, numbering is
 // tenant/series/UTC-year scoped, concurrency-safe and rollback-safe, and receipts refuse duplicate commands.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -47,7 +48,7 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
   migrate("21");
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 12 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

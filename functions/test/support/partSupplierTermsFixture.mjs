@@ -2,6 +2,7 @@
 // registered capabilities, granted the way Administration grants them: Role -> capability, global assignment), Parts in
 // eos_ops.parts and Suppliers in eos_ops.suppliers. Shared by partSupplierTermsPostgres.test.mjs and
 // partSupplierTermsEmployeeContractPostgres.test.mjs. Callers go through the REAL /operations/inventory transport.
+import { endPoolAndDrain } from "./poolTeardown.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -29,7 +30,7 @@ export async function partSupplierTermsDatabase(t, { urlBase, prefix, tenants = 
     { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     const c = new pg.Client({ connectionString: urlBase });
     await c.connect();
     await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

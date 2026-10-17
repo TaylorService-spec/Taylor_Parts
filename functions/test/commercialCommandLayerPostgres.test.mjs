@@ -3,6 +3,7 @@
 // Its OWN database, migrated by the normal runner. Every command runs through the real kernel: capability and
 // membership authority, one transaction, number allocation, lines, ownership and accountability history, and the
 // idempotency receipt. Failures are forced with temporary triggers so rollback is observed, not assumed.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -53,7 +54,7 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 16 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

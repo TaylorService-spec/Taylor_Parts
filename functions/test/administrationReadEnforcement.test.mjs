@@ -29,6 +29,7 @@
 // Nothing about mutations. They were authority-gated before this change and are gated by the same
 // commands afterwards -- the engine invariant, the privileged-role approval and the anti-lockout
 // guard are untouched, and adminPolicyActivation.test.mjs still proves them.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -310,7 +311,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const dbUrl = dbUrlFor(name);

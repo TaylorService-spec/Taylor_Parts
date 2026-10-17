@@ -23,6 +23,7 @@
 //
 // The claims below are STRUCTURAL on purpose. "The writers will remember to supply an owner" is not
 // a property; "the database refuses a row without one" is.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -134,7 +135,7 @@ test.after(async () => {
     await query("DELETE FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1", [TENANT]);
     await query("DELETE FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1", [TENANT]);
   }
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 // ============================ the schema exists and is a sibling ============================

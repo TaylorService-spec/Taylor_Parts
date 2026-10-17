@@ -10,6 +10,7 @@
 // single most likely way for this tranche to be wrong is for the in-memory adapter to quietly
 // remain the operational source -- everything would pass and nothing would persist. The restart
 // proof at the bottom exists for exactly that failure.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -204,7 +205,7 @@ async function query(text, values = []) {
 }
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 // ============================ TENANT ============================
@@ -466,7 +467,7 @@ test("ROLES: an Object CRED change persists, and survives a fresh connection", {
     assert.ok(row, "the permission is in the database");
     assert.deepEqual(row.cred, { C: true, R: true, E: true, D: false });
   } finally {
-    await otherPool.end();
+    await endPoolAndDrain(otherPool);
   }
 });
 
@@ -1201,7 +1202,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
     }));
 
     // The restart.
-    await pool.end();
+    await endPoolAndDrain(pool);
     pool = null;
     const restarted = repo();
 
