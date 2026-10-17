@@ -103,6 +103,13 @@ describe("callableListSource.fetchPage -- the Commercial lists go to the EOS API
     expect(commercialCallMock).not.toHaveBeenCalled();
   });
 
+  it("a REGISTERED non-Commercial name (getManufacturerCatalog) throws unavailable and calls no Firebase callable (Firebase exit F3)", async () => {
+    await expect(fetchPage(descriptor({ readCallable: "getManufacturerCatalog", filters: [] })))
+      .rejects.toMatchObject({ code: "unavailable", message: expect.stringMatching(/no EOS source/) });
+    expect(httpsCallableMock).not.toHaveBeenCalled();
+    expect(commercialCallMock).not.toHaveBeenCalled();
+  });
+
   it("no readCallable on the descriptor throws rather than attempting a read", async () => {
     await expect(fetchPage(descriptor({ readCallable: null }))).rejects.toThrow(/no known response mapping/);
     expect(commercialCallMock).not.toHaveBeenCalled();
