@@ -203,6 +203,10 @@ export async function listReturnIntakeOptions(deps: { readonly pool: Pool }, act
     await c.query("COMMIT");
     const keyOf = new Map(keys.map((k) => [String(k.id), String(k.key)]));
     return Object.freeze({
+      // Whose answer this is, as the SERVER resolved it -- the client binds any offline copy to exactly this tenant and
+      // Principal (it has no tenant of its own to check). Grants nothing: every replay is re-authorized in full.
+      tenantId: actor.tenantId,
+      principalId: actor.principalId,
       companies: companies.map((id) => Object.freeze({ operatingCompanyId: id, operatingCompanyKey: keyOf.get(id) ?? null })),
       warehouses,
     });

@@ -182,7 +182,7 @@ describe("recording another return", () => {
 // ═══════════════════════════════════════════ company and warehouse (EOS, Owner ruling F7a)
 
 describe("which company is taking it in", () => {
-  const TWO = { companies: [{ operatingCompanyId: "taylor", operatingCompanyKey: "TAYLOR" }, { operatingCompanyId: "ventana", operatingCompanyKey: "VENTANA" }],
+  const TWO = { tenantId: "t-taylor", principalId: "prn-1", companies: [{ operatingCompanyId: "taylor", operatingCompanyKey: "TAYLOR" }, { operatingCompanyId: "ventana", operatingCompanyKey: "VENTANA" }],
     warehouses: [{ warehouseId: "WH-PHX", name: "Phoenix", operatingCompanyId: "taylor" }, { warehouseId: "WH-TUS", name: "Tucson", operatingCompanyId: "ventana" }] };
 
   it("one company is chosen for them, and the request names it; no warehouse unless one is chosen", async () => {
@@ -216,7 +216,7 @@ describe("which company is taking it in", () => {
   });
 
   it("OFFLINE, THIS user's last server answer is used; a refusal is never answered from the cache", async () => {
-    // Online once as u-1: the answer is kept under u-1.
+    // Online once as u-1: the answer is kept under u-1, with the tenant and Principal the server stated.
     mount({ cacheOwner: "u-1", listReturnIntakeOptions: vi.fn().mockResolvedValue(TWO) });
     await act(async () => {});
     cleanup();
@@ -247,6 +247,22 @@ describe("which company is taking it in", () => {
     mount({ listReturnIntakeOptions: vi.fn().mockResolvedValue(TWO) });
     await act(async () => {});
     expect(Object.keys(globalThis.localStorage)).toEqual([]);
+    globalThis.localStorage.clear();
+  });
+
+  it("an answer that does not say whose it is (no tenant / Principal) is never cached; old shared entries are deleted, never read", async () => {
+    const offline = Object.assign(new Error("offline"), { code: "unavailable" });
+    const { tenantId, principalId, ...anonymous } = TWO;
+    expect([tenantId, principalId]).toEqual(["t-taylor", "prn-1"]);
+    mount({ cacheOwner: "eos:u-1", listReturnIntakeOptions: vi.fn().mockResolvedValue(anonymous) });
+    await act(async () => {});
+    expect(Object.keys(globalThis.localStorage)).toEqual([]);
+    cleanup();
+    globalThis.localStorage.setItem("eos.returnIntake.options.v1", JSON.stringify(TWO));
+    globalThis.localStorage.setItem("eos.returnIntake.options.v2:eos:u-1", JSON.stringify({ owner: "eos:u-1", ...TWO }));
+    mount({ cacheOwner: "eos:u-1", listReturnIntakeOptions: vi.fn().mockRejectedValue(offline) });
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not be recorded/i);
+    expect(Object.keys(globalThis.localStorage)).toEqual([], "retired entries are removed on sight");
     globalThis.localStorage.clear();
   });
 });

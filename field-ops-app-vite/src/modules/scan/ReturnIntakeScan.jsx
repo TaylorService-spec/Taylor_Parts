@@ -61,20 +61,33 @@ export const RETURN_SOURCES = Object.freeze([
 const newKey = () => `ret-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 // OFFLINE INTAKE KEEPS WORKING. The last options the SERVER gave THIS USER on this device are kept, and used only when the
-// options read cannot reach the server (`unavailable`). That is safe because nothing is decided here: a queued intake
-// replays through recordReturnIntake, which re-checks the company and the warehouse. A refusal is never answered from the
-// cache. KEYED BY THE SIGNED-IN IDENTITY (deps.cacheOwner): a shared device never offers one user's companies and
-// warehouses to the next (Lane D, #2133). With no identity, nothing is cached and nothing is read back.
-const OPTIONS_CACHE_PREFIX = "eos.returnIntake.options.v2:";
+// options read cannot reach the server (`unavailable`). It never bypasses authorization: nothing is decided here, and a
+// queued intake replays through recordReturnIntake, which re-checks the capability, the company and the warehouse. A
+// refusal is never answered from the cache.
+//
+// ISOLATION (Lane D / Owner, #2133): the entry is keyed by the STABLE signed-in identity (deps.cacheOwner = identity source
+// + subject) and carries the tenant and Principal the SERVER resolved for that answer; it is used only when its owner
+// matches and both are recorded. With no identity nothing is cached or read. Older shared entries (v1, keyed by nothing;
+// v2, keyed by subject alone) are deleted on sight and never read.
+const OPTIONS_CACHE_PREFIX = "eos.returnIntake.options.v3:";
+const RETIRED_CACHE_KEYS = (storage) => Object.keys(storage).filter((k) => k === "eos.returnIntake.options.v1" || k.startsWith("eos.returnIntake.options.v2:"));
+const forgetRetiredCaches = () => {
+  try { const s = globalThis.localStorage; if (s) for (const k of RETIRED_CACHE_KEYS(s)) s.removeItem(k); } catch { /* best effort */ }
+};
 const cacheOptions = (owner, value) => {
-  if (!owner) return;
-  try { globalThis.localStorage?.setItem(OPTIONS_CACHE_PREFIX + owner, JSON.stringify({ owner, ...value })); } catch { /* best effort */ }
+  if (!owner || typeof value.tenantId !== "string" || typeof value.principalId !== "string") return;
+  try {
+    globalThis.localStorage?.setItem(OPTIONS_CACHE_PREFIX + owner, JSON.stringify({
+      owner, tenantId: value.tenantId, principalId: value.principalId, companies: value.companies, warehouses: value.warehouses,
+    }));
+  } catch { /* best effort */ }
 };
 const cachedOptions = (owner) => {
   if (!owner) return null;
   try {
     const v = JSON.parse(globalThis.localStorage?.getItem(OPTIONS_CACHE_PREFIX + owner) ?? "null");
-    return v && v.owner === owner && Array.isArray(v.companies) && Array.isArray(v.warehouses)
+    return v && v.owner === owner && typeof v.tenantId === "string" && typeof v.principalId === "string"
+      && Array.isArray(v.companies) && Array.isArray(v.warehouses)
       ? { companies: v.companies, warehouses: v.warehouses } : null;
   } catch { return null; }
 };
@@ -125,11 +138,12 @@ export default function ReturnIntakeScan({ deps }) {
 
   useEffect(() => {
     let cancelled = false;
+    forgetRetiredCaches();
     Promise.resolve()
       .then(() => client.listReturnIntakeOptions())
       .then((r) => {
         const value = { companies: Array.isArray(r?.companies) ? r.companies : [], warehouses: Array.isArray(r?.warehouses) ? r.warehouses : [] };
-        cacheOptions(cacheOwner, value);
+        cacheOptions(cacheOwner, { ...value, tenantId: r?.tenantId, principalId: r?.principalId });
         return value;
       })
       .catch((err) => {

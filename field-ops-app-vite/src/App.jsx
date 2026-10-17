@@ -926,7 +926,9 @@ function useScanCapabilityGate() {
   const { user } = useAuth();
   // returnDeps.cacheOwner: the signed-in identity the returns-intake offline options are kept under, so a shared device
   // never offers one user's companies and warehouses to the next (ReturnIntakeScan, F7a).
-  return { ...useInventoryScanCapabilities(user), returnDeps: { cacheOwner: user?.uid ?? null } };
+  // The STABLE identity: its source (EOS session or Firebase) and its subject, never a display value.
+  const cacheOwner = user?.uid ? `${user.identitySource ?? "firebase"}:${user.uid}` : null;
+  return { ...useInventoryScanCapabilities(user), returnDeps: { cacheOwner } };
 }
 
 /** /service/scan. A component only because renderSubnavItem cannot call hooks. */

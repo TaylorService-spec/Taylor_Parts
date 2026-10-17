@@ -148,6 +148,7 @@ test("returns intake, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) 
       serialNumbers: ["SN-1", "SN-2"], idempotencyKey: "k-2" });
     assert.deepEqual([r.quantity, [...r.serialNumbers], r.warehouseId], [null, ["SN-1", "SN-2"], null]);
     const options = await R.listReturnIntakeOptions(deps, clerk, {});
+    assert.deepEqual([options.tenantId, options.principalId], [T, clerk.principalId], "the answer says whose it is");
     assert.deepEqual(options.companies.map((c) => c.operatingCompanyId), ["taylor"]);
     assert.deepEqual(options.warehouses.map((w) => w.warehouseId), ["wh-t"], "wh-v is in reach but another company's; wh-t2 is out of reach");
     await assert.rejects(() => R.listReturnIntakeOptions(deps, unlinked, {}), (e) => e.code === "COMPANY_AUTHORITY_REQUIRED");
