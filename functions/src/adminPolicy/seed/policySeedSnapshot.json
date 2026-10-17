@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 49,
+    "objects": 50,
     "objectsWithFields": 28,
     "fields": 400
   },
@@ -6793,6 +6793,22 @@
         "E": [
           "finance.policy.prepare"
         ],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "crmActivity",
+      "label": "CRM Activity",
+      "labelPlural": "CRM Activities",
+      "description": "An interaction logged on a customer Account (DECISIONS #243, Firebase exit F7b): a call, meeting, sales note, relationship touch or general note, when it happened and who recorded it, with optional links to the Account's own Contact, Opportunity or Sales Order. Reading it also requires reading the Account. No CRED verb is derived here: its two capabilities are projected under this Object by Administration.",
+      "domain": "Customers",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
         "D": []
       },
       "fields": []
