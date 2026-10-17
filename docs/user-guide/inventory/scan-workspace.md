@@ -157,11 +157,12 @@ unchanged — see [Parts scanner](parts-scanner.md).
 **Serialized install or removal** is not on this screen — not greyed out, not "coming soon", simply
 absent. It has no command behind it at all.
 
-**Returns** are listed, but not as something you can start. **Take a return in** appears under
-**Not Available to You** with the words "Taking a return in is not yet available in EOS. This is not
-a permission you are missing: no one can be granted it until it moves to EOS." Asking an administrator
-for access will not change that. Deciding what happens to a returned item is a separate step that does
-not exist yet.
+**Returns: taking one in needs its own access.** **Take a return in** is offered only if your access
+includes taking returns in (the returns-intake role). Otherwise it appears under **Not Available to You**
+with the words "You are not authorized to take returns in. An administrator can grant it." When you take
+a return in you choose the operating company receiving it (it is chosen for you when you have only one)
+and, if you like, the receiving warehouse. Deciding what happens to a returned item is a separate step
+that does not exist yet: taking a return in never puts anything back into stock.
 
 Barcode matching is **built but not switched on**. Until it is, scanning a barcode tells you that
 identifier lookup is unavailable in this environment — it does *not* tell you the barcode is
@@ -188,7 +189,8 @@ listed under **Not Available to You**, with the reason — and each reason has a
 | Receiving is built and you are authorized, but it is not switched on in this environment yet | Nothing is wrong with your access — the receiving backend has not been deployed and enabled here | Deployment and activation, which is an operator action |
 | Work order scanning is for technicians working an assigned job | You are not a technician, or your account has no technician record | An administrator links your account to a technician record |
 | You have no assigned work orders to scan against right now | You are a technician, but nothing is assigned to you | A dispatcher assigns you work |
-| Taking a return in is not yet available in EOS | This is not a permission you are missing: returns have not moved to EOS yet | Nothing yet. No one can be granted it until it moves to EOS |
+| You are not authorized to take returns in | Your access does not include taking returns in | An administrator can assign you the returns-intake role |
+| You have no operating company to take returns in for | Your account is not linked to an operating company | An administrator links your account to your employee record |
 
 The distinction between the first two rows matters: being told you lack permission when the real
 reason is that a feature is switched off would send you to ask for access you may already have.

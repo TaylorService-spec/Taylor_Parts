@@ -32,8 +32,15 @@ import { captureReturnIntake } from "../../offline/warehouseIntent.js";
 //
 // ============================ IT WRITES NOTHING ELSE ============================
 //
-// One governed command, one document. No ledger event, no balance, no serialized-asset state change.
+// One governed command, one record. No ledger event, no balance, no serialized-asset state change.
 // A returned serialized unit does not become AVAILABLE here.
+//
+// ============================ ON EOS CORE (Firebase exit F7a, DECISIONS #242) ============================
+//
+// The command is EOS's recordReturnIntake (POST /operations/inventory). By Owner ruling a return names its OPERATING
+// COMPANY (required) and may name its receiving WAREHOUSE. The choices offered are the server's own answer
+// (listReturnIntakeOptions: the caller's companies, and the warehouses in reach for each); with one company it is chosen
+// for them, with several nobody guesses. The server re-checks both on every call.
 
 /** The server's closed set, mirrored verbatim. Adding one here without adding it there is refused. */
 export const RETURN_CONDITIONS = Object.freeze([
@@ -53,11 +60,66 @@ export const RETURN_SOURCES = Object.freeze([
 
 const newKey = () => `ret-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+// OFFLINE INTAKE KEEPS WORKING. The last options the SERVER gave THIS USER on this device are kept, and used only when the
+// options read cannot reach the server (`unavailable`). It never bypasses authorization: nothing is decided here, and a
+// queued intake replays through recordReturnIntake, which re-checks the capability, the company and the warehouse. A
+// refusal is never answered from the cache.
+//
+// ISOLATION (Lane D / Owner, #2133): the entry is keyed by the STABLE signed-in identity (deps.cacheOwner = identity source
+// + subject) and carries the tenant and Principal the SERVER resolved for that answer; it is used only when its owner
+// matches and both are recorded. With no identity nothing is cached or read. Older shared entries (v1, keyed by nothing;
+// v2, keyed by subject alone) are deleted on sight and never read.
+const OPTIONS_CACHE_PREFIX = "eos.returnIntake.options.v3:";
+const RETIRED_CACHE_KEYS = (storage) => Object.keys(storage).filter((k) => k === "eos.returnIntake.options.v1" || k.startsWith("eos.returnIntake.options.v2:"));
+const forgetRetiredCaches = () => {
+  try { const s = globalThis.localStorage; if (s) for (const k of RETIRED_CACHE_KEYS(s)) s.removeItem(k); } catch { /* best effort */ }
+};
+const cacheOptions = (owner, value) => {
+  if (!owner || typeof value.tenantId !== "string" || typeof value.principalId !== "string") return;
+  try {
+    globalThis.localStorage?.setItem(OPTIONS_CACHE_PREFIX + owner, JSON.stringify({
+      owner, tenantId: value.tenantId, principalId: value.principalId, companies: value.companies, warehouses: value.warehouses,
+    }));
+  } catch { /* best effort */ }
+};
+const cachedOptions = (owner) => {
+  if (!owner) return null;
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(OPTIONS_CACHE_PREFIX + owner) ?? "null");
+    return v && v.owner === owner && typeof v.tenantId === "string" && typeof v.principalId === "string"
+      && Array.isArray(v.companies) && Array.isArray(v.warehouses)
+      ? { companies: v.companies, warehouses: v.warehouses } : null;
+  } catch { return null; }
+};
+
+/** The refusal, in words. `details.code` is the server's own (EosOperationError). */
+function refusalText(rawCode, detailCode) {
+  // An offline replay's refusal may still carry the SDK's "functions/" prefix; the meaning is the same.
+  const code = typeof rawCode === "string" && rawCode.startsWith("functions/") ? rawCode.slice("functions/".length) : rawCode;
+  if (code === "permission-denied") {
+    return detailCode === "COMPANY_AUTHORITY_REQUIRED"
+      ? "You have no operating company to take returns in for. Ask an administrator."
+      : "You are not authorized to take returns in. That authority has not been granted, or is not switched on here.";
+  }
+  if (code === "invalid-argument") {
+    return detailCode === "OPERATING_COMPANY_NOT_GOVERNED"
+      ? "That company is not one you can take returns in for."
+      : "That return could not be accepted — check the part and the condition.";
+  }
+  if (code === "not-found") return "That receiving warehouse is not available for that company.";
+  return "That return could not be recorded. Nothing was changed.";
+}
+
 export default function ReturnIntakeScan({ deps }) {
   const client = deps?.returnClient ?? returnCommandClient;
+  const cacheOwner = typeof deps?.cacheOwner === "string" && deps.cacheOwner !== "" ? deps.cacheOwner : null;
   // ONE submit policy. Intake only -- there is no disposition to queue because there is none at all.
   const warehouse = useWarehouseSubmit({ offline: deps?.offline });
 
+  // The server's answer to "which company, which warehouse" -- never a list made up here.
+  const [options, setOptions] = useState({ state: "loading", companies: [], warehouses: [], error: null });
+  const [companyId, setCompanyId] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
   const [partId, setPartId] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [source, setSource] = useState("WORK_ORDER");
@@ -74,6 +136,35 @@ export default function ReturnIntakeScan({ deps }) {
   // later async result (a live, reproduced bug -- see the Cycle Count North Star P1 PR history).
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    forgetRetiredCaches();
+    Promise.resolve()
+      .then(() => client.listReturnIntakeOptions())
+      .then((r) => {
+        const value = { companies: Array.isArray(r?.companies) ? r.companies : [], warehouses: Array.isArray(r?.warehouses) ? r.warehouses : [] };
+        cacheOptions(cacheOwner, { ...value, tenantId: r?.tenantId, principalId: r?.principalId });
+        return value;
+      })
+      .catch((err) => {
+        const raw = typeof err?.code === "string" ? err.code : "";
+        const cached = raw === "unavailable" ? cachedOptions(cacheOwner) : null;
+        if (cached) return cached;
+        throw err;
+      })
+      .then((value) => {
+        if (cancelled) return;
+        setOptions({ state: "ready", ...value, error: null });
+        if (value.companies.length === 1) setCompanyId(value.companies[0].operatingCompanyId);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const raw = typeof err?.code === "string" ? err.code : "";
+        setOptions({ state: "failed", companies: [], warehouses: [], error: refusalText(raw || "internal", err?.details?.code) });
+      });
+    return () => { cancelled = true; };
+  }, [client, cacheOwner]);
+
   const scanPart = useCallback((raw) => {
     const value = String(raw ?? "").trim();
     if (value === "") return FEEDBACK.REJECTED;
@@ -83,10 +174,12 @@ export default function ReturnIntakeScan({ deps }) {
   }, []);
 
   const submit = useCallback(async () => {
-    if (!partId || condition === "" || busy) return;
+    if (!partId || condition === "" || companyId === "" || busy) return;
     setBusy(true);
     setError(null);
     const request = {
+      operatingCompanyId: companyId,
+      ...(warehouseId ? { warehouseId } : {}),
       partId,
       source,
       // Only sent when there is something to say. An empty reference is not a fact worth storing.
@@ -127,30 +220,16 @@ export default function ReturnIntakeScan({ deps }) {
         setError(NOT_DURABLE_TEXT);
       } else {
         const raw = typeof submitted?.error?.code === "string" ? submitted.error.code : "";
-        const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal");
-        setError(
-          code === "permission-denied"
-            ? "You are not authorized to take returns in. That authority has not been granted, or is not switched on here."
-            : code === "invalid-argument"
-              ? "That return could not be accepted — check the part and the condition."
-              : "That return could not be recorded. Nothing was changed.",
-        );
+        setError(refusalText(raw || "internal", submitted?.error?.details?.code));
       }
     } catch (err) {
       if (!alive.current) return;
       const raw = typeof err?.code === "string" ? err.code : "";
-      const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : (raw || "internal");
-      setError(
-        code === "permission-denied"
-          ? "You are not authorized to take returns in. That authority has not been granted, or is not switched on here."
-          : code === "invalid-argument"
-            ? "That return could not be accepted — check the part and the condition."
-            : "That return could not be recorded. Nothing was changed.",
-      );
+      setError(refusalText(raw || "internal", err?.details?.code));
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [partId, condition, busy, client, source, sourceReference, reason, quantity]);
+  }, [partId, condition, companyId, warehouseId, busy, client, source, sourceReference, reason, quantity]);
 
   const startAnother = useCallback(() => {
     // A NEW key: the next return is a different event, and reusing the key would replay the last one.
@@ -191,6 +270,31 @@ export default function ReturnIntakeScan({ deps }) {
         This records what came back. It does not decide what happens to it, and it does not put
         anything back into sellable stock.
       </p>
+
+      {options.state === "loading" && <p className="fo-muted" role="status">Loading your companies…</p>}
+      {options.state === "failed" && <p className="fo-scan__notice fo-scan__notice--warn" role="alert">{options.error}</p>}
+      {options.state === "ready" && (
+        <>
+          <label className="fo-returns__field">
+            <span>Which company is taking it in?</span>
+            <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setWarehouseId(""); }} aria-label="Which company is taking it in">
+              {options.companies.length !== 1 && <option value="">Choose…</option>}
+              {options.companies.map((c) => (
+                <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.operatingCompanyKey ?? c.operatingCompanyId}</option>
+              ))}
+            </select>
+          </label>
+          <label className="fo-returns__field">
+            <span>Receiving warehouse <span className="fo-muted">(Optional)</span></span>
+            <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} aria-label="Receiving warehouse" disabled={companyId === ""}>
+              <option value="">Not stated</option>
+              {options.warehouses.filter((w) => w.operatingCompanyId === companyId).map((w) => (
+                <option key={w.warehouseId} value={w.warehouseId}>{w.name}</option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
 
       {!partId ? (
         <>
@@ -247,11 +351,14 @@ export default function ReturnIntakeScan({ deps }) {
 
           {error && <p className="fo-scan__notice fo-scan__notice--warn" role="alert">{error}</p>}
 
-          <Button type="button" variant="primary" className="fo-returns__submit" onClick={submit} disabled={condition === "" || busy}>
+          <Button type="button" variant="primary" className="fo-returns__submit" onClick={submit} disabled={condition === "" || companyId === "" || busy}>
             {busy ? "Recording…" : "Record This Return"}
           </Button>
           {condition === "" && (
             <p className="fo-scan__reason">Choose a condition before recording. It is an observation, so nobody can choose it for you.</p>
+          )}
+          {condition !== "" && companyId === "" && options.state === "ready" && (
+            <p className="fo-scan__reason">Choose the company taking it in before recording.</p>
           )}
         </>
       )}

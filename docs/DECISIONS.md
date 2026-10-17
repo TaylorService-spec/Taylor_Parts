@@ -8710,3 +8710,55 @@ So merging empties nothing. The **production** copy (Firestore `manufacturers` �
 - `manufacturersMetadataList`: the restored create, rename and status flow sends the right envelopes and tokens, shows a refusal without claiming success, and discloses truncation. The client maps the list and the outcomes.
 - `navCutoverEnvironmentScoped`: 24 + 38 = 62, and the Manufacturers transition test.
 - Exit baseline 245 → 244.
+
+## #242 — OWNER: Returns intake moves to EOS Core — operating company required, no ledger movement, a memberless clerk Role (Firebase exit F7a, 2026-10-17)
+
+**Status: OWNER RULED (F7a, 2026-10-17).** Supersedes the premise of #231 (returns intake was "not yet available in EOS"). Merge and deployment follow the normal gate.
+
+**Why.** Taking a return in was a Firebase callable over Firestore `inventory_returns`. The Scan workspace refused it to everyone as "not yet in EOS", because the capability had no PostgreSQL registration and nobody could be granted it.
+
+**Rule.**
+- **The model** (Owner ruling 1). The record is `eos_ops.inventory_returns` (migration 1764580000000), and the Firestore behaviour is kept:
+  - **Intake only (#118).** One state, AWAITING_DISPOSITION, enforced by a CHECK. **No ledger movement**: intake never restores sellable stock.
+  - The same closed vocabularies: sources WORK_ORDER / CUSTOMER / TRUCK / SUPPLIER / UNKNOWN, and conditions UNOPENED / OPENED / DAMAGED / UNKNOWN. An unknown value is refused, never coerced.
+  - Quantity XOR serials.
+  - One idempotency key = one return, with id `ret_<key>`. A replay answers from the stored row; a different return under a used key is refused (IDEMPOTENCY_CONFLICT).
+  - Every recorded return writes one `eos_policy.audit_events` row; a replay writes nothing.
+- **Company scope** (Owner ruling 2). The operating company is REQUIRED; the receiving warehouse is optional.
+  - Authority is resolved server-side with `resolveCompanyAuthority`, the #237 check:
+    - no authority at all is COMPANY_AUTHORITY_REQUIRED;
+    - a company outside the caller's ≡ an unknown company (OPERATING_COMPANY_NOT_GOVERNED).
+  - A stated warehouse must belong to that company AND be in the caller's warehouse reach. Otherwise it answers exactly like an unknown warehouse (WAREHOUSE_NOT_FOUND).
+  - Every refusal precedes any write.
+- **Transport.** `/operations/inventory` serves `recordReturnIntake` and `listReturnIntakeOptions` (the caller's companies, and the warehouses in reach for each). Neither sits behind the Reorder activation boundary.
+- **Access** (Owner ruling 3). `inventory.returns.intake` is registered (object `inventoryReturn`, BUSINESS_ACTION) and granted to ONE Role, `inventoryReturnsIntakeClerk`, which has **no members**.
+  - This is a grant-bearing migration (Owner ruling E); the authority baseline goes 481 → 482 in the same change.
+  - Nobody is assigned anything by this change. Rudy Admin's nonprod ability is restored after deploy by the Controller through the governed previewAuthorityChange → assignRole path, audited. There is no production access change.
+  - **`admin` does not get it by default.** The compatibility `admin` Role composes the whole legacy permission catalog, so the catalog reconcile would otherwise import `admin × inventory.returns.intake` as a default. The pair is in `CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT` (the DQ-023/037 pair-level fence): it is reported as ADMINISTRATION_ONLY and never applied. Nothing is revoked.
+  - admin × inventory.returns.intake is fenced (CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT): admins hold returns intake on EOS only by governed clerk assignment.
+  - **Administration projects it.** `inventoryReturn` is declared in the governed Object catalog (`capabilityGovernedObjects.json`): no fields, no CRED verb, the same shape as `settlement` and `rentalEquipment`. Administration lists the Object and shows the one BUSINESS_ACTION under it.
+- **Client.** `services/returnCommandClient.js` calls EOS, with no Firebase fallback. The Scan › Take a return in screen asks for the company (chosen automatically when there is only one) and an optional warehouse.
+  - Offline intake keeps working from the last options the server gave the device. The server re-checks on replay, and a refusal is never answered from the cache.
+  - A non-holder is now refused as a grantable permission ("An administrator can grant it").
+
+**Existing data is NOT moved** (Owner ruling 4). An empty `eos_ops.inventory_returns` is not a completed data transition. Two tools are prepared, and neither blocks this merge:
+- `scripts/exportReturnIntakeSnapshot.js`: the read-only Firestore export, a migration-only exception authorized by this ruling.
+- `scripts/returnIntakeCopy.js`:
+  - **census** is the default and is read-only. It reports counts, the company/warehouse mapping gaps, and the copy checksum.
+  - **copy** is insert-only and refuses without `--ownerAuthorization`. Every record's company is named by a person in `--mapping` and never guessed. Rows are MIGRATED with no Firebase uid in any column. Firestore is never touched.
+  - **verify** is read-only and states the reconciliation criteria.
+
+**Proof.**
+- `returnIntakePostgres`:
+  - the vocabulary and validation parity;
+  - every refusal before any write, by snapshot;
+  - out-of-company ≡ unknown, for both company and warehouse;
+  - one row plus one audit row and NO ledger movement;
+  - replay and idempotency conflict;
+  - the table's own CHECKs;
+  - the options read;
+  - the copy CLI end to end: census gaps, Owner go-ahead required, drift refused, MIGRATED rows with NULL `received_by`, a no-op rerun, verify.
+- `roleCapabilityAuthorityBaselinePostgres`: 482, rebuilt exactly.
+- `operatorScriptEnvironmentFence`: the copy refuses before any client loads.
+- `returnIntakeScan` and `warehouseOfflineScreens`: the company choice, nobody guesses, the cached offline options.
+- `inventoryScanPersonaWorkflows`: refused as grantable, and offered to a holder.

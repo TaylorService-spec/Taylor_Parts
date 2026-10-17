@@ -209,8 +209,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // factors, recovery codes, tickets, authentication_events; no capability, no grant. APPENDED, an EXPLAINED pending migration.
 // 97 -> 98: 1764560000000 -- Financial Policy foundation (DECISIONS #232): eos_finance.financial_policy_versions + finance.policy.read / .prepare / .approve / .activate on financialPolicy; granted to NO Role. APPENDED, an EXPLAINED pending migration.
 // 98 -> 99: 1764570000000 -- Financial Policy withdraw / cancel (DECISIONS #232 Phase 3): WITHDRAWN / CANCELLED final statuses, their write-once stamps, the canceller-independence and withdrawer-owns CHECKs, the extended transition trigger; no capability, no grant. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 99;
-const TRACKED_MIGRATION_COUNT = 100; // the 99 runnable + the one deferred file
+// 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant). APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 100;
+const TRACKED_MIGRATION_COUNT = 101; // the 100 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -261,6 +262,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764550000000_eos-native-login",
   "1764560000000_financial-policy-profiles",
   "1764570000000_financial-policy-withdraw-cancel",
+  "1764580000000_inventory-returns-intake",
 ]);
 
 const repoMigrations = () =>

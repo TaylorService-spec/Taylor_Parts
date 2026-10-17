@@ -18,7 +18,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -117,6 +117,11 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   const dbUrl = pool.options.connectionString;
   const migrate = (direction, count) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", direction,
     "--migrations-dir", "migrations", "--no-check-order", String(count)], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
+  // Later lanes' migrations sit above #232's. The MIG proofs below are about #232's own two migrations, so each one peels the
+  // later ones first -- counted from the tree, not pinned -- and restores them after.
+  const NEWER = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql") && f > `${PHASE3_MIGRATION}.sql`).length;
+  const peelNewer = () => { if (NEWER) migrate("down", NEWER); };
+  const restoreNewer = () => { if (NEWER) migrate("up", NEWER); };
   const grantSnapshot = async () => (await q(`SELECT r.key AS role, c.key AS cap FROM eos_policy.role_capabilities rc
       JOIN eos_policy.roles r ON r.id = rc.role_id JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id = $1 ORDER BY 1, 2`, [TENANT])).rows;
   const directSnapshot = async () => (await q(`SELECT principal_id, capability_id FROM eos_policy.principal_capabilities WHERE tenant_id = $1 ORDER BY 1, 2`, [TENANT])).rows;
@@ -139,6 +144,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const held = await one(`SELECT (SELECT count(*) FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE c.key LIKE 'finance.policy.%')
       + (SELECT count(*) FROM eos_policy.principal_capabilities pc JOIN eos_policy.capabilities c ON c.id = pc.capability_id WHERE c.key LIKE 'finance.policy.%') AS n`);
     assert.equal(Number(held.n), 0, "after the seed, the baseline and the live Service delta, NO Role and no Principal holds a finance.policy.* key");
+    peelNewer();
     const grantsBefore = await grantSnapshot();
     const directBefore = await directSnapshot();
     const capCount = async () => Number((await one(`SELECT count(*) AS n FROM eos_policy.capabilities`)).n);
@@ -159,6 +165,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.deepEqual(await columns(), ["cancelled_by", "withdrawn_by"]);
     assert.deepEqual(await grantSnapshot(), grantsBefore, "re-applied: every existing Role grant is exactly as before");
     assert.deepEqual(await directSnapshot(), directBefore);
+    restoreNewer();
     // The existing Finance read, pinned as the baseline measures it: the migration moves none of its holders.
     assert.deepEqual(grantsBefore.filter((g) => g.cap === "finance.payment.read").map((g) => g.role), ["accountingManager", "admin", "controller",
       "fieldManager", "financeManager", "generalManager", "owner", "partsAssociate", "partsManager", "purchasingManager", "salesManager", "salesperson",
@@ -1013,6 +1020,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.equal(Number(closing.n), 0, "this proof runs before any version is withdrawn or cancelled");
     assert.ok(Number(closing.total) > 0, "versions exist");
     const capCount = async () => Number((await one(`SELECT count(*) AS n FROM eos_policy.capabilities`)).n);
+    peelNewer();
     const caps = await capCount();
     migrate("down", 1); // the Phase 3 migration: no WITHDRAWN / CANCELLED row, so its Down proceeds
     try {
@@ -1023,6 +1031,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
       assert.equal(await capCount(), caps, "the refused foundation Down removed nothing");
     } finally {
       migrate("up", 1);
+      restoreNewer();
     }
     assert.equal((await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance'
       AND table_name = 'financial_policy_versions' AND column_name IN ('withdrawn_by', 'cancelled_by')`)).n, "2");
@@ -1436,8 +1445,13 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   });
 
   await t.test("MIG: with versions recorded, each Down refuses to reverse", async () => {
-    // The newest (#232 Phase 3) refuses while a WITHDRAWN or CANCELLED version exists: the old CHECKs could not hold them.
-    assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_WITHDRAW_CANCEL: refuses to reverse/.test(String(e.stderr ?? e.message)));
+    // #232 Phase 3 refuses while a WITHDRAWN or CANCELLED version exists: the old CHECKs could not hold them.
+    peelNewer();
+    try {
+      assert.throws(() => migrate("down", 1), (e) => /FINANCIAL_POLICY_WITHDRAW_CANCEL: refuses to reverse/.test(String(e.stderr ?? e.message)));
+    } finally {
+      restoreNewer();
+    }
     const cols = await one(`SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'eos_finance' AND table_name = 'financial_policy_versions'
       AND column_name IN ('withdrawn_by', 'cancelled_by')`);
     assert.equal(Number(cols.n), 2, "nothing was reversed");

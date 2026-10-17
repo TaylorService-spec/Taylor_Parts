@@ -201,13 +201,16 @@ describe("cycle count, through the real form", () => {
 // ═══════════════════════════════════════════ RETURNS
 
 describe("return intake, through the real form", () => {
+  // EOS (F7a): the company list is the server's answer; one company is chosen for the operator.
+  const listReturnIntakeOptions = () => Promise.resolve({ companies: [{ operatingCompanyId: "taylor", operatingCompanyKey: "TAYLOR" }], warehouses: [] });
   const mount = (recordReturnIntake, rt = runtime()) => {
-    render(<ReturnIntakeScan deps={{ returnClient: { recordReturnIntake }, scanInputDeps, offline: rt }} />);
+    render(<ReturnIntakeScan deps={{ returnClient: { recordReturnIntake, listReturnIntakeOptions }, scanInputDeps, offline: rt }} />);
     return rt;
   };
 
   /** Scanned, given a condition, and recorded — exactly as the existing returns tests drive it. */
   const takeIn = async () => {
+    await act(async () => {}); // the options read settles
     await act(async () => {
       fireEvent.change(screen.getByLabelText(/scan returned part/i), { target: { value: "PRT-1001" } });
       fireEvent.click(screen.getByRole("button", { name: /^add$/i }));

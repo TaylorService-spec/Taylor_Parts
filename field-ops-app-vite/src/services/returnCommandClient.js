@@ -1,19 +1,21 @@
-// Return intake -- thin httpsCallable transport. Structure mirrors services/binCommandClient.js:
-// it builds nothing, it just invokes the named onCall export.
+// Return intake -- the EOS transport (Firebase exit F7a, DECISIONS #242).
 //
-// `inventory.returns.intake` is registered `active: false` in the catalog and activated only for
-// platform-sandbox, so outside that environment every real call resolves `permission-denied`
-// server-side. This client does not hide that; the surface renders a refusal as a refusal, never as
-// a fabricated success and never as "no returns".
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase/firebase";
+// WAS a thin httpsCallable over the Firebase `recordReturnIntake`. The authority is now EOS Core:
+// POST /operations/inventory -- `recordReturnIntake` (eosOps/returnIntake.ts) and `listReturnIntakeOptions`, the caller's
+// operating companies and the receiving warehouses each allows. The server decides everything: inventory.returns.intake,
+// the company check (#237), the warehouse reach, idempotency, and #118 (no ledger movement). No Firebase fallback; a refusal
+// is thrown as the platform's answer (EosOperationError: a transport `code` plus the server's own `details.code`).
+import { EOS_OPERATIONS_ROUTES, eosOperationOrThrow } from "./eosOperationsClient.js";
 
-export const RETURN_CALLABLES = Object.freeze({
+export const RETURN_OPERATIONS = Object.freeze({
   intake: "recordReturnIntake",
+  options: "listReturnIntakeOptions",
 });
 
-const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
+const call = (operation, input) =>
+  eosOperationOrThrow(EOS_OPERATIONS_ROUTES.INVENTORY, operation, input, { serviceLabel: "the returns service" });
 
 export const returnCommandClient = Object.freeze({
-  recordReturnIntake: (request) => call(RETURN_CALLABLES.intake, request),
+  recordReturnIntake: (request) => call(RETURN_OPERATIONS.intake, request),
+  listReturnIntakeOptions: () => call(RETURN_OPERATIONS.options, {}),
 });

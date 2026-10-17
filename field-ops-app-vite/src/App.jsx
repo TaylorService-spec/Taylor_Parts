@@ -924,13 +924,17 @@ function TechnicianWorkspaceSurface({ role }) {
  */
 function useScanCapabilityGate() {
   const { user } = useAuth();
-  return useInventoryScanCapabilities(user);
+  // returnDeps.cacheOwner: the signed-in identity the returns-intake offline options are kept under, so a shared device
+  // never offers one user's companies and warehouses to the next (ReturnIntakeScan, F7a).
+  // The STABLE identity: its source (EOS session or Firebase) and its subject, never a display value.
+  const cacheOwner = user?.uid ? `${user.identitySource ?? "firebase"}:${user.uid}` : null;
+  return { ...useInventoryScanCapabilities(user), returnDeps: { cacheOwner } };
 }
 
 /** /service/scan. A component only because renderSubnavItem cannot call hooks. */
 function ScanWorkspaceSurface({ role }) {
-  const { hasCapability } = useScanCapabilityGate();
-  return <ScanWorkspace deps={{ hasCapability, role }} />;
+  const { hasCapability, returnDeps } = useScanCapabilityGate();
+  return <ScanWorkspace deps={{ hasCapability, role, returnDeps }} />;
 }
 
 /**
@@ -941,8 +945,8 @@ function ScanWorkspaceSurface({ role }) {
  * surface nobody asked for competing with the one people already use.
  */
 function WarehouseWorkspaceSurface({ role }) {
-  const { hasCapability } = useScanCapabilityGate();
-  const deps = { hasCapability, role };
+  const { hasCapability, returnDeps } = useScanCapabilityGate();
+  const deps = { hasCapability, role, returnDeps };
   return useIsPhone() ? <WarehouseShell deps={deps} /> : <ScanWorkspace deps={deps} />;
 }
 

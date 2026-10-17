@@ -81,7 +81,7 @@ export default function WarehouseShell({ deps = {} }) {
         {tab === "work" && <WarehouseWork home={home} onOpen={openWorkflow} offline={offline} />}
         {tab === "scan" && (
           <Suspense fallback={<p className="fo-muted" role="status">Starting the scanner…</p>}>
-            <ScanWorkspace deps={{ hasCapability, role: deps.role ?? role, initialWorkflow: requested }} />
+            <ScanWorkspace deps={{ hasCapability, role: deps.role ?? role, initialWorkflow: requested, returnDeps: deps.returnDeps }} />
           </Suspense>
         )}
         {tab === "more" && <WarehouseMore offline={offline} />}

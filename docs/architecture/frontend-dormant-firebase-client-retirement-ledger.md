@@ -127,3 +127,13 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 **Nonprod data.** `eos_ops.manufacturers` is empty on nonprod, and so is its source: the sandbox Firestore `manufacturers` collection was measured at 0 documents and cannot have grown since. Rules deny writes, the write client was removed in PR-B, and the callables are frozen. No nonprod copy is needed. The production copy is a separate Owner-gated step (DECISIONS #241).
 
 **Server callables kept.** `getManufacturerCatalog` and the three write callables stay deployed and frozen until an operator undeploy (reserved).
+
+## F7a: Returns intake moves to EOS Core (2026-10-17, exit baseline 244 → 243)
+
+| Changed | Now |
+| --- | --- |
+| `services/returnCommandClient.js` (the `recordReturnIntake` callable) | It calls EOS `recordReturnIntake` and `listReturnIntakeOptions` on `/operations/inventory` (`eosOps/returnIntake.ts`, `eos_ops.inventory_returns`). Its consumers (`ReturnIntakeScan.jsx`, `offline/warehouseCommandBindings.js`) are unchanged in shape. |
+
+- **Owner ruling (DECISIONS #242):** operating company required, warehouse optional, no ledger movement, and a memberless `inventoryReturnsIntakeClerk` Role.
+- **Existing Firestore returns are NOT copied.** The census and copy tools (`scripts/exportReturnIntakeSnapshot.js`, `scripts/returnIntakeCopy.js`) are prepared. The copy runs only with the Owner's go-ahead and a person's company mapping.
+- **The server callable** `recordReturnIntake` stays deployed until an operator undeploy, which is reserved.
