@@ -33,6 +33,14 @@ test("(a) the Firebase catalog grants stage and execute to EXACTLY the same Role
   assert.equal(GOVERNED_BUSINESS_ROLES.owner.permissions.includes(EXECUTE), false);
 });
 
+test("(b) on EOS execute is held by admin alone (the migration-backed baseline roleCapabilityAuthorityBaselinePostgres proves equal to a rebuilt database)", () => {
+  const baseline = JSON.parse(fs.readFileSync(path.resolve(HERE, "../src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"), "utf8"));
+  const holders = [...new Set(baseline.grants.filter((g) => g.capabilityKey === EXECUTE).map((g) => g.roleKey))].sort();
+  assert.deepEqual(holders, ["admin"]);
+  assert.deepEqual(holders, firebaseHolders(STAGE), "EOS holders of execute == Firebase holders of stage");
+  assert.equal(baseline.grants.some((g) => g.capabilityKey === STAGE), false, "no EOS grant of stage exists");
+});
+
 test("(b) execute is Owner-excluded by Owner ruling A: in the exclusion list and a FORBIDDEN_ROLE_CAPABILITY_PAIR", () => {
   assert.ok(OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES.includes(EXECUTE));
   assert.ok(FORBIDDEN_ROLE_CAPABILITY_PAIRS.some((p) => p.roleKey === "owner" && p.capabilityKey === EXECUTE && p.invariantClass === "OWNER_GOVERNANCE"));
