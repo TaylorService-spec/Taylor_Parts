@@ -6,8 +6,10 @@ import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } f
 import { useAuth } from "../../auth/AuthContext";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { usePartMovementHistory, PART_MOVEMENT_LIMIT } from "../../hooks/usePartMovementHistory.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
-import { INVENTORY_ACTION_TYPE } from "../../domain/constants";
+import { INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
 import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
@@ -100,19 +102,22 @@ const ACTION_SORT_COLUMNS = Object.freeze({
 });
 const NO_ACTIONS = Object.freeze([]);
 
-function PartActivityPanel({ partId, resolveName, onClose }) {
+// legacyOnly: the notes shown INSIDE the EOS panel's "Legacy notes" disclosure -- no header and no Close of its own.
+function PartActivityPanel({ partId, resolveName, onClose, legacyOnly = false }) {
   const { data: actions, loading, error: actionsError } = useInventoryActionsForPart(partId);
   const { sort, toggle, sorted } = useTableSort({ rows: actions ?? NO_ACTIONS, columns: ACTION_SORT_COLUMNS });
   const partName = resolveName(partId);
 
   return (
-    <div className="fo-card">
-      <div className="fo-workspace-header">
-        <h3 className="fo-workspace-header-title">Part Activity -- {partName}</h3>
-        <Button type="button" variant="tertiary" onClick={onClose}>
-          Close
-        </Button>
-      </div>
+    <div className={legacyOnly ? undefined : "fo-card"}>
+      {!legacyOnly && (
+        <div className="fo-workspace-header">
+          <h3 className="fo-workspace-header-title">Part Activity -- {partName}</h3>
+          <Button type="button" variant="tertiary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      )}
       <LoadingEmptyState
         loading={loading}
         failed={!!actionsError}
@@ -138,6 +143,65 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
                   <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
                   <td className="fo-muted">{action.reason ?? "—"}</td>
                   <td className="fo-muted">{formatTimestamp(action.createdAt, { unknown: "—" })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </LoadingEmptyState>
+    </div>
+  );
+}
+
+// PART ACTIVITY WHERE EOS IS THE SESSION SOURCE (Firebase exit F2-remainder, DECISIONS #246). The panel above reads the frozen
+// Firestore `inventory_actions` notes -- never a record of stock movement. Here the same "View Activity" opens the part's movements
+// from the EOS inventory ledger (hooks/usePartMovementHistory.js): what moved, how much, against which work order, when. The
+// frozen notes are NOT merged in and NOT presented as activity; they stay reachable, read-only, in a separate disclosure labelled
+// LEGACY_INVENTORY_NOTES_LABEL (interim until Owner decision D-246-1).
+const MOVEMENT_SORT_COLUMNS = Object.freeze({
+  type: { value: (row) => row.type },
+  qty: { value: (row) => row.quantity },
+  workOrder: { value: (row) => row.workOrderId },
+  when: { value: (row) => row.timestamp },
+});
+
+function PartMovementPanel({ partId, resolveName, onClose }) {
+  const { data: rows, loading, error, truncated } = usePartMovementHistory(partId);
+  const { sort, toggle, sorted } = useTableSort({ rows, columns: MOVEMENT_SORT_COLUMNS });
+  return (
+    <div className="fo-card">
+      <div className="fo-workspace-header">
+        <h3 className="fo-workspace-header-title">Part Activity -- {resolveName(partId)}</h3>
+        <Button type="button" variant="tertiary" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!error}
+        isEmpty={rows.length === 0}
+        loadingText="Loading part activity..."
+        failedText="Unable to load part activity right now. Try again shortly."
+        emptyText="No movements recorded for this part in the warehouses you work in."
+      >
+        {truncated && <p className="fo-muted">Showing the newest {PART_MOVEMENT_LIMIT} movements.</p>}
+        <div className="fo-table-scroll">
+          <table className="fo-table fo-table--stack">
+            <thead>
+              <tr>
+                <SortableHeader columnKey="type" label="Movement" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="qty" label="Qty" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="workOrder" label="Work order" sort={sort} onSort={toggle} />
+                <SortableHeader columnKey="when" label="When" sort={sort} onSort={toggle} />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.type}</td>
+                  <td>{typeof row.quantity === "number" ? (row.quantity > 0 ? `+${row.quantity}` : row.quantity) : "—"}</td>
+                  <td className="fo-muted">{row.workOrderId ?? "—"}</td>
+                  <td className="fo-muted">{formatTimestamp(row.timestamp, { unknown: "—" })}</td>
                 </tr>
               ))}
             </tbody>
@@ -473,7 +537,19 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
       )}
 
       {selectedPartId && (
-        <PartActivityPanel partId={selectedPartId} resolveName={resolveName} onClose={handleClosePartActivity} />
+        EOS_SESSION_SOURCE
+          ? (
+            <>
+              <PartMovementPanel partId={selectedPartId} resolveName={resolveName} onClose={handleClosePartActivity} />
+              {/* INTERIM, until Owner decision D-246-1: the frozen notes stay readable (Owner ruling 2026-08-30), read-only, from their
+                  current source, and plainly labelled. The movements above are the EOS ledger. */}
+              <details className="ns-parts-rail__item">
+                <summary>{LEGACY_INVENTORY_NOTES_LABEL}</summary>
+                <PartActivityPanel partId={selectedPartId} resolveName={resolveName} legacyOnly />
+              </details>
+            </>
+          )
+          : <PartActivityPanel partId={selectedPartId} resolveName={resolveName} onClose={handleClosePartActivity} />
       )}
     </WorkspaceShell>
   );

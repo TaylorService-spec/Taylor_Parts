@@ -20,17 +20,22 @@
 //   loading / error
 //
 // One read per session window, shared by every section on a page (a page composes several sections), re-read after
-// CACHE_MS. No Firebase. No Principal-to-Employee link is exposed (that read stays admin.principalAccess.read, Owner ruling B).
+// CACHE_MS. The shared answer is keyed by the SIGNED-IN PRINCIPAL as well as the ids asked (Firebase exit F2-remainder / F4): a
+// sign-out and sign-in as someone else never receives the previous person's answer, in flight or cached. Every read is bounded
+// (access/boundedRead.js): one that never answers settles as an error, so no page waits on "Loading" forever. No Firebase. No Principal-to-Employee link is exposed (that read stays admin.principalAccess.read, Owner ruling B).
 import { useEffect, useState } from "react";
 import { workforceApiClient } from "../services/workforceApiClient.js";
 import { callWorkspaceApi } from "../services/workspaceApiClient.js";
+import { useAuth } from "../auth/AuthContext";
+import { boundedRead, READ_TIMEOUT_MS } from "../access/boundedRead.js";
 
 export { resolveActorDisplayName, UNKNOWN_ACTOR_DISPLAY_NAME } from "../domain/actorDisplayName";
 
 const PAGE = 200;
 const MAX_PAGES = 25; // 5,000 employees; a tenant beyond that reports `truncated`
 const CACHE_MS = 60_000;
-const cache = new Map(); // key -> { at, promise }
+const cache = new Map(); // key (principal + ids) -> { at, promise }
+const TIMED_OUT = Object.freeze({ byEmployeeId: new Map(), byUserId: new Map(), error: Object.freeze({ ok: false, code: "UNREACHABLE" }), truncated: false });
 
 async function readEmployees(client) {
   const byEmployeeId = new Map();
@@ -78,9 +83,9 @@ function load(key, client, actorCall, actorIds, actorSubjects, employeeIds) {
   const employees = employeeIds === null ? readEmployees(client)
     : employeeIds.length ? readNamedEmployees(actorCall, employeeIds).catch(() => ({ byEmployeeId: new Map(), error: { ok: false, code: "INTERNAL" }, truncated: false }))
       : Promise.resolve({ byEmployeeId: new Map(), error: null, truncated: false });
-  const promise = Promise.all([employees, actorIds.length + actorSubjects.length
+  const promise = boundedRead(() => Promise.all([employees, actorIds.length + actorSubjects.length
     ? readActors(actorCall, actorIds, actorSubjects).catch(() => new Map()) : Promise.resolve(new Map())])
-    .then(([employees, byUserId]) => ({ ...employees, byUserId }));
+    .then(([employees, byUserId]) => ({ ...employees, byUserId })), READ_TIMEOUT_MS, TIMED_OUT);
   cache.set(key, { at: Date.now(), promise });
   promise.then((r) => { if (r.error) cache.delete(key); });
   return promise;
@@ -90,24 +95,27 @@ function load(key, client, actorCall, actorIds, actorSubjects, employeeIds) {
 export function resetGovernedEmployeeDirectory() { cache.clear(); }
 
 export function useGovernedEmployeeDirectory({ enabled = true, employeeIds, actorIds = [], actorSubjects = [], client = workforceApiClient, actorCall = callWorkspaceApi } = {}) {
-  const [state, setState] = useState({ byEmployeeId: new Map(), byUserId: new Map(), loading: enabled, error: null, truncated: false });
+  const uid = useAuth()?.user?.uid ?? ""; // the principal the shared answer belongs to (no provider = no principal)
+  const [state, setState] = useState({ byEmployeeId: new Map(), byUserId: new Map(), loading: enabled, error: null, truncated: false, uid });
   const clean = (xs) => [...new Set((xs ?? []).filter((v) => typeof v === "string" && v !== ""))].sort();
   const ids = clean(actorIds);
   const subjects = clean(actorSubjects);
   const named = employeeIds === undefined ? null : clean(employeeIds);
   const idsKey = `${ids.join("|")}#${subjects.join("|")}#${named === null ? "*" : named.join("|")}`;
   useEffect(() => {
-    if (!enabled) { setState({ byEmployeeId: new Map(), byUserId: new Map(), loading: false, error: null, truncated: false }); return undefined; }
+    if (!enabled) { setState({ byEmployeeId: new Map(), byUserId: new Map(), loading: false, error: null, truncated: false, uid }); return undefined; }
     let alive = true;
-    setState((s) => ({ ...s, loading: true }));
+    // A different principal never sees the previous one's names, not even while its own read is in flight.
+    setState((s) => (s.uid === uid ? { ...s, loading: true } : { byEmployeeId: new Map(), byUserId: new Map(), loading: true, error: null, truncated: false, uid }));
     const shared = client === workforceApiClient && actorCall === callWorkspaceApi;
     const [pIds, sIds, eIds] = idsKey.split("#");
     const split = (v) => (v ? v.split("|") : []);
-    load(shared ? `d:${idsKey}` : `d:${idsKey}:${Math.random()}`, client, actorCall, split(pIds), split(sIds), eIds === "*" ? null : split(eIds)).then((r) => {
+    load(shared ? `d:${uid}:${idsKey}` : `d:${uid}:${idsKey}:${Math.random()}`, client, actorCall, split(pIds), split(sIds), eIds === "*" ? null : split(eIds)).then((r) => {
       if (!alive) return;
-      setState({ byEmployeeId: r.byEmployeeId, byUserId: r.byUserId, loading: false, error: r.error, truncated: r.truncated });
+      setState({ byEmployeeId: r.byEmployeeId, byUserId: r.byUserId, loading: false, error: r.error, truncated: r.truncated, uid });
     });
     return () => { alive = false; };
-  }, [enabled, idsKey, client, actorCall]);
-  return state;
+  }, [enabled, idsKey, client, actorCall, uid]);
+  // The render between a principal change and the effect above must not paint the previous principal's answer either.
+  return state.uid === uid ? state : { byEmployeeId: new Map(), byUserId: new Map(), loading: enabled, error: null, truncated: false, uid };
 }

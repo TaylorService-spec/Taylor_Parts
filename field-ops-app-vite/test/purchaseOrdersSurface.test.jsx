@@ -40,8 +40,10 @@ vi.mock("../src/hooks/useReorderRequests", () => ({
 vi.mock("../src/hooks/usePurchaseOrdersByIds", () => ({
   usePurchaseOrdersByIds: () => purchaseOrdersState,
 }));
-vi.mock("../src/hooks/useEmployeeDirectory", () => ({
-  useEmployeeDirectory: () => employeeDirectoryState,
+// Firebase exit F4 (DECISIONS #247): "Ordered by" is named by the governed (EOS) directory, for the Principals on the rows.
+const directoryAsked = [];
+vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", () => ({
+  useGovernedEmployeeDirectory: (args) => { directoryAsked.push(args); return employeeDirectoryState; },
 }));
 
 const { default: PurchaseOrders } = await import("../src/modules/purchasing/PurchaseOrders.jsx");
@@ -87,6 +89,7 @@ beforeEach(() => {
   purchaseOrdersState.loading = true;
   purchaseOrdersState.error = null;
   employeeDirectoryState.byUserId = new Map();
+  directoryAsked.length = 0;
 });
 
 describe("Purchase Orders surface -- loading/error/empty are distinct renderings", () => {
@@ -191,6 +194,30 @@ describe("Purchase Orders surface -- the four-way status ladder", () => {
     purchaseOrdersState.purchaseOrdersById = { "rr-open": po({ id: "rr-open" }) };
     renderSurface();
     expect(within(screen.getByRole("table")).getByText(/eligible for receiving/i)).toBeTruthy();
+  });
+});
+
+describe("Purchase Orders surface -- Ordered by is named through the governed (EOS) directory", () => {
+  beforeEach(() => {
+    requestsState.loading = false;
+    requestsState.error = null;
+    purchaseOrdersState.loading = false;
+    requestsState.data = [request({ id: "rr-open" })];
+    purchaseOrdersState.purchaseOrdersById = { "rr-open": po({ id: "rr-open", createdBy: "principal-7" }) };
+  });
+
+  it("asks for exactly the Principal that recorded the purchase order, and renders the name it is given", () => {
+    employeeDirectoryState.byUserId = new Map([["principal-7", { id: "principal-7", displayName: "Dana Buyer" }]]);
+    renderSurface();
+    expect(directoryAsked.at(-1)).toEqual({ actorIds: ["principal-7"] });
+    expect(within(screen.getByRole("table")).getByText("Dana Buyer")).toBeTruthy();
+  });
+
+  it("renders Unknown user -- never the id -- when the read names nobody", () => {
+    renderSurface();
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Unknown user")).toBeTruthy();
+    expect(within(table).queryByText("principal-7")).toBeNull();
   });
 });
 

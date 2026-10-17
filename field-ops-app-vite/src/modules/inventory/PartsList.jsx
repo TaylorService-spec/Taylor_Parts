@@ -16,7 +16,7 @@ import {
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
@@ -381,11 +381,6 @@ function catalogBlockedMessage(status) {
 
 export default function PartsList({ accessVersion, writeDeps } = {}) {
   const { user } = useAuth();
-  const {
-    byUserId: employeeDirectory,
-    loading: employeeDirectoryLoading,
-    error: employeeDirectoryError,
-  } = useEmployeeDirectory();
   const { healthEntries, loading, error: healthError } = useInventoryLedger();
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
@@ -467,6 +462,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     loading: allAssignedWorkLoading,
     error: allAssignedWorkError,
   } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES);
+  // Firebase exit F4 (DECISIONS #247): "Team Work" names each assignee through the governed resolveEmployeeDisplayNames, for exactly
+  // the Employee ids on the rows above (assignedEmployeeId). It used to read the whole Firestore employee directory, which is
+  // keyed by Firebase uid and could not name an EOS Employee id. A refusal leaves the table at "Unknown assignee".
+  const {
+    byEmployeeId: employeeDirectory,
+    loading: employeeDirectoryLoading,
+    error: employeeDirectoryError,
+  } = useGovernedEmployeeDirectory({ employeeIds: allAssignedWork.map((r) => r.assignedEmployeeId) });
   // Wave 6 -- queue consolidation. Which assigned-to-me request's detail panel (if any) is
   // open -- same shared AssignedRequestDetail PartsAssociateHome.jsx uses, same focus-
   // restoration convention (the triggering "View" button regains focus on close).

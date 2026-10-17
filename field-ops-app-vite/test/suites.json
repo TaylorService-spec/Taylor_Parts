@@ -1280,6 +1280,10 @@
     {
       "file": "test/f1SessionAccess.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/f2rF4FirebaseExit.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

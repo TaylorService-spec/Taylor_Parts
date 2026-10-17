@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
-import { fetchProcurementPurchaseOrders } from "../../services/operationsQueries";
+import { fetchProcurementPurchaseOrders } from "../../services/operationsReorderReads";
 import { fetchSupplierList, fetchSupplierCatalogForParts } from "../../services/partsOperationsReads.js";
 import { loadEosInventoryHealth } from "../../hooks/useInventoryLedger.js";
 import { fetchInventoryWarehouseOptions } from "../../services/inventoryLocationClient.js";

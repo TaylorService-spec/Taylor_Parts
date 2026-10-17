@@ -17,7 +17,7 @@ import { LEDGER_INTEGRITY_STATE } from "../domain/ledgerRowIntegrity.js";
 //
 // PostgreSQL movements are governed rows (typed, constrained), so the DQ-027 integrity state is COMPLETE; a read failure is
 // a FAILED read (`error`), never a silent empty list.
-const toLedgerTransaction = (m) => ({
+export const toLedgerTransaction = (m) => ({
   id: m.movementId,
   workOrderId: m.sourceKind === "WORK_ORDER" ? m.sourceId : null,
   partId: m.partId,

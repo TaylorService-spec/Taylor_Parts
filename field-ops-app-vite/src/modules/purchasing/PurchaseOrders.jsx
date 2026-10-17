@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useReorderRequestsByStatuses } from "../../hooks/useReorderRequests";
 import { usePurchaseOrdersByIds } from "../../hooks/usePurchaseOrdersByIds";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import { resolveActorDisplayName } from "../../domain/actorDisplayName";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
@@ -107,13 +107,17 @@ export default function PurchaseOrders() {
   const requestsRead = useReorderRequestsByStatuses(PO_REQUEST_STATUSES);
   const ids = useMemo(() => requestsRead.data.map((r) => r.id), [requestsRead.data]);
   const purchaseOrdersRead = usePurchaseOrdersByIds(ids);
-  const { byUserId } = useEmployeeDirectory();
   const [filterKey, setFilterKey] = useState("open");
 
   const view = useMemo(
     () => buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }),
     [requestsRead, purchaseOrdersRead]
   );
+  // Firebase exit F4 (DECISIONS #247): "Ordered by" is the EOS Principal that recorded the purchase order (purchase_orders.created_by),
+  // named by the governed resolvePrincipalDisplayNames for exactly the Principals on the rows shown. It used to read the whole
+  // Firestore employee directory, keyed by Firebase uid. No Employee-name fallback (Owner ruling B): a Principal the read does
+  // not name, or a refusal, renders "Unknown user".
+  const { byUserId } = useGovernedEmployeeDirectory({ actorIds: view.rows.map((r) => r.orderedByUserId) });
 
   // Client-side sort over the rows already loaded (this read is not paged); the filter is applied first and the
   // view-model's order stays the default (item C). Hooks run before the load ladder's early returns.

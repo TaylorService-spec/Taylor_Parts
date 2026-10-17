@@ -20,6 +20,11 @@
 - **Stock didn't change:** expected — this is an audit log only.
 - **Correction Note won't submit:** a Correction Note requires both a reason and notes.
 
+## Where a part's history is now
+- **Part detail > Activity** lists the part's stock movements from the inventory ledger, newest first. That is the record of what actually moved.
+- **Warehouse Manager home > View Activity** (next to a part) opens the same movements for that part, limited to the warehouses you work in: the movement, the quantity, the work order if there is one, and when. If the list cannot be loaded it says so; it never shows an empty list in place of a failure.
+- The old notes are still there to read. On Part detail and on the Warehouse Manager home they appear in a separate section titled **Legacy notes (frozen 2026-08-30; not stock movements)** (in older environments the Part detail section is titled **Inventory Action History**). They are read-only, no new notes can be added, and they were never a record of stock movement. They are not part of the Activity list above them.
+
 ## Related
 - [Find a part and check its stock](find-a-part.md)
 - [Mark a reorder request received](mark-reorder-received.md)
