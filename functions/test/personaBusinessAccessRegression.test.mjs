@@ -309,7 +309,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 96 -> 97: 1764550000000 -- EOS native login: credential, session and MFA tables; no capability, no grant.
   // 97 -> 98: 1764560000000 -- Financial Policy foundation (#232): four finance.policy.* keys, granted to NO Role.
   // 98 -> 99: 1764570000000 -- Financial Policy withdraw / cancel (#232 Phase 3): schema only; no capability, no grant.
-  assert.equal(files.length, 99, "the migration chain moved; re-measure before trusting anything below");
+  // 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant).
+  assert.equal(files.length, 100, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

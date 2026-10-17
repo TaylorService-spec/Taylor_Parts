@@ -44,6 +44,7 @@ import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCom
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
 import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
+import { listReturnIntakeOptions, recordReturnIntake } from "./returnIntake.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import { EOS_WORK_ORDER_OPERATIONS, isWorkOrderOperation, type EosWorkOrderOperation } from "./workOrderOperations";
 import { EOS_INBOUND_WORK_OPERATIONS, INBOUND_WORK_ROUTE, isInboundWorkOperation } from "./inboundWorkOperations";
@@ -116,6 +117,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   // TRUCK INVENTORY (Controller OD-T3 / OD-T7, 2026-10-01): the operational truck roster and one truck's stock.
   "listTruckRoster",
   "readTruckStock",
+  // RETURNS INTAKE (Firebase exit F7a, DECISIONS #242): the caller's companies and the receiving warehouses each allows.
+  "listReturnIntakeOptions",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -158,6 +161,9 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "updatePartSupplierItem",
   "setPartSupplierItemStatus",
   "setPreferredPartSupplierItem",
+  // RETURNS INTAKE (Firebase exit F7a, DECISIONS #242): inventory.returns.intake + the #237 company check. Intake only --
+  // NO ledger movement (#118). Not behind the Reorder activation boundary: it is its own authority.
+  "recordReturnIntake",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -210,6 +216,8 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   updatePartSupplierItem: "/operations/inventory",
   setPartSupplierItemStatus: "/operations/inventory",
   setPreferredPartSupplierItem: "/operations/inventory",
+  listReturnIntakeOptions: "/operations/inventory",
+  recordReturnIntake: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -577,6 +585,16 @@ export async function executeOperation(
       case "setPreferredPartSupplierItem": {
         const { actor, pool } = await supplierTermsActor();
         return ok(await setPreferredPartSupplierItem({ pool }, actor, request.input ?? {}));
+      }
+      // Conditioned grants withheld (the supplier-terms actor): a capability reached only through an unevaluated grant
+      // condition does not take a return in.
+      case "listReturnIntakeOptions": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listReturnIntakeOptions({ pool }, actor, request.input ?? {}));
+      }
+      case "recordReturnIntake": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await recordReturnIntake({ pool }, actor, request.input ?? {}));
       }
       case "correctReorderReceipt": {
         const { actor, pool } = await reorderActor();

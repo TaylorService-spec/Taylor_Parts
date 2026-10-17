@@ -36,8 +36,7 @@
         "field-ops-app-vite/src/services/manufacturerReadCallableClient.js",
         "field-ops-app-vite/src/services/performanceGoalClient.js",
         "field-ops-app-vite/src/services/privilegedApprovalClient.js",
-        "field-ops-app-vite/src/services/receivingCallableClient.js",
-        "field-ops-app-vite/src/services/returnCommandClient.js"
+        "field-ops-app-vite/src/services/receivingCallableClient.js"
       ],
       "firebase_auth": [
         "field-ops-app-vite/src/auth/AuthContext.jsx",

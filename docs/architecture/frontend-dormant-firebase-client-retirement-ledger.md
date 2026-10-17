@@ -115,3 +115,13 @@ No screen changes. The two record-page and list-hook routing suites now use a re
 - **No EOS replacement exists yet.** EOS has no canonical supplier-PO receive. Reorder-PO receiving is already EOS (`receiveReorderStock`).
 
 Removing it needs a ruling: retire canonical supplier-PO receiving, or build its EOS receive.
+
+## F7a: Returns intake moves to EOS Core (2026-10-17, exit baseline 245 → 244)
+
+| Changed | Now |
+| --- | --- |
+| `services/returnCommandClient.js` (the `recordReturnIntake` callable) | It calls EOS `recordReturnIntake` and `listReturnIntakeOptions` on `/operations/inventory` (`eosOps/returnIntake.ts`, `eos_ops.inventory_returns`). Its consumers (`ReturnIntakeScan.jsx`, `offline/warehouseCommandBindings.js`) are unchanged in shape. |
+
+- **Owner ruling (DECISIONS #242):** operating company required, warehouse optional, no ledger movement, and a memberless `inventoryReturnsIntakeClerk` Role.
+- **Existing Firestore returns are NOT copied.** The census and copy tools (`scripts/exportReturnIntakeSnapshot.js`, `scripts/returnIntakeCopy.js`) are prepared. The copy runs only with the Owner's go-ahead and a person's company mapping.
+- **The server callable** `recordReturnIntake` stays deployed until an operator undeploy, which is reserved.

@@ -152,9 +152,11 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // 431 -> 451 (MIGRATION_BACKED 373 -> 393): migration 1764510000000, Finance Closure (#206) -- the four settlement capabilities to owner,
   // generalManager, controller, accountingManager, financeManager (never admin).
   // 451 -> 481 (MIGRATION_BACKED 393 -> 423): migration 1764520000000, Rental (#207) -- the six rental capabilities to their analog Roles.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 481);
+  // 481 -> 482 (MIGRATION_BACKED 423 -> 424): migration 1764580000000, Returns intake (F7a, #242) -- inventoryReturnsIntakeClerk ->
+  // inventory.returns.intake, the one memberless Role the Owner ruling names.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 482);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 423, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 424, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);
