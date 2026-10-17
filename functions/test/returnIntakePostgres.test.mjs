@@ -259,6 +259,20 @@ test("returns intake: Administration projects it under inventoryReturn; the cler
     assert.deepEqual(under.map((c) => [c.key, c.actionKey, c.actionKind]), [["inventory.returns.intake", "intake", "BUSINESS_ACTION"]]);
   });
 
+  await t.test("the catalog reconcile imports NOTHING for it: admin's whole-catalog declaration is fenced, the clerk stays the one holder", async () => {
+    const { reconcileInventoryCapabilityGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
+    const holders = async () => (await q(`SELECT r.key FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+      JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.tenant_id = $1 AND c.key = 'inventory.returns.intake' ORDER BY 1`, [A])).rows.map((r) => r.key);
+    assert.deepEqual(await holders(), ["inventoryReturnsIntakeClerk"]);
+    const report = await reconcileInventoryCapabilityGrants(world.pool, {
+      tenantId: A, apply: true, actor: "returns-intake-proof", capabilityKeys: ["inventory.returns.intake"],
+    });
+    assert.deepEqual(report.rows.filter((r) => r.status === "APPLIED"), [], "the reconcile applied a returns-intake grant");
+    assert.deepEqual(report.rows.filter((r) => r.roleKey === "admin").map((r) => r.status), ["ADMINISTRATION_ONLY"],
+      "admin x inventory.returns.intake is reported, never applied (Owner ruling 3, #242)");
+    assert.deepEqual(await holders(), ["inventoryReturnsIntakeClerk"], "no other Role gained the key");
+  });
+
   await t.test("(3) the clerk Role holds it, has no members, and is assignable through preview -> assignRole", async () => {
     const clerk = await roleId(A, "inventoryReturnsIntakeClerk");
     const held = await q(`SELECT c.key FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id

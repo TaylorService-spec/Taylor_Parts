@@ -285,7 +285,7 @@ export function resolveCell(input: {
  * LEGACY CATALOG DECLARATIONS THAT ARE NOT SYSTEM DEFAULTS -- Controller DQ-023 / DQ-037 (2026-09-28): reconciliation is
  * REPORT-ONLY for anything no accepted ruling established; only Administration changes governed authority.
  *
- * The compiled Role catalog (admin composes the whole legacy permission catalog) declares these eight (Role, capability)
+ * The compiled Role catalog (admin composes the whole legacy permission catalog) declares these (Role, capability)
  * PAIRS, but no migration, ruling or measured baseline establishes them: none is in the governed authority baseline
  * (roleCapabilityAuthorityBaseline), so a verifier already reads them as "no system default". Without this fence every
  * default writer (catalog reconcile --apply, the Sample Company seed) still INSERTED them. With it, a default writer
@@ -301,6 +301,10 @@ export const CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT: ReadonlySet<string> = 
   ["dispatcher", "reorder.request.assign"], ["dispatcher", "reorder.request.read.queue"],
   ["partsManager", "reorder.request.read.queue"], ["purchasingManager", "reorder.request.read.queue"],
   ["technician", "reorder.purchaseOrder.create"], ["technician", "reorder.purchaseOrder.read"],
+  // Owner ruling 3, #242 (F7a, 2026-10-17): inventory.returns.intake is held by ONE Role, the memberless
+  // inventoryReturnsIntakeClerk (migration 1764580000000). admin's whole-catalog composition is not a default; the
+  // Administrator gets it the way anyone does, through a governed, audited assignment.
+  ["admin", "inventory.returns.intake"],
 ].map(([roleKey, capabilityKey]) => cellKey(roleKey, capabilityKey)));
 
 export interface CurrentDecision extends RoleCapabilityCell {

@@ -8734,6 +8734,9 @@ So merging empties nothing. The **production** copy (Firestore `manufacturers` �
 - **Access** (Owner ruling 3). `inventory.returns.intake` is registered (object `inventoryReturn`, BUSINESS_ACTION) and granted to ONE Role, `inventoryReturnsIntakeClerk`, which has **no members**.
   - This is a grant-bearing migration (Owner ruling E); the authority baseline goes 481 → 482 in the same change.
   - Nobody is assigned anything by this change. Rudy Admin's nonprod ability is restored after deploy by the Controller through the governed previewAuthorityChange → assignRole path, audited. There is no production access change.
+  - **`admin` does not get it by default.** The compatibility `admin` Role composes the whole legacy permission catalog, so the catalog reconcile would otherwise import `admin × inventory.returns.intake` as a default. The pair is in `CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT` (the DQ-023/037 pair-level fence): it is reported as ADMINISTRATION_ONLY and never applied. Nothing is revoked.
+  - admin × inventory.returns.intake is fenced (CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT): admins hold returns intake on EOS only by governed clerk assignment.
+  - **Administration projects it.** `inventoryReturn` is declared in the governed Object catalog (`capabilityGovernedObjects.json`): no fields, no CRED verb, the same shape as `settlement` and `rentalEquipment`. Administration lists the Object and shows the one BUSINESS_ACTION under it.
 - **Client.** `services/returnCommandClient.js` calls EOS, with no Firebase fallback. The Scan › Take a return in screen asks for the company (chosen automatically when there is only one) and an optional warehouse.
   - Offline intake keeps working from the last options the server gave the device. The server re-checks on replay, and a refusal is never answered from the cache.
   - A non-holder is now refused as a grantable permission ("An administrator can grant it").
