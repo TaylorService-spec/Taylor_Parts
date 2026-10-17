@@ -15,7 +15,6 @@ const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
 const WAREHOUSES_COLLECTION = "warehouses";
 const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
 const SUPPLIERS_COLLECTION = "suppliers";
-const SUPPLIER_CATALOG_COLLECTION = "supplier_catalog";
 const PURCHASE_ORDERS_COLLECTION = "purchase_orders";
 
 export interface RawInventoryTransaction {
@@ -62,14 +61,6 @@ export interface RawSupplier {
   // Legacy Epic-5 demo fields retained (optional) for the Operations ProcurementPanel consumer.
   contactEmail?: string;
   leadTimeDays?: number;
-}
-
-export interface RawSupplierCatalogItem {
-  id: string;
-  supplierId: string;
-  partId: string;
-  unitPrice: number;
-  available: boolean;
 }
 
 export interface RawPurchaseOrder {
@@ -169,8 +160,8 @@ export const fetchTransferOrderDocsPage = async (
 export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);
 export const fetchWarehouses = () => listCollection<RawWarehouse>(WAREHOUSES_COLLECTION);
 export const fetchTransferOrders = () => listCollection<RawTransferOrder>(TRANSFER_ORDERS_COLLECTION);
-export const fetchSuppliers = () => listCollection<RawSupplier>(SUPPLIERS_COLLECTION);
-export const fetchSupplierCatalog = () => listCollection<RawSupplierCatalogItem>(SUPPLIER_CATALOG_COLLECTION);
+// Firebase exit F2 (2026-10-17): fetchSuppliers / fetchSupplierCatalog are gone -- the Operations Procurement panel reads
+// EOS listSuppliers and each recommended Part's governed supplier terms (services/partsOperationsReads.js).
 export const fetchPurchaseOrders = () => listCollection<RawPurchaseOrder>(PURCHASE_ORDERS_COLLECTION);
 
 // INV-CONVERGENCE-E Stage A completion -- one-shot read-only lists of the reorder

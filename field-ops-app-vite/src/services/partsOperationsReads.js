@@ -58,6 +58,36 @@ export const updatePartSupplierTerms = (input, options) => call("updatePartSuppl
 export const setPartSupplierTermsStatus = (input, options) => call("setPartSupplierItemStatus", input, options);
 export const setPreferredPartSupplierTerms = (input, options) => call("setPreferredPartSupplierItem", input, options);
 
+/**
+ * The Operations Procurement panel's supplier catalog, for exactly the Parts it has a reorder recommendation for (Firebase
+ * exit F2: was the whole Firestore `supplier_catalog`). One governed listPartSupplierItems per Part; the server projects
+ * every item for the caller, so cost is null when the COMMERCIAL field group is withheld. A Part the Catalog does not hold
+ * contributes no item (NOT_FOUND); any other refusal fails the whole catalog, exactly as the old read did.
+ * Shaped for domain/procurementDraftEngine.ts's SupplierCatalogItem.
+ */
+export async function fetchSupplierCatalogForParts(partIds, options) {
+  const ids = [...new Set(partIds)];
+  const answers = [];
+  // ponytail: 4 per-part reads at a time; a batch listPartSupplierItems if recommendation lists grow large.
+  for (let i = 0; i < ids.length; i += 4) {
+    answers.push(...await Promise.all(ids.slice(i, i + 4).map((partId) =>
+      fetchPartSupplierItems(partId, options).catch((error) => {
+        // The transport carries the category; listPartSupplierItems' only NOT_FOUND is PART_NOT_FOUND.
+        if (error?.code === "NOT_FOUND") return { items: [] };
+        throw error;
+      }))));
+  }
+  return answers.flatMap((answer) => (answer?.items ?? []).map((item) => Object.freeze({
+    id: item.itemId,
+    supplierId: item.supplierId,
+    partId: item.partId,
+    unitPrice: typeof item.cost === "string" && item.cost !== "" && Number.isFinite(Number(item.cost)) ? Number(item.cost) : null,
+    currency: item.currency ?? null,
+    available: item.status === "ACTIVE" && item.availability === "AVAILABLE",
+    preferred: item.preferred === true,
+  })));
+}
+
 export const fetchInventoryPosition = ({ partIds = null, warehouseId = null } = {}, options) =>
   call("readInventoryOnHand", { ...(partIds ? { partIds } : {}), ...(warehouseId ? { warehouseId } : {}) }, options);
 

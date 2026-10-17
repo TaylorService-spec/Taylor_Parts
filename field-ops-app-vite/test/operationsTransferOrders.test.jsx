@@ -22,10 +22,10 @@ vi.mock("../src/services/operationsQueries", () => ({
   fetchWarehouses: async () => h.warehouses,
   fetchTransferOrderDocs: () => h.transferResult(),
   fetchTransferOrders: async () => [],
-  fetchSuppliers: async () => [],
-  fetchSupplierCatalog: async () => [],
   fetchProcurementPurchaseOrders: async () => [],
 }));
+// Firebase exit F2: the Procurement panel's supplier list and catalog are EOS reads.
+vi.mock("../src/services/partsOperationsReads.js", () => ({ fetchSupplierList: async () => [], fetchSupplierCatalogForParts: async () => [] }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
 // The dashboard's INVENTORY truth is EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): stock

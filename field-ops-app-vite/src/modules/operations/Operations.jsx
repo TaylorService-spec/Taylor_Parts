@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
-import {
-  fetchSuppliers,
-  fetchSupplierCatalog,
-  fetchProcurementPurchaseOrders,
-} from "../../services/operationsQueries";
+import { fetchProcurementPurchaseOrders } from "../../services/operationsQueries";
+import { fetchSupplierList, fetchSupplierCatalogForParts } from "../../services/partsOperationsReads.js";
 import { loadEosInventoryHealth } from "../../hooks/useInventoryLedger.js";
 import { fetchInventoryWarehouseOptions } from "../../services/inventoryLocationClient.js";
 import { listTransferOrderDocs } from "../../services/transferCommandClient.js";
@@ -81,18 +78,17 @@ export default function Operations({ accessVersion } = {}) {
 
     // INVENTORY TRUTH IS EOS (Controller INVENTORY / WAREHOUSE COMPLETION RULINGS, 2026-10-01): stock health from the
     // PostgreSQL on-hand / movement reads (the same loader useInventoryLedger uses), warehouses from eos_ops, transfer
-    // orders from the governed EOS list. No Firebase stock dashboard remains. The PROCUREMENT panel (canonical
-    // supplier POs, supplier catalog, supplier list) still reads its Firestore sources -- procurement, not inventory
-    // truth, and outside this package; recorded as a remaining dependency.
+    // orders from the governed EOS list. No Firebase stock dashboard remains. FIREBASE EXIT F2 (2026-10-17): the
+    // PROCUREMENT panel's supplier list (listSuppliers) and supplier catalog (each recommended Part's governed supplier
+    // terms, listPartSupplierItems) are EOS reads too; no Firestore `suppliers` / `supplier_catalog` read remains here.
     Promise.all([
       loadEosInventoryHealth(),
       fetchInventoryWarehouseOptions(),
       listTransferOrderDocs({}).then((page) => page.items),
-      // SETTLED: the supplier list and supplier catalog are still Firestore reads (a recorded Firebase-retirement
-      // dependency, #2040). A session without Firebase sign-in is refused them; that refusal is said inside the Procurement
-      // panel, never by blanking the EOS inventory / warehouse / transfer panels beside it.
-      fetchSuppliers().then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure })),
-      fetchSupplierCatalog().then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure })),
+      // SETTLED: a refused supplier list (supplier.record.read) is said inside the Procurement panel, never by blanking
+      // the inventory / warehouse / transfer panels beside it. The supplier catalog is read below, once the recommended
+      // Parts are known, because the governed terms are read per Part.
+      fetchSupplierList().then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure })),
       // SETTLED like the Work Order aggregates below: the governed Reorder queue read refuses a caller without the
       // REORDER_QUEUE Operational Scope (reorderLifecycleCommands.requireQueueReach). That refusal is said inside the
       // Procurement panel, never by blanking the inventory / warehouse / transfer panels beside it.
@@ -105,12 +101,11 @@ export default function Operations({ accessVersion } = {}) {
       ),
     ])
       .then(
-        ([
+        async ([
           inventoryHealth,
           warehouses,
           transferOrderDocs,
           suppliers,
-          supplierCatalog,
           purchaseOrders,
           executionInsights,
         ]) => {
@@ -128,6 +123,12 @@ export default function Operations({ accessVersion } = {}) {
             urgency: entry.recommendation.urgency,
             source: "EPIC3_ANALYTICS",
           }));
+        // The catalog for exactly the recommended Parts, SETTLED like the reads above (inventory.supplierTerms.read).
+        const supplierCatalog = procurementRecommendations.length === 0
+          ? { rows: [], failure: null }
+          : await fetchSupplierCatalogForParts(procurementRecommendations.map((r) => r.partId))
+            .then((rows) => ({ rows, failure: null }), (failure) => ({ rows: [], failure }));
+        if (cancelled) return;
         // Without the supplier catalog a draft has no supplier or price to propose: no drafts are generated, and the
         // panel says the catalog is unavailable instead of "No supplier available" on every row.
         const procurementDrafts = supplierCatalog.failure ? [] : generateProcurementDrafts(procurementRecommendations, supplierCatalog.rows);
