@@ -4,6 +4,10 @@
 
 **Where:** Service → Dispatch Board (`/service/dispatcher-board`). You need the dispatch surface to open it.
 
+## Which time zone the board uses
+
+Under the title the board says **Times are in <zone>.** The day, the hours and the dates are drawn in your company's business time zone, so everyone sees the same day regardless of where their computer is. If your companies keep different zones, or the company's zone could not be read, the board uses your browser's zone and says so in the same line.
+
 ## What the lane colours mean
 
 The legend above the board uses the same styles as the lanes.
