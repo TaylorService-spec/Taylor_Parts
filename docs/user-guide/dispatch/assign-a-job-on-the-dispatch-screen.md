@@ -1,25 +1,44 @@
-# Assign a job to a technician (Dispatch screen)
+# Schedule and dispatch jobs (Jobs screen)
 
-**What this lets you do:** Hand an unassigned job to an available technician in one click.
+**What this lets you do:** Work through the list of Work Orders by what needs doing next: schedule the waiting ones, move or reassign the scheduled ones, and dispatch them to the technician.
 
-**Who can do it:** Admin and Dispatcher. (Technicians do not see the Dispatch screen.)
+**Who can do it:** Admin and Dispatcher can open the screen. Each button appears only if your access allows it: **Schedule…**, **Move…**, **Reassign…** need scheduling access, and **Dispatch to …** needs dispatch access. Technicians do not see this screen.
 
 **Before you start**
-- You need at least one technician showing as **Available**. Add or free up technicians from the Employees/Technicians area if none appear.
-- Open **Service > Dispatch** from the left navigation.
+- Open **Service > Dispatch > Jobs**. (Do not confuse it with **Job Assignments** under Work Management, which is a read-only list.)
+- The screen groups Work Orders under headings, in the order you would work them: **Scheduled — ready to dispatch**, **Waiting to be scheduled**, **In the field**, **Not ready to schedule yet**, **Finished or cancelled**. Empty groups are not shown.
 
-**Steps**
-1. On the Dispatch screen, look through the cards. Each card is one job and shows the customer name, a short description, and a status chip (**Emergency**, **Scheduled**, **In Progress**, or **Completed**). You will see every job, not just unassigned ones.
-2. Find a job that still shows a **Select technician…** dropdown — that means it has no technician yet.
-3. Open the dropdown. It lists only technicians who are currently **Available**.
-4. Choose a technician. The assignment saves immediately: the dropdown is replaced by **Assigned to [name]**, and that technician's status flips to on-a-job everywhere else in the app.
+## Schedule a waiting Work Order
 
-**Tips / common problems**
-- **The dropdown is empty.** No technicians are Available right now. Wait for one to finish, or free one up first.
-- **You picked someone but got an error like "Technician no longer available."** Another dispatcher grabbed that technician a moment before you. Reopen the dropdown and pick someone else — the app deliberately blocks two dispatchers from booking the same technician.
-- **A card shows "Active Demo Job" and a technician is pre-selected.** That is the built-in demo job used for walkthroughs; it behaves like any other job.
-- Jobs already **In Progress** or **Completed** show their status instead of a dropdown — there is nothing to assign.
+1. Under **Waiting to be scheduled**, find the card and click **Schedule…**. The **Schedule This Work Order** window opens.
+2. Wait for "Finding the earliest open time…" to finish. The **Starts** field is filled with the earliest valid future time, and a technician is filled in if you left it blank. You can change **Technician**, **Starts** and **Length** (30 minutes up to 8 hours).
+3. Click **Schedule**. The card moves to **Scheduled — ready to dispatch** and the screen says "<number> scheduled."
 
-**Related**
-- Control Tower (a read-only overview of jobs, technicians, and a recommended dispatch queue)
-- Dispatcher Board (the drag-and-drop board for dispatching Work Orders)
+This is the same window and the same rules as scheduling on the Dispatcher Board. See [Jobs and the board share one scheduling path](./schedule-and-dispatch-from-jobs-and-the-board.md).
+
+## Dispatch a scheduled Work Order
+
+1. Under **Scheduled — ready to dispatch**, the card says "Scheduled for <technician>".
+2. Click **Dispatch to <technician>**. The screen says "<number> dispatched." and the card moves to **In the field**.
+
+## Move or reassign a scheduled Work Order
+
+1. Click **Move…** to pick a new time, or **Reassign…** to pick a different technician. If the card says "Scheduled, but no technician is recorded", click **Choose technician…** instead.
+2. In the window, fill in what changes and type the reason (required; the confirm button stays off until you do). The buttons read **Confirm new time** or **Confirm reassignment**.
+3. Click the confirm button. A reassignment keeps the job's current time. The screen says "<number> moved." or "<number> reassigned."
+
+## Tips / common problems
+
+- **The Starts time says "Times are in <zone>".** The window uses your company's business time zone. The date and time printed on the cards use your computer's own clock, so they can differ if your computer is in another zone.
+- **"That start time has already passed. Choose a later time."** Past times cannot be chosen, and nothing is moved forward for you. If the window sat open until its time passed, it looks up a fresh earliest time and asks you to check it and submit again.
+- **No open time found.** The window says why (no technician has an open window, the technician has no working hours recorded, or they cannot be scheduled for this job) and offers the earliest alternative with **Use this time**. You can also type a time and try; the server checks it on submit.
+- **The window stays open with a red sentence.** The server refused the change. Adjust and try again, or **Cancel**.
+- **No buttons on a card.** You may not have that access. If you have neither scheduling nor dispatch, the screen says: "You can see these jobs, but scheduling and dispatching are not part of your access."
+- **"Technicians could not be loaded."** Schedule…, Move… and Reassign… are unavailable until it works. Dispatching to the already scheduled technician still works if you have dispatch access.
+- **Cancelling a Work Order.** There is no cancel button on this screen. Cancelled Work Orders show a **Cancelled** chip under **Finished or cancelled**. "Open work order" on any card takes you to the Work Order.
+- **Returning a job to the queue** is done on the Dispatcher Board, not here.
+
+## Related
+- [Schedule, move and dispatch on the Dispatcher Board](./dispatch-a-work-order-on-the-dispatcher-board.md)
+- [Jobs and the board share one scheduling path](./schedule-and-dispatch-from-jobs-and-the-board.md)
+- [Control Tower](./monitor-operations-in-control-tower.md)

@@ -1,35 +1,65 @@
-# Dispatch a Work Order (Dispatcher Board)
+# Schedule, move and dispatch on the Dispatcher Board
 
-**What this lets you do:** Review the Work Order queue with technician recommendations, then send a scheduled Work Order to the technician you choose.
+**What this lets you do:** Put Work Orders on a technician's day, move or reassign them, return them to the queue, and dispatch them, all from one board.
 
-**Who can do it:** Admin and Dispatcher. (Technicians do not see the Dispatcher Board.)
+**Who can do it:** Admin and Dispatcher can open the board. Changing the schedule (Schedule…, drag, keyboard move/resize, reassign) is shown only to people whose access includes scheduling. Everyone else can look but not change anything (see "If you cannot schedule" below). Technicians do not see the board.
 
 **Before you start**
-- Open **Service > Dispatcher Board** from the left navigation.
-- At least one Work Order must exist. If none do, create one from the Work Orders tab first — the board shows a "No work orders exist yet" message otherwise.
-- Only Work Orders in **SCHEDULED** status can be dispatched here. Others still appear in the queue but cannot be dispatched from this screen.
+- Open **Service > Dispatch > Dispatcher Board**. The page is titled **Dispatch & Scheduling**.
+- A Work Order must be waiting in the **Ready to Schedule** queue under the grid to be scheduled.
+- Read the line under the title: **Times are in <zone>.** Every day, hour and date on this board is drawn in your company's business time zone, not your computer's. If your companies keep different zones, or the company's zone could not be read, the line says so ("your browser's zone; your companies keep different business time zones" or "your browser's zone; the company's could not be read") and the board uses your computer's zone instead.
 
-**Understanding the layout**
-The board has three columns:
-- **Work Order Queue** (left): every Work Order, with its status, priority, customer, type, age, and — if unassigned — a starred recommended technician.
-- Center pane: details of the selected Work Order plus the **top 3 recommended technicians** and a **Dispatch to…** control.
-- **Technicians** (right): every technician with a capacity card and, once a Work Order is selected, a match score.
+## Schedule a Work Order from the queue
 
-**Steps**
-1. (Optional) Narrow the list. Use the search box to match a Work Order number, customer, or type, and the status dropdown to filter (for example, choose **SCHEDULED** to see only dispatchable ones).
-2. Click a Work Order card in the queue. Its details load in the center pane. You can also move through the queue with the Up/Down arrow keys, or press Escape to clear the selection.
-3. Review the recommendations. In the center pane, click any of the top-3 technicians to expand a score breakdown (workload, past similar assignments, availability, territory).
-4. Dispatch it, one of two ways:
-   - **Pick from the list:** in the center pane, open **Dispatch to…**, choose a technician, and click **Dispatch**. The button reads "Dispatching…" while it saves.
-   - **Drag and drop:** drag the Work Order card from the queue onto a technician column on the right. Only valid target columns highlight as you drag.
-5. When it succeeds, the board refreshes on its own and the Work Order shows its new status and assigned technician.
+1. In **Ready to Schedule**, click **Schedule…** on the Work Order's card. The **Schedule This Work Order** window opens.
+2. The window looks up the earliest open time and fills it in, with a technician if you had none. While it looks, it says "Finding the earliest open time…". Change **Technician**, **Starts** or **Length** if you want something else.
+3. Click **Schedule**. The Work Order moves onto that technician's lane, and the board says "<number> scheduled."
 
-**Tips / common problems**
-- **No Dispatch control appears and the columns won't accept a drop.** The selected Work Order is not SCHEDULED. The pane tells you its current status; only SCHEDULED Work Orders can be dispatched here.
-- **You get a red banner "Cannot dispatch …: only SCHEDULED work orders can be dispatched."** Same cause — the status changed or you selected a non-scheduled order.
-- **Drag-and-drop won't work on a phone or by keyboard.** That's expected. Use the **Dispatch to…** picker instead — it does exactly the same thing.
-- **The "Recent Activity (this session)" strip empties when you reload.** It only tracks changes made during your current session; it is not a permanent history.
+Or drag the card from the queue onto a technician's lane. Dropping on the lane schedules it straight away at the spot you dropped it, with no extra window. The technician lanes scroll inside their own area, so the queue stays on screen beneath them while you drag; scroll the lanes with the mouse wheel if the technician you want is out of view.
 
-**Related**
-- Dispatch screen (a simpler one-click job-to-technician assignment)
-- Control Tower (read-only overview and recommended dispatch queue)
+**Without dragging (touch screen, trackpad):** click **Place on a lane** on the card. The board says "Placing <number>: click a time on a technician's lane." Click the spot on the technician's lane where the work should start. It is scheduled exactly as a drop would schedule it. Press **Esc** or click **Cancel** to stop placing. **Schedule…** is the keyboard path.
+
+## Move, resize or reassign a scheduled Work Order
+
+1. Drag the Work Order's chip along its lane to move it, drag its trailing edge to change its length, or drag it onto another technician's lane to reassign it. By keyboard, focus the chip and press the arrow keys (15 minutes each; hold Shift for 1 hour), Alt plus an arrow to resize, or **R** to reassign.
+   Without dragging: select the chip, click **Place on a lane** in its details below the board, then click the new time (same lane to move it, another technician's lane to reassign it).
+2. A small window asks for **Reason for Schedule Change** (a reason is required). Type it and press Enter, or click **Move** or **Reassign**.
+3. The chip moves. A reassignment keeps the job's current time.
+
+## Return a Work Order to the queue
+
+1. Drag a **Scheduled** chip back onto the queue.
+2. Type why in the **Return This Work Order to the Queue** window and click **Return to queue**.
+3. Once a Work Order has been dispatched there is no way back from here. See [Return a work order to the queue](./return-a-work-order-to-the-queue.md).
+
+## Dispatch a scheduled Work Order
+
+1. Click a Work Order to select it. Its details open below the board.
+2. If it can be dispatched, use **Dispatch to…** to pick a technician and click **Dispatch**. The board says "<number> dispatched."
+
+## Review one technician's schedule and work
+
+1. Click a technician's name at the left of a lane (Day view) or a row (Week view).
+2. The board switches to that technician's week: their working hours, blocked time and scheduled work, with a list of their scheduled Work Orders under **<name> — schedule and work**. Click a Work Order number to see its details.
+3. Click **Back to the board** to return. The board comes back on the same date, view and technician filter you had before.
+
+This review shows only what the board already shows you. To see or edit an Employee's recorded work schedule, use **Administration > Users > <employee> > Work Schedule** (needs access to employee records).
+
+## If you cannot schedule
+
+When your access does not include scheduling, the board shows: **You can see the board, but scheduling is not part of your access.** The grid, queue and Work Order details still work. Drag handles, **Schedule…**, **Place on a lane**, keyboard move/resize and reassign are not offered. While your access is still loading, these controls are also hidden and no notice is shown yet. Ask an administrator if you need scheduling added.
+
+## Tips / common problems
+
+- **"That time has already passed."** A start in the past is refused, and the board will not shift it forward for you. Pick a later slot.
+- **A move is refused and the chip stays put.** Nothing is written until the server accepts it. The reason (overlap, blocked time, a technician who cannot be scheduled) is shown in words. The server re-checks every action, even ones the board let you try.
+- **Dispatch to… does not appear.** The Work Order is not in a state that can be dispatched, or your access does not include dispatching.
+- **"Refused — no operating company is linked to your login…"** Your login is not linked to an employee record with a company, so the server will not let you schedule. An administrator can link it. Nothing was changed.
+- **A drag does nothing.** Check the line above the board: if it says scheduling is not part of your access, dragging is turned off for you. Late in the day every slot on today's grid is already past; move to a later day with **›**.
+- **Scheduled Without a Window.** If a scheduled Work Order has no start and end it cannot be drawn on a lane. It is listed under that heading; open it to give it a time.
+- The board refreshes every 30 seconds and right after your own changes.
+
+## Related
+- [Read the Dispatch & Scheduling board](./read-the-dispatch-board.md) (colours, Day / Week / 2 weeks, keeping your place)
+- [Schedule and dispatch from Jobs and the board](./schedule-and-dispatch-from-jobs-and-the-board.md)
+- [Return a work order to the queue](./return-a-work-order-to-the-queue.md)

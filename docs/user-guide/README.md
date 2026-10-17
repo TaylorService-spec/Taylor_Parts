@@ -9,6 +9,30 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   installations offline; how to tell what's outstanding; resolving conflicts; finishing an
   installation job offline; dictation vs. typing; signing out with work waiting.
 
+## Dispatch
+
+- [Schedule, move and dispatch on the Dispatcher Board](./dispatch/dispatch-a-work-order-on-the-dispatcher-board.md)
+  — scheduling from the queue, drag and keyboard moves, reassigning, returning to the queue,
+  dispatching; the business time zone line; what you see without scheduling access.
+- [Schedule and dispatch jobs (Jobs screen)](./dispatch/assign-a-job-on-the-dispatch-screen.md) —
+  schedule, move, reassign and dispatch from the Jobs list.
+- [Jobs and the board share one scheduling path](./dispatch/schedule-and-dispatch-from-jobs-and-the-board.md)
+  — what is the same on both screens (includes a placeholder for company isolation, to be completed).
+- [Read the Dispatch & Scheduling board](./dispatch/read-the-dispatch-board.md) — lane colours, time zone,
+  keeping your place.
+
+## Inventory and scanning
+
+- [The Scan workspace](./inventory/scan-workspace.md) — including why stock balance rows say
+  "Not switched on".
+- [View manufacturers (read-only)](./inventory/view-manufacturers.md) — what the page shows and what it
+  cannot do.
+
+## Customers
+
+- [Browse and search customers](./accounts-customers/browse-and-search-customers.md) — including why the
+  portfolio totals are not shown yet.
+
 ## Sales
 
 - [Record a Sales Agreement](./sales/record-a-sales-agreement.md) — writing down what the customer

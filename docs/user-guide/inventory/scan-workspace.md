@@ -45,11 +45,19 @@ move it, count it, reserve it or receive it.
 The result also shows what you have and where: **serialized units**, **location**, **on hand**,
 **reserved**, **available** and **on order**.
 
-Those six rows read live inventory, and that reading is **not switched on yet** — so today each of
-them says exactly that rather than showing a number. It is deliberate. A blank would look like the
-part has none, and a zero would be worse: "nothing has ever been recorded for this part" and "there
-are none on the shelf" are different facts, and this screen will never show you one when it means
-the other.
+The stock rows — **On Hand**, **Reserved**, **Available** and **On Order** — come from the stock
+balance reading, which is **not switched on yet**. So today each of those four shows **Not switched
+on**, followed by "Built and governed, but not switched on in this environment yet." instead of a
+number. This is expected, not a fault with your part, your scan or your access. For an ordinary
+(non-serialized) part, **Location** depends on the same reading and says the same thing.
+**Serialized Units** reads the serialized-unit registry separately: for a serialized part it shows a
+count of available units (and **Location** shows where those units are), and for any other part it
+says **Not applicable** ("This part is not serialized.").
+
+The rows say this rather than showing a blank or a zero on purpose. A blank would look like the part
+has none, and a zero would be worse: "nothing has ever been recorded for this part" and "there are
+none on the shelf" are different facts, and this screen will never show you one when it means the
+other. Do not read a **Not switched on** row as "none in stock".
 
 When a row cannot answer, it tells you which kind of nothing it is:
 
