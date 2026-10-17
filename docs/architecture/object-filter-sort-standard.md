@@ -26,6 +26,14 @@ Issued: 2026-10-15 (America/Phoenix) · base `a1261486` (= `main`) · branch `wo
   - My Work's dispatch queue inherits the scoping. Its section wrapper (`myWork.ts`) already turns that refusal into NOT_AUTHORIZED.
 - **Reading of "enforced by the Workforce query".** The company comes from the linked Employee's Workforce home company, which the resolver reads from `eos_workforce.employees`. It does not come from a client-selected company.
 
+**Availability reads (Owner direction 2026-10-17; verified separately from the list)**
+- `readTechnicianAvailability` and `findAvailableTechnicianSlots` (`eosOps/workOrderAvailability.ts`) apply the same EOS Core company authority as the G-9 schedule commands and `suggestWorkOrderPlacement`.
+- Order: capability first; then no authority → `COMPANY_AUTHORITY_REQUIRED`.
+- Only Employees of the caller's companies are read. A named Employee outside them lands in `notFoundEmployeeIds` exactly like an unknown id.
+- A company outside reach reads, or is refused, exactly like an unknown company.
+- Proof: `functions/test/support/technicianAvailabilityCompanySuite.mjs`, run from `workOrderAvailabilityPostgres.test.mjs`. It covers equivalence of shape and query count, plus independence from Ventana data. A mutation run with the predicates removed fails 5 of 6.
+- Customer self-scheduling (`computeTechnicianSlots` with a fixed company) and the legacy Firestore callable are unchanged.
+
 **Field naming (§2.2)**
 - Reference fields sort and search by the name the row shows (customer, location, assignee). There are no separate `customerName` / `locationName` field ids.
 
