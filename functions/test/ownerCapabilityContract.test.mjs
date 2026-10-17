@@ -132,6 +132,10 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "admin.roleAssignment.write",
   "admin.userStatus.write",
   "audit.event.read",
+  // F7b (#243, migration 1764590000000): registered in PostgreSQL and mirrored to owner -- the contract's existing
+  // OWNER_COMMERCIAL_AUTHORITY declaration, now in vocabulary. 41 -> 43.
+  "crm.activity.create",
+  "crm.activity.read",
   "customer.record.create",
   "customer.record.read",
   "customer.record.update",
@@ -165,9 +169,9 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "workOrder.transition",
 ];
 
-check("Owner's governed (in-vocabulary) capabilities are exactly the 41 in the contract", () => {
+check("Owner's governed (in-vocabulary) capabilities are exactly the 43 in the contract", () => {
   assert.deepEqual(ownerInVocabulary, [...OWNER_CONTRACT_IN_VOCABULARY].sort());
-  assert.equal(ownerInVocabulary.length, 41, "41 governed capabilities -- 47 live minus the 6 with no PERMISSION_CATALOG id");
+  assert.equal(ownerInVocabulary.length, 43, "43 governed capabilities -- the 41 of the contract + crm.activity.read / .create, registered by F7b");
 });
 
 check("administration READS do not separate Owner from Administrator", () => {
@@ -354,7 +358,9 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 122 -> 128: the six rental capabilities (#207, 1764520000000).
   // 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role.
   // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (Financial Policy foundation, #232, 1764560000000), granted to NO Role.
-  assert.equal(VOCABULARY.size, 139);
+  // 139 -> 140: inventory.returns.intake (Returns intake on EOS Core, #242, 1764580000000), granted only to the memberless inventoryReturnsIntakeClerk.
+  // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
+  assert.equal(VOCABULARY.size, 142);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

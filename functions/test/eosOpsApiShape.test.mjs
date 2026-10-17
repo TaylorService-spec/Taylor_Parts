@@ -41,7 +41,9 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       "listInventoryWarehouses", "listInventoryLocations", "listTransferOrders",
       "listReorderAssignmentTargets",
       // Truck Inventory activation (2026-10-01): the operational truck roster and one truck's stock.
-      "listTruckRoster", "readTruckStock"]);
+      "listTruckRoster", "readTruckStock",
+      // Returns intake (Firebase exit F7a, DECISIONS #242): the caller's companies and receiving warehouses.
+      "listReturnIntakeOptions"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -52,6 +54,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "createSupplier", "updateSupplier", "setSupplierStatus",
     // SUP-1: governed part-supplier terms (the writer Firebase retirement F2 left missing).
     "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
+    // Returns intake (Firebase exit F7a, DECISIONS #242): intake only, no ledger movement (#118).
+    "recordReturnIntake",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
@@ -205,7 +209,14 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   const { REORDER_POSTGRES_ACTIVE } = await import("../lib/eosOps/reorderLifecycleCommands.js");
   assert.equal(REORDER_POSTGRES_ACTIVE, true, "the activation package opens the PostgreSQL Reorder authority");
   const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
-  const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o));
+  // Returns intake is its OWN authority (F7a, #242), deliberately not behind the Reorder activation boundary.
+  const RETURNS = ["listReturnIntakeOptions", "recordReturnIntake"];
+  const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o) && !RETURNS.includes(o));
+  for (const operation of RETURNS) {
+    const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
+      { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} }).catch((e) => e);
+    assert.notEqual(r && r.code, "PRECONDITION_FAILED", `${operation} must not be behind the Reorder boundary`);
+  }
   // 16 + the seven Parts / Purchasing / Receiving reads + the three Inventory / Warehouse reads (2026-10-01), all behind
   // the same activation boundary.
   // + the two Truck Inventory reads (listTruckRoster, readTruckStock; 2026-10-01).

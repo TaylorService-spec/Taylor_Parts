@@ -16,6 +16,7 @@ import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
+import { readFileSync } from "node:fs";
 import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig, checkPolicyDatabaseHealth } from "../lib/adminPolicy/policyDatabase.js";
@@ -24,6 +25,11 @@ import { executeAdminOperation } from "../lib/adminPolicy/adminPolicyApi.js";
 import { resolvePrincipalContext } from "../lib/adminPolicy/principalContext.js";
 import { handleAdminRequest } from "../lib/adminPolicy/adminPolicyHttp.js";
 import { ADMINISTRATION_READ_CAPABILITY_KEYS } from "../lib/adminPolicy/administrationSurfaceAuthority.js";
+
+// The governed Object registry's size, from the registry itself. These assertions are about the bootstrap (creates every
+// Object once, a rerun creates none, a restart keeps them) -- not about how many Objects exist. That count is pinned BY NAME,
+// one line per registration, in adminPolicySeedCoverage.test.mjs; a bare literal here was hand-raised for every one of them.
+const SEED_OBJECTS = JSON.parse(readFileSync(new globalThis.URL("../src/adminPolicy/seed/policySeedSnapshot.json", import.meta.url), "utf8")).objects.length;
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -239,7 +245,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   // 45 -> 46: Finance Closure (#206) -- `settlement`.
   // 46 -> 48: Rental (#207) -- `rentalAgreement`, `rentalEquipment`.
   // 48 -> 49: Financial Policy foundation (#232) -- `financialPolicy`, named by the four finance.policy.* keys (1764560000000).
-  assert.equal(first.seed.created.objects, 49, "49 canonical objects");
+  assert.equal(first.seed.created.objects, SEED_OBJECTS, "every governed Object, once");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
@@ -265,7 +271,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(second.seed.created.fields, 0);
 
   const objects = await r.listObjects(first.tenant.id);
-  assert.equal(objects.length, 49, "still 49 after the rerun, not 98");
+  assert.equal(objects.length, SEED_OBJECTS, "the same count after the rerun, not double");
 });
 
 test("the seeded configuration version is recorded on the tenant", { skip: SKIP }, async () => {
@@ -1214,7 +1220,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
 
     // Configuration survives.
     const objects = await restarted.listObjects(tenant.id);
-    assert.equal(objects.length, 49);
+    assert.equal(objects.length, SEED_OBJECTS);
 
     const read = await executeAdminOperation({ repo: restarted }, asAdmin("readObjectWithFields", {
       objectKey: "account",

@@ -3723,6 +3723,8 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
+          "functions/src/eosOps/returnIntake.ts",
           "functions/src/inventoryReturns/returnIntakeCommand.ts"
         ],
         "clientReferences": [
@@ -3732,7 +3734,7 @@
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4478,13 +4480,14 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/crmActivity/crmActivityCallables.ts"
+          "functions/src/crmActivity/crmActivityCallables.ts",
+          "functions/src/eosCrm/crmActivityAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 2,
         "evidence": "EXPORTED"
       },
@@ -4509,14 +4512,15 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/assistant/assistantStarters.ts",
-          "functions/src/crmActivity/crmActivityReadService.ts"
+          "functions/src/crmActivity/crmActivityReadService.ts",
+          "functions/src/eosCrm/crmActivityAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/metadata/definitions/accountPage.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "EXPORTED"
       },

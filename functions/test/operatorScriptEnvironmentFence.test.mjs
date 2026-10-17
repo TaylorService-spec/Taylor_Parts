@@ -529,6 +529,58 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ THE RETURNS-INTAKE COPY (Firebase exit F7a) ============================
+//
+// scripts/returnIntakeCopy.js inserts eos_ops.inventory_returns rows (copy). It must refuse before `pg` is resolved, has no
+// production mode, and never copies without the Owner's go-ahead or without a person's company mapping. Census is the default.
+const RET_COPY = "scripts/returnIntakeCopy.js";
+const RET_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "RET_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const RET_ENV = { EOS_ENVIRONMENT: "nonprod", RET_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const RET_COPY_ARGS = ["--mode", "copy", ...RET_ARGS, "--mapping", "m.json", "--principalId", "p", "--reviewedChecksum", "c"];
+
+for (const [label, args, env, pattern] of [
+  ["an unknown mode", ["--mode", "apply", ...RET_ARGS], RET_ENV, /--mode must be one of census \| copy \| verify/],
+  ["no environment", ["--tenantKey", "t", "--snapshot", "x.json"], RET_ENV, /--environment is required/],
+  ["production environment", RET_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a)), RET_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", RET_ARGS, { ...RET_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", RET_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a)), RET_ENV, /Certification world, which is frozen/],
+  ["no tenant key", ["--environment", "platform-sandbox", "--databaseUrlEnv", "RET_FENCE_DB", "--snapshot", "x.json"], RET_ENV, /--tenantKey is required/],
+  ["no snapshot", ["--environment", "platform-sandbox", "--databaseUrlEnv", "RET_FENCE_DB", "--tenantKey", "t"], RET_ENV, /--snapshot <file> is required/],
+  ["verify without a company mapping", ["--mode", "verify", ...RET_ARGS], RET_ENV, /--mapping <file> is required/],
+  ["copy without the Owner's go-ahead", RET_COPY_ARGS, RET_ENV, /--ownerAuthorization is required for copy/],
+  ["copy without an EOS principal", RET_COPY_ARGS.filter((a, i, all) => a !== "--principalId" && all[i - 1] !== "--principalId").concat(["--ownerAuthorization", "o"]), RET_ENV, /--principalId <EOS principal id> is required/],
+]) {
+  test(`returns-intake copy: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(RET_COPY, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `returns-intake copy, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// ============================ THE CRM-ACTIVITY COPY (Firebase exit F7b) ============================
+//
+// scripts/crmActivityCopy.js inserts eos_crm.activities rows (copy). It must refuse before `pg` is resolved, has no production
+// mode, and never copies without the Owner's go-ahead. Census is the default.
+const CA_COPY = "scripts/crmActivityCopy.js";
+const CA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "CA_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const CA_ENV = { EOS_ENVIRONMENT: "nonprod", CA_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+for (const [label, args, env, pattern] of [
+  ["an unknown mode", ["--mode", "apply", ...CA_ARGS], CA_ENV, /--mode must be one of census \| copy \| verify/],
+  ["no environment", ["--tenantKey", "t", "--snapshot", "x.json"], CA_ENV, /--environment is required/],
+  ["production environment", CA_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a)), CA_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", CA_ARGS, { ...CA_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", CA_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a)), CA_ENV, /Certification world, which is frozen/],
+  ["no snapshot", ["--environment", "platform-sandbox", "--databaseUrlEnv", "CA_FENCE_DB", "--tenantKey", "t"], CA_ENV, /--snapshot <file> is required/],
+  ["copy without the Owner's go-ahead", ["--mode", "copy", ...CA_ARGS, "--principalId", "p", "--reviewedChecksum", "c"], CA_ENV, /--ownerAuthorization is required for copy/],
+  ["copy without an EOS principal", ["--mode", "copy", ...CA_ARGS, "--reviewedChecksum", "c", "--ownerAuthorization", "o"], CA_ENV, /--principalId <EOS principal id> is required/],
+]) {
+  test(`CRM-activity copy: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(CA_COPY, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `CRM-activity copy, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ THE REORDER CUTOVER ============================
 //
 // scripts/reorderCutover.js writes eos_ops.reorder_requests, reorder_request_assignments, purchase_orders and

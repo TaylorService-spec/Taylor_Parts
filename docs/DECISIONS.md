@@ -8667,3 +8667,149 @@ Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refus
   - the day is drawn in a governed zone a day away from the test machine's;
   - the browser-zone fallback is stated.
 - `rentalPostgres` pins the new `businessTimeZone` field.
+
+## #241 — Manufacturers on EOS Core: the Catalog API serves the list and the writes; the screen's door is `inventory.catalog` (Firebase exit F5 + Manufacturers R-1 Option A, 2026-10-17)
+
+**Status: OWNER APPROVED (Manufacturers R-1 Option A); F5 directed by the Controller under the Firebase-exit slice plan (DECISIONS #234 O-1).** No grant, role, identity, Rules or Firebase deploy change.
+
+**Why.**
+- **The read was Firebase-only.** The Manufacturers screen and every Part form read `getManufacturerCatalog`, a Firebase callable over Firestore `manufacturers` and Firestore role assignments.
+- **The door was closed for everyone.** On the EOS navigation source the screen had no surface, so it refused every principal, Administrator included.
+- **Writes were gone.** PR-B (2026-10-15) removed the flag-dead Firebase write affordances. The PostgreSQL writer existed but was unwired.
+
+**Rule.**
+- **The read is the Catalog API's.** `listManufacturers`, `getManufacturer` and `searchManufacturers` on `/operations/catalog` read `eos_ops.manufacturers` through `eosOps/manufacturerAuthority.ts`.
+  - They require `inventory.catalog.read` (what the retired callable checked) **and** `inventory.manufacturer.read` (the PostgreSQL authority's own key). Requiring both is never wider than either path.
+  - **Measured, the two keys are not held by the same Roles.** Migration 1761782400000 granted `inventory.manufacturer.read` to the nineteen Roles that held `inventory.catalog.read` at that time. Roles that gained `inventory.catalog.read` later did not get it. The live nonprod captures (2026-10-17) show three personas holding `inventory.catalog.read` **without** `inventory.manufacturer.read`:
+    - nationalAccountsSales (`commercialSharedContext`);
+    - retailSales (`commercialSharedContext`);
+    - serviceTechnician (`technician`, `equipmentInstaller`, `inventoryLookupReader`).
+  - For them the door opens (`inventory.catalog`) but the list is refused, and Part screens show manufacturer ids without names.
+  - The list is bounded at 1,000 rows and says `truncated` past that. It carries each row's `updatedAt`, the writer's concurrency token.
+- **The writes are the Catalog API's.** `createManufacturer`, `updateManufacturer` and `changeManufacturerStatus` dispatch to `catalogMaster/postgresManufacturerWriter.ts`: `inventory.catalog.manage` for create and rename, `inventory.catalog.activate` for status. They sit behind the same ACTIVE authority and DQ-034 mutation hold as the Part writers. There is no delete.
+- **The client has no fallback.** `services/manufacturerCatalogClient.js` replaces the callable client. The screen restores New Manufacturer, Rename and Status, and shows the server's answer (the Supplier administration pattern, #196).
+- **The door follows the read (R-1 Option A).** `inventory/manufacturers` maps to the existing `inventory.catalog` surface. The row changes kind and nothing is added: ungoverned 39 → 38, cutover 23 → 24, register 62. Production (legacy source) is byte-identical, and the item stays `navHidden`.
+
+**Open Owner decision: the three personas above.** This PR implements **none** of the options, and requiring both keys stays.
+- (i) Grant `inventory.manufacturer.read` to `commercialSharedContext`, `technician`, `equipmentInstaller` and `inventoryLookupReader`. This is a governed grant.
+- (ii) Accept that those Roles see the door and are refused the list.
+- (iii) Make the door require both keys.
+
+**Nonprod data (controller ruling, 2026-10-17).** `eos_ops.manufacturers` is empty on nonprod, and so is the source:
+- `eosOps/migration/manufacturerMigration.ts` measured the sandbox Firestore `manufacturers` collection at 0 documents.
+- It cannot have grown since: Rules deny client writes, the only write client was removed in PR-B (#2114), and the write callables are frozen.
+
+So merging empties nothing. The **production** copy (Firestore `manufacturers` → `eos_ops.manufacturers`) is a separate Owner-gated step. Its operator tool is held until the Owner rules on extending the 2026-09-14 migration-exporter exception to `manufacturers`.
+
+**Unchanged.** The Firebase callables (`getManufacturerCatalog`, `createManufacturer`, `updateManufacturer`, `changeManufacturerStatus`) stay deployed and frozen; retiring them is an operator undeploy. `CALLABLE_SOURCES` still names `getManufacturerCatalog` for the list-view validator only.
+
+**Proof.**
+- `catalogReadAuthorizationPostgres`: create, list, rename, a stale-token refusal, status, get, search, a blank-term refusal, `inventory.catalog.read` alone refused, and tenant isolation, all through the transport.
+- `catalogRuntimeCensus`: the operation lists are pinned.
+- `manufacturerRuntimeAuthorityPostgres`: the writer's one importer is the Catalog transport.
+- `manufacturersMetadataList`: the restored create, rename and status flow sends the right envelopes and tokens, shows a refusal without claiming success, and discloses truncation. The client maps the list and the outcomes.
+- `navCutoverEnvironmentScoped`: 24 + 38 = 62, and the Manufacturers transition test.
+- Exit baseline 245 → 244.
+
+## #242 — OWNER: Returns intake moves to EOS Core — operating company required, no ledger movement, a memberless clerk Role (Firebase exit F7a, 2026-10-17)
+
+**Status: OWNER RULED (F7a, 2026-10-17).** Supersedes the premise of #231 (returns intake was "not yet available in EOS"). Merge and deployment follow the normal gate.
+
+**Why.** Taking a return in was a Firebase callable over Firestore `inventory_returns`. The Scan workspace refused it to everyone as "not yet in EOS", because the capability had no PostgreSQL registration and nobody could be granted it.
+
+**Rule.**
+- **The model** (Owner ruling 1). The record is `eos_ops.inventory_returns` (migration 1764580000000), and the Firestore behaviour is kept:
+  - **Intake only (#118).** One state, AWAITING_DISPOSITION, enforced by a CHECK. **No ledger movement**: intake never restores sellable stock.
+  - The same closed vocabularies: sources WORK_ORDER / CUSTOMER / TRUCK / SUPPLIER / UNKNOWN, and conditions UNOPENED / OPENED / DAMAGED / UNKNOWN. An unknown value is refused, never coerced.
+  - Quantity XOR serials.
+  - One idempotency key = one return, with id `ret_<key>`. A replay answers from the stored row; a different return under a used key is refused (IDEMPOTENCY_CONFLICT).
+  - Every recorded return writes one `eos_policy.audit_events` row; a replay writes nothing.
+- **Company scope** (Owner ruling 2). The operating company is REQUIRED; the receiving warehouse is optional.
+  - Authority is resolved server-side with `resolveCompanyAuthority`, the #237 check:
+    - no authority at all is COMPANY_AUTHORITY_REQUIRED;
+    - a company outside the caller's ≡ an unknown company (OPERATING_COMPANY_NOT_GOVERNED).
+  - A stated warehouse must belong to that company AND be in the caller's warehouse reach. Otherwise it answers exactly like an unknown warehouse (WAREHOUSE_NOT_FOUND).
+  - Every refusal precedes any write.
+- **Transport.** `/operations/inventory` serves `recordReturnIntake` and `listReturnIntakeOptions` (the caller's companies, and the warehouses in reach for each). Neither sits behind the Reorder activation boundary.
+- **Access** (Owner ruling 3). `inventory.returns.intake` is registered (object `inventoryReturn`, BUSINESS_ACTION) and granted to ONE Role, `inventoryReturnsIntakeClerk`, which has **no members**.
+  - This is a grant-bearing migration (Owner ruling E); the authority baseline goes 481 → 482 in the same change.
+  - Nobody is assigned anything by this change. Rudy Admin's nonprod ability is restored after deploy by the Controller through the governed previewAuthorityChange → assignRole path, audited. There is no production access change.
+  - **`admin` does not get it by default.** The compatibility `admin` Role composes the whole legacy permission catalog, so the catalog reconcile would otherwise import `admin × inventory.returns.intake` as a default. The pair is in `CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT` (the DQ-023/037 pair-level fence): it is reported as ADMINISTRATION_ONLY and never applied. Nothing is revoked.
+  - admin × inventory.returns.intake is fenced (CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT): admins hold returns intake on EOS only by governed clerk assignment.
+  - **Administration projects it.** `inventoryReturn` is declared in the governed Object catalog (`capabilityGovernedObjects.json`): no fields, no CRED verb, the same shape as `settlement` and `rentalEquipment`. Administration lists the Object and shows the one BUSINESS_ACTION under it.
+- **Client.** `services/returnCommandClient.js` calls EOS, with no Firebase fallback. The Scan › Take a return in screen asks for the company (chosen automatically when there is only one) and an optional warehouse.
+  - Offline intake keeps working from the last options the server gave the device. The server re-checks on replay, and a refusal is never answered from the cache.
+  - A non-holder is now refused as a grantable permission ("An administrator can grant it").
+
+**Existing data is NOT moved** (Owner ruling 4). An empty `eos_ops.inventory_returns` is not a completed data transition. Two tools are prepared, and neither blocks this merge:
+- `scripts/exportReturnIntakeSnapshot.js`: the read-only Firestore export, a migration-only exception authorized by this ruling.
+- `scripts/returnIntakeCopy.js`:
+  - **census** is the default and is read-only. It reports counts, the company/warehouse mapping gaps, and the copy checksum.
+  - **copy** is insert-only and refuses without `--ownerAuthorization`. Every record's company is named by a person in `--mapping` and never guessed. Rows are MIGRATED with no Firebase uid in any column. Firestore is never touched.
+  - **verify** is read-only and states the reconciliation criteria.
+
+**Proof.**
+- `returnIntakePostgres`:
+  - the vocabulary and validation parity;
+  - every refusal before any write, by snapshot;
+  - out-of-company ≡ unknown, for both company and warehouse;
+  - one row plus one audit row and NO ledger movement;
+  - replay and idempotency conflict;
+  - the table's own CHECKs;
+  - the options read;
+  - the copy CLI end to end: census gaps, Owner go-ahead required, drift refused, MIGRATED rows with NULL `received_by`, a no-op rerun, verify.
+- `roleCapabilityAuthorityBaselinePostgres`: 482, rebuilt exactly.
+- `operatorScriptEnvironmentFence`: the copy refuses before any client loads.
+- `returnIntakeScan` and `warehouseOfflineScreens`: the company choice, nobody guesses, the cached offline options.
+- `inventoryScanPersonaWorkflows`: refused as grantable, and offered to a holder.
+
+## #243 — CRM activity / notes move to EOS Core — never wider than the Account read, current holders mirrored (Firebase exit F7b, 2026-10-17)
+
+**Status: CONTROLLER DECIDED under the Owner's preserve-functionality-and-access rule (F7b, 2026-10-17).** Merge and deployment follow the normal gate.
+
+**Why.** An Account's Activity & Notes timeline was two Firebase callables (`getCrmActivities` and `createCrmActivity`) over Firestore `crm_activities`. The read checked `crm.activity.read` alone, tenant-wide, with no Account predicate.
+
+**Rule.**
+- **The record.** `eos_crm.activities` (migration 1764590000000), served on the CRM route `/crm/customer` (`listAccountActivities`, `createAccountActivity`; `eosCrm/crmActivityAuthority.ts`). The Firestore behaviour is kept:
+  - the five types (SALES_NOTE / CALL / MEETING / RELATIONSHIP / GENERAL);
+  - a required Account, with Contact / Opportunity / Sales Order references by id only;
+  - a non-blank body of at most 4,000 characters;
+  - `occurred_at` (may be backdated, never materially future) distinct from `created_at`;
+  - one idempotency key per actor = one activity;
+  - most recent interaction first;
+  - a list longer than its limit is `unavailable`, never a partial `ready`.
+  - Every created activity writes one audit row; a replay writes nothing.
+- **Read scope: never wider than the Account.** A read needs `crm.activity.read` **and** the Account's own read predicate: `customer.record.read`, with the Account in this tenant.
+  - The EOS Account read is **tenant-scoped**. `eos_crm.accounts` carries no operating company (migration 1758758400000), so there is no company dimension to apply. No company scope is invented. Company-scoped Accounts are a separate model question for the Owner.
+- **Create (Owner review, 2026-10-17).** Create needs `crm.activity.create` **and the same Account visibility** (`customer.record.read`, with the Account in this tenant).
+  - Every linked Contact, Opportunity and Sales Order must exist **in this tenant and on that Account**.
+  - A link outside the tenant, or on another Account, is refused exactly like an unknown one (`CONTACT_NOT_FOUND` / `OPPORTUNITY_NOT_FOUND` / `SALES_ORDER_NOT_FOUND`).
+  - The Firestore command checked neither.
+- **Access: parity, no new holder.** `crm.activity.read` and `.create` are registered and granted to exactly the Firebase catalog's current holders:
+  - **admin** (Owner ruling 2026-08-19);
+  - **owner** (`OWNER_COMMERCIAL_AUTHORITY`);
+  - **crmActivityContributor**.
+  - This is grant-bearing (Owner ruling E): the authority baseline goes 482 → 488 in the same change (after #242's 481 → 482).
+  - **Explicit API restriction, not parity.** A principal holding `crmActivityContributor` ALONE, without `customer.record.read`, can no longer read or create activity through the API. That principal could reach the Firestore callables directly. That it could not open the Account page does not establish API parity, so this is stated as a restriction for Lane D's review.
+  - Admin and owner hold `customer.record.read`. **No customer-read grant is added** to compensate.
+  - **Administration projects it.** `crmActivity` is declared in the governed Object catalog (`capabilityGovernedObjects.json`): no fields and **no CRED verb**. A derived R cell would overstate the read, which also needs `customer.record.read`. Administration lists the Object and shows both capabilities under it. The contributor Role is assigned only through the governed preview → assignRole path.
+- **Client.** `services/crmActivityClient.js` replaces the callable client, with no Firebase fallback; the hooks and the section are unchanged in contract. Actor names resolve by EOS Principal id.
+
+**Existing data is NOT moved.** An empty `eos_crm.activities` is not a completed data transition. Prepared:
+- `scripts/exportCrmActivitySnapshot.js`: read-only, migration-only.
+- `scripts/crmActivityCopy.js`:
+  - **census** is the default and read-only. It reports counts by type and Account and the Account gaps (`ACCOUNT_NOT_IN_EOS`), plus the checksum.
+  - **copy** is insert-only and refuses without `--ownerAuthorization`. Rows keep their Firestore ids, are MIGRATED, and carry no Firebase uid in any column.
+  - **verify** is read-only.
+  - The copy runs only on the Owner's go-ahead.
+
+**Proof.**
+- `crmActivityPostgres`:
+  - create, the audit row and replay;
+  - refusals before any write: capability, another tenant's Account, type, future time, long body;
+  - the read needs BOTH keys and the Account in this tenant;
+  - most recent first, backdating kept, too-long = unavailable;
+  - the table's CHECKs;
+  - the copy CLI end to end.
+- `roleCapabilityAuthorityBaselinePostgres`: 487.
+- The migration test pins exactly the three holders.

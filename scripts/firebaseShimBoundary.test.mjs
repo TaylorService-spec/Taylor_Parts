@@ -318,7 +318,9 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // fenced dependency together (22 -> 19).
   // Firebase exit F3 (2026-10-17): metadata/firestoreListSource.js was DELETED, leaving the shim AND the fenced dependency
   // together (19 -> 18).
-  assert.equal(live.observed.alreadyFencedConsumers, 18,
+  // Firebase exit F7a (2026-10-17): services/returnCommandClient.js now calls EOS, leaving the shim AND the fenced dependency
+  // together (18 -> 17).
+  assert.equal(live.observed.alreadyFencedConsumers, 17,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

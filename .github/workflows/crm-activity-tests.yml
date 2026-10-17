@@ -28,7 +28,7 @@ on:
       - "field-ops-app-vite/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/crmActivityTypes.js"
       - "field-ops-app-vite/src/domain/crmActivityView.js"
-      - "field-ops-app-vite/src/services/crmActivityCallableClient.js"
+      - "field-ops-app-vite/src/services/crmActivityClient.js"
       - "field-ops-app-vite/src/hooks/useCrmActivities.js"
       - "field-ops-app-vite/src/hooks/useCrmActivityActions.js"
       - "field-ops-app-vite/src/modules/accounts/ActivityAndNotesSection.jsx"
@@ -55,7 +55,7 @@ on:
       - "field-ops-app-vite/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/domain/crmActivityTypes.js"
       - "field-ops-app-vite/src/domain/crmActivityView.js"
-      - "field-ops-app-vite/src/services/crmActivityCallableClient.js"
+      - "field-ops-app-vite/src/services/crmActivityClient.js"
       - "field-ops-app-vite/src/hooks/useCrmActivities.js"
       - "field-ops-app-vite/src/hooks/useCrmActivityActions.js"
       - "field-ops-app-vite/src/modules/accounts/ActivityAndNotesSection.jsx"
@@ -184,5 +184,5 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Lint
-        run: npx oxlint src/domain/crmActivityTypes.js src/domain/crmActivityView.js src/services/crmActivityCallableClient.js src/hooks/useCrmActivities.js src/hooks/useCrmActivityActions.js src/modules/accounts/ActivityAndNotesSection.jsx
+        run: npx oxlint src/domain/crmActivityTypes.js src/domain/crmActivityView.js src/services/crmActivityClient.js src/hooks/useCrmActivities.js src/hooks/useCrmActivityActions.js src/modules/accounts/ActivityAndNotesSection.jsx
         working-directory: field-ops-app-vite
