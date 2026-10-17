@@ -1152,12 +1152,15 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
 
     async createRole(input: NewRoleRecord) {
       try {
+        // company_authority_effect is written only when stated: the column's default is OPERATIONAL, and a seed that runs
+        // BEFORE migration 1764600000000 (the baseline tenants seed at an earlier migration) must keep working.
+        const withEffect = input.companyAuthorityEffect !== undefined && input.companyAuthorityEffect !== "OPERATIONAL";
         const { rows } = await q.query(
           `INSERT INTO ${SCHEMA}.roles (id, tenant_id, key, name, description, origin, protected,
-             created_by, created_at, updated_by, updated_at, company_authority_effect)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+             created_by, created_at, updated_by, updated_at${withEffect ? ", company_authority_effect" : ""})
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11${withEffect ? ",$12" : ""}) RETURNING *`,
           [newId(), tenantId, input.key, input.name, input.description, input.origin, input.protected, ...stamp(),
-            input.companyAuthorityEffect ?? "OPERATIONAL"],
+            ...(withEffect ? [input.companyAuthorityEffect] : [])],
         );
         return toRole(rows[0]);
       } catch (err) {
