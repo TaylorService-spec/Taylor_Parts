@@ -6,6 +6,7 @@
 // deactivate a manufacturer in eos_ops.manufacturers under exactly the authority the Firestore command checks,
 // that the read seam refuses an uncapable caller on every read it offers, and that the reconciliation names
 // what it found rather than guessing at it.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -274,7 +275,7 @@ test("Manufacturer runtime authority, in PostgreSQL", { skip: SKIP, concurrency:
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${dbName}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

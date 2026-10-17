@@ -3,6 +3,7 @@
 // The seam this closes is an IDENTITY one, so most of this suite is about identities that must NOT work: a Firebase
 // uid, a Principal id and an external subject are each refused where an Employee id is required, and none of them
 // can satisfy the own-assignment predicate by resembling one.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -33,7 +34,7 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

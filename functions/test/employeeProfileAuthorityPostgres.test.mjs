@@ -2,6 +2,7 @@
 //
 // Each suite migrates its OWN disposable database. Roles, grants, Principals, Employees and snapshots below exist ONLY in
 // those databases. Grants are delivered through the EXISTING Role-catalog grant reconciliation, never by hand.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -40,7 +41,7 @@ async function freshWorld(t, prefix, upThroughTimestamp = null) {
   const name = `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

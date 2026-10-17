@@ -1,6 +1,7 @@
 // DQ-024: inventory location -> warehouse scope resolution and the per-act Transfer scope rule, plus the
 // governed MOBILE scope-binding table's invariants (same company, one current, append-only, no seed).
 // Real PostgreSQL; set POLICY_TEST_DATABASE_URL (a dedicated database: the schemas are reset).
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -116,4 +117,4 @@ test.after(async () => {
     { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 });
 
-test("teardown", { skip: SKIP }, async () => { await pool?.end(); });
+test("teardown", { skip: SKIP }, async () => { await endPoolAndDrain(pool); });

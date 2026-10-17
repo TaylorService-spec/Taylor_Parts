@@ -9,6 +9,7 @@
 //   OWNER     every protected Owner / Administrator refusal is still returned through the mandatory path (same code,
 //             same message), and no Owner's effective authority moves on any refused or stale attempt.
 //   FLAG OFF  the engine never runs (today's path); a supplied digest (any value, null and "" too) is IGNORED.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -30,7 +31,7 @@ const R = (extra) => ({ reason: "mandatory preview", ...extra });
 test("MANDATORY PREVIEW: required, verified, stale-proof, audited, Owner-safe", { skip: SKIP, concurrency: 1 }, async (t) => {
   const db = await privateDatabase(URL_BASE, "gip_mand");
   let world;
-  t.after(async () => { await world?.pool.end(); await db.drop(); });
+  t.after(async () => { await endPoolAndDrain(world?.pool); await db.drop(); });
   world = await buildPreviewWorld(db.url);
   const { q, pool, repo, T, P } = world;
   const A = T.a;

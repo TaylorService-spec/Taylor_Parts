@@ -8,6 +8,7 @@
 //   tenant + bootstrap administrator (firebase) + an Owner + three human Principals (Employees, one Role each)
 //   + one persona Principal holding its persona EOS binding
 //   -> Administration provisions logins -> holders enroll -> log in -> MFA -> refresh -> recover -> are administered.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -46,7 +47,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     for (const x of extraServices) await x.close().catch(() => {});
     if (service) await service.close().catch(() => {});
     if (inertService) await inertService.close().catch(() => {});
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const up = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],

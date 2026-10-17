@@ -4,6 +4,7 @@
 // (and once through a real node:http listener): bearer -> injected verifier -> resolveOperationalContext (Principal,
 // membership, Role assignment, role_capabilities) -> Employee read -> HTTP response. Roles, grants, links and business
 // rows below exist ONLY in this disposable database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -47,7 +48,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
   const name = `emp_rt_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

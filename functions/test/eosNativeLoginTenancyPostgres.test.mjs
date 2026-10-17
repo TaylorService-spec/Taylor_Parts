@@ -5,6 +5,7 @@
 //   "One Principal may belong to multiple tenants, but each authenticated session belongs to exactly one tenant."
 //
 // Its OWN disposable database. Keys generated in memory. Fake Firebase verifier. No network beyond loopback.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -41,7 +42,7 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   t.after(async () => {
     for (const x of extra) await x.close().catch(() => {});
     if (service) await service.close().catch(() => {});
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const up = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],

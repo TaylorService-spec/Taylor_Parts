@@ -7,6 +7,7 @@
 //
 // Each layer SKIPS loudly when its store is absent. The emulator layer uses a `demo-` project id, which the Firebase
 // SDK only ever resolves to an emulator, and it refuses to run unless FIRESTORE_EMULATOR_HOST is a loopback address.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -90,7 +91,7 @@ test("the PostgreSQL policy reader yields the same census as the in-memory reade
       await readOnly.end();
     }
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 });
 
@@ -122,7 +123,7 @@ test("the Firestore legacy reader over an emulator yields the SAME census, to th
     assert.deepEqual(fromEmulator, fromArrays);
     assert.doesNotMatch(JSON.stringify(fromEmulator), /Synthetic|uid-fixture/, "fields the census does not consult never enter the report");
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await deleteApp(app);
   }
 });

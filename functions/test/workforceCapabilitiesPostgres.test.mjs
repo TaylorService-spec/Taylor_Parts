@@ -7,6 +7,7 @@
 // The suite migrates its OWN disposable database. Workforce grants are delivered through the EXISTING Employee
 // capability-grant reconciliation; the deliberately NON-Workforce grants (which must never be disclosed) are inserted
 // by hand into this disposable database only. Callers are real bearer requests through the Workforce transport.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -42,7 +43,7 @@ test("readMyWorkforceCapabilities over the real policy authority", { skip: SKIP,
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

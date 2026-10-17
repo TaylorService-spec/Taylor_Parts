@@ -12,6 +12,7 @@
 //     notFoundEmployeeIds placement -- and runs the SAME number of database queries (one timing class);
 //   * an operatingCompanyId outside the caller's reach answers EXACTLY as an unknown company, on both reads;
 //   * Taylor's whole answer is identical however much Ventana data exists (added mid-test; the history is append-only).
+import { endPoolAndDrain } from "./poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -45,7 +46,7 @@ test("availability reads under EOS Core company authority, against PostgreSQL", 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],

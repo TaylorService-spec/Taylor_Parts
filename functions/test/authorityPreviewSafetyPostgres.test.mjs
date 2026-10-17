@@ -11,6 +11,7 @@
 //   7. no external call   runtime spies on fetch / timers / console; a LISTENing session receives nothing
 //   8. catalog purity     the written tables' triggers (incl. the fence), trigger function bodies, deferrable
 //                          constraints, sequences, rules, event triggers, publications and FK actions are pinned
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -33,7 +34,7 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
   const extraPools = [];
   t.after(async () => {
     for (const p of extraPools) await p.end();
-    await world?.pool.end();
+    await endPoolAndDrain(world?.pool);
     await db.drop();
   });
   world = await buildPreviewWorld(db.url);

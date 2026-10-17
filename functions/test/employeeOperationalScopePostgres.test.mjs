@@ -13,6 +13,7 @@
 //   history is kept                      DELETE refused, ended rows immutable, only "end a current row" permitted
 //
 // The suite migrates its OWN disposable database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -56,7 +57,7 @@ test("Employee Operational Scope authority: one scope type, real warehouse, no a
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const migrate = (direction, steps) => execFileSync(

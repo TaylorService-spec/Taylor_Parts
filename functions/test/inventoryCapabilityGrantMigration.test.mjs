@@ -3,6 +3,7 @@
 // re-insertion are properties of PostgreSQL itself.
 //
 // Set POLICY_TEST_DATABASE_URL to run. Without it the suite SKIPS rather than fails.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -87,7 +88,7 @@ async function makeRole(tenantId, key) {
 }
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 test("deriveLegacyRoleGrants: inventoryReceivingClerk holds exactly inventory.stock.receive among the new keys", () => {

@@ -13,6 +13,7 @@
 //   3. The per-step reasons reach `eos_policy.audit_events.reason` as two DIFFERENT strings. That is
 //      the Owner ruling's actual subject, and it is a property of the rows, not of the source.
 //   4. `eos_policy.principal_capabilities` stays at 0 across the whole run.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -94,7 +95,7 @@ test("the governed nonprod Owner persona, in PostgreSQL", { skip: SKIP, concurre
     const admin = await bootstrapAdministrator(repo, { tenantId: tenant.id, externalSubject: "real-login-subject", performedBy: "proof" });
     adminPrincipalId = admin.principal.id;
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 
   await t.test("the starting state is the one the ruling describes: owner exists and nobody holds it", async () => {

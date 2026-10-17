@@ -29,6 +29,7 @@
 // THROWAWAY database only, onto grants migration 1761696000000 genuinely writes -- purchasingManager
 // and warehouseAssociate, both real holders of reorder.purchaseOrder.read. The WITHHELD Technician
 // Purchase Order cells are not granted, not conditioned and not named as data anywhere here.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -138,7 +139,7 @@ test("the conditional entitlement relation, in PostgreSQL", { skip: SKIP, concur
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const migrate = (...args) => execFileSync(process.execPath,

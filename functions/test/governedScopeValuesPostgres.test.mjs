@@ -19,6 +19,7 @@
 //      source Opportunity's channel (commands) and lineage is disclosed only where the reader could read the linked
 //      record (reads); the database refuses deactivating a channel under an active scoped assignment and refuses an
 //      assignment scoped to a channel that is not ACTIVE
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -62,7 +63,7 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

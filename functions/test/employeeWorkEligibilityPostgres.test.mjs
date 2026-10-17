@@ -12,6 +12,7 @@
 //   tenant isolation is explicit              the Employee FK is composite (tenant_id, employee_id)
 //
 // The suite migrates its OWN disposable database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -55,7 +56,7 @@ test("Employee Work Eligibility authority: closed platform vocabulary, no access
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const migrate = (direction, steps) => execFileSync(

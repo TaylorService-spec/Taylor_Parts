@@ -1,6 +1,7 @@
 // The CRM Render transport against a real postgres:16: bearer -> injected verifier -> resolveOperationalContext
 // (Principal, membership, Role assignment, role_capabilities) -> CRM actor -> governed CRM authority -> HTTP response.
 // Its own database, migrated by the normal runner. Roles and grants exist ONLY in this disposable database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -82,7 +83,7 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     const c = new pg.Client({ connectionString: URL_BASE });
     await c.connect();
     await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

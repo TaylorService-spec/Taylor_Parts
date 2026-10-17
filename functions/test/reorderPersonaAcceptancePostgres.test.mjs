@@ -39,6 +39,7 @@
 // assignEmployeeOperationalScope refuses every scope type except WAREHOUSE, so no command can
 // produce one. The three REORDER_QUEUE rows live in nonprod because migration 1761696000000 wrote
 // them, not because a command did.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -126,7 +127,7 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
     let pool;
     await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
     t.after(async () => {
-      await pool?.end();
+      await endPoolAndDrain(pool);
       await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
     });
     execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

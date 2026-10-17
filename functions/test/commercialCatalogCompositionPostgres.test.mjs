@@ -7,6 +7,7 @@
 //
 // So this suite composes `createPostgresCatalogReferenceAuthority()` exactly as eosApi/server.ts
 // does, and drives the governed Sales Agreement and Sales Order commands through it.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -46,7 +47,7 @@ test("Commercial resolves Catalog references through the REAL PostgreSQL authori
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

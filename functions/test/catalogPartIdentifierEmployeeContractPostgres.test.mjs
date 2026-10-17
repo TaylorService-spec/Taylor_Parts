@@ -12,6 +12,7 @@
 // through the real hook, the real adapter and the real catalogApiClient, fed THOSE answers.
 //
 // To refresh the fixture after a deliberate contract change: UPDATE_CATALOG_CONTRACT=1 with the database set.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -44,7 +45,7 @@ test("the Part identifier employee workflows answer the contract the screens rea
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     const c = new pg.Client({ connectionString: URL_BASE });
     await c.connect();
     await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

@@ -8,6 +8,7 @@
 //
 // Its OWN database, migrated by the normal runner (migrations pinned BY NAME, never "latest") and dropped
 // afterwards.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -90,7 +91,7 @@ const activationOptions = (apply) => ({ tenantKey: TENANT_KEY, performedBy: "sam
 
 async function withPool(fn) {
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 2 });
-  try { return await fn(pool); } finally { await pool.end(); }
+  try { return await fn(pool); } finally { await endPoolAndDrain(pool); }
 }
 
 /**
@@ -391,7 +392,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       reason: "Sample Company v2 proof: the pre-existing owner Principal" });
     assert.notEqual(ownerPrincipalId, adminPrincipalId);
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 
   // ════════════════ refusals, against this very database ════════════════

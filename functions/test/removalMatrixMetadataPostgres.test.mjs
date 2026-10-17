@@ -9,6 +9,7 @@
 //   2. the Roles holding each spec key in eos_policy.role_capabilities are exactly the pin's baseline + baseline
 //      activation Roles (the delta modules are applied through the Administration API, which this rebuild does not do).
 // Set POLICY_TEST_DATABASE_URL (a base URL; the suite creates and drops its own database); without it the suite SKIPS.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -42,7 +43,7 @@ test("the removal-matrix pin agrees with a rebuilt PostgreSQL authority", { skip
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   let pool;
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const migrate = (count) => execFileSync(process.execPath, [

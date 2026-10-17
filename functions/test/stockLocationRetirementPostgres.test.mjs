@@ -4,6 +4,7 @@
 // authority on 2026-09-12. What must be proved is not only that it goes, but that NOTHING ELSE does:
 // the Object's field rows are named binCode / partId / warehouseId, and a careless cleanup that
 // followed those names into eos_ops would delete real inventory data.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -60,7 +61,7 @@ test("stockLocation retirement, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const dbUrl = dbUrlFor(name);

@@ -13,6 +13,7 @@
 //   * Effective Access explains the capability through the existing machinery.
 //
 // Writes ONLY to a database it creates under POLICY_TEST_DATABASE_URL and drops at the end.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -82,7 +83,7 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

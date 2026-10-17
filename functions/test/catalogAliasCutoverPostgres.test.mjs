@@ -4,6 +4,7 @@
 // its Part are one consistent picture or they are not evidence. This suite is mostly about what the
 // copy REFUSES: a dangling alias, an alias of an excluded certification Part, an identity that
 // disagrees with its own value.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -69,7 +70,7 @@ test("the Catalog cutover carries Part ALIASES, or refuses", { skip: SKIP, concu
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

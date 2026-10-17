@@ -18,6 +18,7 @@
 //
 // THE IDENTITY PROVIDER IS NEVER CONTACTED HERE. `post` is injected, so this suite proves the
 // database behaviour of the binding without creating an account in anybody's project.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -106,7 +107,7 @@ test("binding the nonprod Owner persona to a real login, in PostgreSQL", { skip:
   // pool closed afterwards reports that termination as an unhandled failure of the whole suite.
   let pool;
   t.after(async () => {
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,
