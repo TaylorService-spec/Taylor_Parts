@@ -332,7 +332,14 @@ test("the governed Work Order list query, against PostgreSQL", { skip: SKIP, con
     assert.equal(legacyAll.items.some((w) => w.operatingCompanyKey !== "taylor"), false);
     for (const call of [() => list(actor("prn-unlinked"), {}), () => queries.listWorkOrders({ pool }, actor("prn-unlinked"), {}),
       () => queries.describeWorkOrderListQuery({ pool }, actor("prn-unlinked"), {})]) {
-      await assert.rejects(call(), refused("COMPANY_AUTHORITY_REQUIRED"));
+      // A STATED refusal, never an empty list: FORBIDDEN (403) with the server's sentence -- the words My Work renders as
+      // "Not available to you -- <reason>." (MyWorkspace.jsx) and the client maps to its remedy copy (workOrderOutcome.js).
+      await assert.rejects(call(), (e) => {
+        assert.equal(e.code, "COMPANY_AUTHORITY_REQUIRED");
+        assert.equal(e.category, "FORBIDDEN");
+        assert.equal(e.message, "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
+        return true;
+      });
     }
   });
 

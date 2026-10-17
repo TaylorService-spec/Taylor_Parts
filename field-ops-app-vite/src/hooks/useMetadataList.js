@@ -83,6 +83,7 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(enabled);
   const [errorStatus, setErrorStatus] = useState(null);
+  const [errorDetail, setErrorDetail] = useState(null);
   const cursorRef = useRef(null);
   // Guards against a slow first page landing after a filter change and overwriting the
   // newer result — the stale-response race that shows a user rows they just filtered out.
@@ -111,7 +112,7 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         // MetadataRecordPage.jsx's useRelatedListPresentation makes for the identical
         // case — never "denied" (no authorization check ran) and never empty (no read was
         // attempted). No source is touched.
-        setErrorStatus("unavailable");
+        setErrorStatus("unavailable"); setErrorDetail(null);
         setRows([]);
         setHasMore(false);
         cursorRef.current = null;
@@ -138,12 +139,16 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         setHasMore(page.hasMore);
         cursorRef.current = page.nextCursorDoc;
         setErrorStatus(null);
+        setErrorDetail(null);
       } catch (e) {
         if (token !== requestRef.current) return;
         // DENIED and UNAVAILABLE stay distinct all the way down. Collapsing a rules
         // rejection into "could not load" tells someone to retry a read that will never
         // succeed, and hides that the real answer is about access.
         setErrorStatus(e?.code === "permission-denied" ? "denied" : "unavailable");
+        // A source may name WHY in safe words (`detail`), e.g. the Work Order list's company-authority refusal.
+        // Never the raw message or code.
+        setErrorDetail(typeof e?.detail === "string" ? e.detail : null);
         setRows([]);
         setHasMore(false);
         cursorRef.current = null;
@@ -160,7 +165,7 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
     // A descriptor the runtime refused is a definition problem, not a failed read. It
     // must not present as a retryable outage.
     if (!descriptor) {
-      setErrorStatus("unavailable");
+      setErrorStatus("unavailable"); setErrorDetail(null);
       setRows([]);
       setLoading(false);
       return;
@@ -177,13 +182,14 @@ export function useMetadataList(def, entity, { filters = [], sort = [], enabled 
         page: errorStatus ? null : { rows, hasMore },
         loading,
         errorStatus,
+        errorDetail,
         filtersActive: filters.length > 0,
         resolveReference,
         // Threaded, not invented here -- the same discipline resolveReference follows. Only the
         // surface that owns the record may say what its money cell means.
         resolveMoneyCell,
       }),
-    [def, entity, rows, hasMore, loading, errorStatus, filters.length, resolveReference, resolveMoneyCell]
+    [def, entity, rows, hasMore, loading, errorStatus, errorDetail, filters.length, resolveReference, resolveMoneyCell]
   );
 
   return {

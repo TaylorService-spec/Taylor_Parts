@@ -233,7 +233,7 @@ export function cellValue(column, row, { resolveReference, resolveMoneyCell } = 
  * not here. Omitting it is a legitimate, honest choice (a caller with no live resolver wired
  * yet): every REFERENCE cell then renders `UNRESOLVED_REFERENCE_LABEL`, never the stored id.
  */
-export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, filtersActive = false, resolveReference = null, resolveMoneyCell = null } = {}) {
+export function buildListPresentation({ def, entity, page = null, loading = false, errorStatus = null, errorDetail = null, filtersActive = false, resolveReference = null, resolveMoneyCell = null } = {}) {
   const columns = resolveColumns(def, entity);
 
   const state = (() => {
@@ -268,7 +268,11 @@ export function buildListPresentation({ def, entity, page = null, loading = fals
     hasMore: def?.surface === "INDEX" ? !!page?.hasMore : false,
     viewAllListId: def?.surface === "RELATED" ? def?.viewAllListId ?? null : null,
     truncated: def?.surface === "RELATED" ? !!page?.hasMore : false,
-    emptyMessage: emptyMessageFor(state, def),
+    // A refusal or failure the SOURCE explained in safe words (e.g. no operating-company authority) says why;
+    // otherwise the generic state copy. Never applied to EMPTY / FILTERED, which are not failures.
+    emptyMessage: (state === "DENIED" || state === "UNAVAILABLE") && typeof errorDetail === "string" && errorDetail
+      ? errorDetail
+      : emptyMessageFor(state, def),
     emptyGuidance: emptyGuidanceFor(state, def),
   });
 }
