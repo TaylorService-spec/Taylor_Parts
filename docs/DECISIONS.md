@@ -8668,6 +8668,49 @@ Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refus
   - the browser-zone fallback is stated.
 - `rentalPostgres` pins the new `businessTimeZone` field.
 
+## #241 — Manufacturers on EOS Core: the Catalog API serves the list and the writes; the screen's door is `inventory.catalog` (Firebase exit F5 + Manufacturers R-1 Option A, 2026-10-17)
+
+**Status: OWNER APPROVED (Manufacturers R-1 Option A); F5 directed by the Controller under the Firebase-exit slice plan (DECISIONS #234 O-1).** No grant, role, identity, Rules or Firebase deploy change.
+
+**Why.**
+- **The read was Firebase-only.** The Manufacturers screen and every Part form read `getManufacturerCatalog`, a Firebase callable over Firestore `manufacturers` and Firestore role assignments.
+- **The door was closed for everyone.** On the EOS navigation source the screen had no surface, so it refused every principal, Administrator included.
+- **Writes were gone.** PR-B (2026-10-15) removed the flag-dead Firebase write affordances. The PostgreSQL writer existed but was unwired.
+
+**Rule.**
+- **The read is the Catalog API's.** `listManufacturers`, `getManufacturer` and `searchManufacturers` on `/operations/catalog` read `eos_ops.manufacturers` through `eosOps/manufacturerAuthority.ts`.
+  - They require `inventory.catalog.read` (what the retired callable checked) **and** `inventory.manufacturer.read` (the PostgreSQL authority's own key). Requiring both is never wider than either path.
+  - **Measured, the two keys are not held by the same Roles.** Migration 1761782400000 granted `inventory.manufacturer.read` to the nineteen Roles that held `inventory.catalog.read` at that time. Roles that gained `inventory.catalog.read` later did not get it. The live nonprod captures (2026-10-17) show three personas holding `inventory.catalog.read` **without** `inventory.manufacturer.read`:
+    - nationalAccountsSales (`commercialSharedContext`);
+    - retailSales (`commercialSharedContext`);
+    - serviceTechnician (`technician`, `equipmentInstaller`, `inventoryLookupReader`).
+  - For them the door opens (`inventory.catalog`) but the list is refused, and Part screens show manufacturer ids without names.
+  - The list is bounded at 1,000 rows and says `truncated` past that. It carries each row's `updatedAt`, the writer's concurrency token.
+- **The writes are the Catalog API's.** `createManufacturer`, `updateManufacturer` and `changeManufacturerStatus` dispatch to `catalogMaster/postgresManufacturerWriter.ts`: `inventory.catalog.manage` for create and rename, `inventory.catalog.activate` for status. They sit behind the same ACTIVE authority and DQ-034 mutation hold as the Part writers. There is no delete.
+- **The client has no fallback.** `services/manufacturerCatalogClient.js` replaces the callable client. The screen restores New Manufacturer, Rename and Status, and shows the server's answer (the Supplier administration pattern, #196).
+- **The door follows the read (R-1 Option A).** `inventory/manufacturers` maps to the existing `inventory.catalog` surface. The row changes kind and nothing is added: ungoverned 39 → 38, cutover 23 → 24, register 62. Production (legacy source) is byte-identical, and the item stays `navHidden`.
+
+**Open Owner decision: the three personas above.** This PR implements **none** of the options, and requiring both keys stays.
+- (i) Grant `inventory.manufacturer.read` to `commercialSharedContext`, `technician`, `equipmentInstaller` and `inventoryLookupReader`. This is a governed grant.
+- (ii) Accept that those Roles see the door and are refused the list.
+- (iii) Make the door require both keys.
+
+**Nonprod data (controller ruling, 2026-10-17).** `eos_ops.manufacturers` is empty on nonprod, and so is the source:
+- `eosOps/migration/manufacturerMigration.ts` measured the sandbox Firestore `manufacturers` collection at 0 documents.
+- It cannot have grown since: Rules deny client writes, the only write client was removed in PR-B (#2114), and the write callables are frozen.
+
+So merging empties nothing. The **production** copy (Firestore `manufacturers` → `eos_ops.manufacturers`) is a separate Owner-gated step. Its operator tool is held until the Owner rules on extending the 2026-09-14 migration-exporter exception to `manufacturers`.
+
+**Unchanged.** The Firebase callables (`getManufacturerCatalog`, `createManufacturer`, `updateManufacturer`, `changeManufacturerStatus`) stay deployed and frozen; retiring them is an operator undeploy. `CALLABLE_SOURCES` still names `getManufacturerCatalog` for the list-view validator only.
+
+**Proof.**
+- `catalogReadAuthorizationPostgres`: create, list, rename, a stale-token refusal, status, get, search, a blank-term refusal, `inventory.catalog.read` alone refused, and tenant isolation, all through the transport.
+- `catalogRuntimeCensus`: the operation lists are pinned.
+- `manufacturerRuntimeAuthorityPostgres`: the writer's one importer is the Catalog transport.
+- `manufacturersMetadataList`: the restored create, rename and status flow sends the right envelopes and tokens, shows a refusal without claiming success, and discloses truncation. The client maps the list and the outcomes.
+- `navCutoverEnvironmentScoped`: 24 + 38 = 62, and the Manufacturers transition test.
+- Exit baseline 245 → 244.
+
 ## #242 — OWNER: Returns intake moves to EOS Core — operating company required, no ledger movement, a memberless clerk Role (Firebase exit F7a, 2026-10-17)
 
 **Status: OWNER RULED (F7a, 2026-10-17).** Supersedes the premise of #231 (returns intake was "not yet available in EOS"). Merge and deployment follow the normal gate.

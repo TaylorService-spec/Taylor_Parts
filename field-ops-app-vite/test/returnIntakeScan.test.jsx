@@ -32,7 +32,8 @@ const mount = (over = {}) => {
   const recordReturnIntake = over.recordReturnIntake
     ?? vi.fn().mockResolvedValue({ outcome: "recorded", returnId: "ret_1", partId: "PRT-1001", state: "AWAITING_DISPOSITION", quantity: 1 });
   const listReturnIntakeOptions = over.listReturnIntakeOptions ?? vi.fn().mockResolvedValue(ONE_COMPANY);
-  render(<ReturnIntakeScan deps={{ returnClient: { recordReturnIntake, listReturnIntakeOptions }, scanInputDeps: { now: advancingClock } }} />);
+  render(<ReturnIntakeScan deps={{ returnClient: { recordReturnIntake, listReturnIntakeOptions }, scanInputDeps: { now: advancingClock },
+    ...(over.cacheOwner !== undefined ? { cacheOwner: over.cacheOwner } : {}) }} />);
   return recordReturnIntake;
 };
 /** Let the options read settle, then press Record. */
@@ -214,16 +215,38 @@ describe("which company is taking it in", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/no operating company to take returns in for/i);
   });
 
-  it("OFFLINE, the last server answer is used; a refusal is never answered from the cache", async () => {
-    globalThis.localStorage.setItem("eos.returnIntake.options.v1", JSON.stringify(TWO));
+  it("OFFLINE, THIS user's last server answer is used; a refusal is never answered from the cache", async () => {
+    // Online once as u-1: the answer is kept under u-1.
+    mount({ cacheOwner: "u-1", listReturnIntakeOptions: vi.fn().mockResolvedValue(TWO) });
+    await act(async () => {});
+    cleanup();
     const offline = Object.assign(new Error("offline"), { code: "unavailable" });
-    mount({ listReturnIntakeOptions: vi.fn().mockRejectedValue(offline) });
+    mount({ cacheOwner: "u-1", listReturnIntakeOptions: vi.fn().mockRejectedValue(offline) });
     await act(async () => {});
     expect([...screen.getByLabelText(/which company is taking it in/i).querySelectorAll("option")].map((o) => o.value))
       .toEqual(["", "taylor", "ventana"]);
     cleanup();
-    mount({ listReturnIntakeOptions: vi.fn().mockRejectedValue(Object.assign(new Error("no"), { code: "permission-denied" })) });
+    mount({ cacheOwner: "u-1", listReturnIntakeOptions: vi.fn().mockRejectedValue(Object.assign(new Error("no"), { code: "permission-denied" })) });
     expect((await screen.findByRole("alert")).textContent).toMatch(/not authorized/i);
-    globalThis.localStorage.removeItem("eos.returnIntake.options.v1");
+    globalThis.localStorage.clear();
+  });
+
+  it("SHARED DEVICE: another user, or no signed-in identity, never sees a cached answer (keyed by principal)", async () => {
+    mount({ cacheOwner: "u-1", listReturnIntakeOptions: vi.fn().mockResolvedValue(TWO) });
+    await act(async () => {});
+    cleanup();
+    const offline = Object.assign(new Error("offline"), { code: "unavailable" });
+    mount({ cacheOwner: "u-2", listReturnIntakeOptions: vi.fn().mockRejectedValue(offline) });
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not be recorded/i);
+    expect(screen.queryByLabelText(/which company is taking it in/i)).toBeNull();
+    cleanup();
+    mount({ listReturnIntakeOptions: vi.fn().mockRejectedValue(offline) });
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not be recorded/i);
+    // Nothing at all is kept for an anonymous caller.
+    globalThis.localStorage.clear();
+    mount({ listReturnIntakeOptions: vi.fn().mockResolvedValue(TWO) });
+    await act(async () => {});
+    expect(Object.keys(globalThis.localStorage)).toEqual([]);
+    globalThis.localStorage.clear();
   });
 });

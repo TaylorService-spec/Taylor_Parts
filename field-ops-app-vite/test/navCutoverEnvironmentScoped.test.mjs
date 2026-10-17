@@ -387,14 +387,16 @@ test("SANDBOX: an unresolved EOS authority grants nothing and does NOT fall thro
 // did not move; only the row's kind did (navConfig's ceiling note).
 // 2026-10-14: 22 + 40 became 23 + 39 when the EXISTING `financials/overview` row earned financials.payments (PR #2091, for
 // Owner confirmation). Again the total did not move and production's legacy destination set is unchanged.
-test("RATCHET: the register partitions into 23 + 39 = 62, derived from NAV_SURFACE_ACCESS", () => {
+// 2026-10-17: 23 + 39 became 24 + 38 when the EXISTING `inventory/manufacturers` row earned inventory.catalog (Manufacturers
+// R-1 Option A, Owner-approved; Firebase exit F5).
+test("RATCHET: the register partitions into 24 + 38 = 62, derived from NAV_SURFACE_ACCESS", () => {
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 23);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 39);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.length, 24);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.length, 38);
   assert.equal(NAV_GOVERNED_PLACEHOLDER_DESTINATIONS.length, 0);
   assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
-  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 23);
-  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 39);
+  assert.equal(NAV_CUTOVER_PLACEHOLDER_CEILING, 24);
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_CEILING, 38);
 
   // The partition is a partition: disjoint, exhaustive, and computed from the criterion rather than
   // from two hand-maintained lists.
@@ -425,7 +427,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "reporting/aBrandNewUngovernedDoor"],
   });
   assert.ok(ungovernedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 39")));
+  assert.ok(ungovernedGrowth.some((p) => p.includes("NO governed surface, above the shrink-only ceiling of 38")));
 
   // (b) A 63rd row on a destination that ALREADY holds a governed surface -- the exact shape of
   // "put the rows back" going one row too far. Sales Agreements is the live example: it earned its
@@ -434,7 +436,7 @@ test("RATCHET: a 63rd legacy row is refused, and so is a reintroduced governed r
     register: [...register, "customers/salesAgreements"],
   });
   assert.ok(governedGrowth.some((p) => p.includes("above the shrink-only ceiling of 62")));
-  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 23")));
+  assert.ok(governedGrowth.some((p) => p.includes("ALREADY holds a governed surface, above the shrink-only ceiling of 24")));
 
   // (c) THE COUNT-PRESERVING SWAP, which a single total ceiling cannot see. Drop an ungoverned row,
   // add a governed one: still 62, still refused, because the partition ceilings move independently.
@@ -507,9 +509,9 @@ test("TRANSITION: purchasing/suppliers is the ONE row that changed kind, and not
   assert.ok(destinations().some(([key]) => key === "purchasing/suppliers"), "an existing destination, not a new one");
 
   // attributable: exactly one row crossed IN THAT TRANSITION, and it is the Supplier one. (The 2026-10-13 Financial Policy
-  // and 2026-10-14 Financials Overview transitions below are pinned on their own.)
+  // 2026-10-14 Financials Overview and 2026-10-17 Manufacturers transitions below are pinned on their own.)
   const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d)
-    && d !== "administration/financialPolicy" && d !== "financials/overview");
+    && d !== "administration/financialPolicy" && d !== "financials/overview" && d !== "inventory/manufacturers");
   assert.deepEqual(crossed, ["purchasing/suppliers"]);
   assert.deepEqual(CUTOVER_BEFORE_SUPPLIER_TRANSITION.filter((d) => !NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes(d)), []);
   assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("purchasing/suppliers"), false);
@@ -539,7 +541,8 @@ test("TRANSITION: administration/financialPolicy changed kind (#232 Phase 2), an
   assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/financialPolicy"), "the legacy row stays for flag-false environments");
   assert.ok(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes("administration/financialPolicy"));
   assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("administration/financialPolicy"), false);
-  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d) && d !== "financials/overview");
+  const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d)
+    && d !== "financials/overview" && d !== "inventory/manufacturers");
   assert.deepEqual(crossed.sort(), ["administration/financialPolicy", "purchasing/suppliers"], "exactly two rows crossed before the Financials Overview transition");
   assert.deepEqual(NAV_SURFACE_ACCESS["administration/financialPolicy"], ["finance.policy"]);
   const server = readFileSync(join(repoRoot, "functions/src/eosOps/experienceAuthority.ts"), "utf8");
@@ -570,7 +573,8 @@ test("TRANSITION: financials/overview changed kind (Financials Workspace P0), an
   assert.ok(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes("financials/overview"));
   assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("financials/overview"), false);
   const crossed = NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.filter((d) => !CUTOVER_BEFORE_SUPPLIER_TRANSITION.includes(d));
-  assert.deepEqual(crossed.sort(), ["administration/financialPolicy", "financials/overview", "purchasing/suppliers"], "exactly three rows ever crossed");
+  assert.deepEqual(crossed.sort(), ["administration/financialPolicy", "financials/overview", "inventory/manufacturers", "purchasing/suppliers"],
+    "exactly four rows ever crossed (Manufacturers on 2026-10-17, pinned below)");
   assert.deepEqual(NAV_SURFACE_ACCESS["financials/overview"], ["financials.payments"]);
   const item = itemAt("financials/overview");
   assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
@@ -595,5 +599,22 @@ test("EOS: Administration Permissions opens only on the existing Objects surface
   for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner"]) {
     assert.equal(isNavItemVisible(item, role, keysFor(role), eosContext(eosAuthority([]))), false,
       `the role literal "${role}" opened Permissions under the governed source`);
+  }
+});
+
+// MANUFACTURERS R-1 OPTION A (2026-10-17, Firebase exit F5): `inventory/manufacturers` moved UNGOVERNED -> CUTOVER because the
+// destination now earns the existing `inventory.catalog` surface -- the surface its list read's capability already earns.
+test("TRANSITION: inventory/manufacturers changed kind (R-1 Option A), and nothing was added", () => {
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
+  assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("inventory/manufacturers"), "the legacy row stays for flag-false environments");
+  assert.ok(NAV_CUTOVER_PLACEHOLDER_DESTINATIONS.includes("inventory/manufacturers"));
+  assert.equal(NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS.includes("inventory/manufacturers"), false);
+  assert.deepEqual(NAV_SURFACE_ACCESS["inventory/manufacturers"], ["inventory.catalog"]);
+  const item = itemAt("inventory/manufacturers");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority([]))), false, "visible without the surface");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["inventory.catalog"]))), true, "the surface opens it");
+  assert.equal(isNavItemVisible(item, null, [], eosContext(eosAuthority(["inventory.catalogAdmin"]))), false, "Catalog Admin alone does not");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner"]) {
+    assert.equal(isNavItemVisible(item, role, keysFor(role), eosContext(eosAuthority([]))), false, `role literal ${role} opened it under the EOS source`);
   }
 });

@@ -60,15 +60,22 @@ export const RETURN_SOURCES = Object.freeze([
 
 const newKey = () => `ret-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-// OFFLINE INTAKE KEEPS WORKING. The last options the SERVER gave this device are kept, and used only when the options read
-// cannot reach the server (`unavailable`). That is safe because nothing is decided here: a queued intake replays through
-// recordReturnIntake, which re-checks the company and the warehouse. A refusal is never answered from the cache.
-const OPTIONS_CACHE_KEY = "eos.returnIntake.options.v1";
-const cacheOptions = (value) => { try { globalThis.localStorage?.setItem(OPTIONS_CACHE_KEY, JSON.stringify(value)); } catch { /* best effort */ } };
-const cachedOptions = () => {
+// OFFLINE INTAKE KEEPS WORKING. The last options the SERVER gave THIS USER on this device are kept, and used only when the
+// options read cannot reach the server (`unavailable`). That is safe because nothing is decided here: a queued intake
+// replays through recordReturnIntake, which re-checks the company and the warehouse. A refusal is never answered from the
+// cache. KEYED BY THE SIGNED-IN IDENTITY (deps.cacheOwner): a shared device never offers one user's companies and
+// warehouses to the next (Lane D, #2133). With no identity, nothing is cached and nothing is read back.
+const OPTIONS_CACHE_PREFIX = "eos.returnIntake.options.v2:";
+const cacheOptions = (owner, value) => {
+  if (!owner) return;
+  try { globalThis.localStorage?.setItem(OPTIONS_CACHE_PREFIX + owner, JSON.stringify({ owner, ...value })); } catch { /* best effort */ }
+};
+const cachedOptions = (owner) => {
+  if (!owner) return null;
   try {
-    const v = JSON.parse(globalThis.localStorage?.getItem(OPTIONS_CACHE_KEY) ?? "null");
-    return v && Array.isArray(v.companies) && Array.isArray(v.warehouses) ? v : null;
+    const v = JSON.parse(globalThis.localStorage?.getItem(OPTIONS_CACHE_PREFIX + owner) ?? "null");
+    return v && v.owner === owner && Array.isArray(v.companies) && Array.isArray(v.warehouses)
+      ? { companies: v.companies, warehouses: v.warehouses } : null;
   } catch { return null; }
 };
 
@@ -92,6 +99,7 @@ function refusalText(rawCode, detailCode) {
 
 export default function ReturnIntakeScan({ deps }) {
   const client = deps?.returnClient ?? returnCommandClient;
+  const cacheOwner = typeof deps?.cacheOwner === "string" && deps.cacheOwner !== "" ? deps.cacheOwner : null;
   // ONE submit policy. Intake only -- there is no disposition to queue because there is none at all.
   const warehouse = useWarehouseSubmit({ offline: deps?.offline });
 
@@ -121,12 +129,12 @@ export default function ReturnIntakeScan({ deps }) {
       .then(() => client.listReturnIntakeOptions())
       .then((r) => {
         const value = { companies: Array.isArray(r?.companies) ? r.companies : [], warehouses: Array.isArray(r?.warehouses) ? r.warehouses : [] };
-        cacheOptions(value);
+        cacheOptions(cacheOwner, value);
         return value;
       })
       .catch((err) => {
         const raw = typeof err?.code === "string" ? err.code : "";
-        const cached = raw === "unavailable" ? cachedOptions() : null;
+        const cached = raw === "unavailable" ? cachedOptions(cacheOwner) : null;
         if (cached) return cached;
         throw err;
       })
@@ -141,7 +149,7 @@ export default function ReturnIntakeScan({ deps }) {
         setOptions({ state: "failed", companies: [], warehouses: [], error: refusalText(raw || "internal", err?.details?.code) });
       });
     return () => { cancelled = true; };
-  }, [client]);
+  }, [client, cacheOwner]);
 
   const scanPart = useCallback((raw) => {
     const value = String(raw ?? "").trim();
