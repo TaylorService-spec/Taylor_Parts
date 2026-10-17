@@ -10,7 +10,7 @@
 // spec's "immutable timestamps" requirement actually enforceable: the
 // server clock, not a client-suppliable value, decides when a transition
 // happened.
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "./timestampShape";
 
 export type WorkOrderStatus =
   | "CREATED"

@@ -918,12 +918,12 @@ test("the real repository file that discusses firebase in PROSE while importing 
 // cutover (2026-09-30): it no longer imports the Timestamp type, so it is no Firestore entry and is not pinned here.
 test("the real file that mentions admin.firestore in a COMMENT is classified by SPECIFIER " +
   "only -- matchesSource adds nothing to them, so no entry is reclassified", () => {
-  // Both import `type { Timestamp }` from the Firestore subpath, which the specifier matcher
-  // deliberately matches (the `from` clause is unaffected by `type`), so both are already baseline
-  // entries. The point being pinned is that their prose mention of admin.firestore contributes
-  // NOTHING: the category set is exactly the one specifier matching alone produces.
+  // The point being pinned is that a prose mention of admin.firestore contributes NOTHING: the category set is
+  // exactly the one specifier matching alone produces. Firebase exit PR-C (2026-10-15): the server copy now names the
+  // structural types/timestampShape instead of importing the Firestore Timestamp type, so specifier matching yields
+  // no category at all -- and the comment still mentioning admin.firestore must not bring one back.
   const expected = {
-    "functions/src/types/workOrder.ts": ["server.firebase_admin_firestore"],
+    "functions/src/types/workOrder.ts": [],
   };
   for (const [relativePath, categories] of Object.entries(expected)) {
     const text = readSourceFile(join(REPO_ROOT, relativePath), "utf8");
@@ -1027,7 +1027,9 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // firebase/collectionStore.js, lib/firebaseSafe.js, hooks/useFirestoreCollection.js) are deleted -- 17 -> 13.
     // Firebase exit PR-B (2026-10-15): hooks/useListViewChrome.js drops its never-taken getCountFromServer fallback
     // (every list injects its own count or reads through EOS / a callable) -- 13 -> 12.
-    "frontend.firestore_client": 12,
+    // Firebase exit PR-C (2026-10-15): types/access.ts and access/parityFixtures.ts name a structural TimestampShape
+    // instead of importing the Firestore Timestamp type -- 12 -> 10.
+    "frontend.firestore_client": 10,
     // Pass 11 Retail Sales: the 7 Opportunity / Sales Order read + command clients moved to the EOS Commercial API.
     // ... and their callable transports (Part / alias command clients, the Reorder callable client) -- 47 -> 44.
     // L0 Z3: product-reference search (salesAgreementCommandClient.js) left the searchProductReferences callable
@@ -1055,7 +1057,10 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // and imported by nothing (cycle count v1, standalone install, work-order install) are deleted -- 171 -> 168.
     // Firebase retirement F4 (2026-10-11): the Work Order Labor onCall adapter (laborCallables.ts) -- 168 -> 167.
     // Firebase retirement F3b (2026-10-11): the Part Alias onCall adapter (partAliasCallables.ts) -- 167 -> 166.
-    "server.firebase_admin_firestore": 166,
+    // Firebase exit PR-C (2026-10-15): eight record-type modules (types/access, inventoryTransaction, procurement,
+    // warehouse, workOrder; scheduling/types; supplierMaster/supplierMasterTypes; access/parityFixtures) name a
+    // structural TimestampShape instead of importing the Firestore Timestamp type; emitted JS unchanged -- 166 -> 158.
+    "server.firebase_admin_firestore": 158,
     // ... and its three firebase-functions modules (the inbound callables, the transport callables, the schedule) --
     // 72 -> 69. Firebase exit F1 dead-code removal (2026-10-09): the same three unexported adapters -- 69 -> 66.
     // Firebase retirement F2 (2026-10-10): the Supplier and Part<->Supplier item onCall adapters, replaced by EOS with no
@@ -1074,5 +1079,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 257); // 261 -> 257: Firebase exit PR-B (2026-10-15), one dormant count branch and three orphaned / flag-dead callable clients; 265 -> 261: Firebase exit PR-A (2026-10-15), the unrouted Technicians chain, four client entries; 266 -> 265: Firebase exit Lane B slice 2 (2026-10-15), useAssignableEmployees, one client entry; 268 -> 266: Firebase exit Lane B (2026-10-15), the Work Order parts-plan capability hook, one client file in two categories; 270 -> 268: Firebase retirement F3b (2026-10-11), one file in two server categories; 271 -> 270: Firebase retirement F3a (2026-10-11), one server entry; 273 -> 271: Firebase retirement F4 (2026-10-11), one file in two server categories; 275 -> 273: Firebase retirement F2 (2026-10-10), two server entries; 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
+  assert.equal(total, 247); // 257 -> 247: Firebase exit PR-C (2026-10-15), ten Timestamp-only type imports replaced by a structural type; 261 -> 257: Firebase exit PR-B (2026-10-15), one dormant count branch and three orphaned / flag-dead callable clients; 265 -> 261: Firebase exit PR-A (2026-10-15), the unrouted Technicians chain, four client entries; 266 -> 265: Firebase exit Lane B slice 2 (2026-10-15), useAssignableEmployees, one client entry; 268 -> 266: Firebase exit Lane B (2026-10-15), the Work Order parts-plan capability hook, one client file in two categories; 270 -> 268: Firebase retirement F3b (2026-10-11), one file in two server categories; 271 -> 270: Firebase retirement F3a (2026-10-11), one server entry; 273 -> 271: Firebase retirement F4 (2026-10-11), one file in two server categories; 275 -> 273: Firebase retirement F2 (2026-10-10), two server entries; 283 -> 275: Firebase exit F1 dead-code removal (2026-10-09), eight entries across four files; 286 -> 283: the Truck Inventory activation (2026-10-01), three client entries; 300 -> 294: the Inventory / Warehouse completion (2026-10-01), six client entries; 294 -> 286: the Equipment activation (2026-10-01), eight client entries
 });

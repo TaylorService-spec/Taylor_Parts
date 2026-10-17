@@ -22,7 +22,7 @@
 //
 // What remains below is the governed §3A Warehouse eligibility record, which is live and load-bearing
 // for Receiving, Transfer, Cycle Count and ownership.
-import type { Timestamp } from "firebase-admin/firestore";
+import type { TimestampShape as Timestamp } from "./timestampShape";
 
 // ---------------------------------------------------------------------------
 // Receiving Location Authority -- I-LA C2 (ratified: docs/specifications/
