@@ -48,10 +48,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  * and none of them code, which is what made adopting the canonical text provably
  * behavior-neutral rather than merely believed to be.
  *
- * parityFixtures.ts IS synced, but through a declared substitution — see
- * PLATFORM_SUBSTITUTIONS. It is the one legitimate case: the difference is a real SDK
- * boundary (firebase-admin vs firebase), not an artificial one invented by the text
- * itself, so removing it is not an option the way removing a pathname was.
+ * parityFixtures.ts IS synced byte-identically. It used to need a declared substitution
+ * (firebase-admin vs firebase Timestamp type); since the Firebase exit (PR-C) both copies
+ * import the same structural types/timestampShape declaration, so the substitution is gone.
  */
 export const SYNCED_MODULES = Object.freeze([
   "bindingScopePolicy.ts",
@@ -110,13 +109,6 @@ export const PLATFORM_SUBSTITUTIONS = Object.freeze({
         "ERR_MODULE_NOT_FOUND before a single assertion runs. This surfaced the moment " +
         "compatibilityRoles gained its first RUNTIME import: while it held only 'import type', " +
         "the specifier was erased and the difference could not exist.",
-    }),
-  ]),
-  "parityFixtures.ts": Object.freeze([
-    Object.freeze({
-      canonical: 'import type { Timestamp } from "firebase-admin/firestore";',
-      generated: 'import type { Timestamp } from "firebase/firestore";',
-      why: "the server uses the Admin SDK's Timestamp type; the client uses the web SDK's",
     }),
   ]),
 });
