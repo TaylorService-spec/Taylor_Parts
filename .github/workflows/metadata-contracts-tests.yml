@@ -59,7 +59,6 @@ on:
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
-      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
       - "field-ops-app-vite/test/accountSearch.test.mjs"
       - "field-ops-app-vite/src/domain/accountSearch.js"
@@ -136,7 +135,6 @@ on:
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
-      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
       - "field-ops-app-vite/test/accountSearch.test.mjs"
       - "field-ops-app-vite/src/domain/accountSearch.js"
@@ -314,9 +312,6 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Record page renderer tests (vitest, jsdom)
         run: npx vitest run test/metadataRecordPage.test.jsx
-        working-directory: field-ops-app-vite
-      - name: Firestore list source translation tests (vitest)
-        run: npx vitest run test/metadataFirestoreListSource.test.jsx
         working-directory: field-ops-app-vite
       - name: Customers surface tests (vitest, jsdom)
         run: npx vitest run test/customersSurface.test.jsx

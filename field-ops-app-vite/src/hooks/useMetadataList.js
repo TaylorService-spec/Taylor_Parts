@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildQueryDescriptor } from "../metadata/listRuntime.js";
 import { buildListPresentation } from "../metadata/listPresentation.js";
-import { fetchPage as fetchFirestorePage } from "../metadata/firestoreListSource.js";
 import { fetchPage as fetchCallablePage } from "../metadata/callableListSource.js";
 import { fetchPage as fetchCrmAccountPage } from "../metadata/crmListSource.js";
 import { fetchPage as fetchWorkOrderPage } from "../metadata/workOrderListSource.js";
@@ -51,7 +50,9 @@ function selectListSource(entity, def) {
   if (entity?.readVia === "EOS_API" && entity?.id === "warehouse") return fetchWarehousePage;
   // EQUIPMENT ACTIVATION (Controller 2026-10-01): the governed EOS register, never Firestore `equipment`.
   if (entity?.readVia === "EOS_API" && entity?.id === "equipment") return fetchEquipmentPage;
-  if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
+  // FIREBASE EXIT F3 (2026-10-17): a CLIENT_DIRECT entity has no source any more -- the Firestore list source
+  // (metadata/firestoreListSource.js) is deleted. No mounted list or RELATED section reads a CLIENT_DIRECT entity, so this
+  // changes no screen; one that is mounted later fails closed below, like any unknown readVia.
   if (entity?.readVia === "CALLABLE" && resolveReadCallable(def, entity)) return fetchCallablePage;
   // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor
   // the entity declares one): a misconfigured entity, never a live read to attempt.

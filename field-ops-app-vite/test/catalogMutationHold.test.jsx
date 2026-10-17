@@ -13,7 +13,6 @@ import path from "node:path";
 const h = vi.hoisted(() => ({ call: null }));
 vi.mock("firebase/firestore", () => ({ collection: () => { throw new Error("Firestore"); }, getCountFromServer: () => { throw new Error("Firestore"); }, query: () => {}, where: () => {}, limit: () => {} }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
-vi.mock("../src/metadata/firestoreListSource.js", () => ({}));
 vi.mock("../src/services/catalogApiClient.js", async (orig) => ({
   ...(await orig()),
   catalogApiClient: {

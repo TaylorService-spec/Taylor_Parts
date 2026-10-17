@@ -7,11 +7,11 @@
 // holding the capability.
 //
 // This mirrors MetadataRecordPage.jsx's own `selectListSource` for the RELATED surface
-// (metadataRecordPage.test.jsx covers that one): CLIENT_DIRECT routes to Firestore,
-// CALLABLE with a declared readCallable routes to the callable source, and anything else
-// (UNKNOWN readVia, or CALLABLE with no readCallable) fails loudly without touching either
-// source. What is tested HERE is the routing decision — the translators' own internals are
-// covered by metadataFirestoreListSource.test.jsx and metadataCallableListSource.test.jsx.
+// (metadataRecordPage.test.jsx covers that one): CALLABLE with a declared readCallable routes to
+// the callable source, and anything else (CLIENT_DIRECT since the Firebase exit deleted the
+// Firestore list source, UNKNOWN readVia, or CALLABLE with no readCallable) fails loudly without
+// touching any source. What is tested HERE is the routing decision — the translator's own internals
+// are covered by metadataCallableListSource.test.jsx.
 //
 // `def` and `entity` are built ONCE per test and reused across re-renders (never rebuilt
 // inline inside the `renderHook` callback). buildQueryDescriptor's own descriptor is
@@ -30,18 +30,12 @@ import {
 } from "../src/metadata/entityDefinition.js";
 import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
 
-const fetchFirestorePageMock = vi.fn();
-vi.mock("../src/metadata/firestoreListSource.js", () => ({
-  fetchPage: (...args) => fetchFirestorePageMock(...args),
-}));
-
 const fetchCallablePageMock = vi.fn();
 vi.mock("../src/metadata/callableListSource.js", () => ({
   fetchPage: (...args) => fetchCallablePageMock(...args),
 }));
 
 beforeEach(() => {
-  fetchFirestorePageMock.mockReset();
   fetchCallablePageMock.mockReset();
 });
 
@@ -74,35 +68,29 @@ const setup = (entityOver = {}) => {
 };
 
 describe("useMetadataList readVia dispatch", () => {
-  it("CLIENT_DIRECT — routes to fetchFirestorePage, never touching the callable source (unchanged behavior)", async () => {
-    fetchFirestorePageMock.mockResolvedValue(page([{ id: "w1" }]));
+  it("CLIENT_DIRECT — no source since the Firebase exit (F3): fails loudly to UNAVAILABLE and touches no source", async () => {
     const { result } = setup();
-    await waitFor(() => expect(result.current.presentation.state).toBe("READY"));
-    expect(fetchFirestorePageMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.presentation.state).toBe("UNAVAILABLE"));
     expect(fetchCallablePageMock).not.toHaveBeenCalled();
-    expect(result.current.presentation.rows).toHaveLength(1);
   });
 
-  it("CALLABLE with a declared readCallable — routes to fetchCallablePage, never touching Firestore", async () => {
+  it("CALLABLE with a declared readCallable — routes to fetchCallablePage", async () => {
     fetchCallablePageMock.mockResolvedValue(page([{ id: "opp1" }]));
     const { result } = setup({ readVia: "CALLABLE", readCallable: "listOpportunityContext" });
     await waitFor(() => expect(result.current.presentation.state).toBe("READY"));
     expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
-    expect(fetchFirestorePageMock).not.toHaveBeenCalled();
     expect(result.current.presentation.rows).toHaveLength(1);
   });
 
   it("UNKNOWN readVia fails loudly to UNAVAILABLE and touches no source", async () => {
     const { result } = setup({ readVia: "UNKNOWN" });
     await waitFor(() => expect(result.current.presentation.state).toBe("UNAVAILABLE"));
-    expect(fetchFirestorePageMock).not.toHaveBeenCalled();
     expect(fetchCallablePageMock).not.toHaveBeenCalled();
   });
 
   it("CALLABLE with no readCallable declared fails loudly to UNAVAILABLE and touches no source", async () => {
     const { result } = setup({ readVia: "CALLABLE", readCallable: null });
     await waitFor(() => expect(result.current.presentation.state).toBe("UNAVAILABLE"));
-    expect(fetchFirestorePageMock).not.toHaveBeenCalled();
     expect(fetchCallablePageMock).not.toHaveBeenCalled();
   });
 
@@ -181,7 +169,6 @@ describe("useMetadataList honors a list view's declared readCallable override", 
     const entity = makeEntity({ readVia: "CALLABLE", readCallable: null });
     const { result } = renderHook(() => useMetadataList(indexDefWithOverride, entity));
     await waitFor(() => expect(result.current.presentation.state).toBe("READY"));
-    expect(fetchFirestorePageMock).not.toHaveBeenCalled();
     const [descriptor] = fetchCallablePageMock.mock.calls[0];
     expect(descriptor.readCallable).toBe("listOpportunityContext");
   });
