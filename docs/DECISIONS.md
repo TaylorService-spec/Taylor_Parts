@@ -8685,14 +8685,18 @@ Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refus
   - a list longer than its limit is `unavailable`, never a partial `ready`.
   - Every created activity writes one audit row; a replay writes nothing.
 - **Read scope: never wider than the Account.** A read needs `crm.activity.read` **and** the Account's own read predicate: `customer.record.read`, with the Account in this tenant.
-  - The EOS Account read is **tenant-scoped**. `eos_crm.accounts` carries no operating company (migration 1758758400000), so there is no company dimension to apply. The decision's "company-scoped per #235" therefore resolves to the Account's tenant-scoped predicate.
-  - Create needs `crm.activity.create` and an Account in this tenant.
+  - The EOS Account read is **tenant-scoped**. `eos_crm.accounts` carries no operating company (migration 1758758400000), so there is no company dimension to apply. No company scope is invented. Company-scoped Accounts are a separate model question for the Owner.
+- **Create (Owner review, 2026-10-17).** Create needs `crm.activity.create` **and the same Account visibility** (`customer.record.read`, with the Account in this tenant).
+  - Every linked Contact, Opportunity and Sales Order must exist **in this tenant and on that Account**.
+  - A link outside the tenant, or on another Account, is refused exactly like an unknown one (`CONTACT_NOT_FOUND` / `OPPORTUNITY_NOT_FOUND` / `SALES_ORDER_NOT_FOUND`).
+  - The Firestore command checked neither.
 - **Access: parity, no new holder.** `crm.activity.read` and `.create` are registered and granted to exactly the Firebase catalog's current holders:
   - **admin** (Owner ruling 2026-08-19);
   - **owner** (`OWNER_COMMERCIAL_AUTHORITY`);
   - **crmActivityContributor**.
   - This is grant-bearing (Owner ruling E): the authority baseline goes 481 → 487 in the same change.
-  - The read additionally requires `customer.record.read`. That narrows only a principal who could not open the Account at all, and admin and owner hold it.
+  - **Explicit API restriction, not parity.** A principal holding `crmActivityContributor` ALONE, without `customer.record.read`, can no longer read or create activity through the API. That principal could reach the Firestore callables directly. That it could not open the Account page does not establish API parity, so this is stated as a restriction for Lane D's review.
+  - Admin and owner hold `customer.record.read`. **No customer-read grant is added** to compensate.
 - **Client.** `services/crmActivityClient.js` replaces the callable client, with no Firebase fallback; the hooks and the section are unchanged in contract. Actor names resolve by EOS Principal id.
 
 **Existing data is NOT moved.** An empty `eos_crm.activities` is not a completed data transition. Prepared:

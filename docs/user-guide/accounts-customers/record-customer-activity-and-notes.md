@@ -4,7 +4,7 @@
 
 **Who can do it:**
 - **Seeing the log:** you need access to read CRM activity *and* access to read the customer record itself.
-- **Adding a note:** you need access to record CRM activity.
+- **Adding a note:** you need access to record CRM activity *and* access to read the customer record.
 
 Today these are held by administrators, the owner, and anyone given the CRM-activity contributor role.
 
@@ -29,6 +29,7 @@ If saving fails and you click **Save Note** again, the note is still saved only 
 - **"Activity & Notes is currently unavailable. Try again later."** The log could not be loaded, or it has more entries than can be shown at once.
 - **"No activity logged yet for this account."** The log loaded and is empty.
 - **"Please check the note and try again."** The note is empty or too long, or the time you entered is in the future.
+- **"Could not save the note."** The note links a contact, opportunity or sales order that does not belong to this customer.
 - **Notes recorded before the move to EOS** may not be visible yet. They are copied over separately, once an administrator approves the copy.
 
 ## Related

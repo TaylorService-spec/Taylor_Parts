@@ -61,6 +61,8 @@ test("CRM activity, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =>
   const rep = { tenantId: T, principalId: "p-rep", capabilities: caps("crm.activity.read", "crm.activity.create", "customer.record.read") };
   const activityOnly = { tenantId: T, principalId: "p-reader", capabilities: caps("crm.activity.read") };
   const accountOnly = { tenantId: T, principalId: "p-reader", capabilities: caps("customer.record.read") };
+  // crmActivityContributor ALONE: the two activity keys, no customer.record.read (the explicit parity restriction, #243).
+  const contributorOnly = { tenantId: T, principalId: "p-reader", capabilities: caps("crm.activity.read", "crm.activity.create") };
   const deps = { pool };
   const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return [e.code, e.category]; } };
   const counts = async () => (await q(`SELECT (SELECT count(*) FROM eos_crm.activities)::int AS a,
@@ -91,21 +93,44 @@ test("CRM activity, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =>
     assert.deepEqual(await counts(), before, "no refusal wrote anything");
   });
 
+  await t.test("CREATE: Account visibility required; every linked record must be in this tenant AND on this Account", async () => {
+    await q(`INSERT INTO eos_crm.contacts (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('ct-1',$1,'acct-1','Ana','f','f'),
+                                                                                                            ('ct-2',$1,'acct-2','Bo','f','f')`, [T]);
+    await q(`INSERT INTO eos_crm.contacts (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('ct-x','t-other','acct-x','Cy','f','f')`);
+    await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, created_by, updated_by)
+             VALUES ('opp-1',$1,'OPP-1','acct-1','e-1','f','f'), ('opp-2',$1,'OPP-2','acct-2','e-1','f','f')`, [T]);
+    const before = await counts();
+    const make = (actor, over) => A.createAccountActivity(deps, actor, { accountId: "acct-1", type: "CALL", body: "x", idempotencyKey: `kl-${randomUUID()}`, ...over });
+    assert.deepEqual(await refusal(() => make(contributorOnly, {})), ["CAPABILITY_REQUIRED", "FORBIDDEN"],
+      "crmActivityContributor alone (no customer.record.read) cannot write to an Account it cannot read");
+    assert.deepEqual(await refusal(() => make(rep, { contactId: "ct-2" })), ["CONTACT_NOT_FOUND", "NOT_FOUND"], "a Contact on ANOTHER Account");
+    assert.deepEqual(await refusal(() => make(rep, { contactId: "ct-x" })), ["CONTACT_NOT_FOUND", "NOT_FOUND"], "another tenant's Contact == unknown");
+    assert.deepEqual(await refusal(() => make(rep, { contactId: "ct-zz" })), ["CONTACT_NOT_FOUND", "NOT_FOUND"]);
+    assert.deepEqual(await refusal(() => make(rep, { opportunityId: "opp-2" })), ["OPPORTUNITY_NOT_FOUND", "NOT_FOUND"]);
+    assert.deepEqual(await refusal(() => make(rep, { salesOrderId: "so-zz" })), ["SALES_ORDER_NOT_FOUND", "NOT_FOUND"]);
+    assert.deepEqual(await counts(), before, "no refusal wrote anything");
+    const ok = await make(rep, { contactId: "ct-1", opportunityId: "opp-1" });
+    assert.equal(ok.replayed, false, "references on the same Account are accepted");
+  });
+
   await t.test("READ: never wider than the Account read -- both keys, the Account in this tenant; most recent first; backdating kept", async () => {
     const backdated = Date.now() - 3 * 24 * 60 * 60 * 1000;
     await A.createAccountActivity(deps, rep, { accountId: "acct-1", type: "MEETING", body: "Site visit", occurredAtMillis: backdated, idempotencyKey: "k7",
-      contactId: "ct-9", opportunityId: "opp-3" });
+      contactId: "ct-1", opportunityId: "opp-1" });
     assert.deepEqual(await refusal(() => A.listAccountActivities(deps, activityOnly, { accountId: "acct-1" })), ["CAPABILITY_REQUIRED", "FORBIDDEN"],
       "crm.activity.read alone does not read an Account's activity");
     assert.deepEqual(await refusal(() => A.listAccountActivities(deps, accountOnly, { accountId: "acct-1" })), ["CAPABILITY_REQUIRED", "FORBIDDEN"]);
+    assert.deepEqual(await refusal(() => A.listAccountActivities(deps, contributorOnly, { accountId: "acct-1" })), ["CAPABILITY_REQUIRED", "FORBIDDEN"],
+      "the explicit parity restriction: crmActivityContributor alone does not read an Account's activity");
     assert.deepEqual(await refusal(() => A.listAccountActivities(deps, rep, { accountId: "acct-x" })), ["ACCOUNT_NOT_FOUND", "NOT_FOUND"]);
     const list = await A.listAccountActivities(deps, rep, { accountId: "acct-1" });
     assert.equal(list.status, "ready");
-    assert.deepEqual(list.activities.map((a) => a.type), ["CALL", "MEETING"], "most recent INTERACTION first, not recording order");
-    const meeting = list.activities[1];
+    assert.deepEqual(list.activities.map((a) => a.type).filter((t) => t === "MEETING").length, 1);
+    assert.equal(list.activities[list.activities.length - 1].type, "MEETING", "most recent INTERACTION first, not recording order");
+    const meeting = list.activities[list.activities.length - 1];
     assert.equal(meeting.occurredAtMillis, backdated);
     assert.ok(meeting.createdAtMillis > meeting.occurredAtMillis, "occurredAt and createdAt stay two facts");
-    assert.deepEqual([meeting.contactId, meeting.opportunityId, meeting.salesOrderId, meeting.createdByUid], ["ct-9", "opp-3", null, "p-rep"]);
+    assert.deepEqual([meeting.contactId, meeting.opportunityId, meeting.salesOrderId, meeting.createdByUid], ["ct-1", "opp-1", null, "p-rep"]);
     assert.deepEqual(await A.listAccountActivities(deps, rep, { accountId: "acct-1", limit: 1 }), { status: "unavailable", activities: [] },
       "a list longer than its limit is never a partial 'ready'");
     assert.deepEqual(await A.listAccountActivities(deps, rep, { accountId: "acct-2" }), { status: "ready", activities: [] });

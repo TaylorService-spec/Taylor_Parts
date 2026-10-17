@@ -11,7 +11,12 @@
 //   * READ requires crm.activity.read AND the Account's own read predicate (customer.record.read, the Account in this
 //     tenant) -- never wider than reading the Account itself. The EOS Account read is TENANT-scoped: eos_crm.accounts
 //     carries no operating company (migration 1758758400000 says why), so there is no company dimension to apply here.
-//   * CREATE requires crm.activity.create and an Account in this tenant.
+//   * CREATE requires crm.activity.create AND the same Account visibility as the read (customer.record.read, the Account in
+//     this tenant): an activity cannot be written to an Account the writer could not read (Owner review, 2026-10-17). Every
+//     linked Contact / Opportunity / Sales Order must exist IN THIS TENANT and belong to THAT Account; one outside the
+//     tenant, or on another Account, is refused exactly like an unknown one. (The Firestore command checked neither.)
+//   * EXPLICIT PARITY NOTE: a principal holding crmActivityContributor ALONE (no customer.record.read) can no longer read or
+//     create activity through the API. No customer-read grant is added to compensate (DECISIONS #243).
 //   * The holders are mirrored from the current Firebase catalog (admin, owner, crmActivityContributor) by the migration.
 // Every created activity writes ONE eos_policy.audit_events row in its own transaction; a replay writes nothing.
 import { randomUUID } from "node:crypto";
@@ -84,8 +89,20 @@ export function listAccountActivities(deps: CrmDeps, actor: CrmActorContext, inp
     });
 }
 
+/** Each stated reference must be in this tenant AND on this Account; anything else answers like an unknown record. */
+const LINKS = Object.freeze([
+  ["contactId", "eos_crm.contacts", "CONTACT_NOT_FOUND", "no such Contact on this Account"],
+  ["opportunityId", "eos_commercial.opportunities", "OPPORTUNITY_NOT_FOUND", "no such Opportunity on this Account"],
+  ["salesOrderId", "eos_commercial.sales_orders", "SALES_ORDER_NOT_FOUND", "no such Sales Order on this Account"],
+] as const);
+
 /** Record one interaction. `{ success: true, replayed, activityId }`, exactly the Firestore callable's answer. */
 export function createAccountActivity(deps: CrmDeps, actor: CrmActorContext, input: unknown) {
+  // Account visibility first: the writer must be able to read the Account it writes to.
+  if (actor && actor.capabilities instanceof Set && actor.capabilities.has(CRM_ACTIVITY_CREATE)
+      && !actor.capabilities.has(CRM_CAPABILITIES.CUSTOMER_RECORD_READ)) {
+    fail("CAPABILITY_REQUIRED", "FORBIDDEN", `recording CRM activity also requires ${CRM_CAPABILITIES.CUSTOMER_RECORD_READ}`);
+  }
   return runCrmCommand(deps, actor, CRM_ACTIVITY_CREATE,
     () => {
       const i = requireAllowlistedInput(input, ["accountId", "contactId", "opportunityId", "salesOrderId", "type", "body",
@@ -114,6 +131,12 @@ export function createAccountActivity(deps: CrmDeps, actor: CrmActorContext, inp
     },
     async (client, a, p) => {
       await requireTenantAccount(client, a.tenantId, p.accountId);
+      for (const [field, table, code, message] of LINKS) {
+        const id = p[field];
+        if (id === null) continue;
+        const found = await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND account_id = $3`, [a.tenantId, id, p.accountId]);
+        if (found.rows.length === 0) fail(code, "NOT_FOUND", message);
+      }
       // One key per actor = one activity, exactly as the Firestore audit-id derivation (actor + key) decided it.
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2 || '/' || $3))", [a.tenantId, a.principalId, p.idempotencyKey]);
       const prior = await client.query(`SELECT id FROM eos_crm.activities WHERE tenant_id = $1 AND created_by = $2 AND idempotency_key = $3`,
