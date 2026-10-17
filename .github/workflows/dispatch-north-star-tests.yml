@@ -52,6 +52,7 @@ on:
       - "field-ops-app-vite/test/dispatchVisualCorrections.test.mjs"
       - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
       - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
+      - "field-ops-app-vite/test/dispatchBoardInteractions.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/dispatch-north-star-tests.yml"
@@ -86,6 +87,7 @@ on:
       - "field-ops-app-vite/test/dispatchVisualCorrections.test.mjs"
       - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
       - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
+      - "field-ops-app-vite/test/dispatchBoardInteractions.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/dispatch-north-star-tests.yml"
@@ -132,6 +134,10 @@ jobs:
 
       - name: Board composition and command routing (vitest + jsdom)
         run: npx vitest run test/dispatchNorthStarBoard.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Board interactions — tap placement, employee review, dispatch capability (vitest + jsdom)
+        run: npx vitest run test/dispatchBoardInteractions.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Jobs page dispatch flow — same commands, dialog and governed default as the Board (vitest + jsdom)
