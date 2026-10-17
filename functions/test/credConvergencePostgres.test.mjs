@@ -4,6 +4,7 @@
 // So the test runs it the way it will actually run: migrate, SEED (which is what writes the stored
 // CRED rows), then apply the preservation migration on top and check that what came across is
 // exactly what the CRED rows said -- no more.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -71,7 +72,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const dbUrl = dbUrlFor(name);

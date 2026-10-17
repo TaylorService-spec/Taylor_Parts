@@ -3,6 +3,7 @@
 // The claim under test is narrow and it is the one that matters: a governed Render command asks the
 // CATALOG what a Part is, in its own transaction, and refuses when the answer does not permit the act.
 // Not "the column exists"; not "a stub said FOUND".
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -36,7 +37,7 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

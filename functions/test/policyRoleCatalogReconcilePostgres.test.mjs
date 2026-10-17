@@ -5,6 +5,7 @@
 // exactly those keys with exactly the Object CRED the seed had written, leave every existing Role row byte-identical,
 // create no role_capabilities / user_role_assignments / workflow bindings, add zero on rerun, and do the same through
 // the operator CLI.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -101,7 +102,7 @@ test("an existing tenant gains exactly the missing catalog keys with the seed's 
     assert.deepEqual(await roleRows(pool), snapshot);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM eos_policy.audit_events WHERE action = $1", [ROLE_CATALOG_RECONCILE_ACTION])).rows[0].n, 1);
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 });
 
@@ -133,6 +134,6 @@ test("the operator CLI dry-runs, applies and reruns against a local database", {
     assert.equal(rerun.status, 0, rerun.stderr);
     assert.equal(JSON.parse(rerun.stdout).report.outcome, "NOTHING_TO_RECONCILE");
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 });

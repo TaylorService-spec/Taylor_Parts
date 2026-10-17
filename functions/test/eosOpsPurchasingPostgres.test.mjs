@@ -11,6 +11,7 @@
 // The claims are STRUCTURAL on purpose. "The commands will remember that a purchase order is
 // immutable" is not a property; "the table has no column an update could be recorded in, and the
 // repository exposes no function that could write one" is.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -124,7 +125,7 @@ const orderInput = (over = {}) => ({
 });
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 // ============================ RULING 1: the purchase order is IMMUTABLE ============================

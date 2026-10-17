@@ -9,6 +9,7 @@
 //
 // It also closes the loop with step C: the planned commands, when a person issues them, are ACCEPTED and turn the same
 // findings into ALREADY_GOVERNED on a second census. A plan that could not be executed would be evidence of nothing.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -43,7 +44,7 @@ test("the legacy evidence census over the real governed authorities: true resolu
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

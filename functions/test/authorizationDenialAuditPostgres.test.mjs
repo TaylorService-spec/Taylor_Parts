@@ -1,6 +1,7 @@
 // DECISIONS #229 -- authorization denials on the Catalog transport, recorded in eos_policy.audit_events, in a REAL
 // PostgreSQL: authorization outcome unchanged, one rate-bounded row per denial, no payload, tenant isolation, an audit
 // store failure that cannot turn a denial into an allowance, and OFF (the committed mode) writing nothing.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -31,7 +32,7 @@ test("authorization denials are audited on the Catalog transport (DECISIONS #229
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   const pool = new pg.Pool({ connectionString: url, max: 6 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     const c = new pg.Client({ connectionString: URL_BASE });
     await c.connect();
     await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

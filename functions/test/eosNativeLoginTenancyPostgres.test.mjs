@@ -6,6 +6,7 @@
 //
 // Its OWN disposable database. Keys generated in memory. Fake Firebase verifier. No network beyond loopback.
 import "./support/firebaseOfflineGuard.cjs";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -41,7 +42,7 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   t.after(async () => {
     for (const x of extra) await x.close().catch(() => {});
     if (service) await service.close().catch(() => {});
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const up = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],

@@ -7,6 +7,7 @@
 //
 // Its OWN database, migrated by the normal runner through the whole set, dropped in ONE t.after that ends the pool first.
 // Nothing here asserts which migration is latest.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -71,7 +72,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);
@@ -381,7 +382,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
       await Promise.all([first, second]);
     } finally {
       holder.release();
-      await racePool.end();
+      await endPoolAndDrain(racePool);
     }
     for (let round = 0; round < 5; round++) {
       await Promise.all(["e-a", "e-b", "e-c"].map((owner) =>

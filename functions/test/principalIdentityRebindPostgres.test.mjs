@@ -29,6 +29,7 @@
 // NOTHING HERE CONTACTS AN IDENTITY PROVIDER, and the tool has no code that could: the new external
 // subject is an identifier the operator already holds, and no credential is created, rotated,
 // fetched or printed anywhere in this lane.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -300,7 +301,7 @@ test("the generic governed identity re-bind operator, in PostgreSQL", { skip: SK
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   let pool;
   t.after(async () => {
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   execFileSync(process.execPath,

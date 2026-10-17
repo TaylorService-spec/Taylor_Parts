@@ -9,6 +9,7 @@
 // expectations are NOT invented here. They are read from the governed persona manifest
 // scripts/fixtures/personaAuthorityDimensions.v1.json, materialized into a migrated database, and
 // executed through the seam. A pinned expectation that the seam cannot reproduce is a failure.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -83,7 +84,7 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

@@ -14,6 +14,7 @@
 // the registration is recorded in docs/handoff/w1-c7-registrations.md instead.
 //
 // Same skip contract as every other Postgres suite: set POLICY_TEST_DATABASE_URL to run.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -119,7 +120,7 @@ const insertEquipment = (id, opts = {}) => query(
 test.after(async () => {
   if (pool) {
     await clean();
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 });
 

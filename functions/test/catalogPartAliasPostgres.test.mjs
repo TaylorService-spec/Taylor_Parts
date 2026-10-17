@@ -4,6 +4,7 @@
 // internalPartNumber change. So the centre of it is not "an alias row can be written" -- it is that
 // renaming a Part preserves the old number ATOMICALLY, and that a conflict refuses the whole update
 // rather than leaving a renamed Part whose previous number resolves to somebody else.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -42,7 +43,7 @@ test("the PostgreSQL Part Alias authority", { skip: SKIP, concurrency: 1 }, asyn
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

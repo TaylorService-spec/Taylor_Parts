@@ -10,6 +10,7 @@
 //   S7  a scoped holder gets the same refusal for an out-of-scope Employee as for a missing id
 //
 // The Functional Role cases (S4, S5, S6) live in administrationScopeSecurityPostgres.test.mjs (lane FR).
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -43,7 +44,7 @@ test("assignment scope hardening (Pass 9 S1/S2/S3/S7): scoped holdings never rea
   const name = `schard_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
-  t.after(async () => { await pool?.end(); await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)); });
+  t.after(async () => { await endPoolAndDrain(pool); await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)); });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 16 });

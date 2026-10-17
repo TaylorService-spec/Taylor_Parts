@@ -5,6 +5,7 @@
 // KEYSET cursor that is correct in BOTH directions, a cursor that is refused rather than misapplied
 // under any other sort, a count over the SAME filters -- and, as much as any of that, that the
 // historical id-ordered page every picker relies on is exactly what it was.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -45,7 +46,7 @@ test("the governed Part search contract", { skip: SKIP, concurrency: 1 }, async 
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 4 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

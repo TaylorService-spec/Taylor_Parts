@@ -13,6 +13,7 @@
 // Nothing here hand-builds a capability set: Roles and grants come from the EXISTING Role-catalog reconciliation, and
 // every actor is resolved through the EXISTING operational context resolver, so the capability the command checks is
 // the one PostgreSQL really derived for that Principal. The suite migrates its OWN disposable database.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -49,7 +50,7 @@ test("Work Eligibility and Operational Scope Administration commands over the re
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

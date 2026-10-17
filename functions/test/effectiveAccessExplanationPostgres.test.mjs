@@ -13,6 +13,7 @@
 // ...then again AFTER a condition, a direct exception, a stale and a scoped assignment are introduced, so
 // CONDITIONAL, DIRECT_EXCEPTION (enforced since lane DX) and the excluded-assignment report are proved and parity still holds.
 // Also: the Admin read gate (admin.principalAccess.read), tenant confinement, and expired direct grants.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -62,7 +63,7 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

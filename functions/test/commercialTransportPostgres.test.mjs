@@ -4,6 +4,7 @@
 // request handler: bearer -> injected verifier -> resolveOperationalContext (Principal, membership, Role assignment,
 // role_capabilities) -> Commercial actor -> C2 command / C3 read -> HTTP response. Roles and grants below exist ONLY in
 // these disposable databases.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -105,7 +106,7 @@ test("migration 023: Commercial capability vocabulary, no grants, and a down tha
 
 test("Commercial transport end to end over the real policy and Commercial authorities", { skip: SKIP, concurrency: 1 }, async (t) => {
   let pool;
-  const url = await freshDatabase(t, "c4_transport", () => pool?.end());
+  const url = await freshDatabase(t, "c4_transport", () => endPoolAndDrain(pool));
   migrator(url)("up");
   pool = new pg.Pool({ connectionString: url, max: 8 });
   const q = (text, values = []) => pool.query(text, values);

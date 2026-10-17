@@ -3,6 +3,7 @@
 // Its OWN database, migrated by the normal runner. The records are written by the real C2 commands (and, for the
 // identity-only rows, by the bounded spine writer the synthetic seed uses), then read back through the real C3
 // projections. Numbers in test names refer to the C3 work order's proof list.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -62,7 +63,7 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);
