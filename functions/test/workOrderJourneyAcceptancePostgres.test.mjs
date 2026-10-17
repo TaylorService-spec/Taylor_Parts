@@ -108,7 +108,10 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
     return subject;
   };
 
-  const SVC_MGR = await persona({ subject: "svcmgr", capabilities: [...WO_KEYS("fieldManager"), ...PROPOSED_OFFICE] });
+  // The detail read is company-scoped (EOS Core company authority, Owner ruling 8): the service manager is a Taylor Employee,
+  // unqualified, so never a technician candidate.
+  const SVC_MGR = await persona({ subject: "svcmgr", capabilities: [...WO_KEYS("fieldManager"), ...PROPOSED_OFFICE],
+    employee: { id: "emp-j-svcmgr", name: "Sam Service", qualified: false } });
   const SVC_MGR_BASELINE = await persona({ subject: "svcmgr-baseline", capabilities: WO_KEYS("fieldManager") });
   // The office list is company-scoped (EOS Core company authority, DECISIONS #235): the dispatcher is a Taylor Employee,
   // unqualified, so it is never a technician candidate.

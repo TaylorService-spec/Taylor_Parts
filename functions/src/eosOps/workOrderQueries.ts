@@ -142,6 +142,11 @@ export interface WorkOrderDetail extends WorkOrderSummary {
 /**
  * One Work Order, after the entitled per-record decision allows it. The Equipment on the Work Order is part of
  * the Work Order's own record (its equipment_id), read through THIS gate -- not a tenant-wide Equipment read.
+ *
+ * EOS CORE COMPANY AUTHORITY (DECISIONS #235; Owner ruling 8, 2026-10-17): after the capability decision, the record is
+ * read only within the caller's operating companies. A Work Order outside them answers WORK_ORDER_NOT_FOUND, exactly like
+ * one that does not exist -- the same query, the same refusal, before anything about it is read. No authority =
+ * COMPANY_AUTHORITY_REQUIRED.
  */
 export async function readWorkOrderDetail(
   deps: { readonly pool: Pool; readonly reader: ContextualReader },
@@ -151,7 +156,9 @@ export async function readWorkOrderDetail(
   const workOrderId = input?.workOrderId;
   const decision = await authorizeWorkOrderRecordRead(deps.reader, actor, workOrderId as string);
   if (!decision.allowed) refuse(String(decision.outcome), "FORBIDDEN", "this Work Order may not be read by this caller");
-  const { rows } = await deps.pool.query(`${SUMMARY_SELECT} WHERE w.tenant_id = $1 AND w.id = $2`, [actor.tenantId, workOrderId]);
+  const companyKeys = await listCompanyKeys(deps.pool, actor);
+  const { rows } = await deps.pool.query(`${SUMMARY_SELECT} WHERE w.tenant_id = $1 AND w.id = $2 AND w.operating_company_key = ANY($3::text[])`,
+    [actor.tenantId, workOrderId, [...companyKeys]]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
   if (await isQuarantined(deps.pool, actor.tenantId, workOrderId as string)) {
     refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
