@@ -1,10 +1,8 @@
-// Manufacturer -- OFFLINE tests for the pure write + view helpers (house check()/passed convention).
+// Manufacturer -- OFFLINE tests for the pure view helpers (house check()/passed convention). The pure WRITE helpers
+// (domain/manufacturerWrite.js) were deleted once Firebase exit PR-B made the Manufacturers page read-only; the
+// governed write is EOS Core's postgresManufacturerWriter, tested on the server.
 import assert from "node:assert/strict";
 import { toManufacturerListView, MANUFACTURER_STATUSES } from "../src/domain/manufacturersView.js";
-import {
-  allowedStatusTransitions, buildCreateManufacturerInput, buildUpdateName,
-  outcomeFromResult, outcomeFromError, WRITE_DISABLED_OUTCOME, NO_CHANGES_OUTCOME,
-} from "../src/domain/manufacturerWrite.js";
 
 let passed = 0;
 function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
@@ -25,32 +23,6 @@ check("toManufacturerListView: skips malformed (bad id-binding/status/name), sor
   assert.deepEqual(manufacturers.map((m) => m.manufacturerId), ["m1", "m2"]); // sorted by name Alpha,Beta
   assert.equal(manufacturers.find((m) => m.manufacturerId === "m1").version, 0);
   assert.deepEqual(invalid.sort(), ["m3", "m4", "m5"]);
-});
-
-check("allowedStatusTransitions: 2-state toggle (ACTIVE<->INACTIVE); unknown -> none", () => {
-  assert.deepEqual(allowedStatusTransitions("ACTIVE"), ["INACTIVE"]);
-  assert.deepEqual(allowedStatusTransitions("INACTIVE"), ["ACTIVE"]);
-  assert.deepEqual(allowedStatusTransitions("bogus"), []);
-});
-
-check("buildCreateManufacturerInput trims; buildUpdateName returns null on unchanged/blank", () => {
-  assert.deepEqual(buildCreateManufacturerInput({ manufacturerId: " M-1 ", name: " Acme " }), { manufacturerId: "M-1", name: "Acme" });
-  assert.equal(buildUpdateName({ name: "New" }, { name: "Old" }), "New");
-  assert.equal(buildUpdateName({ name: "Old" }, { name: "Old" }), null); // unchanged
-  assert.equal(buildUpdateName({ name: "  " }, { name: "Old" }), null); // blank
-});
-
-check("outcome mapping never fabricates success; sanitized code -> stable outcome", () => {
-  assert.equal(outcomeFromResult({ outcome: "applied", version: 1 }).kind, "applied");
-  assert.equal(outcomeFromResult({ outcome: "replayed" }).kind, "replayed");
-  assert.equal(outcomeFromResult({}).kind, "error");
-  assert.equal(outcomeFromError({ code: "permission-denied" }).kind, "denied");
-  assert.equal(outcomeFromError({ code: "already-exists" }).kind, "conflict");
-  assert.equal(outcomeFromError({ code: "aborted" }).kind, "conflict");
-  assert.equal(outcomeFromError({ code: "not-found" }).kind, "notFound");
-  assert.equal(outcomeFromError({ code: "weird" }).kind, "error");
-  assert.equal(WRITE_DISABLED_OUTCOME.kind, "unavailable");
-  assert.equal(NO_CHANGES_OUTCOME.kind, "noop");
 });
 
 console.log(`\n${passed} passed, 0 failed`);
