@@ -20,6 +20,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+// Company isolation of the availability READS (readTechnicianAvailability, findAvailableTechnicianSlots): its own database
+// and world, run with this CI job.
+import "./support/technicianAvailabilityCompanySuite.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -138,6 +141,11 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
            VALUES ('ura-disp-v',$1,'prn-dispatcher','role-reach','operatingCompany','ventana','active','fixture',0,'fixture','fixture')`, [T]);
   for (const p of ["prn-sched-t", "prn-sched-none"]) await principal(p);
   await linkTo("prn-sched-t", "emp-sched-t", "taylor");
+  // The availability READS are company-scoped too (#2110, the same EOS Core rule): the fixture reader reads both companies'
+  // lanes, exactly like the dispatcher above. Company isolation of the reads is proven in support/technicianAvailabilityCompanySuite.mjs.
+  await linkTo("prn-reader", "emp-reader", "taylor");
+  await q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+           VALUES ('ura-reader-v',$1,'prn-reader','role-reach','operatingCompany','ventana','active','fixture',0,'fixture','fixture')`, [T]);
   await q(`INSERT INTO eos_crm.accounts (id,tenant_id,name,status,created_by,updated_by) VALUES ('acct-1',$1,'Harbor Diner','ACTIVE','f','f')`, [T]);
   await q(`INSERT INTO eos_crm.account_locations (id,tenant_id,account_id,name,address_street,created_by,updated_by)
            VALUES ('loc-1',$1,'acct-1','Harbor Diner Main','1 Pier Rd','f','f')`, [T]);

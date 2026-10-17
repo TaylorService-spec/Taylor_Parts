@@ -16,6 +16,7 @@
 //     governed follow-on, not invented here.
 
 import { WORK_ORDER_TRANSITIONS, ACTION_TO_STATUS } from "./workOrderWorkflow.js";
+import { addDays, atWall, startOfDay, wall } from "./boardClock.js";
 
 // The single status from which a WO is schedulable. DERIVED (not a third hardcoded literal) from the
 // established client-side lifecycle mirror domain/workOrderWorkflow.js -- the unique status whose valid
@@ -60,22 +61,18 @@ export function toMillis(value) {
 // day boundaries and Schedule times are chosen as local wall-clock. Uses the Date API so day bucketing is
 // self-consistent with buildWeekDays regardless of the runtime timezone (tests never hardcode an absolute
 // ms->day mapping that assumes a zone).
+// Day arithmetic is on boardClock: the browser's local clock unless the Dispatcher Board has set its governed zone.
 export function startOfWeekMillis(millis) {
-  const d = new Date(millis);
-  d.setHours(0, 0, 0, 0);
-  // getDay(): 0=Sun..6=Sat. Days since Monday: Sun -> 6, Mon -> 0, ... Sat -> 5.
-  const daysSinceMonday = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - daysSinceMonday);
-  d.setHours(0, 0, 0, 0); // re-normalize across any DST shift within the week
-  return d.getTime();
+  const w = wall(millis);
+  // dow: 0=Sun..6=Sat. Days since Monday: Sun -> 6, Mon -> 0, ... Sat -> 5.
+  const daysSinceMonday = (w.dow + 6) % 7;
+  return atWall(w.y, w.mo, w.d - daysSinceMonday); // by calendar, so a DST week is still Monday 00:00
 }
 
 // Shift a week-start by N weeks (N may be negative). DST-safe: rebuilds via startOfWeekMillis rather than
 // adding 7*MS_PER_DAY blindly (a spring-forward/fall-back week is not exactly 7*24h).
 export function addWeeks(weekStartMillis, n) {
-  const d = new Date(weekStartMillis);
-  d.setDate(d.getDate() + n * DAYS_PER_WEEK);
-  return startOfWeekMillis(d.getTime());
+  return startOfWeekMillis(addDays(weekStartMillis, n * DAYS_PER_WEEK));
 }
 
 // The 7 day cells (Mon..Sun) of the week starting at weekStartMillis. We render all 7 days -- NOT only
@@ -85,11 +82,8 @@ export function buildWeekDays(weekStartMillis, nowMillis) {
   const todayStart = nowMillis == null ? null : startOfDayMillis(nowMillis);
   const days = [];
   for (let i = 0; i < DAYS_PER_WEEK; i += 1) {
-    const d = new Date(weekStartMillis);
-    d.setDate(d.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    const dateMillis = d.getTime();
-    const dow = d.getDay(); // 0=Sun..6=Sat
+    const dateMillis = startOfDay(addDays(weekStartMillis, i));
+    const dow = wall(dateMillis).dow; // 0=Sun..6=Sat
     days.push({
       index: i,
       dateMillis,
@@ -102,9 +96,7 @@ export function buildWeekDays(weekStartMillis, nowMillis) {
 }
 
 function startOfDayMillis(millis) {
-  const d = new Date(millis);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfDay(millis);
 }
 
 // Which day index (0..6) within [weekStartMillis, +7d) a given instant falls on, or -1 if outside the

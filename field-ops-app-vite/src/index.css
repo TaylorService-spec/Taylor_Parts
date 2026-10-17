@@ -6694,6 +6694,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .ns-dispatch__live { display: flex; align-items: center; gap: 7px; margin: 0;
   font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+/* The Board names the zone its grid is drawn in (DECISIONS #240). */
+.ns-dispatch__zone { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 .ns-dispatch__live-dot { width: 7px; height: 7px; border-radius: 50%;
   background: var(--color-success); flex: none; }
 

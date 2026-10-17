@@ -24,6 +24,9 @@ vi.mock("../src/hooks/useAccountNames", () => ({ useAccountNames: vi.fn() }));
 vi.mock("../src/hooks/useSessionActivityFeed", () => ({ useSessionActivityFeed: vi.fn(() => []) }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
 vi.mock("../src/services/workOrderService", () => ({ transitionWorkOrder: vi.fn(), suggestWorkOrderPlacement: vi.fn() }));
+// What the board OFFERS follows the caller's governed capabilities; its grid clock is the caller's companies' zone.
+vi.mock("../src/hooks/useMyWorkOrderCapabilities", () => ({ useMyWorkOrderCapabilities: vi.fn() }));
+vi.mock("../src/services/workspaceApiClient", () => ({ callWorkspaceApi: vi.fn() }));
 vi.mock("../src/services/schedulingCommandClient.js", () => ({
   rescheduleWorkOrder: vi.fn(),
   reassignScheduledWorkOrder: vi.fn(),
@@ -33,7 +36,9 @@ vi.mock("../src/services/schedulingCommandClient.js", () => ({
 
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard.jsx";
 import { suggestWorkOrderPlacement } from "../src/services/workOrderService";
-import { toZonedInput } from "../src/domain/zonedTime.js";
+import { toZonedInput, zonedParts, zonedWallToMillis } from "../src/domain/zonedTime.js";
+import { useMyWorkOrderCapabilities } from "../src/hooks/useMyWorkOrderCapabilities";
+import { callWorkspaceApi } from "../src/services/workspaceApiClient";
 
 // The governed placement default (suggestWorkOrderPlacement). Tests run in the browser's own zone so typed times read
 // exactly as they did before the default moved server-side.
@@ -155,6 +160,9 @@ beforeEach(() => {
   vi.setSystemTime(PINNED_NOW);
   suggestWorkOrderPlacement.mockReset();
   suggestWorkOrderPlacement.mockImplementation(async () => suggestionAt(todayAt(7, 0)));
+  useMyWorkOrderCapabilities.mockReturnValue({ status: "ready", has: () => true });
+  // The governed zone defaults to the test machine's own, so every assertion above reads exactly as it did.
+  callWorkspaceApi.mockResolvedValue({ ok: true, result: { companies: [{ operatingCompanyId: "taylor", operatingCompanyKey: "taylor", businessTimeZone: TEST_ZONE }] } });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -970,5 +978,50 @@ describe("the Schedule picker defaults to a valid future time (governed suggesti
     expect(await within(dialog).findByText(/passed while this dialog was open/i)).toBeTruthy();
     expect(transitionWorkOrder).not.toHaveBeenCalled();
     await waitFor(() => expect(suggestWorkOrderPlacement.mock.calls.length).toBeGreaterThan(asked));
+  });
+});
+
+// Owner direction "CONTINUE AND RECONCILE TRACKER" (2026-10-16), item 8: the Board's grid in the GOVERNED business time
+// zone, and Schedule controls offered only to a caller holding the schedule capability -- neither needs the auth cutover.
+describe("the board follows governed capabilities and the governed business time zone", () => {
+  it("a caller without workOrder.lifecycle.schedule sees the board but is offered no placement control", async () => {
+    useMyWorkOrderCapabilities.mockReturnValue({ status: "ready", has: (k) => k !== "workOrder.lifecycle.schedule" });
+    setup();
+    expect(await screen.findByText(/scheduling is not part of your access/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Schedule…/ })).toBeNull();
+    for (const el of document.querySelectorAll(".ns-dispatch-card, .ns-dispatch-chip--wo")) expect(el.getAttribute("draggable")).toBe("false");
+  });
+
+  it("fails closed while the caller's capabilities are still unknown", async () => {
+    useMyWorkOrderCapabilities.mockReturnValue({ status: "loading", has: () => false });
+    setup();
+    await screen.findByText("WO-2026-001239");
+    expect(screen.queryByRole("button", { name: /Schedule…/ })).toBeNull();
+    expect(screen.queryByText(/scheduling is not part of your access/i)).toBeNull(); // unknown is not a denial
+  });
+
+  it("draws the day in the company's governed zone, not the browser's", async () => {
+    // A zone at least a day's worth of hours away from wherever the tests run, so the two clocks disagree.
+    const ZONE = TEST_ZONE === "Pacific/Kiritimati" ? "Pacific/Pago_Pago" : "Pacific/Kiritimati";
+    callWorkspaceApi.mockResolvedValue({ ok: true, result: { companies: [{ operatingCompanyId: "taylor", operatingCompanyKey: "taylor", businessTimeZone: ZONE }] } });
+    const today = zonedParts(Date.now(), ZONE);
+    const at = (h) => zonedWallToMillis(today.y, today.mo, today.d, h, 0, ZONE);
+    const zonedWo = { ...SCHEDULED_WO, id: "wo-zoned", woNumber: "WO-2026-009999", scheduledStart: at(9), scheduledEnd: at(11) };
+    setup({ workOrders: [zonedWo, QUEUE_WO], availability: { result: { startMillis: at(0), endMillis: at(24), technicians: [] } } });
+    expect(await screen.findByText(new RegExp(`Times are in ${ZONE.replace("/", "\\/")}`))).toBeTruthy();
+    // The company's 09:00-11:00 job is on the company's today, inside the default 7a-5p band.
+    const chip = await waitFor(() => {
+      const el = Array.from(document.querySelectorAll(".ns-dispatch-chip--wo")).find((c) => c.textContent.includes("WO-2026-009999"));
+      if (!el) throw new Error("chip not drawn");
+      return el;
+    });
+    expect(parseFloat(chip.style.left)).toBeCloseTo((2 / 10) * 100, 0); // 09:00 is 2h into the 7a-5p band
+    expect(Array.from(document.querySelectorAll(".ns-dispatch-grid__hour, [class*='hour']")).some((e) => e.textContent.trim() === "7a")).toBe(true);
+  });
+
+  it("says plainly when it falls back to the browser's zone", async () => {
+    callWorkspaceApi.mockResolvedValue({ ok: false, code: "NOT_CONFIGURED" });
+    setup();
+    expect(await screen.findByText(/your browser's zone; the company's could not be read/i)).toBeTruthy();
   });
 });

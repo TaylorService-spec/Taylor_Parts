@@ -9,6 +9,9 @@ import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { suggestWorkOrderPlacement } from "../../services/workOrderService";
+import { callWorkspaceApi } from "../../services/workspaceApiClient";
+import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities";
+import { boardTimeZone, formatDay, formatInstant, setBoardTimeZone } from "../../domain/boardClock.js";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import {
   SLOT_MS,
@@ -81,8 +84,32 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 // Gate). `useTechnicianAvailability` is the trusted projection and the only source of shift lines,
 // hatched blocked time and every percentage on this page. A technician with no record reads as
 // UNKNOWN and renders as "No schedule" with no percentage — never 0%.
-export default function DispatcherBoard() {
+/** The governed capability every placement gesture on this board needs (Schedule, Move, Resize, Reassign, Return). */
+const SCHEDULE_CAPABILITY = "workOrder.lifecycle.schedule";
+
+export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {}) {
   const { role } = useAuth();
+  // WHAT IS OFFERED follows the caller's governed capabilities (readMyWorkOrderCapabilities), failing closed while
+  // unknown -- the same rule the Jobs page uses (DECISIONS #239). The server still re-checks every command.
+  const caps = useMyWorkOrderCapabilities();
+  const canSchedule = caps.has(SCHEDULE_CAPABILITY);
+
+  // THE GRID'S CLOCK: the governed business time zone of the caller's companies (readMyCompanyAuthority), so the day,
+  // the hour band and the dates are the company's, not the browser's. One zone across the caller's companies is used;
+  // none or several -> the browser's zone, and the board says so. Set during render so every geometry call below
+  // draws in it; cleared on unmount so other screens keep the browser clock.
+  const [companyZones, setCompanyZones] = useState(null);
+  useEffect(() => {
+    let live = true;
+    callWorkspace("readMyCompanyAuthority", {}).then((res) => {
+      if (!live) return;
+      setCompanyZones(res?.ok ? [...new Set((res.result.companies ?? []).map((c) => c.businessTimeZone).filter(Boolean))] : []);
+    });
+    return () => { live = false; };
+  }, [callWorkspace]);
+  const governedZone = companyZones?.length === 1 ? companyZones[0] : null;
+  setBoardTimeZone(governedZone);
+  useEffect(() => () => setBoardTimeZone(null), []);
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   // The GOVERNED roster (listWorkOrderTechnicians): lane ids are EMPLOYEE ids, the same ids the governed
   // Work Orders' assignedTechId / scheduledTechId carry. NOT fieldops_technicians (whose ids never match).
@@ -94,7 +121,8 @@ export default function DispatcherBoard() {
   // from a Work Order or an Employee record returns to the same board. Selection and drag state are
   // gestures, not places, and stay in memory.
   const [searchParams, setSearchParams] = useSearchParams();
-  const { view, anchorMillis, technicianFilter } = useMemo(() => readBoardUrlState(searchParams, Date.now()), [searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock the date parse reads
+  const { view, anchorMillis, technicianFilter } = useMemo(() => readBoardUrlState(searchParams, Date.now()), [searchParams, governedZone]);
   // Stepping through days REPLACES the entry (Back should not walk every day you clicked past);
   // changing view or filter pushes one.
   const updateBoardUrl = useCallback((patch, { replace = false } = {}) => {
@@ -131,7 +159,8 @@ export default function DispatcherBoard() {
       return { startMillis: anchorMillis - 7 * 86_400_000, endMillis: anchorMillis + 14 * 86_400_000 };
     }
     return { startMillis: startOfDayMillis(anchorMillis), endMillis: startOfDayMillis(anchorMillis) + 86_400_000 };
-  }, [view, anchorMillis]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock these day computations read
+  }, [view, anchorMillis, governedZone]);
 
   const {
     byTechnicianId: availabilityByTechnicianId,
@@ -185,7 +214,8 @@ export default function DispatcherBoard() {
       list.sort((a, b) => placementWindow(a).startMillis - placementWindow(b).startMillis);
     }
     return map;
-  }, [placedWorkOrders, view, anchorMillis]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock these day computations read
+  }, [placedWorkOrders, view, anchorMillis, governedZone]);
 
   // The drawn hour band, WIDENED by whatever this day actually holds.
   //
@@ -204,7 +234,8 @@ export default function DispatcherBoard() {
 
   const band = useMemo(
     () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
-    [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- governedZone: the board clock these day computations read
+    [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId, governedZone],
   );
 
   // Scored for the queue AND for whatever is selected.
@@ -430,8 +461,8 @@ export default function DispatcherBoard() {
     );
   }
 
-  const dayLabel = new Date(anchorMillis).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
-  const weekLabel = new Date(anchorMillis).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const dayLabel = formatDay(anchorMillis, { weekday: "short", day: "numeric" });
+  const weekLabel = formatDay(anchorMillis, { month: "short", day: "numeric" });
 
   return (
     <div className="ns-page ns-dispatch">
@@ -442,6 +473,13 @@ export default function DispatcherBoard() {
       >
         <p className="ns-dispatch__live">
           <span className="ns-dispatch__live-dot" aria-hidden="true" /> Refreshes every 30 seconds, and right after your own changes
+        </p>
+        <p className="ns-dispatch__zone">
+          Times are in {boardTimeZone()}
+          {companyZones !== null && !governedZone
+            ? companyZones.length > 1 ? " (your browser's zone; your companies keep different business time zones)" : " (your browser's zone; the company's could not be read)"
+            : ""}
+          .
         </p>
       </WorkspaceIdentity>
 
@@ -455,6 +493,9 @@ export default function DispatcherBoard() {
         <li><span className="ns-dispatch__swatch ns-dispatch__swatch--elapsed" aria-hidden="true" />Elapsed — not a target</li>
         <li><span className="ns-dispatch__swatch ns-dispatch__swatch--now" aria-hidden="true" />Now</li>
       </ul>
+      {caps.status === "ready" && !canSchedule ? (
+        <p className="fo-muted" role="status">You can see the board, but scheduling is not part of your access.</p>
+      ) : null}
       <p className="ns-dispatch__rule">
         Drag a queue card onto a lane to schedule, between lanes to reassign, back to the queue to return
         it; drag a chip&rsquo;s trailing edge to resize. Focused chip: <kbd>←</kbd>/<kbd>→</kbd> 15 min
@@ -528,8 +569,8 @@ export default function DispatcherBoard() {
               availabilityFailed={Boolean(availabilityError)}
               band={band}
               draggingWorkOrder={dragging}
-              onDropOnLane={handleDropOnLane}
-              onDragStartWorkOrder={setDragging}
+              onDropOnLane={canSchedule ? handleDropOnLane : undefined}
+              onDragStartWorkOrder={canSchedule ? setDragging : undefined}
               onDragEndWorkOrder={() => { setDragging(null); setDragOverLaneId(null); setQueueDragOver(false); }}
               onSelectWorkOrder={setSelectedId}
               selectedWorkOrderId={selectedId}
@@ -537,8 +578,8 @@ export default function DispatcherBoard() {
               onDragOverLane={setDragOverLaneId}
               onDragLeaveLane={() => setDragOverLaneId(null)}
               busyWorkOrderId={busyWorkOrderId}
-              onAdjustPlacement={adjustPlacement}
-              onReassignRequest={(wo) => setPendingReason({ intent: PLACEMENT_INTENT.REASSIGN, workOrder: wo, technicianId: wo.scheduledTechId ?? null })}
+              onAdjustPlacement={canSchedule ? adjustPlacement : undefined}
+              onReassignRequest={canSchedule ? (wo) => setPendingReason({ intent: PLACEMENT_INTENT.REASSIGN, workOrder: wo, technicianId: wo.scheduledTechId ?? null }) : undefined}
               slotMillis={SLOT_MS}
             />
           ) : null}
@@ -613,7 +654,7 @@ export default function DispatcherBoard() {
             customerNames={customerNames}
             selectedWorkOrderId={selectedId}
             onSelectWorkOrder={setSelectedId}
-            onOpenPlacementPicker={(wo) =>
+            onOpenPlacementPicker={canSchedule ? (wo) =>
               setPendingPlacement({
                 intent: PLACEMENT_INTENT.SCHEDULE,
                 workOrder: wo,
@@ -621,9 +662,9 @@ export default function DispatcherBoard() {
                 // No guessed start: the dialog asks suggestWorkOrderPlacement for the earliest valid window.
                 startMillis: null,
                 durationMinutes: wo.estimatedDurationMinutes ?? 120,
-              })
+              }) : undefined
             }
-            onDragStartWorkOrder={setDragging}
+            onDragStartWorkOrder={canSchedule ? setDragging : undefined}
             onDragEndWorkOrder={() => { setDragging(null); setDragOverLaneId(null); setQueueDragOver(false); }}
             isDragOver={queueDragOver}
             canReturnToQueue={Boolean(dragging && dragging.status === "SCHEDULED")}
@@ -710,7 +751,7 @@ function reasonPromptContext(pending, technicians) {
   if (pending.intent === PLACEMENT_INTENT.REASSIGN) {
     return `${pending.workOrder.woNumber} → ${name}, keeping its current time.`;
   }
-  const at = new Date(pending.startMillis).toLocaleString(undefined, {
+  const at = formatInstant(pending.startMillis, {
     weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
   const minutes = Math.round((pending.endMillis - pending.startMillis) / 60_000);

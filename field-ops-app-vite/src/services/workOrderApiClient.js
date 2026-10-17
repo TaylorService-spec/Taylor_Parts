@@ -38,6 +38,8 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   "readWorkOrderAuthorityStatus",
   "readWorkOrder",
   "listWorkOrders",
+  // The caller's effective filter / sort / search eligibility for the office list (the governed list query).
+  "describeWorkOrderListQuery",
   "listMyAssignedWorkOrders",
   "listWorkOrderTechnicians",
   // The tenant's ACTIVE operating companies with an ACTIVE key binding -- the governed choice a create

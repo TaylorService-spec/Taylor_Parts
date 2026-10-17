@@ -363,6 +363,24 @@ describe("the Work Orders index reads the GOVERNED route (metadata/workOrderList
       .rejects.toMatchObject({ code: "unavailable", reason: "NOT_ACTIVATED" });
   });
 
+  it("NO COMPANY AUTHORITY is a stated refusal: denied, with the reason in words -- never an empty list", async () => {
+    const { fetchPage } = await import("../src/metadata/workOrderListSource.js");
+    const { buildListPresentation } = await import("../src/metadata/listPresentation.js");
+    const { COMPANY_AUTHORITY_MESSAGE } = await import("../src/domain/workOrderOutcome.js");
+    // The shape WorkOrderApiError carries: client category FORBIDDEN, the server's code as `reason`.
+    const refuse = async () => { throw Object.assign(new Error("no operating-company authority: ..."), { code: "FORBIDDEN", reason: "COMPANY_AUTHORITY_REQUIRED" }); };
+    const err = await fetchPage({ filters: [], sort: [], pageSize: 50 }, {}, refuse).catch((e) => e);
+    expect(err).toMatchObject({ code: "permission-denied", reason: "COMPANY_AUTHORITY_REQUIRED", detail: COMPANY_AUTHORITY_MESSAGE });
+    const p = buildListPresentation({ def: workOrderIndexList, entity: workOrderEntity, errorStatus: "denied", errorDetail: err.detail });
+    expect(p.state).toBe("DENIED");
+    expect(p.emptyMessage).toBe(COMPANY_AUTHORITY_MESSAGE);
+    expect(p.emptyMessage).toMatch(/No operating company is linked to your login/);
+    expect(p.emptyMessage).not.toMatch(/COMPANY_AUTHORITY_REQUIRED|no work orders/i);
+    // A plain refusal keeps the generic copy, and an EMPTY list never borrows a failure's words.
+    expect(buildListPresentation({ def: workOrderIndexList, entity: workOrderEntity, errorStatus: "denied" }).emptyMessage).toBe("You do not have access to work orders.");
+    expect(buildListPresentation({ def: workOrderIndexList, entity: workOrderEntity, page: { rows: [], hasMore: false }, errorDetail: err.detail }).state).toBe("EMPTY");
+  });
+
   it("the entity reads EOS_API, and the screen states NOT_YET_ACTIVATED through the readiness notice", () => {
     expect(workOrderEntity.readVia).toBe("EOS_API");
     expect(SCREEN).toMatch(/<WorkOrderAuthorityNotice \/>/);
