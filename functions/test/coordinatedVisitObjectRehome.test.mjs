@@ -8,6 +8,7 @@
 // So the assertion this file exists for is the SEPARATION, proved in BOTH directions: holding the
 // coordinated-visit read must never satisfy a generic salesOrder READ, and holding salesOrder.read
 // must never satisfy the coordinated-visit read. They are different acts on the same Object.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -141,7 +142,7 @@ test("retirement and re-home, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const dbUrl = dbUrlFor(name);

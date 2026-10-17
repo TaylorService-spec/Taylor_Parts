@@ -15,6 +15,7 @@
 //   INVARIANTS    no self-grant / self-condition; Owner ruling A at the principal (direct, and assignRole after a direct
 //                 grant); no scope on a direct grant; anti-lockout counts only unexpired, unconditioned direct holders;
 //                 never-widen on retire; tenant isolation; audit exactly once per effective change, none for a no-op.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -66,7 +67,7 @@ test("lane DX: direct Principal exceptions are enforced by every runtime gate, e
   const name = `dxpar_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
-  t.after(async () => { await pool?.end(); await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)); });
+  t.after(async () => { await endPoolAndDrain(pool); await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)); });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 16 });

@@ -22,6 +22,7 @@
 // eosOpsPostgres.test.mjs does: which named Role holds which capability in a deployed tenant is the
 // job of the seed and the grant migrations, and is covered by their own suites. What this file
 // varies is the capability set, and what it proves is the projection.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -454,7 +455,7 @@ test("no bearer token reaches no database at all", { skip: SKIP }, async () => {
   assert.equal(response.status, 401);
 });
 
-test.after(async () => { if (pool) await pool.end(); });
+test.after(async () => { if (pool) await endPoolAndDrain(pool); });
 
 // ════════════════════ 5. THE ADMINISTRATION PERSONA PROOFS (Owner ruling, Wave 9 / Lane AH) ════════════════════
 //

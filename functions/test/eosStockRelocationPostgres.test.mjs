@@ -12,6 +12,7 @@
 //   * DQ-038: a relocation that also records the put-away placement needs inventory.placement.record too, writes the
 //     SAME eos_ops.bin_placements rows put-away writes, in the same transaction; the placement is part of the replay.
 // Set POLICY_TEST_DATABASE_URL to run (a dedicated database: this suite resets the schemas it declares).
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -324,4 +325,4 @@ test.after(async () => {
     { maxBuffer: 256 * 1024 * 1024, env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 });
 
-test("teardown", { skip: SKIP }, async () => { await pool?.end(); });
+test("teardown", { skip: SKIP }, async () => { await endPoolAndDrain(pool); });

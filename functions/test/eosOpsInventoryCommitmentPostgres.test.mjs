@@ -16,6 +16,7 @@
 // row without one" is. Likewise "two concurrent callers won't both process the same Work Order
 // state" is only a property if the uniqueness that stops them is real. Every claim below is either a
 // constraint the server enforces or a derivation the server computes.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredTablesIn } from "./support/migrationSchema.mjs";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
@@ -507,4 +508,4 @@ test("replay state is per tenant: the same Work Order id in another tenant is a 
   assert.equal(await repo.hasProcessedWorkOrderEffect(repoPool(), TENANT_B, "wo-1", "DISPATCHED"), false);
 });
 
-test.after(async () => { if (pool) await pool.end(); });
+test.after(async () => { if (pool) await endPoolAndDrain(pool); });

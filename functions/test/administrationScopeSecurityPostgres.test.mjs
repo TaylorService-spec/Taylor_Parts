@@ -8,6 +8,7 @@
 //   S6  the Functional Role tables refuse TRUNCATE and a backdated end
 //
 // S1/S2/S3/S7 test the layer-4 assignment scope runtime and live in assignmentScopeHardeningPostgres.test.mjs.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -44,7 +45,7 @@ test("Pass 9 security regressions: Functional Role x assignment scope (S4/S5/S6)
   const name = `p9sec_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
-  t.after(async () => { await pool?.end(); await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)); });
+  t.after(async () => { await endPoolAndDrain(pool); await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)); });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
     { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 16 });

@@ -3,6 +3,7 @@
 // Measured before any of this was built: the source collection holds ZERO documents, while 48
 // equipment_models carry a manufacturerId and 288 equipment records carry a free-text manufacturer
 // name. So the tooling proves its own mechanics here rather than against live data.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -137,7 +138,7 @@ test("Manufacturer authority, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",

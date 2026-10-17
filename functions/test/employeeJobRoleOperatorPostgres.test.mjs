@@ -18,6 +18,7 @@
 //
 // AND THE REFUSALS ARE NON-VACUOUS. Every refused run below is paired with a run that differs in
 // exactly ONE input and SUCCEEDS, so a refusal can never be an accident of a broken fixture.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -62,7 +63,7 @@ test("governed Job Role assignment through the operator wrapper", { skip: SKIP, 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], { maxBuffer: 256 * 1024 * 1024,

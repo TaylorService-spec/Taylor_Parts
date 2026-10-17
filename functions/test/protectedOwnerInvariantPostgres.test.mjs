@@ -12,6 +12,7 @@
 //
 // Each proof names the requirement letter of the ruling it answers (A-I).
 
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -60,7 +61,7 @@ test("PROTECTED OWNER INVARIANT (Controller ruling 2026-09-27), in PostgreSQL", 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);

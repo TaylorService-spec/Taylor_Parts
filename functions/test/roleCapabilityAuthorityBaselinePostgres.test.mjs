@@ -22,6 +22,7 @@
 //
 // The database phases WRITE ONLY to POLICY_TEST_DATABASE_URL, which is a disposable local
 // database. Nothing here reads or writes nonprod.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -289,7 +290,7 @@ test("a clean database rebuild reproduces the governed nonprod authority exactly
       assert.equal(stamped.get(pairId(g)), g.evidence, `${g.roleKey}/${g.capabilityKey} lost its migration stamp`);
     }
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 });
 
@@ -315,7 +316,7 @@ test("the rebuild without the activation phase is GLOBAL authority, and the five
       assert.ok(rebuiltPairs.has(`fieldManager\u0000workOrder.lifecycle.dispatch`),
         "...while the Role the Owner granted it to globally IS present, so this is not vacuous");
     } finally {
-      await pool.end();
+      await endPoolAndDrain(pool);
     }
   });
 
@@ -332,7 +333,7 @@ test("FAILURE MODE (a), against the real database: an extra grant in the environ
           && /MISSING DECLARATION \(1\): technician\/admin\.securityPolicy\.read/.test(err.message),
       );
     } finally {
-      await pool.end();
+      await endPoolAndDrain(pool);
     }
   });
 
@@ -348,6 +349,6 @@ test("the migration chain alone grants NOTHING -- the canonical seed is a requir
       const caps = await pool.query("SELECT count(*)::int AS n FROM eos_policy.capabilities");
       assert.ok(caps.rows[0].n > 0, "the chain still establishes the capability VOCABULARY");
     } finally {
-      await pool.end();
+      await endPoolAndDrain(pool);
     }
   });

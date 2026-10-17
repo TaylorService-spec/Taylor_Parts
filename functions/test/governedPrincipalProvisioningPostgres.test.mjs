@@ -25,6 +25,7 @@
 //      administrator are each read out of PostgreSQL before anything is written.
 //
 // Its OWN database, migrated by the normal runner and dropped afterwards.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -218,7 +219,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   let pool;
   t.after(async () => {
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   execFileSync(process.execPath,

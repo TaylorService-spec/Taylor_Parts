@@ -13,6 +13,7 @@
 //
 // EACH TEST OWNS ITS OWN SCHEMA STATE. The migration is re-run from clean at the start, so a test
 // that leaves rows behind cannot make the next one pass.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -136,7 +137,7 @@ async function query(text, values = []) {
 }
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 // ============================ schema ============================

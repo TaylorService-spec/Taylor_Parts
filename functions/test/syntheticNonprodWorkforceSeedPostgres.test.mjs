@@ -9,6 +9,7 @@
 // nonprod BECAUSE they blocked Commercial C5, and re-seeding them would re-arm that blocker. Every Commercial
 // assertion below is therefore INVERTED -- the rows must be ABSENT -- and the non-Commercial assertions are
 // untouched, which is the proof that gating the Commercial write shrank nothing else.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -108,7 +109,7 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
     const admin = await bootstrapAdministrator(repo, { tenantId: tenant.id, externalSubject: "real-login-subject", performedBy: "proof" });
     adminPrincipalId = admin.principal.id;
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 
   await t.test("the fence refuses this same database without the nonprod runtime marker, before writing", async () => {

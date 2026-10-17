@@ -11,6 +11,7 @@
 //      exactly -- not only for the principals the preview thought were candidates;
 //   4. requires WOULD_REFUSE to carry the SAME code and message the commit returns, NO_OP to write nothing, and
 //      object-wide perAction to equal the command's own result.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -30,7 +31,7 @@ const json = (v) => JSON.parse(JSON.stringify(v));
 test("GRANT-IMPACT PREVIEW: preview == post-commit tenant-wide resolver diff, for all nine commands", { skip: SKIP, concurrency: 1 }, async (t) => {
   const db = await privateDatabase(URL_BASE, "gip_equiv");
   let world;
-  t.after(async () => { await world?.pool.end(); await db.drop(); });
+  t.after(async () => { await endPoolAndDrain(world?.pool); await db.drop(); });
   world = await buildPreviewWorld(db.url);
   const { q, pool, repo, call, T, P } = world;
   const A = T.a;

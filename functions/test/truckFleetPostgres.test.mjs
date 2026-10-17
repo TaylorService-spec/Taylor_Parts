@@ -10,6 +10,7 @@
 // the schema to be registered in the single serialized `test:adminPolicyPostgres` command; this
 // suite touches nobody else's rows, so it needs no such serialization and stays runnable on its own.
 // See docs/handoff/w1-c4-registrations.md for the package.json registration this lane could not make.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -86,7 +87,7 @@ test.before(async () => {
 test.after(async () => {
   if (SKIP) return;
   await clean();
-  await pool?.end();
+  await endPoolAndDrain(pool);
 });
 
 // ============================ identity is the typed pair ============================

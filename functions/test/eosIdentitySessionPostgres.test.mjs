@@ -10,6 +10,7 @@
 //   uid as its PRIMARY (firebase) binding, one Role, and a link to the registry's expectedEmployeeId
 //   -> the governed CLI binds each an EOS identity -> the persona issuer mints -> the API resolves.
 import "./support/firebaseOfflineGuard.cjs";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -64,7 +65,7 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
   t.after(async () => {
     if (service) await service.close().catch(() => {});
     if (localService) await localService.close().catch(() => {});
-    if (pool) await pool.end();
+    if (pool) await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   // The DOWN step count is COMPUTED, never a bare `down 1`: a bare step reverses whichever migration is newest, so a

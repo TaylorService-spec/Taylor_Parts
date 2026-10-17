@@ -5,6 +5,7 @@
 // naming 27 capabilities eos_policy.capabilities has never defined. These tests exist so the
 // canonical mapping cannot drift the same way: every capability must carry its Object and action,
 // every Object named must exist, and no frontend catalog may author either.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -125,7 +126,7 @@ test("canonical capability metadata, in PostgreSQL", { skip: SKIP, concurrency: 
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"], { maxBuffer: 256 * 1024 * 1024,

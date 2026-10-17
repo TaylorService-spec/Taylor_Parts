@@ -6,6 +6,7 @@
 // Runs against the in-memory adapter (fast, and the properties are the seed's, not the database's)
 // AND against real PostgreSQL when POLICY_TEST_DATABASE_URL is set -- because "idempotent" over a
 // store with unique constraints is a different claim from "idempotent" over a Map.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -284,6 +285,6 @@ test("the seed runs over PostgreSQL, and is idempotent there too", { skip: PG_SK
     const fields = await pool.query("SELECT count(*)::int n FROM eos_policy.object_fields WHERE tenant_id = $1", [TENANT]);
     assert.equal(fields.rows[0].n, counts.fields);
   } finally {
-    await pool.end();
+    await endPoolAndDrain(pool);
   }
 });

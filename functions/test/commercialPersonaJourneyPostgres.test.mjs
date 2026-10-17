@@ -18,6 +18,7 @@
 //     gap), this suite fails at the pin -- pointing at the decision -- instead of the change passing unobserved.
 //
 // It writes only to a database it creates and drops. No nonprod, no Firebase, no fixture edit.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -147,7 +148,7 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
   });
   const pool = new pg.Pool({ connectionString: url, max: 8 });
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

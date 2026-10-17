@@ -11,6 +11,7 @@
 //
 // The claims proved here are STRUCTURAL on purpose. "The writers will remember to pass an operating
 // company" is not a property; "the database refuses a row without one" is.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
@@ -152,7 +153,7 @@ const enumLabels = (typeName) => query(
 );
 
 test.after(async () => {
-  if (pool) await pool.end();
+  if (pool) await endPoolAndDrain(pool);
 });
 
 // ============================ the operating company column ============================

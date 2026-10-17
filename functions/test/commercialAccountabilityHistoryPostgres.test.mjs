@@ -5,6 +5,7 @@
 // history write refuses the mutation. Migration 021 is also proved SAFE over history rows that predate it.
 //
 // Its OWN database, so exact counts are facts about rows this file wrote.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -58,7 +59,7 @@ test("governed PostgreSQL accountability audit authority, in PostgreSQL", { skip
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 4 });
   // One hook, in order: close the pool, THEN drop the database it was connected to.
   t.after(async () => {
-    await pool.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);

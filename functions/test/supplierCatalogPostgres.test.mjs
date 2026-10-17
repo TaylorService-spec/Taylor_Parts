@@ -18,6 +18,7 @@
 //
 // It should still be registered in that command when package.json can next be edited — see
 // docs/handoff/w1-c6-registrations.md.
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -55,7 +56,7 @@ function poolOf() {
   pool ??= new pg.Pool({ connectionString: URL, max: 4 });
   return pool;
 }
-test.after(async () => { if (pool) await pool.end(); });
+test.after(async () => { if (pool) await endPoolAndDrain(pool); });
 
 function migrateForward() {
   execFileSync(process.execPath, [

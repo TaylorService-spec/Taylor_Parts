@@ -7,6 +7,7 @@
 //
 // Numbers in the test names are the ruling's required proofs.
 
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -48,7 +49,7 @@ test("FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A), in PostgreSQL", { ski
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);
