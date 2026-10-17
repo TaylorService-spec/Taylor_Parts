@@ -242,6 +242,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/employeeScheduleLink.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/dispatchRiskVocabulary.test.mjs",
       "runner": "node"
     },

@@ -45,6 +45,11 @@ on:
       - "field-ops-app-vite/src/config/employeeScheduleReadiness.js"
       - "field-ops-app-vite/test/employeeWorkSchedule.test.mjs"
       - "field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx"
+      # Owner "WORK HOURS AND PTO ENTRY": Board -> Work schedule link, Back to the board, nonprod activation.
+      - "field-ops-app-vite/src/domain/employeeScheduleLink.js"
+      - "field-ops-app-vite/test/employeeScheduleLink.test.mjs"
+      - "field-ops-app-vite/test/dispatchBoardScheduleLink.test.jsx"
+      - "config/environments.json"
       - "field-ops-app-vite/src/hooks/useWorkforceEmployeeDirectory.js"
       - "field-ops-app-vite/test/employeeOperatingProfile.test.jsx"
       - "field-ops-app-vite/test/workforceApiClient.test.jsx"
@@ -151,7 +156,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Employee Work Schedule tab -- pure form/describe domain (node:test) and the tab, editing held (vitest)
-        run: node --test test/employeeWorkSchedule.test.mjs && npx vitest run test/employeeWorkScheduleTab.test.jsx
+        run: node --test test/employeeWorkSchedule.test.mjs test/employeeScheduleLink.test.mjs && npx vitest run test/employeeWorkScheduleTab.test.jsx test/dispatchBoardScheduleLink.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Composition conformance -- the record and collection grammars

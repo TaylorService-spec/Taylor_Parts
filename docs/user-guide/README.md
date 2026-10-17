@@ -56,7 +56,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   Exceptions, Functional Roles, workflows, the protected Owner and the Owner's Administrator staffing.
 - [Manage users](./administration/manage-employees.md) — finding people and keeping their Employee details
   correct.
-- [View an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record (read-only; changing hours is not switched on yet)
+- [View and change an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record: working hours, PTO and other time away (changing is on in nonprod); also reachable from the Dispatch board
 - [Integrations](./administration/integrations-guide.md)
 
 More guides will be added here as they're written. If a guide references a screen or control that

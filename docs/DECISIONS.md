@@ -8595,6 +8595,15 @@ Nothing outside that window is returned or counted. It uses the same tables and 
 
 Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refusal as a refusal, and proves no capability or command call while editing is held.
 
+**Activation and Board entry point (Owner, "WORK HOURS AND PTO ENTRY", 2026-10-17).**
+- **Editing is ON for nonprod only.** `EMPLOYEE_SCHEDULE_EDIT_READY` is `true` for `platform-sandbox` (the deployed nonprod build). It is absent, and therefore off, for `taylor-parts-production` and every other environment. A guard test pins this.
+- **The edit commands are unchanged:** `setTechnicianWorkingHours`, `recordTechnicianUnavailability` and `endTechnicianUnavailability`, G-9-isolated (#237). They still need `workOrder.lifecycle.schedule` and company authority.
+- **Board entry point:** a "Work schedule" link in the technician review and a linked "No schedule" marker. Both open `/administration/users/<employeeId>?tab=schedule&back=<board address>`.
+  - **Offered only when** the Employee record route is mounted for the caller (the same `isDomainVisible(administration)` gate) AND the caller holds FLAT `employee.record.read` (the Workforce capability offer).
+  - **Fails closed:** without Administration it makes no Workforce call.
+  - **"Back to the board"** accepts only a board address (`safeBoardReturn`), so it is never an open redirect.
+- **No server, schema, capability, role or grant change.**
+
 ## #239 — OWNER: Jobs and Dispatcher Board share one governed scheduling path; the Schedule dialog defaults to a valid future time (2026-10-16)
 
 **Status: OWNER DIRECTED ("FIX JOBS AND DISPATCH", 2026-10-16).** Keep the Jobs page; fix its dispatch controls and the Schedule dialog's past-time default. Merge and deployment need the Owner's exact-head decision.

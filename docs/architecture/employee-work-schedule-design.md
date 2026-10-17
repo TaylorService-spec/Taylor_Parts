@@ -242,6 +242,12 @@ Each PR is verified locally (unit tests plus a Vite fixture screenshot), pushed 
   - Frontend: `employeeWorkSchedule.test.mjs` 9/9 and `employeeWorkScheduleTab.test.jsx` 11/11, plus the full suites.
 - **Still open:** board and availability-read isolation is **not** provided by G-9 or by this PR (#2110 and follow-ups).
 
+**PR-3 as re-scoped and built (Owner, "WORK HOURS AND PTO ENTRY", 2026-10-17).** #2118 made a lane NAME open the in-board technician review, so the §4 "name is the link" design was replaced:
+- **Board entry point:** a secondary **Work schedule** link in the review panel, and the **No schedule** marker becomes a link.
+- **Gating:** both are offered only when the Employee record route is mounted for the caller (`employeeRecordsReachable`, passed from `App.jsx` with the route's own `isDomainVisible(administration)` gate) AND the caller holds flat `employee.record.read`. They fail closed, and make no Workforce call without Administration.
+- **The `back` parameter** carries the board's full address, including the open review. The record's **Back to the board** accepts only a board address (`domain/employeeScheduleLink.js` `safeBoardReturn`).
+- **Activation:** in the same PR, editing is activated on nonprod only (`platform-sandbox`), per DECISIONS #238.
+
 **Not in scope:** company-authority enforcement on the schedule commands (G-9, security lane / #235); production schedule data entry (an operator task after PR-2 ships); Firebase anything; the functional Map (§7, separately approved).
 
 ---

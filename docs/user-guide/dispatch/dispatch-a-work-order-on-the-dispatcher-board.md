@@ -45,7 +45,16 @@ Or drag the card from the queue onto a technician's lane. Dropping on the lane s
 2. The board switches to that technician's week: their working hours, blocked time and scheduled work, with a list of their scheduled Work Orders under **<name> — schedule and work**. Click a Work Order number to see its details.
 3. Click **Back to the board** to return. The board comes back on the same date, view and technician filter you had before.
 
-This review shows only what the board already shows you. To see an Employee's recorded work schedule, use **Administration > Employees & Users >** the employee **> Work Schedule** tab (needs access to employee records). That tab is view-only: changing working hours or time off is not switched on yet. See [View an Employee's work schedule](../administration/view-an-employee-work-schedule.md).
+This review shows only what the board already shows you.
+
+**To change working hours or enter PTO** for that technician, click **Work schedule** in the review. You can also click the amber **No schedule** under a technician who has none. The Employee record opens on its Work Schedule tab. There:
+- **Record schedule** / **Record a new schedule** sets working hours;
+- **Add exception** enters PTO or other time away;
+- **End early** ends or withdraws it.
+
+**Back to the board** brings you back to the same date, view, filter and review.
+
+The **Work schedule** link appears only if you can open Employee records (Administration access and permission to read employee records). Changing is switched on in nonprod. See [View and change an Employee's work schedule](../administration/view-an-employee-work-schedule.md).
 
 ## If you cannot schedule
 

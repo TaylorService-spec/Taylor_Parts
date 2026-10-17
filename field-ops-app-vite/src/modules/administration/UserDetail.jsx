@@ -36,6 +36,7 @@ import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
 import EmployeeWorkSchedule from "./EmployeeWorkSchedule.jsx";
+import { safeBoardReturn } from "../../domain/employeeScheduleLink.js";
 import EmployeeFunctionalRoles, { FUNCTIONAL_ROLE_WRITE_CAPABILITY } from "./EmployeeFunctionalRoles.jsx";
 import {
   OPERATIONAL_SCOPE_WRITE_CAPABILITY,
@@ -154,6 +155,9 @@ export default function UserDetail({
   const { user } = useAuth() ?? {};
   const [searchParams] = useSearchParams();
   const editRequested = searchParams.get("edit") === "1";
+  // Opened from the Dispatcher Board's "Work schedule" link: `back` is the board's exact address (date, view, filters,
+  // the open technician review). Offered only when it validates as a board address -- never an arbitrary URL.
+  const boardReturn = safeBoardReturn(searchParams.get("back"));
 
   // THE WORKFORCE OFFER: PostgreSQL, read once per mount (and on Retry). Denied while loading, failed or signed out.
   const workforceCapabilities = useWorkforceCapabilities({ client: workforce, principalKey: user?.uid ?? null });
@@ -435,6 +439,9 @@ export default function UserDetail({
           <Link to="/administration/users">Users</Link>
           {` → ${name}`}
         </span>
+        {boardReturn ? (
+          <Link className="fo-button fo-button--secondary" to={boardReturn}>Back to the board</Link>
+        ) : null}
       </div>
       <div className="ns-rulepair" />
 

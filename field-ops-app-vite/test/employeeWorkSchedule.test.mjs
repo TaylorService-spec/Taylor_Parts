@@ -72,3 +72,13 @@ describe("helpers", () => {
     assert.deepEqual(list.map((s) => s.scheduleId), ["co", "wide"]);
   });
 });
+
+describe("editing is activated on deployed nonprod ONLY (Owner, 2026-10-17)", () => {
+  it("EMPLOYEE_SCHEDULE_EDIT_READY is true for platform-sandbox and not true anywhere else", async () => {
+    const { readFileSync } = await import("node:fs");
+    const registry = JSON.parse(readFileSync(new URL("../../config/environments.json", import.meta.url), "utf8"));
+    const on = registry.environments.filter((e) => e.readiness?.EMPLOYEE_SCHEDULE_EDIT_READY === true).map((e) => e.id);
+    assert.deepEqual(on, ["platform-sandbox"]);
+    assert.notEqual(registry.environments.find((e) => e.id === "taylor-parts-production")?.readiness?.EMPLOYEE_SCHEDULE_EDIT_READY, true);
+  });
+});

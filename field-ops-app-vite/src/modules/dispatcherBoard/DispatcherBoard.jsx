@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useWorkOrderTechnicians } from "../../hooks/useWorkOrderTechnicians";
@@ -11,6 +11,8 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { suggestWorkOrderPlacement } from "../../services/workOrderService";
 import { callWorkspaceApi } from "../../services/workspaceApiClient";
 import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities";
+import { useWorkforceCapabilities } from "../../hooks/useWorkforceCapabilities.js";
+import { employeeScheduleHref } from "../../domain/employeeScheduleLink.js";
 import { boardTimeZone, formatDay, formatInstant, setBoardTimeZone } from "../../domain/boardClock.js";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import {
@@ -89,8 +91,8 @@ const SCHEDULE_CAPABILITY = "workOrder.lifecycle.schedule";
 /** Dispatch from the preview needs its own capability -- the same rule as the Jobs page (DECISIONS #239). */
 const DISPATCH_CAPABILITY = "workOrder.lifecycle.dispatch";
 
-export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {}) {
-  const { role } = useAuth();
+export default function DispatcherBoard({ callWorkspace = callWorkspaceApi, employeeRecordsReachable = false } = {}) {
+  const { role, user } = useAuth();
   // WHAT IS OFFERED follows the caller's governed capabilities (readMyWorkOrderCapabilities), failing closed while
   // unknown -- the same rule the Jobs page uses (DECISIONS #239). The server still re-checks every command.
   const caps = useMyWorkOrderCapabilities();
@@ -150,6 +152,18 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
   const endReview = useCallback(
     () => setSearchParams(new URLSearchParams(searchParams.get("back") ?? "")),
     [searchParams, setSearchParams],
+  );
+  // WORK SCHEDULE LINK (Owner, "WORK HOURS AND PTO ENTRY"): from the review panel and a lane's "No schedule" marker to
+  // the Employee record's Work Schedule tab, carrying this exact board address back. Offered ONLY when the record route
+  // is mounted for this caller (employeeRecordsReachable, the route's own gate) AND the caller holds FLAT
+  // employee.record.read (the governed Workforce offer). Fails closed: no Administration -> no Workforce call, no link;
+  // loading or failed -> no link. Scheduling on the board never implies Employee Administration.
+  const location = useLocation();
+  const workforceCaps = useWorkforceCapabilities({ principalKey: employeeRecordsReachable && user?.uid ? user.uid : null });
+  const canOpenSchedule = employeeRecordsReachable && workforceCaps.has("employee.record.read");
+  const scheduleHrefFor = useCallback(
+    (employeeId) => (canOpenSchedule && employeeId ? employeeScheduleHref(employeeId, `${location.pathname}${location.search}`) : null),
+    [canOpenSchedule, location.pathname, location.search],
   );
   // The current-time line and the elapsed region move with the clock, not only with data: one
   // re-render a minute keeps them honest on a board left open all day.
@@ -620,6 +634,7 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
           workOrders={placedWorkOrders.filter((wo) => wo.scheduledTechId === focusId)}
           onSelectWorkOrder={setSelectedId}
           onBack={endReview}
+          scheduleHref={scheduleHrefFor(focusId)}
         />
       ) : null}
 
@@ -629,6 +644,7 @@ export default function DispatcherBoard({ callWorkspace = callWorkspaceApi } = {
         <>
           {view === DISPATCH_VIEW.DAY ? (
             <DispatchLaneGrid
+              scheduleHrefFor={scheduleHrefFor}
               technicians={lanes}
               workOrdersByTechnician={workOrdersByTechnician}
               availabilityByTechnicianId={availabilityByTechnicianId}
@@ -835,7 +851,7 @@ function reasonPromptContext(pending, technicians) {
  * One technician's schedule and work, opened from a lane name. The week view below is already filtered to them (their
  * working hours, blocked time and placements); this lists their placed work in the loaded range, earliest first.
  */
-function TechnicianReview({ name, workOrders, onSelectWorkOrder, onBack }) {
+function TechnicianReview({ name, workOrders, onSelectWorkOrder, onBack, scheduleHref = null }) {
   const rows = [...workOrders]
     .map((wo) => ({ wo, window: placementWindow(wo) }))
     .sort((a, b) => (a.window?.startMillis ?? Infinity) - (b.window?.startMillis ?? Infinity));
@@ -843,6 +859,10 @@ function TechnicianReview({ name, workOrders, onSelectWorkOrder, onBack }) {
     <section className="ns-dispatch-focus" aria-label={`${name}: schedule and work`}>
       <div className="ns-dispatch-focus__head">
         <h2 className="ns-dispatch-focus__title">{name} — schedule and work</h2>
+        {/* Working hours and PTO are changed on the Employee record (governed there); offered only to callers who can open it. */}
+        {scheduleHref ? (
+          <Link className="fo-button fo-button--tertiary" to={scheduleHref}>Work schedule</Link>
+        ) : null}
         <button type="button" className="fo-button fo-button--secondary" onClick={onBack}>Back to the board</button>
       </div>
       {rows.length === 0 ? (

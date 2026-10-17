@@ -1484,3 +1484,29 @@ describe("the governed Change History (EMP-RT-H1)", () => {
     expect(section).not.toMatch(/services\/|hooks\//);
   });
 });
+
+// Owner "WORK HOURS AND PTO ENTRY" (2026-10-17): opened from the Dispatcher Board's "Work schedule" link, the record
+// offers "Back to the board" to the board's EXACT address -- and to nothing else.
+describe("Back to the board (from the Dispatcher Board's Work schedule link)", () => {
+  it("returns to the board address carried in `back`, with its date, view, filters and review intact", async () => {
+    const board = "/service/dispatcher-board?view=week&date=2026-10-20&techs=tech-a&focus=tech-a";
+    renderDetail(okHistory(), "emp-1", `?back=${encodeURIComponent(board)}`);
+    const back = await screen.findByRole("link", { name: "Back to the board" });
+    expect(back.getAttribute("href")).toBe(board);
+  });
+
+  it("offers nothing for an address that is not the board -- never an open redirect", async () => {
+    for (const bad of ["https://evil.example/service/dispatcher-board", "//evil.example", "/administration/users", "/service/dispatcher-board#x"]) {
+      cleanup();
+      renderDetail(okHistory(), "emp-1", `?back=${encodeURIComponent(bad)}`);
+      await screen.findByRole("tab", { name: "Overview" });
+      expect(screen.queryByRole("link", { name: "Back to the board" })).toBeNull();
+    }
+  });
+
+  it("a record opened from Administration shows no board link", async () => {
+    renderDetail(okHistory());
+    await screen.findByRole("tab", { name: "Overview" });
+    expect(screen.queryByRole("link", { name: "Back to the board" })).toBeNull();
+  });
+});

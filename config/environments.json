@@ -142,7 +142,8 @@
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": true,
         "TRUSTED_COMPLETION_ENABLED": true,
-        "EOS_NAVIGATION_AUTHORITY_READY": true
+        "EOS_NAVIGATION_AUTHORITY_READY": true,
+        "EMPLOYEE_SCHEDULE_EDIT_READY": true
       },
       "capabilityActivationOverrides": [
         "opportunity.write",

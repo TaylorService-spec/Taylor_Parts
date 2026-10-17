@@ -1,4 +1,5 @@
 import { memo, useRef } from "react";
+import { Link } from "react-router-dom";
 
 import {
   SLOT_MS,
@@ -68,6 +69,8 @@ function DispatchLaneGrid({
   placingWorkOrder = null,
   onTapLane,
   onSelectTechnician,
+  // employeeId -> the Employee record's Work Schedule address, or null when this caller may not open it (fail closed).
+  scheduleHrefFor = () => null,
 }) {
   const hours = bandHours(band);
   const resizeOriginRef = useRef(null);
@@ -128,6 +131,8 @@ function DispatchLaneGrid({
                   blockedMinutes={blockedMinutes}
                   availabilityLoading={availabilityLoading}
                   availabilityFailed={availabilityFailed}
+                  scheduleHref={scheduleHrefFor(tech.id)}
+                  name={identity.name}
                 />
               </div>
             </div>
@@ -307,7 +312,7 @@ function laneChipLabel(wo, technicianName, geometry) {
  * Booked HOURS still render in that case, because they are known: they come from committed
  * placements. Only the ratio is withheld.
  */
-function LaneMeta({ shift, configured, capacity, blockedMinutes, availabilityLoading, availabilityFailed }) {
+function LaneMeta({ shift, configured, capacity, blockedMinutes, availabilityLoading, availabilityFailed, scheduleHref = null, name = "" }) {
   if (availabilityLoading) return <span className="ns-dispatch-lane__meta-muted">Loading availability…</span>;
   if (availabilityFailed) {
     // Neutral, and claims nothing about the record or about placements: the read failed, so whether a
@@ -323,11 +328,18 @@ function LaneMeta({ shift, configured, capacity, blockedMinutes, availabilityLoa
   // Three different facts, three different words: hours, a recorded day off, or no record at all.
   // The last is the compact missing-schedule marker — never a default 7a–5p.
   if (!configured) {
-    parts.push(
+    // The marker is the way in: for a caller who can open the Employee record it LINKS to the Work Schedule tab, where
+    // the hours are recorded. Everyone else gets the same words, not a link.
+    parts.push(scheduleHref ? (
+      <Link key="ns" className="ns-dispatch-lane__noschedule" to={scheduleHref} title={NO_SCHEDULE_REASON}
+        aria-label={`No schedule recorded for ${name}. Open the work schedule to record one.`}>
+        No schedule
+      </Link>
+    ) : (
       <span key="ns" className="ns-dispatch-lane__noschedule" title={NO_SCHEDULE_REASON}>
         No schedule<span className="sr-only">: {NO_SCHEDULE_REASON}</span>
-      </span>,
-    );
+      </span>
+    ));
   } else {
     parts.push(shift ?? "Not working today");
   }

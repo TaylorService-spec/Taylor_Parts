@@ -430,7 +430,7 @@ function SalesAgreementDetailConnected() {
   return <SalesAgreementDetail hasCapability={hasCapability} />;
 }
 
-function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys) {
+function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys, { employeeRecordsReachable = false } = {}) {
   if (domain.key === "dashboard" && item.key === "my") {
     return (
       <DashboardIndex
@@ -898,6 +898,10 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
+    // The board's "Work schedule" links open the Employee record, so it is told whether that route is MOUNTED for this
+    // caller -- the same isDomainVisible(administration, navRole, ...) the record route below is gated by. It decides
+    // only whether to OFFER the link; the record's own governed reads still decide what may be seen.
+    if (item.legacyKey === "dispatcherBoard") return <Component employeeRecordsReachable={employeeRecordsReachable} />;
     return <Component />;
   }
   return <PlaceholderPage title={item.label} explanation={item.placeholderExplanation} />;
@@ -988,6 +992,10 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   const myWorkOrderCapabilities = useMyWorkOrderCapabilities({ enabled: eosWorkOrderSurface });
   const workOrderRoutes = { record: eosWorkOrderSurface, create: eosWorkOrderSurface && myWorkOrderCapabilities.has(WORK_ORDER_CREATE_CAPABILITY) };
   const navAllowedLegacyKeys = eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys;
+  // Whether /administration/users/:employeeId is mounted for this caller (the exact gate of that route, below).
+  const administrationDomain = NAV_DOMAINS.find((d) => d.key === "administration");
+  const employeeRecordsReachable = Boolean(administrationDomain)
+    && isDomainVisible(administrationDomain, navRole, navAllowedLegacyKeys, operationalContext);
   return (
     // ONE boundary around every route. A lazily-loaded surface that arrives a moment later shows this
     // instead of a blank frame -- and a blank frame is indistinguishable from a broken app on the slow
@@ -1020,7 +1028,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 key={item.key}
                 path={item.path || undefined}
                 index={item.path === ""}
-                element={renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys)}
+                element={renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys, { employeeRecordsReachable })}
               />
             ))}
           {/* Three independent missions landed on a blank page at /inventory and
