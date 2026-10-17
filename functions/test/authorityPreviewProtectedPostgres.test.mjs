@@ -30,7 +30,7 @@ test("GRANT-IMPACT PREVIEW: protected Owner / Administrator invariants", { skip:
   const db = await privateDatabase(URL_BASE, "gip_protected");
   let world;
   let side;
-  t.after(async () => { await side?.end(); await endPoolAndDrain(world?.pool); await db.drop(); });
+  t.after(async () => { await endPoolAndDrain(side); await endPoolAndDrain(world?.pool); await db.drop(); });
   world = await buildPreviewWorld(db.url);
   side = new pg.Pool({ connectionString: db.url, max: 2, idleTimeoutMillis: 0 });
   const { q, pool, repo, call, T, P, grant, assign, member } = world;

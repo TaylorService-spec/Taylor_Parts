@@ -382,6 +382,9 @@ functions/test/catalogMaster.test.mjs
 functions/test/catalogCutoverPostgres.test.mjs
 functions/test/catalogPartSearchPostgres.test.mjs
 functions/test/catalogReadAuthorizationPostgres.test.mjs
+functions/test/coordinatedVisitObjectRehome.test.mjs
+functions/test/manufacturerAuthorityPostgres.test.mjs
+functions/test/manufacturerRuntimeAuthorityPostgres.test.mjs
 # CAT-1: the Part Master employee-workflow contract. The PG suite drives the real transport with the SCREEN's
 # payload builders and pins the browser fixture, so a change to either side re-proves the pair.
 functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs

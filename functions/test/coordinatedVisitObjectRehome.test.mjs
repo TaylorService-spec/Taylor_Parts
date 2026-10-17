@@ -99,11 +99,22 @@ test("the five Role grants are derived from the governed catalog, not chosen", (
 test("the governed seed no longer declares either retired Object", () => {
   const seed = JSON.parse(readFileSync(
     resolve(FUNCTIONS_DIR, "src/adminPolicy/seed/policySeedSnapshot.json"), "utf8"));
-  assert.equal(seed.objects.length, 40,
-    "41 minus the two Objects that governed nothing, plus reportDefinition -- Reporting Slice 1, "
-    + "migration 1762300800000. The retirement this file guards is unaffected: a later Object being "
-    + "REGISTERED does not un-retire dispatchSchedule or notifications, and the two assertions "
-    + "below still name them.");
+  // THE CANONICAL REGISTRY, NAMED. policySeedSnapshot.json is the governed Object registry. This was a bare count (40,
+  // correct at 9fa82e94, 2026-09-24) that drifted unseen because no workflow ran this file. Nine decided registrations
+  // followed: inboundMailbox + inboundWorkRequest (bca7aa5f, Work Order activation), financeConfiguration (#203),
+  // salesDiscountAuthority + systemConfiguration (#204), settlement (#206), rentalAgreement + rentalEquipment (#207),
+  // financialPolicy (#232). Pinned as the exact key list, so a registration is a named change here, never a silent count.
+  // The retirement this file guards is unaffected: registering a later Object does not un-retire dispatchSchedule or
+  // notifications, and the assertions below still name them.
+  assert.deepEqual(seed.objects.map((o) => o.key).sort(), [
+    "account", "auditLog", "commissions", "contact", "cycleCount", "dataImport", "employee", "equipment", "equipmentModel",
+    "financeConfiguration", "financialPolicy", "inboundMailbox", "inboundWorkRequest", "inventoryAction", "inventoryTransaction",
+    "invoice", "location", "manufacturer", "marketingInitiatives", "mobileLocation", "opportunity", "part", "partAlias", "payment",
+    "principal", "purchaseOrder", "purchaseOrderVoid", "receivingOrder", "rentalAgreement", "rentalEquipment", "reorderRequest",
+    "reportDefinition", "rolesPermissions", "salesAgreement", "salesDiscountAuthority", "salesOrder", "salesTerritory",
+    "serializedAssets", "settlement", "supplier", "supplierCatalogItem", "systemConfiguration", "technicianTimeNonWork",
+    "transferOrder", "truck", "warehouse", "workOrder", "workflowDefinition", "workflowInstance",
+  ]);
   for (const key of RETIRED) {
     assert.equal(seed.objects.some((o) => o.key === key), false, `${key} must be gone from the seed`);
   }
@@ -168,7 +179,8 @@ test("retirement and re-home, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
        WHERE NOT EXISTS (SELECT 1 FROM eos_policy.objects o WHERE o.id = r.object_id)`);
     assert.equal(orphans.rows[0].n, 0, "no CRED row points at a deleted Object");
     const total = await pool.query("SELECT count(*)::int n FROM eos_policy.objects");
-    assert.equal(total.rows[0].n, 40, "the seed and the database agree on 40 Objects");
+    const seedObjects = JSON.parse(readFileSync(resolve(FUNCTIONS_DIR, "src/adminPolicy/seed/policySeedSnapshot.json"), "utf8")).objects;
+    assert.equal(total.rows[0].n, seedObjects.length, "the seed and the database agree on every registered Object");
   });
 
   await t.test("the capability survives, under the Sales Order, with exactly its five grants", async () => {
