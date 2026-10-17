@@ -107,15 +107,17 @@ test("the snapshot export encodes Timestamps and refuses every other non-JSON Fi
 
 const EXPORTER = "scripts/exportCatalogSnapshot.js";
 
-test("the exporter is explicitly marked as the migration-only exception and allowlists exactly three source collections", () => {
+test("the exporter is explicitly marked as the migration-only exception and allowlists exactly four source collections", () => {
   const ex = require("../scripts/exportCatalogSnapshot.js");
   assert.equal(ex.FIREBASE_EXIT_MIGRATION_ONLY, "FIREBASE_EXIT_MIGRATION_ONLY");
   assert.match(readFileSync(EXPORTER, "utf8").split("\n")[0], /^\/\/ FIREBASE_EXIT_MIGRATION_ONLY$/);
   // `part_aliases` joined the allowlist with the PostgreSQL alias authority: an alias and the Part it
   // names must come from ONE snapshot, or the copy has two pictures taken at different instants.
-  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["parts", "equipment_models", "part_aliases"]);
+  // `manufacturers` joined for Firebase exit F5 (scripts/manufacturerCopy.js): Parts name manufacturers.
+  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["parts", "equipment_models", "part_aliases", "manufacturers"]);
   assert.equal(ex.assertAllowlisted("parts"), "parts");
   assert.equal(ex.assertAllowlisted("part_aliases"), "part_aliases");
+  assert.equal(ex.assertAllowlisted("manufacturers"), "manufacturers");
   // The allowlist is still EXACT. Everything else is still refused.
   for (const other of ["users", "equipment_model_aliases", "auditEvents", "part_supplier_items", ""]) {
     assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted/);

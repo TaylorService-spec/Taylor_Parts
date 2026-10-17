@@ -10,7 +10,9 @@
 //
 //   * READ ONLY, SOURCE-EXPORT PURPOSE ONLY. The only Firestore calls are `collection(name).get()`; no write verb
 //     appears in the code (static test). No sync, no scheduled job, no second run that "refreshes" anything.
-//   * EXACT SOURCE ALLOWLIST: `parts`, `equipment_models` and `part_aliases`, nothing else (SOURCE_COLLECTIONS + assertAllowlisted).
+//   * EXACT SOURCE ALLOWLIST: `parts`, `equipment_models`, `part_aliases` and `manufacturers`, nothing else
+//     (SOURCE_COLLECTIONS + assertAllowlisted). `manufacturers` joined for Firebase exit F5 (2026-10-17), consumed by
+//     scripts/manufacturerCopy.js; catalogCutover.js ignores the section.
 //   * NOT RUNTIME. No module under functions/src, field-ops-app-vite/src or integrations references it; it is not in
 //     functions/package.json main/exports/scripts; no workflow runs it or schedules it (structural test). It lives in
 //     functions/scripts beside the other operator tools, which scripts/firebaseExitGuard.mjs does not scan.
@@ -48,8 +50,11 @@ const FIREBASE_EXIT_MIGRATION_ONLY = "FIREBASE_EXIT_MIGRATION_ONLY";
 // `part_aliases` joined the allowlist with the PostgreSQL alias authority. It is in the SAME
 // snapshot as the Parts deliberately: an alias and the Part it names are one consistent picture or
 // they are not evidence, and two exports taken minutes apart could disagree about a Part renamed in
-// between. The allowlist is still EXACT -- three names, and `assertAllowlisted` refuses every other.
-const SOURCE_COLLECTIONS = Object.freeze({ parts: "parts", equipmentModels: "equipment_models", partAliases: "part_aliases" });
+// between. `manufacturers` joined on the same reasoning (Firebase exit F5): Parts name manufacturers. The allowlist is
+// still EXACT -- four names, and `assertAllowlisted` refuses every other.
+const SOURCE_COLLECTIONS = Object.freeze({
+  parts: "parts", equipmentModels: "equipment_models", partAliases: "part_aliases", manufacturers: "manufacturers",
+});
 const FROZEN_PROJECTS = Object.freeze(["eos-platform-certification"]);
 
 function assertAllowlisted(collectionName) {
@@ -124,7 +129,8 @@ async function main() {
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
   const sha256 = writeSnapshotFiles(out, JSON.stringify(snapshot, null, 2) + "\n");
-  console.log(JSON.stringify({ projectId, out, parts: snapshot.parts.length, equipmentModels: snapshot.equipmentModels.length, sha256 }, null, 2));
+  console.log(JSON.stringify({ projectId, out, parts: snapshot.parts.length, equipmentModels: snapshot.equipmentModels.length,
+    partAliases: snapshot.partAliases.length, manufacturers: snapshot.manufacturers.length, sha256 }, null, 2));
 }
 
 module.exports = { FIREBASE_EXIT_MIGRATION_ONLY, SOURCE_COLLECTIONS, assertAllowlisted, assertExportInvocation, encodeValue, writeSnapshotFiles };
