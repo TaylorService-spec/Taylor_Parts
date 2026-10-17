@@ -14,6 +14,7 @@ export const CRM_OPERATIONS = Object.freeze([
   "createAccount", "updateAccount", "getAccount", "listAccounts", "listAccountOwnershipHistory",
   "createContact", "importAccountContacts", "updateContact", "getContact", "listAccountContacts",
   "createAccountLocation", "updateAccountLocation", "getAccountLocation", "listAccountLocations",
+  "listAccountActivities", "createAccountActivity",
 ]);
 const KNOWN = new Set(CRM_OPERATIONS);
 

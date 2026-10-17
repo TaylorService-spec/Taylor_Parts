@@ -26,6 +26,7 @@ import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type 
 import { createAccount, getAccount, listAccountOwnershipHistory, listAccounts, updateAccount } from "./accountAuthority";
 import { createContact, getContact, importAccountContacts, listAccountContacts, updateContact } from "./contactAuthority";
 import { createAccountLocation, getAccountLocation, listAccountLocations, updateAccountLocation } from "./accountLocationAuthority";
+import { createAccountActivity, listAccountActivities } from "./crmActivityAuthority";
 import { CRM_WRITER_AUTHORITY, PostgresCrmWriterInactiveError, assertPostgresCrmWriterActive, type CrmWriterAuthority } from "../crm/crmWriterState";
 
 export interface VerifiedIdentity {
@@ -46,10 +47,13 @@ export interface CrmApiDeps {
 type Input = Record<string, unknown>;
 type Runner = (deps: { pool: Pool }, actor: CrmActorContext, input: Input) => Promise<unknown>;
 
+// listAccountActivities / createAccountActivity: CRM activity / notes (Firebase exit F7b, DECISIONS #243) -- crm.activity.read
+// + the Account's own read; crm.activity.create.
 const RUNNERS = Object.freeze({
   createAccount, updateAccount, getAccount, listAccounts, listAccountOwnershipHistory,
   createContact, importAccountContacts, updateContact, getContact, listAccountContacts,
   createAccountLocation, updateAccountLocation, getAccountLocation, listAccountLocations,
+  listAccountActivities, createAccountActivity,
 } as const satisfies Record<string, Runner>);
 
 export type CrmOperation = keyof typeof RUNNERS;

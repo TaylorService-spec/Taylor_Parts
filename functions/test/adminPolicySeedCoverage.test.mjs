@@ -115,9 +115,10 @@ test("the reconciliation adds up: 28 entities and 400 fields, all seeded", () =>
   // 46 -> 48, objectsFromCapabilityAuthority 12 -> 14: Rental (#207) -- `rentalAgreement` and `rentalEquipment`, named by the six rental capabilities.
   // 48 -> 49, objectsFromCapabilityAuthority 14 -> 15: Financial Policy foundation (#232) -- `financialPolicy`, named by the four finance.policy.* capabilities (migration 1764560000000).
   // 49 -> 50, objectsFromCapabilityAuthority 15 -> 16: Returns intake (#242, F7a) -- `inventoryReturn`, named by inventory.returns.intake (migration 1764580000000); a BUSINESS_ACTION-only security subject with no EntityDefinition, the same shape as settlement and rentalEquipment.
-  assert.equal(ledger.seeded.objects, 50);
+  // 50 -> 51, objectsFromCapabilityAuthority 16 -> 17: CRM activity (#243, F7b) -- `crmActivity`, named by crm.activity.read / crm.activity.create (migration 1764590000000); a security subject with no EntityDefinition and no CRED verb (reading it also needs customer.record.read, so a derived R cell would overstate it).
+  assert.equal(ledger.seeded.objects, 51);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 16);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 17);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

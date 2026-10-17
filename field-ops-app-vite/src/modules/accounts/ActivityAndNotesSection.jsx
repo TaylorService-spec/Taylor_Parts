@@ -25,11 +25,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // field (account.notes stays exactly as it is; this is additive, not a replacement of that field).
 export default function ActivityAndNotesSection({ accountId }) {
   const { loading, errorStatus, result, refetch } = useCrmActivities(accountId);
-  // The actors named on this timeline are exactly the identities its activities record (createdByUid: the legacy activity
-  // writer stores the actor's external subject) -- resolved to display names by the governed, minimally scoped
-  // resolvePrincipalDisplayNames read, keyed by that same subject.
-  const actorSubjects = Array.isArray(result?.activities) ? result.activities.map((a) => a.createdByUid).filter(Boolean) : [];
-  const { byUserId } = useGovernedEmployeeDirectory({ actorSubjects });
+  // The actors named on this timeline are exactly the identities its activities record. Since Firebase exit F7b
+  // (DECISIONS #243) createdByUid is the EOS Principal id eos_crm.activities.created_by holds (null on a migrated activity)
+  // -- resolved to display names by the governed, minimally scoped resolvePrincipalDisplayNames read, keyed by that id.
+  const actorIds = Array.isArray(result?.activities) ? result.activities.map((a) => a.createdByUid).filter(Boolean) : [];
+  const { byUserId } = useGovernedEmployeeDirectory({ actorIds });
   const resolveActorName = (uid) => resolveActorDisplayName(uid, byUserId);
   const view = crmActivityView({ loading, errorStatus, result, resolveActorName });
 

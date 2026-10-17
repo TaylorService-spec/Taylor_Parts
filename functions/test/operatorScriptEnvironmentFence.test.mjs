@@ -557,6 +557,30 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ THE CRM-ACTIVITY COPY (Firebase exit F7b) ============================
+//
+// scripts/crmActivityCopy.js inserts eos_crm.activities rows (copy). It must refuse before `pg` is resolved, has no production
+// mode, and never copies without the Owner's go-ahead. Census is the default.
+const CA_COPY = "scripts/crmActivityCopy.js";
+const CA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "CA_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const CA_ENV = { EOS_ENVIRONMENT: "nonprod", CA_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+for (const [label, args, env, pattern] of [
+  ["an unknown mode", ["--mode", "apply", ...CA_ARGS], CA_ENV, /--mode must be one of census \| copy \| verify/],
+  ["no environment", ["--tenantKey", "t", "--snapshot", "x.json"], CA_ENV, /--environment is required/],
+  ["production environment", CA_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a)), CA_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", CA_ARGS, { ...CA_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", CA_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a)), CA_ENV, /Certification world, which is frozen/],
+  ["no snapshot", ["--environment", "platform-sandbox", "--databaseUrlEnv", "CA_FENCE_DB", "--tenantKey", "t"], CA_ENV, /--snapshot <file> is required/],
+  ["copy without the Owner's go-ahead", ["--mode", "copy", ...CA_ARGS, "--principalId", "p", "--reviewedChecksum", "c"], CA_ENV, /--ownerAuthorization is required for copy/],
+  ["copy without an EOS principal", ["--mode", "copy", ...CA_ARGS, "--reviewedChecksum", "c", "--ownerAuthorization", "o"], CA_ENV, /--principalId <EOS principal id> is required/],
+]) {
+  test(`CRM-activity copy: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(CA_COPY, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `CRM-activity copy, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ THE REORDER CUTOVER ============================
 //
 // scripts/reorderCutover.js writes eos_ops.reorder_requests, reorder_request_assignments, purchase_orders and

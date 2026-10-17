@@ -169,7 +169,9 @@ test("(F3) capabilities: the Owner V1 ruling -- customer.record.* for every CRM 
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const used = new Set(crmSources().flatMap((f) => [...strip(readFileSync(f, "utf8")).matchAll(/"([a-z][A-Za-z]*\.[a-z][A-Za-z]*\.[a-z][A-Za-z]*)"/g)].map((m) => m[1])));
   // DQ-022: ownership.handoff.correct (migration 1763683200000) gates the ADMINISTRATIVE handoff sources on an Account.
-  assert.deepEqual([...used].sort(), [...CRM_CAPABILITY_IDS, "ownership.handoff.correct"].sort());
+  // Firebase exit F7b (DECISIONS #243): crm.activity.read / .create (migration 1764590000000) gate the Account's activity
+  // timeline -- catalog ids the Firestore callables already checked, now on the CRM route.
+  assert.deepEqual([...used].sort(), [...CRM_CAPABILITY_IDS, "ownership.handoff.correct", "crm.activity.create", "crm.activity.read"].sort());
   // DQ-022: ownership.handoff.correct is PostgreSQL-NATIVE (migration 1763683200000) and deliberately ABSENT from
   // PERMISSION_CATALOG -- the in-repo admin Role composes the whole catalog, so listing it there would silently grant it
   // to admin through the seed / Sample Company reconcile. Its holders are an Administration decision.

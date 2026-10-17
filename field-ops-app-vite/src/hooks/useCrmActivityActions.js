@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { crmActivityCallableClient } from "../services/crmActivityCallableClient.js";
+import { crmActivityClient } from "../services/crmActivityClient.js";
 
 function newIdempotencyKey() {
   const uuid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `k-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
@@ -7,7 +7,7 @@ function newIdempotencyKey() {
 }
 
 // CRM Activity create-action hook. The ONLY place the trusted createCrmActivity callable is invoked from
-// the workspace (services/crmActivityCallableClient.js). `deps.client` lets tests inject a MOCKED client
+// the workspace (services/crmActivityClient.js -- the EOS CRM route since Firebase exit F7b). `deps.client` lets tests inject a MOCKED client
 // without touching `firebase` (mirrors hooks/useSalesOrderActions.js's deps.client seam).
 //
 // IDEMPOTENCY KEY STRATEGY -- copied verbatim from hooks/useSalesOrderActions.js's own documented
@@ -23,7 +23,7 @@ function newIdempotencyKey() {
 // case this exists to protect.
 //
 // SCOPING (mirrors useSalesOrderActions.js's own "a retained key MUST NOT survive a change of..." rule):
-// the server derives the replay identity as mkAuditId("createCrmActivity", actorUid, idempotencyKey) --
+// the server derives the replay identity from (actor, idempotencyKey) -- eos_crm.activities_one_key_one_activity --
 // accountId is NOT part of it (crmActivityCallables.ts). A key kept after a failed attempt on one
 // account, then reused for a DIFFERENT account, would match the earlier audit id and take the replay
 // branch -- returning success for a create that never happened against the new account. This hook is
@@ -32,7 +32,7 @@ function newIdempotencyKey() {
 // is also reset whenever `accountId` changes, defensively, in case the same hook instance IS reused
 // across an in-place account switch.
 export function useCrmActivityActions(accountId, deps) {
-  const client = deps?.client ?? crmActivityCallableClient;
+  const client = deps?.client ?? crmActivityClient;
   const [pending, setPending] = useState(false);
   const keyRef = useRef(null);
 

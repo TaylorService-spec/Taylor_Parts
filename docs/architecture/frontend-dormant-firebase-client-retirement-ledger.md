@@ -137,3 +137,13 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 - **Owner ruling (DECISIONS #242):** operating company required, warehouse optional, no ledger movement, and a memberless `inventoryReturnsIntakeClerk` Role.
 - **Existing Firestore returns are NOT copied.** The census and copy tools (`scripts/exportReturnIntakeSnapshot.js`, `scripts/returnIntakeCopy.js`) are prepared. The copy runs only with the Owner's go-ahead and a person's company mapping.
 - **The server callable** `recordReturnIntake` stays deployed until an operator undeploy, which is reserved.
+
+## F7b: CRM activity moves to EOS Core (2026-10-17, exit baseline 243 → 242)
+
+| Removed | Replaced by |
+| --- | --- |
+| `services/crmActivityCallableClient.js` (`getCrmActivities`, `createCrmActivity`) | `services/crmActivityClient.js` → `/crm/customer` `listAccountActivities` / `createAccountActivity` (`eosCrm/crmActivityAuthority.ts`, `eos_crm.activities`), with the same `{ result } / { errorStatus }` contract for `useCrmActivities`, `useCrmActivityActions` and `ActivityAndNotesSection`. |
+
+- **Decision (DECISIONS #243):** the read is never wider than the Account read, and the current holders (admin, owner, crmActivityContributor) are mirrored.
+- **Existing Firestore activities are NOT copied.** The census and copy tools (`scripts/exportCrmActivitySnapshot.js`, `scripts/crmActivityCopy.js`) are prepared; the copy runs only on the Owner's go-ahead.
+- **The server callables** stay deployed until an operator undeploy, which is reserved.

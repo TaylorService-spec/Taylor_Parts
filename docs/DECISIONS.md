@@ -8762,3 +8762,54 @@ So merging empties nothing. The **production** copy (Firestore `manufacturers` �
 - `operatorScriptEnvironmentFence`: the copy refuses before any client loads.
 - `returnIntakeScan` and `warehouseOfflineScreens`: the company choice, nobody guesses, the cached offline options.
 - `inventoryScanPersonaWorkflows`: refused as grantable, and offered to a holder.
+
+## #243 — CRM activity / notes move to EOS Core — never wider than the Account read, current holders mirrored (Firebase exit F7b, 2026-10-17)
+
+**Status: CONTROLLER DECIDED under the Owner's preserve-functionality-and-access rule (F7b, 2026-10-17).** Merge and deployment follow the normal gate.
+
+**Why.** An Account's Activity & Notes timeline was two Firebase callables (`getCrmActivities` and `createCrmActivity`) over Firestore `crm_activities`. The read checked `crm.activity.read` alone, tenant-wide, with no Account predicate.
+
+**Rule.**
+- **The record.** `eos_crm.activities` (migration 1764590000000), served on the CRM route `/crm/customer` (`listAccountActivities`, `createAccountActivity`; `eosCrm/crmActivityAuthority.ts`). The Firestore behaviour is kept:
+  - the five types (SALES_NOTE / CALL / MEETING / RELATIONSHIP / GENERAL);
+  - a required Account, with Contact / Opportunity / Sales Order references by id only;
+  - a non-blank body of at most 4,000 characters;
+  - `occurred_at` (may be backdated, never materially future) distinct from `created_at`;
+  - one idempotency key per actor = one activity;
+  - most recent interaction first;
+  - a list longer than its limit is `unavailable`, never a partial `ready`.
+  - Every created activity writes one audit row; a replay writes nothing.
+- **Read scope: never wider than the Account.** A read needs `crm.activity.read` **and** the Account's own read predicate: `customer.record.read`, with the Account in this tenant.
+  - The EOS Account read is **tenant-scoped**. `eos_crm.accounts` carries no operating company (migration 1758758400000), so there is no company dimension to apply. No company scope is invented. Company-scoped Accounts are a separate model question for the Owner.
+- **Create (Owner review, 2026-10-17).** Create needs `crm.activity.create` **and the same Account visibility** (`customer.record.read`, with the Account in this tenant).
+  - Every linked Contact, Opportunity and Sales Order must exist **in this tenant and on that Account**.
+  - A link outside the tenant, or on another Account, is refused exactly like an unknown one (`CONTACT_NOT_FOUND` / `OPPORTUNITY_NOT_FOUND` / `SALES_ORDER_NOT_FOUND`).
+  - The Firestore command checked neither.
+- **Access: parity, no new holder.** `crm.activity.read` and `.create` are registered and granted to exactly the Firebase catalog's current holders:
+  - **admin** (Owner ruling 2026-08-19);
+  - **owner** (`OWNER_COMMERCIAL_AUTHORITY`);
+  - **crmActivityContributor**.
+  - This is grant-bearing (Owner ruling E): the authority baseline goes 482 → 488 in the same change (after #242's 481 → 482).
+  - **Explicit API restriction, not parity.** A principal holding `crmActivityContributor` ALONE, without `customer.record.read`, can no longer read or create activity through the API. That principal could reach the Firestore callables directly. That it could not open the Account page does not establish API parity, so this is stated as a restriction for Lane D's review.
+  - Admin and owner hold `customer.record.read`. **No customer-read grant is added** to compensate.
+  - **Administration projects it.** `crmActivity` is declared in the governed Object catalog (`capabilityGovernedObjects.json`): no fields and **no CRED verb**. A derived R cell would overstate the read, which also needs `customer.record.read`. Administration lists the Object and shows both capabilities under it. The contributor Role is assigned only through the governed preview → assignRole path.
+- **Client.** `services/crmActivityClient.js` replaces the callable client, with no Firebase fallback; the hooks and the section are unchanged in contract. Actor names resolve by EOS Principal id.
+
+**Existing data is NOT moved.** An empty `eos_crm.activities` is not a completed data transition. Prepared:
+- `scripts/exportCrmActivitySnapshot.js`: read-only, migration-only.
+- `scripts/crmActivityCopy.js`:
+  - **census** is the default and read-only. It reports counts by type and Account and the Account gaps (`ACCOUNT_NOT_IN_EOS`), plus the checksum.
+  - **copy** is insert-only and refuses without `--ownerAuthorization`. Rows keep their Firestore ids, are MIGRATED, and carry no Firebase uid in any column.
+  - **verify** is read-only.
+  - The copy runs only on the Owner's go-ahead.
+
+**Proof.**
+- `crmActivityPostgres`:
+  - create, the audit row and replay;
+  - refusals before any write: capability, another tenant's Account, type, future time, long body;
+  - the read needs BOTH keys and the Account in this tenant;
+  - most recent first, backdating kept, too-long = unavailable;
+  - the table's CHECKs;
+  - the copy CLI end to end.
+- `roleCapabilityAuthorityBaselinePostgres`: 487.
+- The migration test pins exactly the three holders.

@@ -31,7 +31,6 @@
         "field-ops-app-vite/src/firebase/firebase.js",
         "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js",
         "field-ops-app-vite/src/services/binCommandClient.js",
-        "field-ops-app-vite/src/services/crmActivityCallableClient.js",
         "field-ops-app-vite/src/services/financeReadCallableClient.js",
         "field-ops-app-vite/src/services/performanceGoalClient.js",
         "field-ops-app-vite/src/services/privilegedApprovalClient.js",
