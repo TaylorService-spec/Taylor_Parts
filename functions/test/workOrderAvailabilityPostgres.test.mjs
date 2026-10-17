@@ -502,6 +502,92 @@ test("technician availability", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.ok(still.rows[0].t);
   });
 
+  // ════════════════════ readEmployeeWorkSchedule: SCH-D2 as amended (Scheduling PR-2) ════════════════════
+
+  await t.test("readEmployeeWorkSchedule: scheduling capability AND employee.record.read AND company authority, all server-side", async () => {
+    await employee("emp-ws-t");
+    await employee("emp-ws-v", { company: "ventana" });
+    const withRecordRead = (actor) => ({ ...actor, capabilities: new Set([...actor.capabilities, "employee.record.read"]) });
+    const reader = Object.freeze({
+      schedT: withRecordRead(P.schedT), dispatcher: withRecordRead(P.dispatcher), schedNone: withRecordRead(P.schedNone),
+      recordOnly: { tenantId: T, principalId: "prn-sched-t", capabilities: new Set(["employee.record.read"]) },
+    });
+    const refusal = async (promise) => {
+      try { await promise; } catch (e) { return [e.code, e.category, e.message]; }
+      return assert.fail("expected a refusal");
+    };
+    const read = (actor, employeeId) => op("readEmployeeWorkSchedule", actor, { employeeId });
+
+    // Facts, recorded through the governed commands: a current schedule, an upcoming replacement, an exception.
+    await op("setTechnicianWorkingHours", P.dispatcher, { employeeId: "emp-ws-t", timeZone: "America/Phoenix", effectiveFrom: "2030-10-01",
+      weeklyHours: { 1: [{ start: "07:00", end: "12:00" }, { start: "12:30", end: "16:00" }] }, reason: "hire" });
+    await op("setTechnicianWorkingHours", P.dispatcher, { employeeId: "emp-ws-t", timeZone: "America/Phoenix", effectiveFrom: "2030-11-02",
+      weeklyHours: WEEKDAYS("06:00", "14:00"), reason: "early shift" });
+    await op("recordTechnicianUnavailability", P.dispatcher, { employeeId: "emp-ws-t", kind: "PTO",
+      start: "2030-10-20T15:00:00Z", end: "2030-10-21T00:00:00Z", reason: "vacation" });
+    // An ENDED schedule from the past (history only reachable by SQL at this fixture clock).
+    await q(`INSERT INTO eos_workforce.technician_working_schedules
+               (id,tenant_id,employee_id,operating_company_id,time_zone,effective_from,effective_to,recorded_by_principal_id,recorded_at,
+                reason,ended_by_principal_id,ended_at,end_reason)
+             VALUES ('tws-old',$1,'emp-ws-t',NULL,'America/Phoenix','2030-01-01','2030-06-01','prn-dispatcher','2029-12-01','old',
+                     'prn-dispatcher','2030-05-01','replaced')`, [T]);
+    await op("setTechnicianWorkingHours", P.dispatcher, { employeeId: "emp-ws-v", timeZone: "America/Phoenix", effectiveFrom: "2030-10-01",
+      weeklyHours: WEEKDAYS("08:00", "17:00") });
+    await op("recordTechnicianUnavailability", P.dispatcher, { employeeId: "emp-ws-v", kind: "TRAINING",
+      start: "2030-10-10T15:00:00Z", end: "2030-10-11T00:00:00Z", reason: "ventana training" });
+    // OUTSIDE the bounded exceptions window [now - 30d, now + 90d): never returned.
+    await op("recordTechnicianUnavailability", P.dispatcher, { employeeId: "emp-ws-t", kind: "PTO",
+      start: "2031-03-01T15:00:00Z", end: "2031-03-02T00:00:00Z", reason: "far future" });
+    await q(`INSERT INTO eos_workforce.technician_unavailability (id,tenant_id,employee_id,kind,starts_at,ends_at,reason,recorded_by_principal_id,recorded_at)
+             VALUES ('tua-past',$1,'emp-ws-t','PTO','2030-07-01T15:00:00Z','2030-07-02T00:00:00Z','long ago','prn-dispatcher','2030-06-01')`, [T]);
+    const writes = async () => JSON.stringify((await q(`SELECT
+        (SELECT count(*)::int FROM eos_workforce.technician_working_schedules) s,
+        (SELECT count(*)::int FROM eos_workforce.technician_unavailability) u`)).rows[0]);
+    const before = await writes();
+
+    // NO ORACLE: every refusal is the SAME answer whether the target is in scope, out of scope (with data) or nonexistent --
+    // the capability and authority checks precede any Employee lookup, so a refusal reveals nothing about who exists.
+    for (const [actor, code] of [[P.schedT, "CAPABILITY_MISSING"], [reader.recordOnly, "CAPABILITY_MISSING"], [reader.schedNone, "COMPANY_AUTHORITY_REQUIRED"]]) {
+      const answers = await Promise.all(["emp-ws-t", "emp-ws-v", "emp-nope"].map((id) => refusal(read(actor, id))));
+      assert.equal(answers[0][0], code);
+      assert.deepEqual(answers[1], answers[0], `${code}: out-of-scope reads like in-scope`);
+      assert.deepEqual(answers[2], answers[0], `${code}: nonexistent reads like in-scope`);
+    }
+    // Each leg alone is not enough.
+    assert.equal((await refusal(read(P.schedT, "emp-ws-t")))[0], "CAPABILITY_MISSING", "scheduling capability without employee.record.read");
+    assert.equal((await refusal(read(reader.recordOnly, "emp-ws-t")))[0], "CAPABILITY_MISSING", "employee.record.read without a scheduling capability");
+    assert.equal((await refusal(read(reader.schedNone, "emp-ws-t")))[0], "COMPANY_AUTHORITY_REQUIRED", "no company authority");
+    // Capability is checked FIRST: a caller with neither the read capabilities nor any company authority is refused for the
+    // capability, never told whether company authority would have sufficed.
+    const bare = { tenantId: T, principalId: "prn-sched-none", capabilities: new Set(["employee.record.read"]) };
+    assert.equal((await refusal(read(bare, "emp-ws-v")))[0], "CAPABILITY_MISSING");
+    assert.equal((await refusal(read(P.schedNone, "emp-ws-v")))[0], "CAPABILITY_MISSING", "no employee.record.read, no authority");
+    // Outside the caller's companies reads EXACTLY like an Employee that does not exist.
+    assert.deepEqual(await refusal(read(reader.schedT, "emp-ws-v")), await refusal(read(reader.schedT, "emp-nope")));
+    assert.equal((await refusal(read(reader.schedT, "emp-ws-v")))[0], "EMPLOYEE_NOT_FOUND");
+    assert.equal((await refusal(op("readEmployeeWorkSchedule", reader.schedT, { employeeId: "emp-ws-t", extra: 1 })))[0], "INPUT_FIELD_NOT_ACCEPTED");
+
+    // All three legs: the governed schedule, newest first, with status, and the exceptions in the window.
+    const r = await read(reader.schedT, "emp-ws-t");
+    assert.equal(r.employeeId, "emp-ws-t");
+    assert.equal(r.operatingCompanyId, "taylor");
+    assert.deepEqual(r.schedules.map((s) => [s.effectiveFrom, s.effectiveTo, s.status]),
+      [["2030-11-02", null, "UPCOMING"], ["2030-10-01", "2030-11-02", "CURRENT"], ["2030-01-01", "2030-06-01", "ENDED"]]);
+    assert.deepEqual(r.schedules[1].weeklyHours, { 1: [{ start: "07:00", end: "12:00" }, { start: "12:30", end: "16:00" }] });
+    assert.equal(r.schedulesHasMore, false);
+    // The bounded window: the far-future and long-past exceptions are not returned, and nothing reports that they exist.
+    assert.deepEqual(r.exceptions.map((x) => [x.kind, x.reason, x.ended]), [["PTO", "vacation", false]]);
+    assert.deepEqual(Object.keys(r).sort(), ["employeeId", "exceptions", "exceptionsWindow", "operatingCompanyId", "schedules", "schedulesHasMore"]);
+    assert.equal(r.exceptionsWindow.endMillis - r.exceptionsWindow.startMillis, 120 * 86_400_000);
+    // Explicit Ventana authority reaches Ventana's Employee.
+    assert.equal((await read(reader.dispatcher, "emp-ws-v")).schedules[0].status, "CURRENT");
+    // An Employee with nothing recorded: an EMPTY answer, never a default.
+    assert.deepEqual((await read(reader.schedT, "emp-sched-t")).schedules, []);
+    assert.equal(await writes(), before, "the read wrote nothing");
+    assert.ok(operations.WORK_ORDER_READ_OPERATIONS.includes("readEmployeeWorkSchedule"));
+    assert.equal(operations.EOS_WORK_ORDER_OPERATIONS.readEmployeeWorkSchedule, availability.readEmployeeWorkSchedule);
+  });
+
   // ════════════════════ G-9: schedule commands under EOS Core company authority (DECISIONS #237) ════════════════════
 
   await t.test("G-9: schedule commands act only on the caller's companies; outside == nonexistent; none refuses; no mutation on refusal", async () => {

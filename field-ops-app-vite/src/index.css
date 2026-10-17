@@ -6737,9 +6737,12 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch__loading, .ns-dispatch-denied { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 
 /* --- the lane grid ------------------------------------------------------- */
-.ns-dispatch-grid { margin-bottom: 22px; }
+/* The lanes scroll INSIDE the grid (sticky hour header) so the ready queue beneath stays on screen beside them: a
+   drag from a queue card must be able to reach every lane without the page scrolling the lanes away. */
+.ns-dispatch-grid { margin-bottom: 22px; max-height: 55vh; overflow-y: auto; }
 .ns-dispatch-grid__head { display: grid; grid-template-columns: 170px minmax(0, 1fr);
-  border-bottom: 2px solid var(--verenward-evergreen); }
+  border-bottom: 2px solid var(--verenward-evergreen);
+  position: sticky; top: 0; z-index: 3; background: var(--verenward-stone-card); }
 .ns-dispatch-grid__hours { display: grid; grid-template-columns: repeat(10, 1fr); }
 .ns-dispatch-grid__hour { padding: 4px 6px; font: 600 10.5px var(--font-interface);
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
@@ -6749,6 +6752,21 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .ns-dispatch-lane__identity { padding: 14px 12px 14px 0; min-width: 0; }
 .ns-dispatch-lane__name { font-size: 13.5px; font-weight: 700; }
+/* A lane or week-row name opens that technician's schedule-and-work review. */
+.ns-dispatch-lane__name--link { padding: 0; border: 0; background: none; color: inherit; font: inherit;
+  font-size: 13.5px; font-weight: 700; text-align: left; cursor: pointer; text-decoration: underline;
+  text-decoration-color: var(--verenward-border-strong); text-underline-offset: 3px; }
+.ns-dispatch-lane__name--link:hover, .ns-dispatch-lane__name--link:focus-visible { text-decoration-color: currentColor; }
+/* Tap placement armed: every lane is a target. */
+.ns-dispatch-lane--placing { cursor: copy; outline: 1px dashed var(--verenward-border-strong); outline-offset: -1px; }
+.ns-dispatch-placing { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px;
+  padding: 8px 12px; border-left: 3px solid var(--verenward-evergreen); background: var(--verenward-stone-card); }
+.ns-dispatch-focus { margin: 0 0 14px; padding: 10px 12px; border-left: 3px solid var(--verenward-evergreen);
+  background: var(--verenward-stone-card); }
+.ns-dispatch-focus__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ns-dispatch-focus__title { margin: 0; font-size: 15px; }
+.ns-dispatch-focus__list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.ns-dispatch-focus__item { display: flex; gap: 10px; font-size: 13px; }
 .ns-dispatch-lane__meta { font-size: 11.5px; color: var(--color-text-secondary); }
 .ns-dispatch-lane__meta-muted { color: var(--color-text-muted); }
 .ns-dispatch-lane__meta-strained { color: var(--color-brand-accent); }
@@ -6804,9 +6822,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* --- week + fortnight ---------------------------------------------------- */
 .ns-dispatch-week, .ns-dispatch-load { margin-bottom: 22px; }
+.ns-dispatch-week { max-height: 55vh; overflow-y: auto; }
 .ns-dispatch-week__head, .ns-dispatch-week__row { display: grid;
   grid-template-columns: 150px repeat(7, minmax(0, 1fr)); }
-.ns-dispatch-week__head { border-bottom: 2px solid var(--verenward-evergreen); }
+.ns-dispatch-week__head { border-bottom: 2px solid var(--verenward-evergreen);
+  position: sticky; top: 0; z-index: 3; background: var(--verenward-stone-card); }
 .ns-dispatch-week__row { border-bottom: 1px solid var(--verenward-border); }
 .ns-dispatch-week__dayhead { padding: 4px 8px; font: 600 10.5px var(--font-interface);
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
@@ -9148,3 +9168,14 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-admin .fo-admin-row--selected .fo-admin-rowselect { color: var(--color-text-primary); text-decoration: none; }
 
 /* END ADMINISTRATION SCOPE -- new Administration rules go above this line, under .fo-admin. */
+
+/* ── Employee record · Work Schedule tab (Scheduling PR-2) ─────────────────────────────────── */
+.fo-work-schedule { display: grid; gap: 4px; }
+.fo-work-schedule__current + .fo-work-schedule__current { margin-top: 16px; }
+.fo-work-schedule__none { margin: 0; max-width: 72ch; }
+.fo-work-schedule__week { max-width: 640px; }
+.fo-work-schedule__week th { width: 4.5rem; text-align: left; font-weight: 600; }
+.fo-work-schedule__history, .fo-work-schedule__exceptions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fo-work-schedule__form { display: grid; gap: 10px; max-width: 760px; margin-top: 10px; }
+.fo-work-schedule__interval, .fo-work-schedule__inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-end: 8px; }
+.fo-work-schedule__actions { margin: 4px 0 16px; }

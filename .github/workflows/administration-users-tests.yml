@@ -39,6 +39,12 @@ on:
       - "field-ops-app-vite/test/changeHistoryModel.test.mjs"
       - "field-ops-app-vite/test/administrationUsersSurfaces.test.jsx"
       - "field-ops-app-vite/test/adminUsersDirectory.test.jsx"
+      # Scheduling PR-2: the Employee record's Work Schedule tab.
+      - "field-ops-app-vite/src/modules/administration/EmployeeWorkSchedule.jsx"
+      - "field-ops-app-vite/src/domain/employeeWorkSchedule.js"
+      - "field-ops-app-vite/src/config/employeeScheduleReadiness.js"
+      - "field-ops-app-vite/test/employeeWorkSchedule.test.mjs"
+      - "field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx"
       - "field-ops-app-vite/src/hooks/useWorkforceEmployeeDirectory.js"
       - "field-ops-app-vite/test/employeeOperatingProfile.test.jsx"
       - "field-ops-app-vite/test/workforceApiClient.test.jsx"
@@ -142,6 +148,10 @@ jobs:
 
       - name: Employee operating profile (Employee design v4.1) on the Workforce transport -- record, self view, client, pure domain (vitest)
         run: npx vitest run test/employeeOperatingProfile.test.jsx test/workforceApiClient.test.jsx test/useWorkforceCapabilities.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Employee Work Schedule tab -- pure form/describe domain (node:test) and the tab, editing held (vitest)
+        run: node --test test/employeeWorkSchedule.test.mjs && npx vitest run test/employeeWorkScheduleTab.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Composition conformance -- the record and collection grammars
