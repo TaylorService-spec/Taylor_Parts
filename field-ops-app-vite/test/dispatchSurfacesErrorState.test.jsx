@@ -26,6 +26,8 @@ vi.mock("../src/hooks/useAccountReferenceResolver", () => ({ useAccountReference
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({ useWorkOrderTechnicians: vi.fn() }));
 vi.mock("../src/shared/ui/WorkOrderAuthorityNotice.jsx", () => ({ default: () => null }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
+// MyWorkspace mounts WorkflowWork; answer its client locally so nothing settles after jsdom is torn down.
+vi.mock("../src/services/workflowRuntimeClient", () => ({ callWorkflowRuntimeApi: vi.fn(async () => ({ ok: true, result: { items: [], total: 0, truncated: false } })) }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useMetadataList } from "../src/hooks/useMetadataList";
@@ -34,6 +36,8 @@ import { useAuth } from "../src/auth/AuthContext";
 import WorkOrdersList from "../src/modules/workOrders/WorkOrdersList";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 import DispatcherBoard from "../src/modules/dispatcherBoard/DispatcherBoard";
+import Jobs from "../src/modules/jobs/Jobs.jsx";
+import MyWorkspace from "../src/modules/workspace/MyWorkspace.jsx";
 
 const PERMISSION_ERROR = { code: "permission-denied" };
 
@@ -200,5 +204,32 @@ describe("COMPANY_AUTHORITY_REQUIRED is a stated refusal on every Work Order sur
     expect(screen.getAllByRole("alert").some((a) => SAID.test(a.textContent))).toBe(true);
     expect(screen.queryByText(/no work orders exist yet\./i)).toBeNull();
     expect(document.body.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("Jobs: the refusal says why", () => {
+    useWorkOrders.mockReturnValue({ data: [], loading: false, error: COMPANY_REFUSAL });
+    useWorkOrderTechnicians.mockReturnValue({ data: [], loading: false, error: null });
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    render(<MemoryRouter><Jobs /></MemoryRouter>);
+    expect(document.body.textContent).toMatch(SAID);
+    expect(screen.queryByText(/no work orders yet./i)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED/);
+  });
+
+  it("My Work: the dispatch queue section states the server's refusal, never an empty queue", async () => {
+    // myWork.ts guarded() turns the 403 into NOT_AUTHORIZED with the server's sentence as the reason (pinned server-side
+    // in functions/test/support/workOrderListQuerySuite.mjs).
+    const reason = "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment";
+    const work = {
+      me: { principalId: "p1", employeeId: "e1", displayName: "Dana Dispatch", jobRole: { id: "service-coordinator-dispatcher", label: "Dispatcher" } },
+      persona: { key: "service-coordinator-dispatcher", label: "Dispatcher", fromJobRole: true, analysisArea: "service" },
+      operatingCompanyId: null, aiRequired: false,
+      sections: [{ key: "dispatchQueue", title: "Work to schedule and dispatch", status: "NOT_AUTHORIZED", reason, hasMore: false, items: [] }],
+    };
+    const callApi = vi.fn(async () => ({ ok: true, result: work }));
+    const { container, findByText } = render(<MemoryRouter><MyWorkspace callApi={callApi} /></MemoryRouter>);
+    await findByText("Dana Dispatch", { selector: "dd" });
+    expect(container.textContent.includes(`Not available to you — ${reason}`)).toBe(true);
+    expect(container.textContent).not.toMatch(/COMPANY_AUTHORITY_REQUIRED|Nothing here|no work/i);
   });
 });
