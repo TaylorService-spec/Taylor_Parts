@@ -367,6 +367,10 @@ export async function listMyAssignedWorkOrders(
  * governed operating company (DQ-013) -- the picker for one job. Without it, the dispatch board's roster: every
  * eligible technician, each carrying their operatingCompanyId so the board never offers one across companies.
  * A picker is discovery; the command re-checks every predicate.
+ *
+ * EOS CORE COMPANY AUTHORITY (DECISIONS #235; Owner ruling 8, 2026-10-17): capability first, then the caller's companies.
+ * The roster is the eligible technicians OF THOSE COMPANIES only; a Work Order outside them answers WORK_ORDER_NOT_FOUND,
+ * exactly like one that does not exist (no existence oracle). No authority = COMPANY_AUTHORITY_REQUIRED.
  */
 export async function listWorkOrderTechnicians(
   deps: { readonly pool: Pool },
@@ -382,10 +386,16 @@ export async function listWorkOrderTechnicians(
   if (workOrderId !== undefined && workOrderId !== null && !ID_SHAPE(workOrderId)) {
     refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "workOrderId must be a governed Work Order id");
   }
+  const authority = await resolveCompanyAuthority(deps.pool, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) {
+    refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
+  }
   let companyId: string | null = null;
   if (ID_SHAPE(workOrderId)) {
-    const wo = await deps.pool.query(`SELECT operating_company_key FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2`,
-      [actor.tenantId, workOrderId]);
+    // Out of the caller's companies == nonexistent: the same query, the same refusal.
+    const wo = await deps.pool.query(`SELECT operating_company_key FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2
+        AND operating_company_key = ANY($3::text[])`,
+      [actor.tenantId, workOrderId, [...authority.companyKeys]]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
     const client = await deps.pool.connect();
     try {
@@ -402,13 +412,14 @@ export async function listWorkOrderTechnicians(
   }
   const { rows } = await deps.pool.query(
     `SELECT ${TECHNICIAN_COLUMNS} FROM eos_workforce.employees e
-      WHERE e.tenant_id = $1 AND ($2::text IS NULL OR e.operating_company_id = $2) AND e.employment_status::text = ANY($3::text[])
+      WHERE e.tenant_id = $1 AND ($2::text IS NULL OR e.operating_company_id = $2) AND e.operating_company_id = ANY($5::text[])
+        AND e.employment_status::text = ANY($3::text[])
         AND EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
                      WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id AND l.status = 'active')
         AND EXISTS (SELECT 1 FROM eos_workforce.employee_work_eligibility q
                      WHERE q.tenant_id = e.tenant_id AND q.employee_id = e.id AND q.qualification_code = $4 AND q.effective_to IS NULL)
       ORDER BY e.display_name NULLS LAST, e.id LIMIT ${WORK_ORDER_LIST_MAX}`,
-    [actor.tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], WORK_ORDER_ASSIGNMENT_QUALIFICATION]);
+    [actor.tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], WORK_ORDER_ASSIGNMENT_QUALIFICATION, [...authority.companies]]);
   return Object.freeze({ workOrderId: ID_SHAPE(workOrderId) ? workOrderId : null, operatingCompanyId: companyId,
     items: Object.freeze(rows.map(technicianOf)) });
 }

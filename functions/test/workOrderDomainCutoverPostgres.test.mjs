@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 // The governed list query (listWorkOrders { query }) suite: its own database and world, run with this CI job.
 import "./support/workOrderListQuerySuite.mjs";
+// listWorkOrderTechnicians under company authority (Owner ruling 8): its own database and world, run with this CI job.
+import "./support/workOrderTechniciansCompanySuite.mjs";
 import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
