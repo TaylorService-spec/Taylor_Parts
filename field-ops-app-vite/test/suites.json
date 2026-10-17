@@ -258,6 +258,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/boardClock.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/displayTimestamp.test.mjs",
       "runner": "node"
     },

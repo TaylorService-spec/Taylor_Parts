@@ -178,7 +178,7 @@ function DispatchLaneGrid({
                       selectedWorkOrderId === wo.id ? " ns-dispatch-chip--selected" : ""
                     }${isBusy ? " ns-dispatch-chip--busy" : ""}${window.endMillis <= now ? " ns-dispatch-chip--elapsed" : ""}`}
                     style={{ left: `${geometry.leftPercent}%`, width: `${geometry.widthPercent}%` }}
-                    draggable={!isBusy}
+                    draggable={!isBusy && Boolean(onDragStartWorkOrder)}
                     onClick={() => onSelectWorkOrder?.(wo.id)}
                     onDragStart={(e) => {
                       // Optional: a synthetic drag event (and jsdom) carries no dataTransfer. The
