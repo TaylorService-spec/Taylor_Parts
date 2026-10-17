@@ -9,8 +9,8 @@
 //   the 16 governed personas (config/sandboxRoleIdentityRegistry.json) -> a Principal each, holding the registry
 //   uid as its PRIMARY (firebase) binding, one Role, and a link to the registry's expectedEmployeeId
 //   -> the governed CLI binds each an EOS identity -> the persona issuer mints -> the API resolves.
-import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";

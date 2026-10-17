@@ -8,8 +8,8 @@
 //   tenant + bootstrap administrator (firebase) + an Owner + three human Principals (Employees, one Role each)
 //   + one persona Principal holding its persona EOS binding
 //   -> Administration provisions logins -> holders enroll -> log in -> MFA -> refresh -> recover -> are administered.
-import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

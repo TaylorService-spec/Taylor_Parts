@@ -7,8 +7,8 @@
 //
 // Each layer SKIPS loudly when its store is absent. The emulator layer uses a `demo-` project id, which the Firebase
 // SDK only ever resolves to an emulator, and it refuses to run unless FIRESTORE_EMULATOR_HOST is a loopback address.
-import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs"; // FIRST: Firebase test-safety guard (offline mode) -- see test/support/firebaseTestGuard.cjs
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

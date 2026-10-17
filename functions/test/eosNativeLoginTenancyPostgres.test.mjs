@@ -5,8 +5,8 @@
 //   "One Principal may belong to multiple tenants, but each authenticated session belongs to exactly one tenant."
 //
 // Its OWN disposable database. Keys generated in memory. Fake Firebase verifier. No network beyond loopback.
-import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import "./support/firebaseOfflineGuard.cjs";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
