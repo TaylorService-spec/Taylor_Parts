@@ -5,6 +5,8 @@
 .claude/skills/*/keypath.local.txt
 *.local.txt
 *.local.json
+# Encrypted local credential bundles (e.g. sandbox persona credentials) stay on this machine, never in git.
+*credentials.local.enc
 
 build/
 dist/
