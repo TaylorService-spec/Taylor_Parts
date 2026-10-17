@@ -126,6 +126,8 @@ export function schedulingRefusalMessage(errorCode, errorStatus, context = {}) {
       return "Refused — that placement is not valid.";
     case "PERMISSION_DENIED":
       return "You are not authorized to change a schedule.";
+    case "COMPANY_AUTHORITY_REQUIRED":
+      return "Refused — no operating company is linked to your login, so you cannot schedule work. An administrator can link your login to your employee record. Nothing was changed.";
     default:
       break;
   }

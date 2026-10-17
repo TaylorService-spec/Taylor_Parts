@@ -114,6 +114,7 @@ function WeekViewImpl({
   onSelectDay,
   draggingWorkOrder,
   onDropOnTechnicianDay,
+  onSelectTechnician,
 }) {
   // ALL SEVEN DAYS. schedulingWorkspace.buildWeekDays says why in its own comment -- a job scheduled
   // on a weekend is never silently hidden, because a hidden job is a correctness bug -- and filtering
@@ -144,7 +145,12 @@ function WeekViewImpl({
 
         return (
           <div className="ns-dispatch-week__row" role="row" key={tech.id}>
-            <div className="ns-dispatch-week__identity" role="rowheader">{identity.name}</div>
+            <div className="ns-dispatch-week__identity" role="rowheader">
+              {onSelectTechnician ? (
+                <button type="button" className="ns-dispatch-lane__name--link" onClick={() => onSelectTechnician(tech.id)}
+                  title="Review this technician's schedule and work">{identity.name}</button>
+              ) : identity.name}
+            </div>
             {days.map((d) => {
               const entries = byDay.get(d.dateMillis) ?? [];
               const blocks = blockedByDay.get(d.dateMillis) ?? [];

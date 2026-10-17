@@ -48,6 +48,8 @@ vi.mock("../src/hooks/useWorkOrderFieldContext", () => ({
 }));
 
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ role: "dispatcher", operationalRoles: [] }) }));
+// The Board offers Dispatch only to a caller holding workOrder.lifecycle.dispatch (DECISIONS #239); this dispatcher does.
+vi.mock("../src/hooks/useMyWorkOrderCapabilities", () => ({ useMyWorkOrderCapabilities: () => ({ status: "ready", has: () => true }) }));
 
 afterEach(() => {
   cleanup();
