@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchCrmActivities } from "../services/crmActivityCallableClient.js";
+import { fetchCrmActivities } from "../services/crmActivityClient.js";
 
 // One-shot read of an account's CRM Activity timeline. Own loading/error state (mirrors
 // hooks/useAccountAr.js's cancelled-guard shape) so a slow/failed read never blocks or misrepresents any

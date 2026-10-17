@@ -115,3 +115,13 @@ No screen changes. The two record-page and list-hook routing suites now use a re
 - **No EOS replacement exists yet.** EOS has no canonical supplier-PO receive. Reorder-PO receiving is already EOS (`receiveReorderStock`).
 
 Removing it needs a ruling: retire canonical supplier-PO receiving, or build its EOS receive.
+
+## F7b: CRM activity moves to EOS Core (2026-10-17, exit baseline 245 → 244)
+
+| Removed | Replaced by |
+| --- | --- |
+| `services/crmActivityCallableClient.js` (`getCrmActivities`, `createCrmActivity`) | `services/crmActivityClient.js` → `/crm/customer` `listAccountActivities` / `createAccountActivity` (`eosCrm/crmActivityAuthority.ts`, `eos_crm.activities`), with the same `{ result } / { errorStatus }` contract for `useCrmActivities`, `useCrmActivityActions` and `ActivityAndNotesSection`. |
+
+- **Decision (DECISIONS #243):** the read is never wider than the Account read, and the current holders (admin, owner, crmActivityContributor) are mirrored.
+- **Existing Firestore activities are NOT copied.** The census and copy tools (`scripts/exportCrmActivitySnapshot.js`, `scripts/crmActivityCopy.js`) are prepared; the copy runs only on the Owner's go-ahead.
+- **The server callables** stay deployed until an operator undeploy, which is reserved.

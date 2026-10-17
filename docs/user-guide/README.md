@@ -33,6 +33,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 
 - [Browse and search customers](./accounts-customers/browse-and-search-customers.md) — name search,
   the status filter, and why the portfolio totals are not shown yet.
+- [Record customer activity and notes](./accounts-customers/record-customer-activity-and-notes.md) — the Activity & Notes log:
+  who can see it, and adding a call, meeting or note.
 
 ## Sales
 

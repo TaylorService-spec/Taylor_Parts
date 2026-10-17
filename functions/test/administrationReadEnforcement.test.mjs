@@ -247,7 +247,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // .prepare / .approve / .activate on financialPolicy, granted to NO Role. The read gate requires none of them.
   // 98 -> 99: 1764570000000 -- Financial Policy withdraw / cancel (#232 Phase 3): WITHDRAWN / CANCELLED statuses and stamps; no
   // capability, no grant, no READ key (the two commands reuse finance.policy.prepare / .approve).
-  assert.equal(migrations.length, 99, "a migration was added or removed by the read enforcement");
+  // 99 -> 100: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants).
+  assert.equal(migrations.length, 100, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

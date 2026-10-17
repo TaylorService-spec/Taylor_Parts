@@ -375,6 +375,8 @@ functions/test/catalogReferenceAuthorityPostgres.test.mjs
 # its snapshot export, and the suites that run in test:adminPolicy / test:adminPolicyPostgres.
 functions/src/catalogMaster/**
 functions/scripts/catalogCutover.js
+functions/scripts/crmActivityCopy.js
+functions/scripts/exportCrmActivitySnapshot.js
 functions/scripts/exportCatalogSnapshot.js
 functions/scripts/exportReorderSnapshot.js
 functions/scripts/exportInventorySnapshot.js
@@ -382,6 +384,7 @@ functions/test/catalogMaster.test.mjs
 functions/test/catalogCutoverPostgres.test.mjs
 functions/test/catalogPartSearchPostgres.test.mjs
 functions/test/catalogReadAuthorizationPostgres.test.mjs
+functions/test/crmActivityPostgres.test.mjs
 # CAT-1: the Part Master employee-workflow contract. The PG suite drives the real transport with the SCREEN's
 # payload builders and pins the browser fixture, so a change to either side re-proves the pair.
 functions/test/catalogPartMasterEmployeeContractPostgres.test.mjs
