@@ -59,6 +59,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Manage users](./administration/manage-employees.md) — finding people and keeping their Employee details
   correct.
 - [View an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record (read-only; changing hours is not switched on yet)
+- [Give someone Finance access to a company](./administration/give-finance-access-to-a-company.md) — a Role's "Finance access only" setting, so a Finance company assignment does not add the company to everyday work
 - [Integrations](./administration/integrations-guide.md)
 
 More guides will be added here as they're written. If a guide references a screen or control that

@@ -52,6 +52,7 @@ import {
   assignRole,
   revokeRole,
   grantObjectActionToRole,
+  guardRoleCompanyAuthorityEffectChange,
   revokeObjectActionFromRole,
   applyObjectWideRoleAuthority,
   grantObjectActionToPrincipal,
@@ -1316,27 +1317,35 @@ async function updateRoleMetadata(
 
   const name = optionalString(input.name);
   const description = input.description === undefined ? undefined : optionalString(input.description);
-  if (name === null && description === undefined) {
+  // The company-authority classification (DECISIONS #248): the same governed command, one audit event.
+  const effect = input.companyAuthorityEffect;
+  if (name === null && description === undefined && effect === undefined) {
     throw new PolicyValidationError("nothing to update");
   }
   // An identical rename is not a mutation: no write, no audit event. See policyCommands.ts,
   // "A CHANGE THAT CHANGES NOTHING IS NOT A MUTATION".
-  if ((name ?? role.name) === role.name && (description === undefined ? role.description : description) === role.description) {
+  if ((name ?? role.name) === role.name && (description === undefined ? role.description : description) === role.description
+      && (effect === undefined || effect === role.companyAuthorityEffect)) {
     return role;
   }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Decided in the transaction, under the governance lock, against the store (null = unchanged).
+    // A classification moves authority, so the reason must be STATED (the request id alone is not one), like revokeRole.
+    const nextEffect = effect === undefined ? null
+      : await guardRoleCompanyAuthorityEffectChange(repo, tx, actor, role.key, effect, optionalString(input.reason) ? reason : null);
     const updated = await tx.updateRole(role.id, {
       ...(name ? { name } : {}),
       ...(description === undefined ? {} : { description }),
+      ...(nextEffect === null ? {} : { companyAuthorityEffect: nextEffect }),
     });
     await tx.appendAudit({
       action: "updateRole",
       actorUid: actor.uid,
       targetKind: "role",
       targetId: role.id,
-      before: { name: role.name, description: role.description },
-      after: { name: updated.name, description: updated.description },
+      before: { name: role.name, description: role.description, ...(nextEffect === null ? {} : { companyAuthorityEffect: role.companyAuthorityEffect }) },
+      after: { name: updated.name, description: updated.description, ...(nextEffect === null ? {} : { companyAuthorityEffect: updated.companyAuthorityEffect }) },
       occurredAt: new Date().toISOString(),
       reason,
     });
@@ -1580,7 +1589,7 @@ function classify(err: unknown): AdminApiFailureCode {
       || err.code === "PROTECTED_ROLE_CONFLICT") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
       || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") || err.code === "SALES_CHANNEL_INVALID"
-      || err.code === "DIRECT_GRANT_SCOPE_UNSUPPORTED"
+      || err.code === "DIRECT_GRANT_SCOPE_UNSUPPORTED" || err.code === "COMPANY_AUTHORITY_EFFECT_INVALID"
       ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";

@@ -36,6 +36,8 @@ const PINNED_CLOSURE = [
   "src/adminPolicy/objectSecurityAuthority.ts", "src/adminPolicy/policyCommands.ts", "src/adminPolicy/policyDatabase.ts",
   "src/adminPolicy/policyRepository.ts", "src/adminPolicy/postgresPolicyRepository.ts", "src/adminPolicy/principalContext.ts",
   "src/adminPolicy/protectedAdministrator.ts", "src/adminPolicy/roleCapabilityAdministration.ts", "src/adminPolicy/types.ts",
+  // DECISIONS #248: the pure Role company-authority vocabulary + the finance.* guard (no I/O), imported by policyCommands.
+  "src/adminPolicy/roleCompanyAuthorityEffect.ts",
   "src/eosOps/administrationReach.ts", "src/eosOps/authorityChangePreview.ts", "src/eosOps/capabilityAuthority.ts",
   "src/eosOps/conditionalEntitlement.ts", "src/eosOps/contextualAuthorization.ts", "src/eosOps/entitledActionAuthority.ts",
   "src/eosOps/experienceAuthority.ts", "src/eosOps/governedFieldGroups.ts", "src/eosOps/grantConditionPolicy.ts",

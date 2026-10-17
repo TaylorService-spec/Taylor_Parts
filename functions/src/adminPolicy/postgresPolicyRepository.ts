@@ -37,6 +37,7 @@ import type {
   NewPrincipalInput,
   NewPrincipalCapabilityInput,
   NewRecord,
+  NewRoleRecord,
   NewRoleCapabilityInput,
   NewTenantInput,
   PolicyActor,
@@ -214,6 +215,8 @@ const toRole = (r: Record<string, unknown>): PolicyRoleRecord => ({
   description: (r.description as string | null) ?? null,
   origin: r.origin as PolicyRoleRecord["origin"],
   protected: r.protected === true,
+  // NOT NULL DEFAULT 'OPERATIONAL' with a two-value CHECK (migration 1764600000000).
+  companyAuthorityEffect: r.company_authority_effect === "FINANCE_ONLY" ? "FINANCE_ONLY" : "OPERATIONAL",
   ...provenance(r),
 });
 
@@ -1147,8 +1150,11 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
       return toField(rows[0]);
     },
 
-    async createRole(input: NewRecord<PolicyRoleRecord>) {
+    async createRole(input: NewRoleRecord) {
       try {
+        // A new Role is always OPERATIONAL (the column default): company_authority_effect is not written here, so a seed that
+        // runs BEFORE migration 1764600000000 (the baseline tenants seed at an earlier migration) keeps working. A Role is
+        // classified FINANCE_ONLY only afterwards, by updateRole (it needs capabilities first).
         const { rows } = await q.query(
           `INSERT INTO ${SCHEMA}.roles (id, tenant_id, key, name, description, origin, protected,
              created_by, created_at, updated_by, updated_at)
@@ -1171,6 +1177,7 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
       };
       if (patch.name !== undefined) set("name", patch.name);
       if (patch.description !== undefined) set("description", patch.description);
+      if (patch.companyAuthorityEffect !== undefined) set("company_authority_effect", patch.companyAuthorityEffect);
       set("updated_by", actor.uid);
       set("updated_at", nowIso());
       values.push(roleId, tenantId);

@@ -253,6 +253,8 @@ functions/test/financeIntercompanyPostgres.test.mjs
 functions/test/governedConfigSalesPricingPostgres.test.mjs
 functions/test/financeClosurePostgres.test.mjs
 functions/test/financialPolicyFoundationPostgres.test.mjs
+functions/test/financeOnlyCompanyAccessPostgres.test.mjs
+functions/test/roleCompanyAuthorityEffect.test.mjs
 functions/test/rentalPostgres.test.mjs
 functions/test/analysisPostgres.test.mjs
 functions/test/myWorkPostgres.test.mjs
