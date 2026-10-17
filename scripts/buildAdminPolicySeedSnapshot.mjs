@@ -86,7 +86,9 @@ const objects = [...GOVERNABLE_OBJECTS, ...CAPABILITY_GOVERNED_OBJECTS].map((obj
     required: false,
     allowedValues: f.enumValues ?? [],
     defaultValue: null,
-    searchable: Boolean(f.filterable),
+    // The field's own declaration of what the server's text search matches -- NOT `filterable`, which is a different
+    // question (it made every filterable enum "searchable" and no searched name so).
+    searchable: f.searchable === true,
     sortable: Boolean(f.sortable),
     reportable: f.reportable !== false,
     // A RECORDED classification wins (makeFieldDefinition `sensitivity`, e.g. the CONFIDENTIAL COMMERCIAL field group of

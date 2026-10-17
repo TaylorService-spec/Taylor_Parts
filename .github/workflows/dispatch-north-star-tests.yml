@@ -35,6 +35,11 @@ on:
       - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
       - "field-ops-app-vite/src/services/workOrderService.ts"
       - "field-ops-app-vite/test/jobsDispatchFlow.test.jsx"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/dashboard/MyDashboard.jsx"
+      - "field-ops-app-vite/src/domain/workOrderOutcome.js"
+      - "field-ops-app-vite/src/domain/loadErrorMessage.js"
+      - "field-ops-app-vite/test/workOrderRefusalHonesty.test.jsx"
       - "field-ops-app-vite/test/jobsDispatchList.test.mjs"
       - "field-ops-app-vite/test/zonedTime.test.mjs"
       - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
@@ -47,6 +52,7 @@ on:
       - "field-ops-app-vite/test/dispatchVisualCorrections.test.mjs"
       - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
       - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
+      - "field-ops-app-vite/test/dispatchBoardInteractions.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/dispatch-north-star-tests.yml"
@@ -64,6 +70,11 @@ on:
       - "field-ops-app-vite/src/hooks/useMyWorkOrderCapabilities.js"
       - "field-ops-app-vite/src/services/workOrderService.ts"
       - "field-ops-app-vite/test/jobsDispatchFlow.test.jsx"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/dashboard/MyDashboard.jsx"
+      - "field-ops-app-vite/src/domain/workOrderOutcome.js"
+      - "field-ops-app-vite/src/domain/loadErrorMessage.js"
+      - "field-ops-app-vite/test/workOrderRefusalHonesty.test.jsx"
       - "field-ops-app-vite/test/jobsDispatchList.test.mjs"
       - "field-ops-app-vite/test/zonedTime.test.mjs"
       - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
@@ -76,6 +87,7 @@ on:
       - "field-ops-app-vite/test/dispatchVisualCorrections.test.mjs"
       - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
       - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
+      - "field-ops-app-vite/test/dispatchBoardInteractions.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/dispatch-north-star-tests.yml"
@@ -124,8 +136,16 @@ jobs:
         run: npx vitest run test/dispatchNorthStarBoard.test.jsx
         working-directory: field-ops-app-vite
 
+      - name: Board interactions — tap placement, employee review, dispatch capability (vitest + jsdom)
+        run: npx vitest run test/dispatchBoardInteractions.test.jsx
+        working-directory: field-ops-app-vite
+
       - name: Jobs page dispatch flow — same commands, dialog and governed default as the Board (vitest + jsdom)
         run: npx vitest run test/jobsDispatchFlow.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: A Work Order refusal reads as a refusal on Jobs and My Dashboard, never as an outage (vitest + jsdom)
+        run: npx vitest run test/workOrderRefusalHonesty.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Jobs grouping and governed-time-zone conversion (node:test)

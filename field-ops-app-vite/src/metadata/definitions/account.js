@@ -80,6 +80,7 @@ export const accountEntity = makeEntityDefinition({
       entityId: "account",
       label: "Customer",
       type: "STRING",
+      searchable: true,
       sortable: true,
       defaultVisible: true,
       // A record with no name is malformed and says so. It NEVER falls back to the document id —
@@ -347,6 +348,7 @@ export const accountEntity = makeEntityDefinition({
       entityId: "account",
       label: "Customer #",
       type: "STRING",
+      searchable: true,
       description: "Reserved external identifier — passthrough only (domain/accounts.js header). Not validated or enforced-unique.",
     }),
     makeFieldDefinition({

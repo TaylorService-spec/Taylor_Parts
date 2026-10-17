@@ -67,6 +67,16 @@ export const BOUNDARY_MESSAGES = Object.freeze({
     "This is not available on EOS yet (NOT_YET_ACTIVATED).",
 });
 
+/**
+ * The server's COMPANY_AUTHORITY_REQUIRED (EOS Core company authority, DECISIONS #235): the caller holds the capability
+ * but no operating company -- no active linked Employee and no operatingCompany assignment. A refusal with a REMEDY, so it
+ * is said in words: a bare "you do not have permission" sends an administrator hunting through role grants that are fine.
+ */
+export const COMPANY_AUTHORITY_REQUIRED = "COMPANY_AUTHORITY_REQUIRED";
+export const COMPANY_AUTHORITY_MESSAGE =
+  "No operating company is linked to your login, so no company's work orders can be shown. " +
+  "An administrator can link your login to your employee record, or assign you an operating company.";
+
 // ── failure classification ──
 
 const UNAUTHORIZED_CODES = new Set([
@@ -124,6 +134,7 @@ export function workOrderOutcomeMessage(outcome, { mode = "action", entity = "da
       return `${BOUNDARY_MESSAGES[o.boundary] ?? BOUNDARY_MESSAGES.OPERATION_NOT_YET_AVAILABLE}${suffix}`;
     }
     case WORK_ORDER_OUTCOME.UNAUTHORIZED:
+      if (o.reason === COMPANY_AUTHORITY_REQUIRED) return `${COMPANY_AUTHORITY_MESSAGE}${suffix}`;
       return mode === "action"
         ? "You're not allowed to perform this action. Nothing was changed."
         : `You do not have permission to view these ${entity}.`;

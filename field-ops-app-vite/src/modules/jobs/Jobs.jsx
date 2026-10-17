@@ -8,6 +8,7 @@ import Button from "../../shared/ui/primitives/Button.jsx";
 import { useAuth } from "../../auth/AuthContext";
 import { useWorkOrderTechnicianDirectory } from "../../hooks/useWorkOrderTechnicianDirectory.js";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import { classifyWorkOrderOutcome, WORK_ORDER_OUTCOME, COMPANY_AUTHORITY_REQUIRED } from "../../domain/workOrderOutcome.js";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
@@ -38,6 +39,7 @@ const previewHasPermission = createPermissionPreviewer(
 export default function Jobs() {
   const navigate = useNavigate();
   const { data: jobs, loading, error } = useWorkOrders();
+  const jobsErrorOutcome = classifyWorkOrderOutcome(error);
   // The "Assigned" column showed a bare `fieldops_technicians` document id, which tells the reader
   // nothing about who is doing the work. Naming a technician requires reading the technician names,
   // so this surface now reads that collection -- the SAME read Dispatch and Control Tower already
@@ -192,12 +194,21 @@ export default function Jobs() {
         // DENIED AND UNAVAILABLE ARE DIFFERENT STATES, and both used to render as one muted
         // paragraph carrying role="alert" — an alert styled as a whisper. The distinction the
         // wayfinding sentence already depends on is now the distinction the STATE makes.
-        (error?.code === "permission-denied" || error?.code === "firestore/permission-denied") ? (
+        //
+        // WHICH ONE IT IS comes from the one Work Order outcome classifier, not a Firebase code: the EOS
+        // client refuses with "FORBIDDEN" (WorkOrderApiError), which a "permission-denied" check rendered
+        // as an outage. A company refusal (COMPANY_AUTHORITY_REQUIRED) is said with its own remedy, and
+        // the Technician Workspace pointer is withheld for it -- that read needs the same company.
+        jobsErrorOutcome.kind === WORK_ORDER_OUTCOME.UNAUTHORIZED ? (
           <HonestState
             state={HONEST_STATE.DENIED}
             subject="Job Assignments"
-            detail={`${loadErrorMessage(error, { entity: "work orders" })} Your own assigned work is available in Technician Workspace.`}
+            detail={jobsErrorOutcome.reason === COMPANY_AUTHORITY_REQUIRED
+              ? loadErrorMessage(error, { entity: "work orders" })
+              : `${loadErrorMessage(error, { entity: "work orders" })} Your own assigned work is available in Technician Workspace.`}
           />
+        ) : jobsErrorOutcome.kind === WORK_ORDER_OUTCOME.NOT_YET_ACTIVATED ? (
+          <HonestState state={HONEST_STATE.NOT_ENABLED} detail={loadErrorMessage(error, { entity: "work orders" })} />
         ) : (
           <HonestState state={HONEST_STATE.UNAVAILABLE} detail={loadErrorMessage(error, { entity: "work orders" })} />
         )

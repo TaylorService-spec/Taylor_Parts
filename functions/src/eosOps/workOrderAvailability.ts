@@ -535,7 +535,7 @@ async function requireActiveMember(client: PoolClient, actor: LifecycleActor): P
  * Employee, a company or an unavailability outside the caller's companies is refused exactly like one that does not exist,
  * and every refusal precedes any write.
  */
-async function requireCompanyAuthority(client: PoolClient, actor: LifecycleActor): Promise<readonly string[]> {
+async function requireCompanyAuthority(client: Db, actor: LifecycleActor): Promise<readonly string[]> {
   const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
   return authority.companies;
@@ -781,24 +781,30 @@ const scheduleView = (s: WorkingSchedule) => Object.freeze({
 /** The schedulable technicians: the SAME predicate as the technician picker (workOrderQueries.listWorkOrderTechnicians). */
 async function schedulableEmployees(
   db: Db, tenantId: string, companyId: string | null, qualification: string, onlyIds: readonly string[] | null,
+  /** The caller's EOS Core companies; null only where a caller has no Principal (customer self-scheduling) and companyId is fixed. */
+  companies: readonly string[] | null = null,
 ): Promise<{ id: string; displayName: string | null; operatingCompanyId: string }[]> {
   const { rows } = await db.query(
     `SELECT e.id, e.display_name, e.operating_company_id FROM eos_workforce.employees e
       WHERE e.tenant_id = $1 AND ($2::text IS NULL OR e.operating_company_id = $2) AND e.employment_status::text = ANY($3::text[])
         AND ($5::text[] IS NULL OR e.id = ANY($5::text[]))
+        AND ($6::text[] IS NULL OR e.operating_company_id = ANY($6::text[]))
         AND EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
                      WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id AND l.status = 'active')
         AND EXISTS (SELECT 1 FROM eos_workforce.employee_work_eligibility q
                      WHERE q.tenant_id = e.tenant_id AND q.employee_id = e.id AND q.qualification_code = $4 AND q.effective_to IS NULL)
       ORDER BY e.display_name NULLS LAST, e.id LIMIT ${MAX_READ_EMPLOYEES}`,
-    [tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], qualification, onlyIds === null ? null : [...onlyIds]]);
+    [tenantId, companyId, [...WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES], qualification, onlyIds === null ? null : [...onlyIds],
+      companies === null ? null : [...companies]]);
   return rows.map((r) => ({ id: r.id, displayName: r.display_name ?? null, operatingCompanyId: r.operating_company_id }));
 }
 
 /**
  * Working hours and unavailability for a range (at most 31 days), per Employee, computed by the SAME calendar the
- * placement check uses. Named `employeeIds` are read as they are (any Employee of the tenant; unknown ids are
- * reported, not guessed); without them, every schedulable technician (optionally of one company).
+ * placement check uses. Named `employeeIds` are read as they are (any Employee of the caller's operating companies;
+ * unknown ids -- and ids outside those companies, identically -- are reported in notFoundEmployeeIds, not guessed); without
+ * them, every schedulable technician of the caller's companies (optionally of one of them). EOS Core company authority
+ * (#235, the G-9 rule) is required: none = COMPANY_AUTHORITY_REQUIRED.
  *
  * `workingAvailability: null` / `availableMinutes: null` mean NOT CONFIGURED anywhere in the range -- never zero.
  */
@@ -823,15 +829,18 @@ export const readTechnicianAvailability: WorkOrderOp = async (deps, caller, inpu
   const companyFilter = (i.operatingCompanyId as string | undefined) ?? null;
   const range: Interval = { start, end };
   const pool = deps.pool;
+  // EOS Core company authority (#235; the G-9 rule): only Employees of the caller's companies are read. A named Employee outside
+  // them lands in notFoundEmployeeIds exactly like an unknown id, and a company outside them reads exactly like an unknown one.
+  const companies = await requireCompanyAuthority(pool, actor);
 
   let employees: { id: string; displayName: string | null; operatingCompanyId: string }[];
   if (ids === null) {
-    employees = await schedulableEmployees(pool, actor.tenantId, companyFilter, WORK_ORDER_ASSIGNMENT_QUALIFICATION, null);
+    employees = await schedulableEmployees(pool, actor.tenantId, companyFilter, WORK_ORDER_ASSIGNMENT_QUALIFICATION, null, companies);
   } else {
     const { rows } = await pool.query(
       `SELECT id, display_name, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[])
-        AND ($3::text IS NULL OR operating_company_id = $3) ORDER BY display_name NULLS LAST, id`,
-      [actor.tenantId, ids, companyFilter]);
+        AND ($3::text IS NULL OR operating_company_id = $3) AND operating_company_id = ANY($4::text[]) ORDER BY display_name NULLS LAST, id`,
+      [actor.tenantId, ids, companyFilter, [...companies]]);
     employees = rows.map((r) => ({ id: r.id, displayName: r.display_name ?? null, operatingCompanyId: r.operating_company_id }));
   }
   const empIds = employees.map((e) => e.id);
@@ -871,6 +880,71 @@ export const readTechnicianAvailability: WorkOrderOp = async (deps, caller, inpu
   return Object.freeze({
     startMillis: start, endMillis: end, technicians,
     notFoundEmployeeIds: ids === null ? [] : ids.filter((id) => !found.has(id)),
+  });
+};
+
+// ════════════════════ readEmployeeWorkSchedule (Employee Administration → Work Schedule) ════════════════════
+
+/** History is short in practice; the read still states its own bound rather than trusting that. */
+export const MAX_SCHEDULE_HISTORY = 50;
+// The Employee record read capability, named here rather than imported: only the Workforce transport may import the
+// Workforce read layer (functions/test/employeeRuntimeReads.test.mjs). Same id as employeeDirectoryReads.EMPLOYEE_RECORD_READ.
+const EMPLOYEE_RECORD_READ = "employee.record.read";
+const SCHEDULE_EXCEPTIONS_PAST_DAYS = 30;
+const SCHEDULE_EXCEPTIONS_FUTURE_DAYS = 90;
+
+/**
+ * ONE Employee's governed working schedules and exceptions, for the Employee record's Work Schedule tab.
+ *
+ * SCH-D2 (Owner, 2026-10-15, as amended): scheduling roles INTERSECTED with Employee and company read visibility. So the
+ * caller needs ALL of, decided here on the server:
+ *   1. workOrder.lifecycle.schedule or .dispatch      -- the existing availability-read pair (requireRead);
+ *   2. employee.record.read, held FLAT                -- a holder scoped by assignment only is refused (fails closed,
+ *                                                       SCH-D4), because this read does not evaluate assignment scopes;
+ *   3. EOS Core company authority (DECISIONS #235) covering the Employee's operating company -- an Employee outside the
+ *      caller's companies is refused EXACTLY like one that does not exist (EMPLOYEE_NOT_FOUND), the G-9 rule.
+ *
+ * Deliberately NOT readTechnicianAvailability: that board read is not company-isolated (tracked separately, #2110), so
+ * it cannot be the authority behind a per-Employee record page. This read is the same tables through the same loaders.
+ *
+ * Read-only. Returns every schedule (current, upcoming and ended -- most recent MAX_SCHEDULE_HISTORY, with hasMore) and
+ * the unavailability overlapping [now - 30 days, now + 90 days).
+ */
+export const readEmployeeWorkSchedule: WorkOrderOp = async (deps, caller, input) => {
+  const actor = caller.actor;
+  requireRead(actor, "reading an Employee's work schedule");
+  requireCapability(actor, [EMPLOYEE_RECORD_READ], "reading an Employee's work schedule");
+  const i = acceptOnly(input ?? {}, ["employeeId"]);
+  const authority = await resolveCompanyAuthority(deps.pool, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+  const employee = await requireEmployee(deps.pool, actor.tenantId, i.employeeId, authority.companies);
+
+  const now = (deps.now ?? (() => new Date()))().getTime();
+  const everything: Interval = { start: 3 * DAY, end: now + 3650 * DAY };
+  const exceptionsWindow: Interval = { start: now - SCHEDULE_EXCEPTIONS_PAST_DAYS * DAY, end: now + SCHEDULE_EXCEPTIONS_FUTURE_DAYS * DAY };
+  const [schedules, blocks] = await Promise.all([
+    loadSchedules(deps.pool, actor.tenantId, [employee.id], everything),
+    loadUnavailability(deps.pool, actor.tenantId, [employee.id], exceptionsWindow),
+  ]);
+
+  const newestFirst = [...schedules].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || b.recordedAt - a.recordedAt);
+  const status = (s: WorkingSchedule): "CURRENT" | "UPCOMING" | "ENDED" => {
+    const today = localDateKey(now, s.timeZone);
+    if (s.effectiveFrom > today) return "UPCOMING";
+    return s.effectiveTo === null || today < s.effectiveTo ? "CURRENT" : "ENDED";
+  };
+  return Object.freeze({
+    employeeId: employee.id,
+    operatingCompanyId: employee.operatingCompanyId,
+    schedules: newestFirst.slice(0, MAX_SCHEDULE_HISTORY).map((s) => Object.freeze({
+      ...scheduleView(s), recordedAt: iso(s.recordedAt), status: status(s),
+    })),
+    schedulesHasMore: newestFirst.length > MAX_SCHEDULE_HISTORY,
+    exceptions: blocks.map((b) => Object.freeze({
+      unavailabilityId: b.unavailabilityId, kind: b.kind, startMillis: b.start, endMillis: b.end,
+      scheduledEndMillis: b.scheduledEnd, ended: b.ended, reason: b.reason,
+    })),
+    exceptionsWindow: Object.freeze({ startMillis: exceptionsWindow.start, endMillis: exceptionsWindow.end }),
   });
 };
 
@@ -990,13 +1064,17 @@ export const findAvailableTechnicianSlots: WorkOrderOp = async (deps, caller, in
 
   const client = await deps.pool.connect();
   try {
+    // EOS Core company authority (#235; the G-9 rule). A company outside the caller's is refused EXACTLY like one that is not
+    // ACTIVE and keyed (one code, one message), and the candidates are that company's Employees only.
+    const companies = await requireCompanyAuthority(client, actor);
+    const notGoverned = (): never =>
+      refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE and keyed for Work Orders in this tenant");
+    if (!companies.includes(companyId)) notGoverned();
     try {
       // The company must hold Work Orders at all: ACTIVE and keyed (the symmetric resolver), never inferred.
       await resolveOperatingCompanyKeyForCompany(client, actor.tenantId, companyId);
     } catch (err) {
-      if (err instanceof OperatingCompanyBindingError) {
-        refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE and keyed for Work Orders in this tenant");
-      }
+      if (err instanceof OperatingCompanyBindingError) notGoverned();
       throw err;
     }
     const base = Object.freeze({

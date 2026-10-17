@@ -38,6 +38,8 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   "readWorkOrderAuthorityStatus",
   "readWorkOrder",
   "listWorkOrders",
+  // The caller's effective filter / sort / search eligibility for the office list (the governed list query).
+  "describeWorkOrderListQuery",
   "listMyAssignedWorkOrders",
   "listWorkOrderTechnicians",
   // The tenant's ACTIVE operating companies with an ACTIVE key binding -- the governed choice a create
@@ -47,6 +49,8 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   "readMyWorkOrderCapabilities",
   // The completion pass (2026-09-30).
   "readTechnicianAvailability",
+  // Employee Administration -> Work Schedule (Scheduling PR-2): one Employee, gated by SCH-D2 on the server.
+  "readEmployeeWorkSchedule",
   "findAvailableTechnicianSlots",
   // The placement DEFAULT for the Schedule dialog (Board and Jobs): earliest valid window, governed business time zone.
   "suggestWorkOrderPlacement",

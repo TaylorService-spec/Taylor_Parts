@@ -43,7 +43,7 @@ function qualitativeSummary(breakdown) {
   return parts.join(" · ") || "No standout factors";
 }
 
-function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchToTechnician, isDispatching }) {
+function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchToTechnician, isDispatching, onStartPlacing }) {
   const [expandedTechId, setExpandedTechId] = useState(null);
   const [pickerTechId, setPickerTechId] = useState("");
   // Shared resolver -- see domain/actorDisplayName.js. Previously fell back to the raw technician
@@ -64,7 +64,11 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
   }
 
   const top3 = recommendations.slice(0, 3);
-  const canDispatch = getAllowedActions(workOrder.status, "dispatcher", false).includes("Dispatch");
+  const allowed = getAllowedActions(workOrder.status, "dispatcher", false);
+  // Dispatch is offered only when the board hands a dispatch callback (the caller holds workOrder.lifecycle.dispatch).
+  const canDispatch = Boolean(onDispatchToTechnician) && allowed.includes("Dispatch");
+  // The click/tap alternative to dragging: arm this work order, then click a time on a lane.
+  const canPlace = Boolean(onStartPlacing) && (allowed.includes("Schedule") || allowed.includes("Unschedule"));
 
   return (
     <div className="disp-pane disp-pane--preview">
@@ -87,6 +91,10 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
       {workOrder.scheduledTechId && (
         <div className="fo-muted">Scheduled for: {techName(workOrder.scheduledTechId)}</div>
       )}
+
+      {canPlace ? (
+        <Button variant="secondary" onClick={() => onStartPlacing(workOrder)}>Place on a lane</Button>
+      ) : null}
 
       <h4>Assigned Technician</h4>
       <div>{workOrder.assignedTechId ? techName(workOrder.assignedTechId) : "Unassigned"}</div>
