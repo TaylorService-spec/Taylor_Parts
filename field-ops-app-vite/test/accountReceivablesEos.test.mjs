@@ -208,4 +208,30 @@ test("the Account's finance gate is asked under the key the read applies, and th
   const invoice = holders("invoice");
   assert.ok(invoice.length >= 14, `expected the 14 Roles, saw ${invoice.length}`);
   assert.deepEqual(holders("payment"), invoice);
+  // ...and the whole grant baseline, which includes every LATER grant: any future divergence of the two keys fails here.
+  const baseline = JSON.parse(readFileSync(path.resolve(here, "../../functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"), "utf8"));
+  const baselineHolders = (key) => baseline.grants.filter((g) => g.capabilityKey === key).map((g) => g.roleKey).sort();
+  assert.ok(baselineHolders("finance.payment.read").length >= 14);
+  assert.deepEqual(baselineHolders("finance.payment.read"), baselineHolders("finance.invoice.read"),
+    "finance.invoice.read and finance.payment.read must keep identical holders while the Account gate is asked under the payment key");
+});
+
+// ── every request is bounded ───────────────────────────────────────────────────────────────────────────────────────────────
+test("a request that never answers is a failed read: unavailable (not denied, not an endless Loading), and the signal is passed", async () => {
+  const never = new Promise(() => {});
+  const seen = [];
+  const hang = async (operation, input, options) => { seen.push([operation, options]); return never; };
+  const first = await fetchAccountReceivablesFromEos("acct-1", { call: hang, timeoutMs: 20 });
+  assert.deepEqual(first, { errorStatus: "unavailable" });
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0][1].signal instanceof AbortSignal, "the abort reaches a real fetch");
+  assert.equal(seen[0][1].signal.aborted, true, "and is fired on expiry");
+
+  // the second stage is bounded too: access answers, listObligations hangs
+  const t = transport({ readMyFinanceCompanyAccess: () => access("taylor") });
+  const stalls = async (operation, input, options) => (operation === "listObligations" ? never : t.call(operation, input, options));
+  assert.deepEqual(await fetchAccountReceivablesFromEos("acct-1", { call: stalls, timeoutMs: 20 }), { errorStatus: "unavailable" });
+  // a call that throws is a failed read as well
+  const throws = async () => { throw new Error("boom"); };
+  assert.deepEqual(await fetchAccountReceivablesFromEos("acct-1", { call: throws, timeoutMs: 20 }), { errorStatus: "unavailable" });
 });

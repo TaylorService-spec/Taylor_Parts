@@ -16,7 +16,7 @@
 // module classifies and totals the rows it was given, per currency, and nothing else:
 //   * Position is CLASSIFIED from the server's own facts: status VOID/SETTLED, the server's `overdue` flag (its due date
 //     against the company's business date), and whether a due date is governed at all. The client never compares a date.
-//   * The totals mirror functions/src/finance/financeReadProjection.ts summarizeAccountAr, partitioned by the row's own
+//   * The totals mirror functions/src/finance/financeReadProjection.ts summarizeAccountAr, except VOID rows are excluded from open, partitioned by the row's own
 //     governed operating company, and never blended across currencies.
 //   * A page the server may have truncated, or an amount that is not a safe integer, is UNAVAILABLE -- never a confident
 //     partial total (the same rule the Firebase read applied with its limit+1 probe).
@@ -88,7 +88,7 @@ export function accountArFromObligations(pages) {
 
 const UNATTRIBUTED = "UNATTRIBUTED";
 
-/** Mirror of summarizeAccountAr (functions/src/finance/financeReadProjection.ts); a VOID record is never "open". */
+/** Mirrors summarizeAccountAr (functions/src/finance/financeReadProjection.ts), except VOID rows are excluded from open: a void record is never owed. */
 function summarize(reads) {
   const billedByCurrency = {};
   const collectedByCurrency = {};

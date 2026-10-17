@@ -12,9 +12,11 @@
 // domain/accountArView.js interprets) or `{ errorStatus }` ("denied" | "unavailable"), never a throw. The Firebase transport
 // stays the sole source in a build that declares no EOS API (hooks/useAccountAr.js picks one at BUILD time).
 import { callFinanceApi } from "./financeApiClient.js";
+import { READ_TIMEOUT_MS, boundedRead } from "../access/boundedRead.js";
 import { ACCOUNT_AR_STATE } from "../domain/accountArView.js";
 import { accountArFromObligations, OBLIGATION_PAGE_LIMIT } from "../domain/accountReceivablesEos.js";
 
+const TIMED_OUT = Object.freeze({ ok: false, code: "UNREACHABLE" });
 const denied = () => ({ errorStatus: ACCOUNT_AR_STATE.DENIED });
 const unavailable = () => ({ errorStatus: ACCOUNT_AR_STATE.UNAVAILABLE });
 // Only the server's own refusal is a permission fact; every other failure (unconfigured, unreachable, 5xx, malformed) is not.
@@ -22,9 +24,12 @@ const refusal = (res) => (res.code === "FORBIDDEN" ? denied() : unavailable());
 
 /**
  * @param {string} accountId the CRM Account
- * @param {{ call?: typeof callFinanceApi }} [options] injectable transport (tests)
+ * @param {{ call?: typeof callFinanceApi, timeoutMs?: number }} [options] injectable transport and bound (tests)
  */
-export async function fetchAccountReceivablesFromEos(accountId, { call = callFinanceApi } = {}) {
+export async function fetchAccountReceivablesFromEos(accountId, { call: rawCall = callFinanceApi, timeoutMs = READ_TIMEOUT_MS } = {}) {
+  // EVERY request is bounded (F1's boundedRead): one that does not answer in time is a failed read, which maps to "unavailable"
+  // below, so a slow service is never an infinite "Loading receivables...". The abort cancels a real fetch.
+  const call = (operation, input) => boundedRead((signal) => rawCall(operation, input, signal ? { signal } : {}), timeoutMs, TIMED_OUT);
   if (typeof accountId !== "string" || accountId.trim() === "") return unavailable();
 
   const access = await call("readMyFinanceCompanyAccess");
