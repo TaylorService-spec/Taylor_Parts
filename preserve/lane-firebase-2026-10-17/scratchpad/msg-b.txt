@@ -1,0 +1,13 @@
+fix(firebase-exit): PR-B remove orphaned and flag-dead Firebase clients (261 -> 257)
+
+Deletes the orphaned completeAssignedJob binding (completionService.js),
+the manufacturer write client, hook and readiness seam (MANUFACTURER_WRITE_READY
+was false in every environment) and the Manufacturers page's write
+affordances, the getPartBalance client (INVENTORY_BALANCE_READ_READY false
+everywhere; LookupScan keeps the same "not available" answer), and
+useListViewChrome's never-taken getCountFromServer fallback. Exit baseline
+261 -> 257. Each removed feature's business requirement and its EOS Core
+replacement path is recorded in the frontend dormant-client retirement
+ledger. No runtime change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
