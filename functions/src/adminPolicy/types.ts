@@ -23,6 +23,7 @@
 // and for a system field it CITES the registry rather than copying it. One field model, two layers.
 //
 // NOT a compatibility-role layer. Nothing here re-declares `admin`/`dispatcher`/`technician`.
+import type { RoleCompanyAuthorityEffect } from "./roleCompanyAuthorityEffect";
 
 // ════════════════════ TENANCY ════════════════════
 //
@@ -277,6 +278,11 @@ export interface PolicyRoleRecord extends TenantOwned, Provenance {
   readonly description: string | null;
   readonly origin: DefinitionOrigin;
   readonly protected: boolean;
+  /**
+   * What an operatingCompany-scoped assignment of this Role contributes to GENERAL company authority (roleCompanyAuthorityEffect.ts;
+   * DECISIONS #248). OPERATIONAL is the default; FINANCE_ONLY supplies Finance reach only. Governed data, set through updateRole.
+   */
+  readonly companyAuthorityEffect: RoleCompanyAuthorityEffect;
 }
 
 /** One Role's CRED over one Object. Complete: every verb answered, no inheritance at this level. */

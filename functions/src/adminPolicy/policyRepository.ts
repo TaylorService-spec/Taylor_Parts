@@ -75,6 +75,9 @@ export class PolicyStoreError extends Error {}
 /** Field values a caller may supply on create. The store owns id, tenant and provenance. */
 export type NewRecord<T> = Omit<T, "id" | "tenantId" | "createdBy" | "createdAt" | "updatedBy" | "updatedAt">;
 
+/** A new Role. `companyAuthorityEffect` defaults to OPERATIONAL (DECISIONS #248); it is changed only through updateRole. */
+export type NewRoleRecord = Omit<NewRecord<PolicyRoleRecord>, "companyAuthorityEffect"> & { readonly companyAuthorityEffect?: PolicyRoleRecord["companyAuthorityEffect"] };
+
 /** A Role's grant of one canonical capability. `grantedAt` is server-authored, never client-sent. */
 export interface NewRoleCapabilityInput {
   readonly roleId: string;
@@ -260,7 +263,7 @@ export interface PolicyTransaction {
   updateField(fieldId: string, patch: Partial<NewRecord<ObjectFieldRecord>>): Promise<ObjectFieldRecord>;
 
   // ── roles ──
-  createRole(input: NewRecord<PolicyRoleRecord>): Promise<PolicyRoleRecord>;
+  createRole(input: NewRoleRecord): Promise<PolicyRoleRecord>;
   updateRole(roleId: string, patch: Partial<NewRecord<PolicyRoleRecord>>): Promise<PolicyRoleRecord>;
 
   // ── permissions ──

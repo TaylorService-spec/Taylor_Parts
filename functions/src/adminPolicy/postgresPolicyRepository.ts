@@ -37,6 +37,7 @@ import type {
   NewPrincipalInput,
   NewPrincipalCapabilityInput,
   NewRecord,
+  NewRoleRecord,
   NewRoleCapabilityInput,
   NewTenantInput,
   PolicyActor,
@@ -214,6 +215,8 @@ const toRole = (r: Record<string, unknown>): PolicyRoleRecord => ({
   description: (r.description as string | null) ?? null,
   origin: r.origin as PolicyRoleRecord["origin"],
   protected: r.protected === true,
+  // NOT NULL DEFAULT 'OPERATIONAL' with a two-value CHECK (migration 1764600000000).
+  companyAuthorityEffect: r.company_authority_effect === "FINANCE_ONLY" ? "FINANCE_ONLY" : "OPERATIONAL",
   ...provenance(r),
 });
 
@@ -1147,13 +1150,14 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
       return toField(rows[0]);
     },
 
-    async createRole(input: NewRecord<PolicyRoleRecord>) {
+    async createRole(input: NewRoleRecord) {
       try {
         const { rows } = await q.query(
           `INSERT INTO ${SCHEMA}.roles (id, tenant_id, key, name, description, origin, protected,
-             created_by, created_at, updated_by, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-          [newId(), tenantId, input.key, input.name, input.description, input.origin, input.protected, ...stamp()],
+             created_by, created_at, updated_by, updated_at, company_authority_effect)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+          [newId(), tenantId, input.key, input.name, input.description, input.origin, input.protected, ...stamp(),
+            input.companyAuthorityEffect ?? "OPERATIONAL"],
         );
         return toRole(rows[0]);
       } catch (err) {
@@ -1171,6 +1175,7 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
       };
       if (patch.name !== undefined) set("name", patch.name);
       if (patch.description !== undefined) set("description", patch.description);
+      if (patch.companyAuthorityEffect !== undefined) set("company_authority_effect", patch.companyAuthorityEffect);
       set("updated_by", actor.uid);
       set("updated_at", nowIso());
       values.push(roleId, tenantId);

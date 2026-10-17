@@ -301,13 +301,17 @@ function CreateRoleForm({ onDone, mutate }) {
 }
 
 function EditRoleForm({ role, mutate, onDone }) {
-  const [draft, setDraft] = useState({ name: role.name, description: role.description ?? "" });
+  const currentEffect = role.companyAuthorityEffect ?? "OPERATIONAL";
+  const [draft, setDraft] = useState({ name: role.name, description: role.description ?? "", effect: currentEffect, reason: "" });
   const [result, setResult] = useState(null);
+  const effectChanged = draft.effect !== currentEffect;
 
   const submit = async (event) => {
     event.preventDefault();
     const outcome = await mutate("updateRole", {
       roleId: role.id, name: draft.name, description: draft.description || null,
+      // DECISIONS #248: sent only when changed; the server needs a stated reason for it.
+      ...(effectChanged ? { companyAuthorityEffect: draft.effect, reason: draft.reason } : {}),
     });
     setResult(outcome);
     if (outcome.ok) onDone?.();
@@ -325,6 +329,28 @@ function EditRoleForm({ role, mutate, onDone }) {
           <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
         </label>
       </div>
+      {!role.protected && (
+        <div className="fo-form-row">
+          <label className="fo-form-field">
+            <span>What a company assignment of this Role gives</span>
+            <select value={draft.effect} onChange={(e) => setDraft({ ...draft, effect: e.target.value })}>
+              <option value="OPERATIONAL">Company access for everyday work and Finance</option>
+              <option value="FINANCE_ONLY">Finance access only</option>
+            </select>
+          </label>
+          {effectChanged && (
+            <label className="fo-form-field">
+              <span>Reason for the change</span>
+              <input value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} required />
+            </label>
+          )}
+        </div>
+      )}
+      <p className="fo-muted">
+        &ldquo;Finance access only&rdquo; is for a Role whose permissions are all Finance. Assigning it to a person for a
+        company lets them use Finance there and does not make that company one of the companies they work in. The server
+        refuses it for a Role that has any other permission.
+      </p>
       <p className="fo-muted">
         The key <code>{role.key}</code> is identity and cannot change.
       </p>
