@@ -1350,14 +1350,6 @@ export default function App() {
   // error/unavailable/malformed, when signed out, and across a principal change. Since the callable
   // is undeployed, this stays fail-closed in production until a separate deployment + authorization.
   const { hasCapability, accessVersion, accessResolving, hasEosKey, reload: reloadEosAccess, feedStatus } = useReportCapabilities(user);
-  // FIREBASE EXIT F1: the one EOS capability answer, offered to every screen's action gates (access/sessionAccess.js). Where
-  // Firebase is the source `eosSource` is false and every gate keeps its legacy answer.
-  const sessionAccess = useMemo(() => ({
-    eosSource: EOS_SESSION_SOURCE,
-    settled: feedStatus === "ready" || feedStatus === "failed",
-    holds: hasEosKey ?? (() => false),
-    reload: reloadEosAccess ?? (() => {}),
-  }), [hasEosKey, reloadEosAccess, feedStatus]);
   // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
   // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
   // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
@@ -1377,6 +1369,16 @@ export default function App() {
   // absence is deliberate and is the point of the lane.
   const { authority: experienceAuthority, state: experienceState, reload: reloadExperience } =
     useExperienceContext({ principalKey: user?.uid ?? null });
+  // FIREBASE EXIT F1: the one EOS capability answer, offered to every screen's action gates (access/sessionAccess.js). Where
+  // Firebase is the source `eosSource` is false and every gate keeps its legacy answer.
+  const sessionAccess = useMemo(() => ({
+    eosSource: EOS_SESSION_SOURCE,
+    settled: feedStatus === "ready" || feedStatus === "failed",
+    holds: hasEosKey ?? (() => false),
+    // The experience context (already read above) decides SURFACES; G3 asks for inventory.reorderQueue.
+    grantsSurface: (key) => experienceAuthority?.grants?.(key) === true,
+    reload: reloadEosAccess ?? (() => {}),
+  }), [hasEosKey, reloadEosAccess, feedStatus, experienceAuthority]);
   // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
   // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
   // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/

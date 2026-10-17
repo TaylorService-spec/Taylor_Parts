@@ -18,6 +18,8 @@ export const NO_SESSION_ACCESS = Object.freeze({
   /** true once the caller's EOS capability answer has settled (ready OR failed). */
   settled: false,
   holds: () => false,
+  /** Is this EOS experience SURFACE granted to the caller? (the experience context, access/experienceContext.js) */
+  grantsSurface: () => false,
   reload: () => {},
 });
 
@@ -34,16 +36,23 @@ export const SESSION_GATE_KEYS = Object.freeze({
   dispatchBoard: Object.freeze(["workOrder.lifecycle.dispatch", "workOrder.lifecycle.schedule"]),
   // G2 Jobs > New Work Order (the same key the route in App.jsx uses).
   workOrderCreate: Object.freeze(["workOrder.create"]),
-  // G3 Reorder-queue notifications. The governed Reorder reads these notifications are built from require
-  // reorder.request.read (eosOps/reorderLifecycleCommands.ts REORDER_READ). `reorder.request.read.queue`, the F1-0
-  // parity candidate, is SUPERSEDED and held by no Role, so it would deny everybody including the Administrator.
-  reorderQueue: Object.freeze(["reorder.request.read"]),
   // G5 Account governed-field pencils (paymentTerms, taxStatus) -- the authority eosCrm/accountAuthority.ts applies.
   accountGovernedFields: Object.freeze(["customer.governedField.write"]),
   // G6 Request Reorder (manual quantity).
   reorderManual: Object.freeze(["reorder.request.create.manual"]),
   // G7 Scan > technician Work Order workflow: the capability the work-execution commands apply.
   workExecution: Object.freeze(["workOrder.execution.record"]),
+});
+
+/**
+ * Gates answered by an EOS experience SURFACE rather than a bare capability. G3, the Reorder-queue notifications: the governed
+ * Reorder reads behind the bell require reorder.request.read AND the REORDER_QUEUE Operational Scope (or, for the
+ * Administrator, protected-standing reach), which is exactly the surface inventory.reorderQueue
+ * (eosOps/experienceAuthority.ts). Holding reorder.request.read alone is refused by the server, so it must not show the bell.
+ * `reorder.request.read.queue`, the F1-0 parity candidate, is SUPERSEDED and held by no Role.
+ */
+export const SESSION_GATE_SURFACES = Object.freeze({
+  reorderQueue: "inventory.reorderQueue",
 });
 
 /** The Work Order office actions of the transition engine, and the EOS capability that authorises each (G4). */
@@ -63,6 +72,12 @@ export const WORK_ORDER_ACTION_CAPABILITY = Object.freeze({
 export function sessionDecision(access, gateKeys, legacy) {
   if (!access?.eosSource) return legacy;
   return gateKeys.some((key) => access.holds(key) === true);
+}
+
+/** One decision on an EOS SURFACE: the surface grant when EOS is the source, the legacy answer otherwise. */
+export function sessionSurfaceDecision(access, surfaceKey, legacy) {
+  if (!access?.eosSource) return legacy;
+  return typeof access.grantsSurface === "function" && access.grantsSurface(surfaceKey) === true;
 }
 
 /**

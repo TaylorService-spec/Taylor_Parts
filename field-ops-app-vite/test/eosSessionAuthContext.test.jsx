@@ -168,7 +168,7 @@ describe("F1 identity: resolveEosEmployeeSession (experience context + employee 
     const session = await resolveEosEmployeeSession({ operations: operations(linked), workforce: wf });
     expect(session).toEqual({ role: null, employeeId: "e1", displayName: "Dana Dispatcher", employmentStatus: "ACTIVE" });
     expect("operationalRoles" in session).toBe(false); // no legacy role list is returned; AuthContext holds the empty default
-    expect(wf.call).toHaveBeenCalledWith("readMyEmployeeProfile");
+    expect(wf.call.mock.calls[0][0]).toBe("readMyEmployeeProfile");
   });
 
   it("an UNLINKED principal (no employeeId) is a null identity and makes no profile read", async () => {
@@ -195,6 +195,16 @@ describe("F1 identity: resolveEosEmployeeSession (experience context + employee 
     await expect(resolveEosEmployeeSession({ operations: operations({ ok: false, code: "INTERNAL" }), workforce: workforce({}) })).rejects.toThrow();
     await expect(resolveEosEmployeeSession({ operations: operations({ ok: true, result: { employeeId: 7 } }), workforce: workforce({}) })).rejects.toMatchObject({ code: "MALFORMED_RESULT" });
     await expect(resolveEosEmployeeSession({ operations: operations(linked), workforce: workforce({ ok: false, code: "INTERNAL", status: 500 }) })).rejects.toThrow();
+  });
+
+  it("a read that never answers is bounded: it is an UNREACHABLE fault (the retryable identity error), for either read", async () => {
+    const never = { call: vi.fn(() => new Promise(() => {})) };
+    await expect(resolveEosEmployeeSession({ operations: never, workforce: workforce({}), timeoutMs: 30 })).rejects.toMatchObject({ code: "UNREACHABLE" });
+    // the abort signal is handed to the client so a real fetch is cancelled
+    expect(never.call.mock.calls[0][1]).toHaveProperty("signal");
+    const slowProfile = { call: vi.fn(() => new Promise(() => {})) };
+    await expect(resolveEosEmployeeSession({ operations: operations(linked), workforce: slowProfile, timeoutMs: 30 })).rejects.toMatchObject({ code: "UNREACHABLE" });
+    expect(slowProfile.call.mock.calls[0][2]).toHaveProperty("signal");
   });
 
   it("AuthContext picks the EOS resolver ONLY behind the compile-time flag, and never falls back on failure", async () => {
@@ -269,6 +279,25 @@ describe("F1 capability feed: one-shot, refetched on events, settled deny", () =
     // no polling: nothing else happens while idle
     await new Promise((r) => setTimeout(r, 150));
     expect(client.call).toHaveBeenCalledTimes(3);
+  });
+
+  it("an UNCHANGED capability set keeps the prior Set and the function identities (nothing memoised on them re-runs)", async () => {
+    const client = clientSequence(caps("a.one", "b.two"), caps("b.two", "a.one"), caps("a.one"));
+    const { result } = renderHook(() => useEosCapabilityFeed({ uid: "u1" }, { client }));
+    await waitFor(() => expect(result.current.status).toBe(EOS_CAPABILITY_STATE.READY));
+    const { held, hasEosKey, hasCapability } = result.current;
+    act(() => { notifyEosAccessChanged(); });
+    await waitFor(() => expect(client.call).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current.held).toBe(held);
+    expect(result.current.hasEosKey).toBe(hasEosKey);
+    expect(result.current.hasCapability).toBe(hasCapability);
+    expect(result.current.version).toBe(0);
+    // a CHANGED set replaces them
+    act(() => { notifyEosAccessChanged(); });
+    await waitFor(() => expect(result.current.hasCapability("b.two")).toBe(false));
+    expect(result.current.held).not.toBe(held);
+    expect(result.current.version).toBe(1);
   });
 
   it("a refetch that FAILS denies (no stale grant is kept)", async () => {

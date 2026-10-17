@@ -223,9 +223,7 @@ check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys 
   // deliberately NOT added to the ruling-A exclusion list: that would make it a SYSTEM INVARIANT
   // that no administrator could ever grant to Owner, which no ruling decided.
   // (admin.systemConfiguration.manage was admin-only under #204; Owner ruling #205 grants it to owner too.)
-  // admin.dataImport.stage (Data Import staging, #244, migration 1764600000000) is admin-only by the same PARITY: the Firebase
-  // catalog grants it to admin and to nobody else, and the migration mirrors exactly that -- no Owner ruling excludes it.
-  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write", "admin.dataImport.stage"];
+  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
   const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id) && !PARITY_ADMIN_ONLY.includes(id)).sort();
   assert.equal(measuredAdminOnly.length, 19);
   assert.deepEqual([...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES].sort(), measuredAdminOnly);
@@ -362,8 +360,7 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (Financial Policy foundation, #232, 1764560000000), granted to NO Role.
   // 139 -> 140: inventory.returns.intake (Returns intake on EOS Core, #242, 1764580000000), granted only to the memberless inventoryReturnsIntakeClerk.
   // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
-  // 142 -> 143: admin.dataImport.stage (Data Import staging, #244, 1764600000000), granted to admin only -- the Owner does not hold it.
-  assert.equal(VOCABULARY.size, 143);
+  assert.equal(VOCABULARY.size, 142);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

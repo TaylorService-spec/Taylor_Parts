@@ -17,6 +17,7 @@
 // Principal itself (403) is also an answer, not a fault. Only an unreachable / failing / malformed service throws, and
 // AuthContext renders that as the retryable identity error, never a default role.
 import { EOS_EXPERIENCE_OPERATION } from "./eosSessionIdentity.js";
+import { READ_TIMEOUT_MS, boundedRead } from "../access/boundedRead.js";
 
 export const READ_MY_EMPLOYEE_PROFILE_OPERATION = "readMyEmployeeProfile";
 
@@ -26,6 +27,8 @@ const REFUSED_PRINCIPAL = new Set(["FORBIDDEN"]);
 
 // No legacy role list is returned at all: AuthContext holds the empty list for an EOS-sourced session (scope and eligibility are the server's).
 const NO_IDENTITY = Object.freeze({ role: null, employeeId: null, displayName: null, employmentStatus: null });
+
+const TIMED_OUT = Object.freeze({ ok: false, code: "UNREACHABLE", message: "the EOS service did not answer in time" });
 
 function fault(outcome, what) {
   const err = new Error(outcome?.message ?? `${what} could not be read`);
@@ -38,8 +41,10 @@ function fault(outcome, what) {
  * @returns {Promise<{ role: null, employeeId: string|null, displayName: string|null, employmentStatus: string|null }>}
  * @throws Error with `.code` when EOS cannot answer
  */
-export async function resolveEosEmployeeSession({ operations, workforce }) {
-  const experience = await operations.call(EOS_EXPERIENCE_OPERATION);
+// EACH READ IS BOUNDED (the same 10 s as the capability feed): a service that does not answer is an UNREACHABLE fault, which
+// AuthContext renders as the retryable identity error -- never an indefinite "Loading..." and never a default role.
+export async function resolveEosEmployeeSession({ operations, workforce, timeoutMs = READ_TIMEOUT_MS }) {
+  const experience = await boundedRead((signal) => operations.call(EOS_EXPERIENCE_OPERATION, signal ? { signal } : {}), timeoutMs, TIMED_OUT);
   if (!experience?.ok) {
     if (REFUSED_PRINCIPAL.has(experience?.code)) return NO_IDENTITY;
     throw fault(experience, "the EOS experience context");
@@ -51,7 +56,7 @@ export async function resolveEosEmployeeSession({ operations, workforce }) {
   const employeeId = ctx.employeeId ?? null;
   if (employeeId === null) return NO_IDENTITY;
 
-  const profile = await workforce.call(READ_MY_EMPLOYEE_PROFILE_OPERATION);
+  const profile = await boundedRead((signal) => workforce.call(READ_MY_EMPLOYEE_PROFILE_OPERATION, undefined, signal ? { signal } : {}), timeoutMs, TIMED_OUT);
   if (!profile?.ok) {
     if (UNLINKED_PROFILE.has(profile?.code) || REFUSED_PRINCIPAL.has(profile?.code)) {
       return { ...NO_IDENTITY, employeeId };

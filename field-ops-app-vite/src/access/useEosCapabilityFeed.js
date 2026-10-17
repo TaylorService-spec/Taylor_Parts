@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { operationsApiClient } from "../services/operationsApiClient.js";
 import { EOS_ACCESS_CHANGED_EVENT, notifyEosAccessChanged } from "./eosAccessEvents.js";
+import { READ_TIMEOUT_MS, boundedRead } from "./boundedRead.js";
 import {
   MY_CAPABILITIES_OPERATION,
   capabilitySignature,
@@ -31,30 +32,13 @@ import {
 export { EOS_ACCESS_CHANGED_EVENT, notifyEosAccessChanged };
 
 export const EOS_CAPABILITY_STATE = Object.freeze({ LOADING: "loading", READY: "ready", FAILED: "failed" });
-export const READ_TIMEOUT_MS = 10000;
+export { READ_TIMEOUT_MS };
 export const REFRESH_THROTTLE_MS = 5000;
 
 const FAILED_READ = Object.freeze({ ok: false, code: "UNREACHABLE" });
 
-// One read, bounded. The abort cancels a real fetch; the race settles the read even if a client ignores the signal -- so a
-// slow service is a FAILED read (a settled deny), never an infinite "Loading...".
-async function readCapabilities(client, timeoutMs) {
-  const controller = typeof AbortController === "function" ? new AbortController() : null;
-  let timer = null;
-  const expired = new Promise((resolve) => {
-    timer = setTimeout(() => {
-      if (controller) controller.abort();
-      resolve(FAILED_READ);
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([client.call(MY_CAPABILITIES_OPERATION, controller ? { signal: controller.signal } : {}), expired]);
-  } catch {
-    return FAILED_READ;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+const readCapabilities = (client, timeoutMs) =>
+  boundedRead((signal) => client.call(MY_CAPABILITIES_OPERATION, signal ? { signal } : {}), timeoutMs, FAILED_READ);
 
 /**
  * @param user                the signed-in user (or null). Its uid keys the read; it is never sent -- the server
@@ -76,7 +60,7 @@ export function useEosCapabilityFeed(user, {
   clientRef.current = client;
   const generation = useRef(0);
   const lastStartedAt = useRef(0);
-  const signature = useRef({ key: null, value: null, version: 0 });
+  const signature = useRef({ key: null, value: null, version: 0, held: null });
 
   const fetchNow = useCallback(() => {
     if (principalKey === null) return;
@@ -92,16 +76,22 @@ export function useEosCapabilityFeed(user, {
       }
       const next = capabilitySignature(held);
       const prior = signature.current;
-      const version = prior.key === principalKey && prior.value === next ? prior.version : (prior.key === principalKey ? prior.version + 1 : 0);
-      signature.current = { key: principalKey, value: next, version };
-      setState({ key: principalKey, status: EOS_CAPABILITY_STATE.READY, held, version });
+      const unchanged = prior.key === principalKey && prior.value === next;
+      const version = unchanged ? prior.version : (prior.key === principalKey ? prior.version + 1 : 0);
+      // An UNCHANGED set keeps the prior Set object, so hasEosKey / hasCapability and everything memoised on them keep their
+      // identity: a focus refresh that changes nothing re-renders nothing and re-keys nothing.
+      const kept = unchanged ? prior.held : held;
+      signature.current = { key: principalKey, value: next, version, held: kept };
+      setState((current) => (current.key === principalKey && current.status === EOS_CAPABILITY_STATE.READY && current.held === kept && current.version === version
+        ? current
+        : { key: principalKey, status: EOS_CAPABILITY_STATE.READY, held: kept, version }));
     });
   }, [principalKey, timeoutMs]);
 
   // Principal change / sign-in: forget the previous answer, read afresh.
   useEffect(() => {
     generation.current += 1; // discard any read still in flight for the previous principal
-    signature.current = { key: null, value: null, version: 0 };
+    signature.current = { key: null, value: null, version: 0, held: null };
     if (principalKey === null) {
       setState({ key: null, status: EOS_CAPABILITY_STATE.FAILED, held: null, version: 0 });
       return undefined;

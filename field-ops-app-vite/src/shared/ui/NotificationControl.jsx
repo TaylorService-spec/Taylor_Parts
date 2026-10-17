@@ -11,7 +11,7 @@
 // as they were, and an unauthorized principal renders nothing and reads nothing.
 import { useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
+import { SESSION_GATE_SURFACES, sessionSurfaceDecision, useSessionAccess } from "../../access/sessionAccess.js";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useMyAssignedReorderRequests } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
@@ -63,11 +63,12 @@ export default function NotificationControl({ accessVersion } = {}) {
   // thing in the footer; it fails closed to nothing and the shell keeps working.
   const auth = useAuth() ?? {};
   const { user, role } = auth;
-  // FIREBASE EXIT F1: where EOS is the session source the bell follows reorder.request.read -- the capability the governed
-  // Reorder reads below require -- instead of the legacy role (access/sessionAccess.js, gate reorderQueue).
-  const canSeeReorderRequests = sessionDecision(
+  // FIREBASE EXIT F1: where EOS is the session source the bell follows the EOS surface inventory.reorderQueue -- reorder.request.read
+  // PLUS the REORDER_QUEUE scope, or the Administrator's reach -- which is what the governed Reorder reads below require. A holder of
+  // reorder.request.read without the scope is refused by the server and gets no bell (access/sessionAccess.js, gate reorderQueue).
+  const canSeeReorderRequests = sessionSurfaceDecision(
     useSessionAccess(),
-    SESSION_GATE_KEYS.reorderQueue,
+    SESSION_GATE_SURFACES.reorderQueue,
     previewHasPermission("reorder.request.read.queue", role, {
       fallback: role === "admin" || role === "dispatcher",
     }),

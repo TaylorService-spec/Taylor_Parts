@@ -280,6 +280,20 @@ test("OPERATIONAL SCOPE is the second path to the Reorder queue, and neither pat
   assert.deepEqual(queueHolder, ["inventory.reorderQueue"]);
 });
 
+test("the protected Administrator's REACH earns inventory.reorderQueue with reorder.request.read and no Employee scope; nobody else's does (F1, G3)", async () => {
+  // The client's Reorder-queue bell is gated on this surface (DECISIONS #244): the Administrator keeps it through reach, a holder of
+  // reorder.request.read without the REORDER_QUEUE scope and without standing does not.
+  const noScope = { employeeId: "e-admin", workEligibility: [], operationalScopes: [] };
+  const withReach = await grantedSurfaceKeys(actorWith(["reorder.request.read"]),
+    { ...noScope, administrationReach: { REORDER_QUEUE: ["taylor"], WAREHOUSE: [] } });
+  assert.equal(withReach.includes("inventory.reorderQueue"), true);
+  const noReach = await grantedSurfaceKeys(actorWith(["reorder.request.read"]), noScope);
+  assert.equal(noReach.includes("inventory.reorderQueue"), false);
+  const emptyReach = await grantedSurfaceKeys(actorWith(["reorder.request.read"]),
+    { ...noScope, administrationReach: { REORDER_QUEUE: [], WAREHOUSE: [] } });
+  assert.equal(emptyReach.includes("inventory.reorderQueue"), false);
+});
+
 test("a Principal with NO linked Employee keeps unpredicated surfaces and loses every predicated one", async () => {
   // A service or administrative Principal is a legitimate shape, not an error (CX-16). It must not
   // be handed field or warehouse surfaces, and it must not lose its administrative ones either.
