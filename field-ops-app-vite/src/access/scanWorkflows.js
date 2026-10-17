@@ -48,9 +48,6 @@ export const UNAVAILABLE_REASON = Object.freeze({
   // telling a technician they have nothing to do because a read failed is the unknown-as-zero defect.
   ASSIGNED_WORK_LOADING: "ASSIGNED_WORK_LOADING",
   ASSIGNED_WORK_UNREADABLE: "ASSIGNED_WORK_UNREADABLE",
-  // The workflow's command has not moved to EOS yet, so NO ONE can be granted it: not a permission
-  // the reader lacks. DECISIONS #231 (Return intake, Owner D-SCAN-2 Option A).
-  NOT_YET_IN_EOS: "NOT_YET_IN_EOS",
 });
 
 export const RECEIVE_CAPABILITY = "inventory.stock.receive";
@@ -283,14 +280,13 @@ export function deriveScanWorkflows(ctx = {}) {
   // which is a different authority that does not exist yet (DECISIONS #118) — so this workflow can
   // record an arrival and can never put anything back into sellable stock.
   //
-  // DECISIONS #231 (Owner D-SCAN-2 Option A): inventory.returns.intake has no PostgreSQL registration and
-  // its command is still the Firebase callable recordReturnIntake, so under the EOS gate no principal holds
-  // it and no administrator could grant it. The refusal therefore says "not yet available in EOS", never
-  // "not authorized". The capability check itself is unchanged.
+  // Firebase exit F7a (DECISIONS #242) supersedes #231's "not yet available in EOS": inventory.returns.intake is
+  // registered in PostgreSQL, its command is EOS recordReturnIntake, and an administrator CAN grant it (the
+  // inventoryReturnsIntakeClerk Role). So a non-holder is refused as a permission they lack, like every other workflow.
   if (holds(RETURNS_INTAKE_CAPABILITY)) {
     available.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE });
   } else {
-    unavailable.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE, reason: UNAVAILABLE_REASON.NOT_YET_IN_EOS });
+    unavailable.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
   }
 
   // ── Technician Work Order scanning (existing journey) ───────────────────────────────────────
@@ -391,8 +387,7 @@ const WORKFLOW_UNAVAILABLE_TEXT = Object.freeze({
   }),
   // Names the workflow: the warehouse handheld Home prints this sentence without a label.
   [SCAN_WORKFLOW.RETURN_INTAKE]: Object.freeze({
-    [UNAVAILABLE_REASON.NOT_YET_IN_EOS]:
-      "Taking a return in is not yet available in EOS. This is not a permission you are missing: no one can be granted it until it moves to EOS.",
+    [UNAVAILABLE_REASON.NO_CAPABILITY]: "You are not authorized to take returns in. An administrator can grant it.",
   }),
 });
 
@@ -407,8 +402,6 @@ export const UNAVAILABLE_TEXT = Object.freeze({
     "You have no assigned work orders to scan against right now.",
   [UNAVAILABLE_REASON.ASSIGNED_WORK_LOADING]:
     "Your assigned work orders are still loading.",
-  [UNAVAILABLE_REASON.NOT_YET_IN_EOS]:
-    "Not yet available in EOS. This is not a permission you are missing: no one can be granted it until it moves to EOS.",
   [UNAVAILABLE_REASON.ASSIGNED_WORK_UNREADABLE]:
     "Your assigned work orders could not be loaded, so work order scanning is not available right now. This is not the same as having no work.",
 });

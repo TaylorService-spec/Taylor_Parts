@@ -98,21 +98,21 @@ for (const [persona, held] of Object.entries(PERSONA_SCAN_CAPABILITIES)) {
 test("warehouseAssociate: the floor job, but receiving is refused as NO_CAPABILITY (not NOT_READY) and no return intake", () => {
   const r = workflowsFor(PERSONA_SCAN_CAPABILITIES.warehouseAssociate);
   assert.equal(reasonOf(r, SUPPLIER_RECEIVING), UNAVAILABLE_REASON.NO_CAPABILITY);
-  assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NOT_YET_IN_EOS);
+  assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NO_CAPABILITY);
 });
 
-test("DECISIONS #231: Return intake is offered to no persona and is refused as NOT YET IN EOS, never as a missing permission", () => {
+test("F7a (#242, superseding #231): Return intake is on EOS -- offered to a holder, refused to everyone else as a GRANTABLE permission", () => {
   for (const [persona, caps] of Object.entries(PERSONA_SCAN_CAPABILITIES)) {
     const r = workflowsFor(caps);
-    assert.ok(!r.available.some((w) => (w.workflow ?? w) === RETURN_INTAKE), `${persona}: Return intake must not be offered`);
-    assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NOT_YET_IN_EOS, persona);
+    assert.ok(!r.available.some((w) => (w.workflow ?? w) === RETURN_INTAKE), `${persona}: no manifest persona holds it yet`);
+    assert.equal(reasonOf(r, RETURN_INTAKE), UNAVAILABLE_REASON.NO_CAPABILITY, persona);
     const text = unavailableText(RETURN_INTAKE, reasonOf(r, RETURN_INTAKE));
-    assert.match(text, /not yet available in EOS/);
     assert.match(text, /return/i, "the sentence names the workflow -- the handheld Home prints it without a label");
-    assert.doesNotMatch(text, /not authorized|administrator can grant/i, persona);
+    assert.match(text, /administrator can grant/i, persona);
+    assert.doesNotMatch(text, /not yet available in EOS/);
   }
-  // Every OTHER workflow keeps its permission wording: the new reason is Return intake's alone.
-  assert.match(unavailableText(PUT_AWAY, UNAVAILABLE_REASON.NO_CAPABILITY), /not authorized/);
+  const holder = workflowsFor(["inventory.returns.intake"]);
+  assert.ok(holder.available.some((w) => (w.workflow ?? w) === RETURN_INTAKE), "a holder of inventory.returns.intake is offered it");
 });
 
 test("receivers (administrator, dispatcher, partsAssociate) see receiving as NOT_READY, never offered, while the transport is off", () => {

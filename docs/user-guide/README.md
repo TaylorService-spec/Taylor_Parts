@@ -26,8 +26,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 
 - [The Scan workspace](./inventory/scan-workspace.md) — including why stock balance rows say
   "Not switched on".
-- [View manufacturers (read-only)](./inventory/view-manufacturers.md) — what the page shows, what it
-  cannot do, and why some environments say it is not available.
+- [View and manage manufacturers](./inventory/view-manufacturers.md) — see the list, add a manufacturer,
+  correct a name, and make one Active or Inactive.
 
 ## Customers
 

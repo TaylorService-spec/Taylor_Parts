@@ -38,12 +38,16 @@ export type ManufacturerStatus = (typeof MANUFACTURER_STATUSES)[number];
 export const MANUFACTURER_SEARCH_TERM_MAX = 200;
 export const MANUFACTURER_SEARCH_DEFAULT_LIMIT = 50;
 export const MANUFACTURER_SEARCH_MAX_LIMIT = 200;
+/** The list is bounded too: a reference list this size is the whole catalog today, and a longer one says so. */
+export const MANUFACTURER_LIST_MAX = 1000;
 
 export interface ManufacturerRecord {
   readonly id: string;
   readonly name: string;
   readonly status: ManufacturerStatus;
   readonly provenance: string;
+  /** The writer's optimistic-concurrency token (postgresManufacturerWriter.ts), echoed back as expectedUpdatedAt. */
+  readonly updatedAt: string;
 }
 
 export type ManufacturerReadCategory = "FORBIDDEN" | "INVALID_INPUT";
@@ -75,7 +79,12 @@ const toRecord = (r: Record<string, unknown>): ManufacturerRecord => Object.free
   name: String(r.name),
   status: String(r.status) as ManufacturerStatus,
   provenance: String(r.provenance),
+  updatedAt: String(r.updated_at),
 });
+
+// updated_at rendered exactly as the writer renders and compares it (microsecond ISO-8601 UTC).
+const COLUMNS = `id, name, status, provenance,
+       to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at`;
 
 /**
  * Every manufacturer in the tenant, ACTIVE and INACTIVE alike, ordered by normalized name.
@@ -88,12 +97,23 @@ export async function listManufacturers(
   db: Pick<Pool | PoolClient, "query">,
   reader: ManufacturerReader,
 ): Promise<readonly ManufacturerRecord[]> {
+  return (await listManufacturersPage(db, reader)).manufacturers;
+}
+
+/** The list, bounded at MANUFACTURER_LIST_MAX; `truncated` says more rows exist rather than hiding them. */
+export async function listManufacturersPage(
+  db: Pick<Pool | PoolClient, "query">,
+  reader: ManufacturerReader,
+): Promise<{ readonly manufacturers: readonly ManufacturerRecord[]; readonly truncated: boolean }> {
   assertMayRead(reader);
   const { rows } = await db.query(
-    `SELECT id, name, status, provenance FROM eos_ops.manufacturers
-      WHERE tenant_id = $1 ORDER BY normalized_name, id`,
-    [reader.tenantId]);
-  return Object.freeze(rows.map(toRecord));
+    `SELECT ${COLUMNS} FROM eos_ops.manufacturers
+      WHERE tenant_id = $1 ORDER BY normalized_name, id LIMIT $2`,
+    [reader.tenantId, MANUFACTURER_LIST_MAX + 1]);
+  return Object.freeze({
+    manufacturers: Object.freeze(rows.slice(0, MANUFACTURER_LIST_MAX).map(toRecord)),
+    truncated: rows.length > MANUFACTURER_LIST_MAX,
+  });
 }
 
 /** One manufacturer, or null. Null is not an error: a dangling reference is a real possibility. */
@@ -106,7 +126,7 @@ export async function getManufacturer(
   const id = typeof manufacturerId === "string" ? manufacturerId.trim() : "";
   if (!id) refuse("MANUFACTURER_ID_REQUIRED", "INVALID_INPUT", "a manufacturerId is required");
   const { rows } = await db.query(
-    `SELECT id, name, status, provenance FROM eos_ops.manufacturers
+    `SELECT ${COLUMNS} FROM eos_ops.manufacturers
       WHERE tenant_id = $1 AND id = $2`,
     [reader.tenantId, id]);
   return rows.length === 1 ? toRecord(rows[0]) : null;
@@ -147,7 +167,7 @@ export async function searchManufacturers(
   // The caller's text is DATA. Backslash, % and _ are escaped so the term can only ever match itself.
   const pattern = `%${raw.toUpperCase().replace(/([\\%_])/g, "\\$1")}%`;
   const { rows } = await db.query(
-    `SELECT id, name, status, provenance FROM eos_ops.manufacturers
+    `SELECT ${COLUMNS} FROM eos_ops.manufacturers
       WHERE tenant_id = $1 AND normalized_name LIKE $2 ESCAPE '\\'
       ORDER BY normalized_name, id LIMIT $3`,
     [reader.tenantId, pattern, limit]);

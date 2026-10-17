@@ -53,10 +53,11 @@ describe("all four wear the collection header", () => {
 
 // ═════════════════════════════════════════ Manufacturers — the Owner's specific ruling
 
-describe("Manufacturers reads the whole collection, so it claims no boundary", () => {
+describe("Manufacturers reads one bounded list with no cursor, so it claims no page boundary", () => {
   // OWNER RULING, tranche 1: "Render no pagination control/footer unless the governed read supports
-  // it." getManufacturerCatalog takes no limit and no cursor and returns no `truncated` flag — there
-  // is no page boundary to report, so any control implying one would be invented by the interface.
+  // it." Firebase exit F5: listManufacturers (EOS Catalog API) is one call bounded at 1,000 rows with a
+  // `truncated` flag and NO cursor -- there is no page to load, so any pager would be invented. A
+  // truncated list is disclosed in the header instead, and prints no count.
 
   it("the presentation reports hasMore FALSE, always", () => {
     for (const phase of ["loading", "denied", "error"]) {
@@ -85,18 +86,17 @@ describe("Manufacturers reads the whole collection, so it claims no boundary", (
     }
   });
 
-  it("the header count is exact BECAUSE the read is complete, and null when it is not", () => {
-    // The one place an unbounded read is a licence rather than a liability: a count over every row
-    // IS the collection count. It is still null on any unsettled read — "0 manufacturers" over a
+  it("the header count is exact only when the list is complete: null when truncated or unsettled", () => {
+    // An untruncated list IS the collection count. A truncated one is not, and "0 manufacturers" over a
     // denial states that the business has none when the truth is that this reader may not see them.
-    expect(MANUFACTURERS).toMatch(/state\.phase === "ready" \? \(state\.manufacturers\?\.length \?\? null\) : null/);
+    expect(MANUFACTURERS).toMatch(/state\.phase === "ready" && !state\.truncated \? \(state\.manufacturers\?\.length \?\? null\) : null/);
   });
 
   it("no row navigation, because there is no Manufacturer record route", () => {
     expect(manufacturerIndexList.rowNavigationTo ?? null).toBeNull();
     expect(code(MANUFACTURERS)).not.toMatch(/onRowClick/);
-    // No row actions either: the Firebase write affordances were removed (Firebase exit PR-B) and the page is read-only.
-    expect(code(MANUFACTURERS)).not.toMatch(/rowActions/);
+    // The rows carry governed row ACTIONS instead (Rename, Status -- restored on EOS by Firebase exit F5), never a link.
+    expect(code(MANUFACTURERS)).toMatch(/rowActions=\{rowActions\}/);
   });
 });
 

@@ -358,8 +358,9 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 122 -> 128: the six rental capabilities (#207, 1764520000000).
   // 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role.
   // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (Financial Policy foundation, #232, 1764560000000), granted to NO Role.
-  // 139 -> 141: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
-  assert.equal(VOCABULARY.size, 141);
+  // 139 -> 140: inventory.returns.intake (Returns intake on EOS Core, #242, 1764580000000), granted only to the memberless inventoryReturnsIntakeClerk.
+  // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
+  assert.equal(VOCABULARY.size, 142);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

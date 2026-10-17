@@ -3723,6 +3723,8 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
+          "functions/src/eosOps/returnIntake.ts",
           "functions/src/inventoryReturns/returnIntakeCommand.ts"
         ],
         "clientReferences": [
@@ -3732,7 +3734,7 @@
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },

@@ -277,9 +277,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 96 -> 97: 1764550000000 -- EOS native login: credential, session and MFA tables; no capability, no grant, no Sample Company data.
 // 97 -> 98: 1764560000000 -- Financial Policy foundation (DECISIONS #232): eos_finance.financial_policy_versions + finance.policy.read / .prepare / .approve / .activate on financialPolicy; granted to NO Role. The Sample Company vocabulary gains the four keys; no persona asserts them.
 // 98 -> 99: 1764570000000 -- Financial Policy withdraw / cancel (DECISIONS #232 Phase 3): schema only; no capability, no grant, no Sample Company data.
-// 99 -> 100: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants). No Sample Company data.
+// 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant). No Sample Company data.
+// 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants). No Sample Company data.
 const PINNED_LAST_MIGRATION = "1764590000000_crm-activity";
-const PINNED_MIGRATION_COUNT = 100;
+const PINNED_MIGRATION_COUNT = 101;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

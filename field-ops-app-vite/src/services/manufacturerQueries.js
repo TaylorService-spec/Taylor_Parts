@@ -1,5 +1,6 @@
-// Manufacturer -- read-only client service for the Manufacturer admin workspace
-// (modules/inventory/Manufacturers.jsx).
+// Manufacturer -- the list read for the Manufacturer admin workspace (modules/inventory/Manufacturers.jsx).
+// Firebase exit F5: it now reads the PostgreSQL list through the Catalog API (services/manufacturerCatalogClient.js);
+// the history below is the Firebase-era path it replaced.
 //
 // Part 11 reconciliation (2026-08-15): this used to read the `manufacturers` collection
 // DIRECTLY over the client SDK, which is Rules-closed (`allow read, write: if false`) --
@@ -12,7 +13,7 @@
 // is sufficient here too -- no second capability, no broadened Rules, no parallel read path.
 // Firestore Rules on `manufacturers` remain deny-all; this file makes NO client-direct
 // Firestore call at all, read or write.
-import { fetchManufacturerCatalog } from "./manufacturerReadCallableClient.js";
+import { fetchManufacturerCatalog } from "./manufacturerCatalogClient.js";
 
 /** Resolves { ok:true, manufacturers, invalidCount } or { ok:false, code } where code is
  * "permission-denied" (ungranted/deactivated in this environment) or "unavailable"
@@ -27,5 +28,5 @@ export async function fetchManufacturerList() {
     return { ok: false, code: "unavailable" };
   }
   const invalidCount = Number.isInteger(result.excludedCount) ? result.excludedCount : 0;
-  return { ok: true, manufacturers: result.manufacturers, invalidCount };
+  return { ok: true, manufacturers: result.manufacturers, invalidCount, truncated: result.truncated === true };
 }

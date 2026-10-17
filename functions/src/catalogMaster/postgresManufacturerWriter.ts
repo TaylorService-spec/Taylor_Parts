@@ -45,8 +45,9 @@
 //   * NO DELETE. A manufacturer is deactivated, never removed -- equipment that names one must not lose its
 //     reference. There is no delete function here and no DELETE capability anywhere in the catalog.
 //
-// NOT WIRED. Nothing composes this into the Render API; CATALOG_WRITER_AUTHORITY.postgres is INACTIVE and
-// activating these writers is a separate authorized step that changes that constant in the same commit.
+// WIRED (Firebase exit F5, 2026-10-17): the Render Catalog API (catalogHttp.ts) dispatches createManufacturer /
+// updateManufacturer / changeManufacturerStatus here, under CATALOG_WRITER_AUTHORITY.postgres ACTIVE and the DQ-034
+// mutation hold, exactly like the Part writers. The Firestore callables stay FROZEN (catalogWriterState.ts).
 import type { PoolClient } from "pg";
 import {
   CATALOG_CAPABILITIES,

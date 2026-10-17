@@ -487,6 +487,9 @@ test("every persona in the governed manifest gets a destination set earned entir
     surfaces: ["inventory.catalog", "receiving.checkIn"],
     destinations: [
       "dashboard/operationsDashboard",
+      // Manufacturers R-1 Option A (Firebase exit F5): the door is `inventory.catalog`, the surface the list's
+      // inventory.catalog.read earns. The LIST also needs inventory.manufacturer.read (DECISIONS #241).
+      "inventory/manufacturers",
       "inventory/parts",
       "inventory/receiving",
       "purchasing/receipts",
@@ -505,6 +508,7 @@ test("every persona in the governed manifest gets a destination set earned entir
     destinations: [
       "analysis/analysis",
       "dashboard/operationsDashboard",
+      "inventory/manufacturers",
       "inventory/parts",
       "inventory/reorderQueue",
       "purchasing/purchaseOrders",

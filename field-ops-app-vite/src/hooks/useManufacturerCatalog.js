@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchManufacturerCatalog } from "../services/manufacturerReadCallableClient.js";
+import { fetchManufacturerCatalog } from "../services/manufacturerCatalogClient.js";
 
 // One-shot read of the governed Manufacturer catalog. Own loading/error state (mirrors
 // hooks/useSalesOrder.js's shape) so a slow/failed/denied read never blocks or misrepresents

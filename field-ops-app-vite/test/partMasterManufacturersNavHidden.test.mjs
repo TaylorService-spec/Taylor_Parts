@@ -20,8 +20,9 @@ import { ROLE_NAV_ACCESS } from "../src/domain/constants.js";
 // workflow Wave 6 was protecting is now the workflow the screen does well, and continuing to hide the
 // only door to it would be keeping the workflow while hiding the way in.
 //
-// MANUFACTURERS' REASON STILL HOLDS: the `manufacturers` collection read is Rules-closed to every
-// persona, so nobody can use the screen regardless of where it sits in the rail.
+// MANUFACTURERS STAYS OFF THE RAIL, for a different reason now: since Firebase exit F5 its list reads EOS
+// (eos_ops.manufacturers), and R-1 Option A gave it the `inventory.catalog` surface, but it is reached from
+// Catalog rather than added to the rail.
 //
 // Unchanged either way: routes, components, commands, Rules and audit. Both stay route-eligible.
 // ---------------------------------------------------------------------------------------------
@@ -34,14 +35,14 @@ test("Part Master is no longer navHidden -- it is the structured Part list", () 
   assert.equal(partMaster.navHidden, undefined);
 });
 
-test("Manufacturers stays navHidden while its read is Rules-closed", () => {
+test("Manufacturers stays navHidden (reached from Catalog, not the rail)", () => {
   assert.equal(manufacturers.navHidden, true);
 });
 
 // WAVE 16 / LANE BQ SPLIT THESE TWO AND LANE BR PUT THEM BACK TOGETHER, under the legacy source.
 // The criterion Lane BQ used is real and is recorded below -- `inventory/partMaster` is MAPPED to
-// the governed surface `inventory.catalogAdmin` and `inventory/manufacturers` has none (its read is
-// Rules-closed for every persona; NAV_SURFACE_GAPS says so) -- but the conclusion it drew, that the
+// the governed surface `inventory.catalogAdmin` and `inventory/manufacturers` had none at the time (R-1
+// Option A has since mapped it to `inventory.catalog`) -- but the conclusion it drew, that the
 // mapped one loses its legacy row everywhere, closed the door in the four environments that have no
 // EOS source to answer it. Both keep their legacy answer; only Part Master ALSO has a governed one.
 //
@@ -52,12 +53,11 @@ test("both remain route-eligible (isNavItemVisible alone, unaffected) for admin/
     assert.equal(isNavItemVisible(partMaster, role, allowed), true, `partMaster route should stay reachable for ${role}`);
     assert.equal(isNavItemVisible(manufacturers, role, allowed), true, `manufacturers route should stay reachable for ${role}`);
   }
-  // The cutover asymmetry, recorded where it is relevant: one of these two has somewhere to go when
-  // its environment flips the flag, and the other does not.
+  // Both now have somewhere to go when their environment flips the flag: Part Master to Catalog Admin, and
+  // Manufacturers (R-1 Option A) to the `inventory.catalog` surface its read's capability earns.
   assert.deepEqual(partMaster.surfaceAccess, ["inventory.catalogAdmin"]);
   assert.equal(partMaster.legacyPlaceholder, true);
-  assert.equal(manufacturers.surfaceAccess, undefined,
-    "Manufacturers earned a surface -- then it joins the cutover partition and its ceiling");
+  assert.deepEqual(manufacturers.surfaceAccess, ["inventory.catalog"]);
   assert.equal(manufacturers.legacyPlaceholder, true);
 });
 

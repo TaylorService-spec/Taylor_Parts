@@ -224,6 +224,8 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1764560000000_financial-policy-profiles.sql",
     // Financial Policy withdraw / cancel (#232 Phase 3): WITHDRAWN / CANCELLED statuses and stamps; no capability, no grant.
     "1764570000000_financial-policy-withdraw-cancel.sql",
+    // Returns intake (F7a, #242): eos_ops.inventory_returns + inventory.returns.intake; 1 capability, 1 grant (inventoryReturnsIntakeClerk).
+    "1764580000000_inventory-returns-intake.sql",
     // CRM activity (F7b, #243): eos_crm.activities + crm.activity.read / .create; 2 capabilities, 6 grants (admin, owner, crmActivityContributor).
     "1764590000000_crm-activity.sql"],
     "an activation must be appended, never back-dated into history");
@@ -456,9 +458,11 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // #207 Rental: -6 capabilities and -30 grants when peeled.
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
-    // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first.
-    assert.deepEqual(await counts(), { caps: 141, grants: 487, mine: 26 });
+    // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    assert.deepEqual(await counts(), { caps: 142, grants: 488, mine: 26 });
     runMigrate(url, "down", 1); // CRM activity (-2 capabilities, -6 grants; its down refuses while an activity or a decision exists)
+    assert.deepEqual(await counts(), { caps: 140, grants: 482, mine: 26 });
+    runMigrate(url, "down", 1); // Returns intake (-1 capability, -1 grant; its down refuses while a return or a decision exists)
     assert.deepEqual(await counts(), { caps: 139, grants: 481, mine: 26 });
     runMigrate(url, "down", 1); // Financial Policy withdraw / cancel (1764570000000): schema only, nothing moves; its down refuses only while a WITHDRAWN / CANCELLED version exists
     assert.deepEqual(await counts(), { caps: 139, grants: 481, mine: 26 });
@@ -586,6 +590,7 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     let url;
     ({ pool, url } = await standUp(name));
     runMigrate(url, "down", 1); // peel the CRM activity (1764590000000) first -- 2 capabilities, 6 grants
+    runMigrate(url, "down", 1); // then the returns intake (1764580000000) -- 1 capability, 1 grant
     runMigrate(url, "down", 1); // then the Financial Policy withdraw / cancel (1764570000000) -- schema only
     runMigrate(url, "down", 1); // then the Financial Policy foundation (1764560000000) -- 4 capabilities, no grant
     runMigrate(url, "down", 1); // then EOS native login (1764550000000) -- schema only

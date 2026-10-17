@@ -229,6 +229,22 @@ test("CRM activity: Administration projects it under crmActivity; the contributo
     assert.equal(cells.rows[0].n, 0, "no CRED cell is derived onto it");
   });
 
+  await t.test("the catalog reconcile matches #243 exactly: it applies nothing, and the holders stay admin / owner / crmActivityContributor", async () => {
+    // Unlike returns intake (#242, where admin's whole-catalog declaration is fenced), admin IS a #243 holder: the Firebase
+    // catalog's current holders are mirrored. So the reconcile finds every catalog-declared pair already held and adds none.
+    const { reconcileInventoryCapabilityGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
+    const pairs = async () => (await q(`SELECT r.key || ':' || c.key AS pair FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+      JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.tenant_id = $1 AND c.object_key = 'crmActivity' ORDER BY 1`, [A])).rows.map((r) => r.pair);
+    const SIX = ["admin:crm.activity.create", "admin:crm.activity.read", "crmActivityContributor:crm.activity.create",
+      "crmActivityContributor:crm.activity.read", "owner:crm.activity.create", "owner:crm.activity.read"];
+    assert.deepEqual(await pairs(), SIX);
+    const report = await reconcileInventoryCapabilityGrants(world.pool, {
+      tenantId: A, apply: true, actor: "crm-activity-proof", capabilityKeys: ["crm.activity.read", "crm.activity.create"],
+    });
+    assert.deepEqual(report.rows.filter((r) => r.status === "APPLIED").map((r) => `${r.roleKey}:${r.capabilityKey}`), [], "the reconcile applied a CRM activity grant");
+    assert.deepEqual(await pairs(), SIX, "the post-reconcile holders are exactly #243's six pairs");
+  });
+
   await t.test("grants are exactly the migration's three Roles; the contributor has no members and is assignable through preview -> assignRole", async () => {
     const holders = await q(`SELECT r.key role, c.key cap FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
                              JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.tenant_id = $1 AND c.object_key = 'crmActivity' ORDER BY 1, 2`, [A]);
