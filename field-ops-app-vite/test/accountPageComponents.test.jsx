@@ -56,14 +56,10 @@ vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
 // The X-ACCOUNT-WIRE-CALLABLE-LISTS re-evaluation below renders the REAL Opportunities /
 // Sales Orders RELATED_LIST sections (straight off accountRecordPage — not test doubles),
 // through the REAL default RELATED_LIST binding (DefaultRelatedList, MetadataRecordPage.jsx).
-// That binding's only Firestore/callable touch points are firestoreListSource.js's and
-// callableListSource.js's own fetchPage — mocked at that boundary, the same boundary
+// That binding's only source touch point is callableListSource.js's own fetchPage (the Firestore
+// list source was deleted by the Firebase exit, F3) — mocked at that boundary, the same boundary
 // test/metadataRecordPage.test.jsx already mocks at, so these tests exercise the routing
 // and rendering decisions, not either translator's internals.
-const fetchPageMock = vi.fn();
-vi.mock("../src/metadata/firestoreListSource.js", () => ({
-  fetchPage: (...args) => fetchPageMock(...args),
-}));
 const fetchCallablePageMock = vi.fn();
 vi.mock("../src/metadata/callableListSource.js", () => ({
   fetchPage: (...args) => fetchCallablePageMock(...args),
@@ -319,7 +315,6 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
   };
 
   beforeEach(() => {
-    fetchPageMock.mockReset();
     fetchCallablePageMock.mockReset();
   });
 
@@ -344,7 +339,6 @@ describe("opportunities / salesOrders RELATED_LIST — WIRED (A-ACCOUNT-WIRE-CAL
     expect(await screen.findByText("OPP-2026-000123")).toBeTruthy();
     expect(screen.queryByText("opp-doc-1")).toBeNull();
     expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
-    expect(fetchPageMock).not.toHaveBeenCalled();
     const [descriptor] = fetchCallablePageMock.mock.calls[0];
     // Scoped to THIS account (account.js's account.opportunities relationship, viaField
     // accountId) — never every Opportunity in the system.

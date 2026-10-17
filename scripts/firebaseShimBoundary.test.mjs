@@ -316,7 +316,9 @@ test("all 34 importers of the frontend handle shim's db/functions also import th
   // Firebase exit PR-B (2026-10-15): hooks/useListViewChrome.js dropped its Firestore count fallback, and
   // services/completionService.js and services/manufacturerCommandClient.js were DELETED -- each left the shim AND the
   // fenced dependency together (22 -> 19).
-  assert.equal(live.observed.alreadyFencedConsumers, 19,
+  // Firebase exit F3 (2026-10-17): metadata/firestoreListSource.js was DELETED, leaving the shim AND the fenced dependency
+  // together (19 -> 18).
+  assert.equal(live.observed.alreadyFencedConsumers, 18,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

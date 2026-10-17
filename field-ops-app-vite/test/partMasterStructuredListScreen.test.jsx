@@ -36,7 +36,6 @@ vi.mock("firebase/firestore", () => {
   return { collection: trip("collection"), getCountFromServer: trip("getCountFromServer"), query: trip("query"), where: trip("where"), limit: trip("limit") };
 });
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
-vi.mock("../src/metadata/firestoreListSource.js", () => { h.firebaseLoaded.push("firestoreListSource"); return {}; });
 
 // THE RENDER CATALOG TRANSPORT, and nothing else. `call(operation, input)` is the exact seam every
 // Part read takes; recording it is how these tests see the governed query the screen asked.
