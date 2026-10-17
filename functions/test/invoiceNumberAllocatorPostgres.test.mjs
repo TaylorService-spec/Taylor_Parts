@@ -13,6 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -32,7 +33,7 @@ test("invoice number allocator over PostgreSQL", { skip: SKIP, concurrency: 1 },
   let pool;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(async () => {
-    await pool?.end();
+    await endPoolAndDrain(pool);
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
