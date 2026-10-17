@@ -51,6 +51,8 @@ the hook in the same change. It is a one-line swap with identical return shape.
 
 ### Parts / Purchasing: legacy reorder actors
 
+**UPDATE 2026-10-17 (Firebase exit F4, DECISIONS #247): RETIRED** for `PartsList.jsx`, `PartDetail.jsx` (reorder actors) and `PurchaseOrders.jsx`. The EOS Reorder row names its assignee by Employee id (`resolveEmployeeDisplayNames`) and the purchase order's recorder by Principal id (`resolvePrincipalDisplayNames`); the other legacy actor columns are not on the EOS row. `PartDetail.jsx` keeps the Firestore directory only for the legacy Inventory Action History, which is not rendered where EOS is the session source. The open gate question below is unchanged and is now DECISIONS #247's named item. What follows is the historical table.
+
 | File | Use | Ids it resolves | Replacement |
 | --- | --- | --- | --- |
 | `src/modules/inventory/PartsList.jsx:388` | `byUserId`: assignee of the "Assigned Work" oversight table (`resolveAssigneeDisplay`) | Firebase uids on legacy `reorder_requests` | `resolvePrincipalDisplayNames({ actorSubjects })` for legacy uids; `listReorderAssignmentTargets` / `listEmployees` for EOS assignee Employee ids |

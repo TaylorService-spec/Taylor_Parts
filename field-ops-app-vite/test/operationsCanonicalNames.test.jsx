@@ -25,11 +25,8 @@ vi.mock("../src/services/transferCommandClient.js", () => ({ listTransferOrderDo
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" } }) }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
-vi.mock("../src/services/operationsQueries", () => ({
-  fetchInventoryTransactions: async () => [], fetchWarehouses: async () => [],
-  fetchTransferOrders: async () => [], fetchTransferOrderDocs: async () => [],
-  fetchProcurementPurchaseOrders: async () => [],
-}));
+// Firebase exit F2-remainder: the Firestore readers are gone from the dashboard; its Procurement rows are an EOS read.
+vi.mock("../src/services/operationsReorderReads", () => ({ fetchProcurementPurchaseOrders: async () => [] }));
 // Firebase exit F2: the Procurement panel's supplier list and catalog are EOS reads.
 vi.mock("../src/services/partsOperationsReads.js", () => ({ fetchSupplierList: async () => [], fetchSupplierCatalogForParts: async () => [] }));
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({

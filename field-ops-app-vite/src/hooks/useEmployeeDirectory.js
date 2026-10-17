@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { onSnapshot } from "firebase/firestore";
-import { buildEmployeeDirectoryQuery } from "../domain/employees";
+import { collection, onSnapshot, query } from "firebase/firestore";
+import { db } from "../firebase/firebase";
+import { EMPLOYEES_COLLECTION } from "../domain/constants";
 // F-UID-1: resolveActorDisplayName is now a pure module in domain/ so it
 // can be unit-tested; re-exported here to keep every existing
 // `import { ..., resolveActorDisplayName } from ".../useEmployeeDirectory"`
@@ -10,9 +11,18 @@ export { resolveActorDisplayName, UNKNOWN_ACTOR_DISPLAY_NAME } from "../domain/a
 // PR #105 follow-up -- resolves an already-persisted actor uid
 // (Reorder Request's assignedToUserId/orderedBy/receivedBy/
 // purchasingStartedBy) to a display name for read-only display, same
-// admin/dispatcher-only directory read useAssignableEmployees.js
-// already relies on (see domain/employees.js's
-// buildEmployeeDirectoryQuery() for why this is unfiltered).
+// admin/dispatcher-only directory read. Deliberately UNFILTERED -- no
+// employmentStatus/operationalRoles/userId clause -- because a historical actor
+// may since have gone INACTIVE, lost their operationalRoles, or (an
+// admin/dispatcher acting in their security role, not an operational one) never
+// have had a linked Employee at all. firestore.rules' employees/{employeeId}
+// grants admin/dispatcher an unconditional, unfiltered directory read.
+//
+// FIREBASE EXIT F4 (DECISIONS #247): this hook is now the FIREBASE-ONLY directory. Its remaining consumers are the three
+// Financials screens (their finance facts are still Firebase until F7c-2, and the Employee ids they name belong to those facts).
+// Every other screen names people through hooks/useGovernedEmployeeDirectory.js (EOS). domain/employees.js, whose only
+// remaining export was this query, is folded in here and deleted.
+//
 // onSnapshot()-based, not a one-shot read -- this project's
 // established standard at the time (the generic Firestore collection hook it
 // cited was deleted by the Firebase exit, PR-A).
@@ -40,7 +50,7 @@ export function useEmployeeDirectory({ enabled = true } = {}) {
     }
 
     setState((prev) => ({ ...prev, loading: true }));
-    const q = buildEmployeeDirectoryQuery();
+    const q = query(collection(db, EMPLOYEES_COLLECTION));
     const unsubscribe = onSnapshot(
       q,
       (snap) => {

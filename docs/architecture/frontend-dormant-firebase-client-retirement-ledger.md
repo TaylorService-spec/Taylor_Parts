@@ -157,3 +157,29 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 - **Decision (DECISIONS #244):** the session's identity, capabilities and technician link come from EOS where `config/environments.json` declares an `eosApi`, and from Firebase everywhere else, chosen at build time with no fallback. Production behaviour is unchanged.
 - **Still in the baseline, deliberately:** `auth/employeeSession.js`, `access/useReportCapabilities.js` and `hooks/useCurrentTechnician.js` are the Firebase path of the environments without an EOS API. They leave when those environments do.
 - **The server callable `resolveEffectiveAccessCallable` is not removed** (production uses it; removal needs a GATED equivalence record).
+
+## F2-remainder: the Operations reads and the Part movement history leave Firestore where EOS is the session source (2026-10-17, exit baseline 240 → 239)
+
+| Read | Before | Now |
+| --- | --- | --- |
+| Firestore `transfer_orders` (`fetchTransferOrderDocs`, `fetchTransferOrderDocsPage`, `fetchTransferOrders`) | Exported from `operationsQueries.ts` | **Deleted.** Nothing called them: Inventory > Transfers and the Operations Transfer Orders table read EOS `listTransferOrders` (`hooks/useTransferOrders.js`, `services/transferCommandClient.js`). |
+| The generic bounded page reader (`listCollectionPage`, `fetchWarehousesPage`, `fetchSuppliersPage`) and `fetchPurchaseOrders` | Exported from `operationsQueries.ts` | **Deleted**, same proof. Warehouses are EOS `listInventoryWarehouses`; suppliers are EOS `listSuppliers` (F2); the Procurement rows are the Reorder purchase orders. |
+| The Reorder / Procurement reads (`fetchProcurementPurchaseOrders`, `fetchReorderRequests`, `fetchReorderPurchaseOrders`) | `operationsQueries.ts`, which imports the Firestore SDK | `services/operationsReorderReads.ts`, no Firebase import. The Operations dashboard no longer pulls Firestore in through that import. |
+| Part movement history on the Warehouse Manager home ("Part Activity") | Firestore `inventory_actions` (`useInventoryActionsForPart`, `onSnapshot`) | Where EOS is the session source: `hooks/usePartMovementHistory.js`, `readInventoryMovements` for that Part (`inventory.transaction.read`, the caller's WAREHOUSE scope), bounded and principal-isolated. |
+| "Inventory Action History" disclosure on Part detail | Firestore `inventory_actions` | Where EOS is the session source it is **not rendered**: the part's history is the Activity band above it (the EOS ledger). |
+
+- **Still in the baseline, deliberately (production, which has no EOS API, still serves these from Firebase):** `services/operationsQueries.ts` (now only `fetchWarehouses` for the Warehouse Racking planner, F6, and `fetchInventoryTransactions` for the parts shadow-parity diagnostic) and `hooks/useInventoryActions.js`. The racking planner is unreachable where EOS is the session source (its bin capabilities have no EOS key and the screen is a declared navigation gap); the diagnostic's route is not mounted there (F1 G8).
+- **The legacy notes are not copied and not shown under EOS.** The Owner ruling of 2026-08-30 said "keep existing history readable". Keeping the notes readable without Firebase needs a PostgreSQL archive, a data copy, which is Owner-held. They were never a record of stock movement (the entity register says they are never joined to the ledger). DECISIONS #246 records the decision and a recommendation.
+- **The Firestore `inventory_actions` collection and its Rules are untouched.**
+
+## F4: person names on Parts and Purchasing records come from EOS (2026-10-17, exit baseline 240 → 239 with F2-remainder)
+
+| Screen | Id it names | Before | Now |
+| --- | --- | --- | --- |
+| Parts > Team Work (`PartsList.jsx`) | `assignedEmployeeId` (an EOS Employee id) | the whole Firestore employee directory, keyed by Firebase uid | `resolveEmployeeDisplayNames` for the ids on the rows |
+| Part detail Reorder cards (`PartDetail.jsx`) | `assignedEmployeeId` (the only person the EOS Reorder row names) | same | same |
+| Purchasing > Purchase Orders "Ordered by" (`PurchaseOrders.jsx`) | the Principal in `purchase_orders.created_by` | same | `resolvePrincipalDisplayNames` (no Employee-name fallback, Owner ruling B) |
+
+- `domain/employees.js` (its only remaining export was the directory query) is folded into `hooks/useEmployeeDirectory.js` and deleted (baseline −1).
+- **Left on the Firebase path, and named:** `modules/financials/FinancialsInvoiceDetail.jsx`, `FinancialsAccountsReceivable.jsx` and `FinancialsEmployeePerformance.jsx` still use `useEmployeeDirectory`. Their finance facts are Firebase until F7c-2, they name Employee ids carried on those facts, and the Financials read files belong to the F7c lane. They move to `useGovernedEmployeeDirectory` in the same change as their reads (a one-line swap, same return shape).
+- **Open decision (recorded in DECISIONS #247):** `ACTOR_DISPLAY_READ_CAPABILITIES` admits only holders of a customer, opportunity, sales agreement, sales order or work order read. A Parts or Purchasing reader without one of those gets "Unknown user" / "Unknown assignee". Widening the server gate is a server-side widening and was not done.

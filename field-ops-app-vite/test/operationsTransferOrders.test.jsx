@@ -17,13 +17,8 @@ const h = vi.hoisted(() => ({
   warehouses: [],
   transferResult: () => Promise.resolve([]),
 }));
-vi.mock("../src/services/operationsQueries", () => ({
-  fetchInventoryTransactions: async () => [],
-  fetchWarehouses: async () => h.warehouses,
-  fetchTransferOrderDocs: () => h.transferResult(),
-  fetchTransferOrders: async () => [],
-  fetchProcurementPurchaseOrders: async () => [],
-}));
+// Firebase exit F2-remainder: the Firestore readers are gone from the dashboard; its Procurement rows are an EOS read.
+vi.mock("../src/services/operationsReorderReads", () => ({ fetchProcurementPurchaseOrders: async () => [] }));
 // Firebase exit F2: the Procurement panel's supplier list and catalog are EOS reads.
 vi.mock("../src/services/partsOperationsReads.js", () => ({ fetchSupplierList: async () => [], fetchSupplierCatalogForParts: async () => [] }));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));

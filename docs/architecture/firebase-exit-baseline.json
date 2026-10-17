@@ -12,7 +12,6 @@
       "firestore_client": [
         "field-ops-app-vite/src/access/useReportCapabilities.js",
         "field-ops-app-vite/src/auth/employeeSession.js",
-        "field-ops-app-vite/src/domain/employees.js",
         "field-ops-app-vite/src/firebase/firebase.js",
         "field-ops-app-vite/src/hooks/useCurrentTechnician.js",
         "field-ops-app-vite/src/hooks/useEmployeeDirectory.js",

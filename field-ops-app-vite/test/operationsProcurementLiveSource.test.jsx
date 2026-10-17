@@ -7,7 +7,7 @@
 // unconditionally, so the panel was permanently empty in production even with
 // live reorder purchase orders present -- exactly the bug this test pins.
 //
-// Part 1 (unit): services/operationsQueries.ts's fetchProcurementPurchaseOrders()
+// Part 1 (unit): services/operationsReorderReads.ts's fetchProcurementPurchaseOrders()
 // reads the governed Reorder queue + Reorder Purchase Orders -- never Firestore, and
 // never `purchase_orders` -- and returns a non-empty row when a matching PO exists.
 //
@@ -105,9 +105,9 @@ afterEach(() => {
   reorderCalls.length = 0;
 });
 
-describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)", () => {
+describe("operationsReorderReads.fetchProcurementPurchaseOrders (site-work r4 item A)", () => {
   it("reads Reorders AND their purchase orders from the governed authority -- never Firestore", async () => {
-    const { fetchProcurementPurchaseOrders } = await import("../src/services/operationsQueries");
+    const { fetchProcurementPurchaseOrders } = await import("../src/services/operationsReorderReads");
     const rows = await fetchProcurementPurchaseOrders();
 
     // Neither side touches Firestore at all.

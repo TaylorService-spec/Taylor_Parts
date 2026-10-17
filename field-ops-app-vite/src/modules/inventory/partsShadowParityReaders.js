@@ -12,7 +12,8 @@
 // absent/"unknown" the pure core resolves BLOCKED_INCOMPLETE_INPUT (never a false PASS).
 import { searchParts } from "../../services/partMasterQueries";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { fetchInventoryTransactions, fetchReorderRequests, fetchReorderPurchaseOrders } from "../../services/operationsQueries";
+import { fetchInventoryTransactions } from "../../services/operationsQueries";
+import { fetchReorderRequests, fetchReorderPurchaseOrders } from "../../services/operationsReorderReads";
 import { readOnce } from "../../domain/partsShadowParityReadOnce";
 import { createRunIdProvider } from "../../domain/partsShadowParityRunId";
 

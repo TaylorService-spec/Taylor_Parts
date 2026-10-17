@@ -23,6 +23,8 @@ import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
 import { useReorderPurchaseOrderVoid } from "../../hooks/useReorderPurchaseOrderVoids";
 import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import {
   reviewReorderRequest,
   assignReorderRequest,
@@ -1390,7 +1392,14 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
     // call, is what actually re-renders the request.
     refresh: refreshReorderRequest,
   } = useReorderRequestForPart(partId, requestId);
-  const { byUserId: employeeDirectory } = useEmployeeDirectory();
+  // Firebase exit F4 (DECISIONS #247): the Reorder Request is an EOS row, and the only person it names is its assignee, by
+  // EMPLOYEE id (assignedEmployeeId). That id is named by the governed resolveEmployeeDisplayNames, never by the Firestore
+  // employee directory (which is keyed by Firebase uid and could not name it). The actor columns the legacy request carried
+  // (orderedBy, receivedBy, cancelledBy, voidedBy, purchasingStartedBy, lastPurchasingUpdateBy) are not on the EOS row, so
+  // nothing else needs naming. A refusal leaves the lookup empty and the assignee renders as "Unknown user".
+  const { byEmployeeId: employeeDirectory } = useGovernedEmployeeDirectory({
+    employeeIds: reorderRequest ? [reorderRequest.assignedEmployeeId] : [],
+  });
 
   // INV-CONVERGENCE-E C2 -- the ledger half of the paired re-point. Same equality
   // test, same sort, same 20-row cap as pre-C2; the only change is that the key is
@@ -2066,12 +2075,18 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             where it is scoped, without spending 260px of a 1,050px budget on a panel that is
             consulted rather than scanned. Same treatment, same reasoning, as the workspace rail's
             queues. */}
-        <section className="ns-band ns-band--reference">
-          <details className="ns-parts-rail__item">
-            <summary>Inventory Action History</summary>
-            <InventoryActionsPanel partId={resolvedPartId} />
-          </details>
-        </section>
+        {/* FIREBASE EXIT F2-remainder (DECISIONS #246): the legacy notes are the Firestore `inventory_actions` collection --
+            frozen since 2026-08-30 and readable only through Firebase. Where EOS is the session source this disclosure is not
+            rendered: the part's movement history is the Activity band above, the EOS inventory ledger, and the frozen notes are
+            not presented as activity. Keeping them readable without Firebase needs an archive (a data copy), which is held. */}
+        {!EOS_SESSION_SOURCE && (
+          <section className="ns-band ns-band--reference">
+            <details className="ns-parts-rail__item">
+              <summary>Inventory Action History</summary>
+              <InventoryActionsPanel partId={resolvedPartId} />
+            </details>
+          </section>
+        )}
       </div>
     </div>
   );
