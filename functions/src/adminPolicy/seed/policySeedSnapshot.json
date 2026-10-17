@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 49,
+    "objects": 50,
     "objectsWithFields": 28,
     "fields": 400
   },
@@ -6793,6 +6793,22 @@
         "E": [
           "finance.policy.prepare"
         ],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "inventoryReturn",
+      "label": "Inventory Return",
+      "labelPlural": "Inventory Returns",
+      "description": "A returned item taken in (DECISIONS #242, Firebase exit F7a): the operating company receiving it, an optional receiving warehouse, its source, part, quantity or serials, observed condition and reason, recorded AWAITING_DISPOSITION. Intake only -- no ledger movement, never restored to sellable stock (#118). Its one capability, inventory.returns.intake, is a business action, so no CRED verb is derived from it.",
+      "domain": "Inventory",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
         "D": []
       },
       "fields": []
