@@ -14,13 +14,10 @@ import SupplierAdministration from "./SupplierAdministration.jsx";
 // domain/suppliersView.js's buildSuppliersView.
 //
 // SAME PATTERN AS WAREHOUSES, NOT MANUFACTURERS. supplierEntity declares
-// `readVia: "CLIENT_DIRECT"` (a plain Rules-gated Firestore collection, same as
-// warehouse — unlike manufacturer's unbounded, unregistered CALLABLE read), so
-// useMetadataList's own dispatch (selectListSource in useMetadataList.js) routes it
-// straight through fetchFirestorePage with no special-casing needed. There is also a
-// real composite index already declared for exactly this query
-// (firestore.indexes.json: collectionGroup "suppliers", status ASC + name ASC), so the
-// list's declared `status` filter is servable, not merely aspirational.
+// `readVia: "EOS_API"` (the governed eos_ops.suppliers master, Controller 2026-10-01), so
+// useMetadataList's own dispatch (selectListSource in useMetadataList.js) routes it through
+// its EOS supplier page reader (listSuppliers) with no special-casing needed. Neither
+// Firestore nor the deleted Firestore list source (Firebase exit F3) is involved.
 //
 // ONE READ, NOT TWO. useMetadataList is now the surface's only live read. The old
 // useSuppliers hook is left in place (out of this lane's writeScope -- src/hooks/**) but
