@@ -213,6 +213,9 @@ export function makeFieldDefinition(input = {}) {
     readCapability: input.readCapability ?? null,
     filterable: input.filterable ?? false,
     sortable: input.sortable ?? false,
+    // Covered by the list's server-side text SEARCH (docs/architecture/object-filter-sort-standard.md §3.1). A claim
+    // about what the server's search actually matches -- not derived from `filterable`, which is a different question.
+    searchable: input.searchable ?? false,
     operators: Object.freeze([...(input.operators ?? [])]),
     enumValues: input.enumValues ? Object.freeze([...input.enumValues]) : null,
     enumLabels: input.enumLabels ? Object.freeze({ ...input.enumLabels }) : null,
@@ -428,6 +431,10 @@ export function validateFieldDefinition(field, entity = null) {
   }
   if (field?.filterable && (field?.operators?.length ?? 0) === 0) {
     problems.push(`${at}: filterable but declares no operators — filterable by what?`);
+  }
+  // Text search matches text: a field's own string, or the name a reference resolves to on the server.
+  if (field?.searchable && !["STRING", "TEXT", "REFERENCE"].includes(field?.type)) {
+    problems.push(`${at}: searchable, but a ${field?.type} is not text a search can match`);
   }
 
   if (field?.type === "ENUM" || field?.type === "ENUM_SET") {

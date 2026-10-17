@@ -3363,6 +3363,7 @@
           "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosExperience/myWork.ts",
           "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/workOrderAvailability.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
           "functions/src/eosWorkforce/reads/assignedWorkReads.ts",
           "functions/src/eosWorkforce/reads/employeeDirectoryReads.ts",
@@ -3373,7 +3374,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

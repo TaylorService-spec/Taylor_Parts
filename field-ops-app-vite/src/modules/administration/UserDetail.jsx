@@ -35,6 +35,7 @@ import EmployeeExperiencePreview from "./EmployeeExperiencePreview.jsx";
 import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
+import EmployeeWorkSchedule from "./EmployeeWorkSchedule.jsx";
 import EmployeeFunctionalRoles, { FUNCTIONAL_ROLE_WRITE_CAPABILITY } from "./EmployeeFunctionalRoles.jsx";
 import {
   OPERATIONAL_SCOPE_WRITE_CAPABILITY,
@@ -46,7 +47,9 @@ import { createAdminControlPlaneClient } from "../../services/adminControlPlaneC
 import { EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY } from "../../domain/employeeJobRole.js";
 
 // The tab ids (?tab=); the first is the default. Labels are rendered by the page.
-const EMPLOYEE_TAB_DEFS = Object.freeze(["overview", "access", "assignments", "workflows", "activity"].map((id) => ({ id })));
+// "schedule" (Scheduling PR-2): Administration → Employee record → Work Schedule, reading EOS Core through its own
+// governed read (SCH-D2: scheduling capability AND employee.record.read AND company authority, decided server-side).
+const EMPLOYEE_TAB_DEFS = Object.freeze(["overview", "access", "assignments", "schedule", "workflows", "activity"].map((id) => ({ id })));
 import {
   RUNTIME_DEPENDENCIES,
   WORKFORCE_READS,
@@ -384,6 +387,11 @@ export default function UserDetail({
         <div id="functional-roles">
           <EmployeeFunctionalRoles employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteFunctionalRoles} onChanged={rereadGovernedHistory} />
         </div>
+      </div>
+    ) },
+    { id: "schedule", label: "Work Schedule", render: () => (
+      <div data-employee-tab-body="schedule">
+        <EmployeeWorkSchedule employeeId={employee.employeeId} />
       </div>
     ) },
     { id: "workflows", label: "Workflows", render: () => (

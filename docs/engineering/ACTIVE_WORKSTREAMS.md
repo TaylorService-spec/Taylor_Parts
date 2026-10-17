@@ -27,27 +27,16 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          Governed Work Order list query, company-isolated, + technician-availability read isolation (readTechnicianAvailability / findAvailableTechnicianSlots); explicit COMPANY_AUTHORITY_REQUIRED refusal on Jobs / Board / My Work (PR #2110)
-- Agent/session:       Claude Code Lane Filtering · Role: builder; Lane D: independent reviewer; controller merges
-- Branch / worktree:   PR #2110 branch · Lane Filtering clone (private PG :55433)
-- Base commit:         `ef199c11`
-- Owned paths:         the #2110 diff
-- Shared paths req'd:  this registry · `functions/src/eosOps/workOrderAvailability.ts` (Scheduling PR-2 merges after and keeps both sides)
-- Dependencies:        #2116 (merged)
-- Expected outcome:    no-authority caller gets an explicit refusal, never an empty list; availability reads isolated and tested separately from list isolation
-- Protected boundaries:standing delivery authority (green exact-head CI + Lane D); no grant, role, identity, Firebase or production change; NO employee-read role used for second-company reach
-- Lifecycle stage:     INTEGRATION
-
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
-- Branch / worktree:   flake-fix branch · Lane Firebase clone (private PG :55507)
+- Branch / worktree:   PR #2120 · Lane Firebase clone (private PG :55507)
 - Base commit:         `ef199c11`
 - Owned paths:         `functions/test/assignmentScopeRuntimePostgres.test.mjs`
 - Shared paths req'd:  this registry
 - Dependencies:        none (test-only). Repo-wide `endPoolAndDrain` helper is a SEPARATE later PR, after #2110 and Scheduling PR-2
 - Expected outcome:    the teardown flake no longer fails CI
 - Protected boundaries:none beyond standing delivery authority
-- Lifecycle stage:     SANDBOX VERIFIED
+- Lifecycle stage:     INTEGRATION (#2120, Lane D approved)
 
 - Capability:          Honest refusal wording — Jobs (Job Assignments) and My Dashboard Service Attention classify refusals through workOrderOutcome.js (FORBIDDEN → denied, COMPANY_AUTHORITY_REQUIRED → company-authority message, NOT_YET_ACTIVATED → not enabled; outages keep retry copy)
 - Agent/session:       Claude Code Lane C · Role: builder; Lane D: independent reviewer; controller merges
@@ -58,7 +47,18 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        #2110 (reuses its refusal copy)
 - Expected outcome:    refusals never read as outages
 - Protected boundaries:none beyond standing delivery authority
-- Lifecycle stage:     SANDBOX VERIFIED
+- Lifecycle stage:     MERGED `08b8baea` (#2121); nonprod verified (Job Assignments)
+
+- Capability:          Dispatcher Board interactions — drag reaches every lane (scrolling grid), tap placement ("Place on a lane"), lane names open an in-board technician review with back-state, Dispatch gated on workOrder.lifecycle.dispatch (Owner "DISPATCH BOARD INTERACTIONS" 2026-10-17)
+- Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
+- Branch / worktree:   `fix/board-interactions-drag-tap-employee-review` · `D:/eos-dispatch-fix`
+- Base commit:         `ef199c11`
+- Owned paths:         `modules/dispatcherBoard/**` (this change) · `domain/schedulingRefusal.js` · `.ns-dispatch-grid/-week/-lane__name` rules in `index.css` · `test/dispatchBoardInteractions.test.jsx`
+- Shared paths req'd:  this registry · `.github/workflows/dispatch-north-star-tests.yml`
+- Dependencies:        none (Scheduling lane's Board edits wait for this)
+- Expected outcome:    authorized dispatchers drag or tap work onto lanes through the same governed commands; employee review with Board state restored
+- Protected boundaries:standing delivery authority; no server, grant, role or Firebase change
+- Lifecycle stage:     MERGED `972fc0fa` (#2118); nonprod verified live 23/23 (Rudy Admin + restricted-persona negatives)
 
 - Capability:          Training documentation for the 2026-10-16/17 batch (dispatch #2113/#2116/#2110, Scan balance state, read-only Manufacturers, Customers portfolio message) — final sign-off item
 - Agent/session:       Claude Code EOS controller · Role: builder
@@ -139,14 +139,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 - Capability:          Scheduling lane — Employee Work Schedule in Employee Administration + scheduler→Employee navigation + compact board treatment + Dispatch Map review (Owner requirements 2026-10-15)
 - Agent/session:       Claude Code Scheduling lane session · Role: builder (design first)
-- Branch / worktree:   `work/eos-employee-shift-schedule` · `D:/eos-shift-schedule`
-- Base commit:         `a1261486`
+- Branch / worktree:   `work/eos-employee-work-schedule-tab` (PR-2) · `D:/eos-shift-schedule`; PR-1 `work/eos-employee-shift-schedule` merged as #2108
+- Base commit:         `5e4afa12` (main incl. G-9 #2111)
 - Owned paths:         `docs/architecture/employee-work-schedule-design.md`; after Owner plan approval: `field-ops-app-vite/src/modules/dispatcherBoard/**` (except `DispatchViews.jsx` view-chip lines Lane A2 reserves), `field-ops-app-vite/src/domain/dispatchBoardGeometry.js`, the `.ns-dispatch*` rules in `index.css`, a new Work Schedule tab component under `modules/administration/`, their tests
-- Shared paths req'd:  this registry · `modules/administration/UserDetail.jsx` (one tab entry) · `functions/src/eosOps/workOrderAvailability.ts` only if a server change is approved; NOT `companyAuthority.ts` or other security-lane files
+- Shared paths req'd:  this registry · `modules/administration/UserDetail.jsx` (one tab entry) · `functions/src/eosOps/workOrderAvailability.ts` + `workOrderOperations.ts` (PR-2: one new read, `readEmployeeWorkSchedule`); NOT `companyAuthority.ts` or other security-lane files; NOT `config/environments.json`
 - Dependencies:        Owner decisions SCH-D1..D4 in the design doc; Lane UX shared compact components (reuse, not fork)
 - Expected outcome:    governed schedule visible/editable from the Employee record; board names link by employeeId with return state; subdued elapsed time; nonworking / unconfigured time drawn, never defaulted
 - Protected boundaries:no schema, permission, role or business-rule change and no merge/deploy without Owner approval
-- Lifecycle stage:     PR-1 MERGED `7a1c4cd7` (#2108); PR-2 (Work Schedule tab, hold lifted) in INTEGRATION; PR-3 after PR-2; PR-4 deferred
+- Lifecycle stage:     PR-1 MERGED `7a1c4cd7` (#2108); PR-2 MERGED `e4d8c1ef` (#2119), editing held behind `EMPLOYEE_SCHEDULE_EDIT_READY` (off); PR-3 needs re-scoping after #2118 (lane names open the in-board review) — Owner packet; PR-4 deferred
 
 - Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
 - Agent/session:       Claude Code Lane A session · Role: builder
@@ -157,7 +157,18 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (separate from Lane B #2098, Lane C, the Firebase exit)
 - Expected outcome:    sections carry a `hasMore` boolean, never a count; the UI renders both API shapes with no number and no "undefined"
 - Protected boundaries:no merge or deploy without Owner authorization; merging to main auto-deploys nonprod (= activation)
-- Lifecycle stage:     MERGED #2099 `a1261486` (API hasMore)
+- Lifecycle stage:     MERGED — frontend #2102 `51204356`, API #2099 `a1261486` (hasMore)
+
+- Capability:          Filtering lane — site-wide object filtering and sorting standard (Owner requirement 2026-10-15); design first, Work Orders reference implementation only after the Owner approves the metadata contract
+- Agent/session:       Claude Code Filtering lane session · Role: builder
+- Branch / worktree:   `work/eos-object-filter-sort-standard` · `D:/eos-filter-sort`
+- Base commit:         `93bec3b7`
+- Owned paths:         `docs/architecture/object-filter-sort-standard.md`; `functions/src/eosOps/listQuery.ts`, `functions/src/eosOps/workOrderListQuery.ts`, the `listWorkOrders` / `describeWorkOrderListQuery` path in `workOrderQueries.ts`; `functions/test/support/workOrderListQuerySuite.mjs`; `field-ops-app-vite/src/metadata/listUrlState.js` (IN serialization); the `searchable` seed derivation in `scripts/buildAdminPolicySeedSnapshot.mjs`
+- Shared paths req'd:  this registry; `docs/DECISIONS.md` via the coordinator; Lane UX shared compact components (PageHeader, Toolbar, InfoTip/FieldHelp, StatusBadge, EmptyState) consumed, not edited
+- Dependencies:        security lane company authority (`eosOps/companyAuthority.ts`, DECISIONS #235) — consumed, not edited; Lane A owns My Work/navigation; Lane Scheduling owns the dispatch board
+- Expected outcome:    approved metadata contract + server-validated filter/sort for Work Orders, then the reusable mechanism across object-backed lists
+- Protected boundaries:no role/grant/authority change, no Firebase dependency, no merge or deploy without Owner authorization; server query validation is security-sensitive (Owner approves the contract first)
+- Lifecycle stage:     Phase 1a MERGED `fbe58115` (#2110) incl. availability-read isolation; nonprod deployed and verified 2026-10-17
 
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder

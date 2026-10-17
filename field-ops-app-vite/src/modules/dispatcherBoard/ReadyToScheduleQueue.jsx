@@ -37,6 +37,7 @@ function ReadyToScheduleQueue({
   onSelectWorkOrder,
   onOpenPlacementPicker,
   onDragStartWorkOrder,
+  onStartPlacing,
   onDragEndWorkOrder,
   isDragOver,
   onDragOverQueue,
@@ -138,6 +139,15 @@ function ReadyToScheduleQueue({
                       disabled={isBusy}
                     >
                       Schedule…
+                    </Button>
+                  ) : null}
+                  {onStartPlacing ? (
+                    <Button
+                      variant="tertiary"
+                      onClick={(e) => { e.stopPropagation(); onStartPlacing(wo); }}
+                      disabled={isBusy}
+                    >
+                      Place on a lane
                     </Button>
                   ) : null}
                 </div>
