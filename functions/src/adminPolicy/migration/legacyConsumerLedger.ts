@@ -218,14 +218,8 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     replacementAuthority: CAPABILITY, replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
 
-  // ── the assignable-Employee query: step G ──
-  entry({
-    path: "field-ops-app-vite/src/domain/employees.js",
-    consumer: "buildAssignableEmployeesQuery filters Firestore employees by array-contains operationalRoles",
-    terms: ["operationalRoles"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} + eligible employment status, read from PostgreSQL`,
-    replacementPr: null, status: "NOT_STARTED", blockedReason: null,
-  }),
+  // ── the assignable-Employee query: step G ── (field-ops-app-vite/src/domain/employees.js, which held it, was deleted by
+  // Firebase exit F4 (DECISIONS #247): the query had no caller, so this consumer no longer exists.)
   entry({
     path: "field-ops-app-vite/src/shared/assignment/EmployeeAssignmentPicker.jsx",
     consumer: "renders each candidate's operationalRoles and passes the required one through",
