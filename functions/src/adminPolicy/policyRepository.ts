@@ -75,8 +75,8 @@ export class PolicyStoreError extends Error {}
 /** Field values a caller may supply on create. The store owns id, tenant and provenance. */
 export type NewRecord<T> = Omit<T, "id" | "tenantId" | "createdBy" | "createdAt" | "updatedBy" | "updatedAt">;
 
-/** A new Role. `companyAuthorityEffect` defaults to OPERATIONAL (DECISIONS #248); it is changed only through updateRole. */
-export type NewRoleRecord = Omit<NewRecord<PolicyRoleRecord>, "companyAuthorityEffect"> & { readonly companyAuthorityEffect?: PolicyRoleRecord["companyAuthorityEffect"] };
+/** A new Role. It is always OPERATIONAL (DECISIONS #248); the classification is changed only through updateRole. */
+export type NewRoleRecord = Omit<NewRecord<PolicyRoleRecord>, "companyAuthorityEffect">;
 
 /** A Role's grant of one canonical capability. `grantedAt` is server-authored, never client-sent. */
 export interface NewRoleCapabilityInput {

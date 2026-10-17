@@ -1152,15 +1152,14 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
 
     async createRole(input: NewRoleRecord) {
       try {
-        // company_authority_effect is written only when stated: the column's default is OPERATIONAL, and a seed that runs
-        // BEFORE migration 1764600000000 (the baseline tenants seed at an earlier migration) must keep working.
-        const withEffect = input.companyAuthorityEffect !== undefined && input.companyAuthorityEffect !== "OPERATIONAL";
+        // A new Role is always OPERATIONAL (the column default): company_authority_effect is not written here, so a seed that
+        // runs BEFORE migration 1764600000000 (the baseline tenants seed at an earlier migration) keeps working. A Role is
+        // classified FINANCE_ONLY only afterwards, by updateRole (it needs capabilities first).
         const { rows } = await q.query(
           `INSERT INTO ${SCHEMA}.roles (id, tenant_id, key, name, description, origin, protected,
-             created_by, created_at, updated_by, updated_at${withEffect ? ", company_authority_effect" : ""})
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11${withEffect ? ",$12" : ""}) RETURNING *`,
-          [newId(), tenantId, input.key, input.name, input.description, input.origin, input.protected, ...stamp(),
-            ...(withEffect ? [input.companyAuthorityEffect] : [])],
+             created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+          [newId(), tenantId, input.key, input.name, input.description, input.origin, input.protected, ...stamp()],
         );
         return toRole(rows[0]);
       } catch (err) {
