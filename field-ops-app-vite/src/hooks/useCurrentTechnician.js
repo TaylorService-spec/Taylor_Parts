@@ -4,6 +4,8 @@ import { db } from "../firebase/firebase";
 import { useAuth } from "../auth/AuthContext";
 import { USERS_COLLECTION, TECHNICIANS_COLLECTION } from "../domain/constants";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
+// FIREBASE EXIT F1 (DECISIONS #244): where an EOS API is declared the technician link is the EOS Employee, not two Firestore reads.
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
 
 const ENTITY = "technician profile";
 
@@ -34,8 +36,11 @@ const ENTITY = "technician profile";
 // any stale technician data, plus the retry re-subscription and
 // obsolete-callback guard useAccount.js / useLocationsForAccount.js already
 // establish for this exact shape.
-export function useCurrentTechnician() {
-  const { user } = useAuth();
+// The Firebase two-hop link. `enabled === false` makes it inert (no subscription, no read): that is how an environment whose
+// source is EOS keeps the hook mounted without touching Firebase.
+function useFirebaseCurrentTechnician({ enabled = true } = {}) {
+  const { user: authUser } = useAuth();
+  const user = enabled ? authUser : null;
   const [technicianId, setTechnicianId] = useState(null);
   const [technician, setTechnician] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -117,4 +122,28 @@ export function useCurrentTechnician() {
   }, [technicianId, attempt]);
 
   return { technicianId, technician, loading, error, retry };
+}
+
+// THE EOS LINK. The signed-in person's Employee, as AuthContext already resolved it from EOS (resolveMyExperienceContext +
+// readMyEmployeeProfile) -- no read of its own. technicianId is the EOS employeeId (EOS never keys on a fieldops
+// technician id); technician is the Employee's display name. There is NO field-status pill under EOS: TECH_STATUS has no
+// EOS twin, so technician.status is left undefined and the dashboard omits the pill rather than inventing one. Whether the person
+// is a technician at all is a capability question (workOrder.execution.record, access/sessionAccess.js), not this hook's.
+function useEosCurrentTechnician() {
+  const { user, employeeId, displayName, loading, identityError, retryIdentityResolution } = useAuth() ?? {};
+  return {
+    technicianId: user && employeeId ? employeeId : null,
+    technician: user && employeeId ? { id: employeeId, name: displayName ?? null } : null,
+    loading: Boolean(loading),
+    error: identityError ?? null,
+    retry: retryIdentityResolution ?? (() => {}),
+  };
+}
+
+/** Both hooks are always called so the rules of hooks hold; the one that is not the source is inert. eosSource is a test seam. */
+export function useCurrentTechnician({ eosSource } = {}) {
+  const eos = (eosSource ?? EOS_SESSION_SOURCE) === true;
+  const firebase = useFirebaseCurrentTechnician({ enabled: !eos });
+  const eosAnswer = useEosCurrentTechnician();
+  return eos ? eosAnswer : firebase;
 }

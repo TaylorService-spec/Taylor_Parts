@@ -11,7 +11,7 @@
 // This changes WHEN code loads, never WHO may load it. Route visibility is still isDomainVisible()
 // and the authority is still Rules and the governed resolvers -- a lazily-loaded module a principal
 // may not use is a module that still denies.
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { recordNavigation, recordIdentity, diagnosticsVisible } from "./diagnostics/crashDiagnostics.js";
 import { routerBasenameFrom } from "./routerBasename";
@@ -135,6 +135,10 @@ import { resolveEffectivePermission } from "./access/resolveEffectivePermission"
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "./config/capabilityActivationOverrides";
 import { useReportCapabilities } from "./access/useReportCapabilities";
+// FIREBASE EXIT F1 (DECISIONS #244): where an EOS API is declared the session's action gates are answered by the caller's EOS
+// capability set. The provider below hands that one answer to every screen; where it is not declared nothing changes.
+import { EOS_SESSION_SOURCE } from "./access/eosSessionSource.js";
+import { SessionAccessContext, scanJourneyRole, useSessionAccess } from "./access/sessionAccess.js";
 const ReportBuilder = lazy(() => import("./modules/reporting/ReportBuilder"));
 const SavedReports = lazy(() => import("./modules/reporting/SavedReports"));
 // Financials North Star P1, Wave UX-1 (design: docs/north-star/financials/). Desktop/admin
@@ -337,6 +341,22 @@ function CrashTest() {
   if (!diagnosticsVisible()) return null;
   if (!new URLSearchParams(location.search).get("__crashtest")) return null;
   throw new Error("Deliberate crash test (?__crashtest=1) — proving the error boundary and its diagnostic work.");
+}
+
+/**
+ * Refetch the caller's EOS capabilities when the route changes (F1 rule 4). Rendered INSIDE the Router, because the shell's
+ * capability hook runs above it. The first render is skipped (the hook already read on sign-in); the hook throttles a burst
+ * of navigation to one request. Renders nothing.
+ */
+function EosAccessRouteRefresh() {
+  const location = useLocation();
+  const { reload } = useSessionAccess();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    reload();
+  }, [location.pathname, reload]);
+  return null;
 }
 
 function CrashTrailRecorder() {
@@ -913,7 +933,7 @@ function TechnicianWorkspaceSurface({ role }) {
   // the desktop scanner has, so a Technician's truck workflows (receive into the truck, look up a Part) are offered.
   // P1-2: that gate is the caller's EOS capability set, not the shell's Firebase feed.
   const { hasCapability } = useScanCapabilityGate();
-  const scanDeps = { hasCapability, role };
+  const scanDeps = { hasCapability, role: scanJourneyRole(useSessionAccess(), role) };
   return useIsPhone() ? <TechnicianShell deps={{ scan: scanDeps }} /> : <FieldMode />;
 }
 
@@ -934,7 +954,7 @@ function useScanCapabilityGate() {
 /** /service/scan. A component only because renderSubnavItem cannot call hooks. */
 function ScanWorkspaceSurface({ role }) {
   const { hasCapability, returnDeps } = useScanCapabilityGate();
-  return <ScanWorkspace deps={{ hasCapability, role, returnDeps }} />;
+  return <ScanWorkspace deps={{ hasCapability, role: scanJourneyRole(useSessionAccess(), role), returnDeps }} />;
 }
 
 /**
@@ -946,7 +966,7 @@ function ScanWorkspaceSurface({ role }) {
  */
 function WarehouseWorkspaceSurface({ role }) {
   const { hasCapability, returnDeps } = useScanCapabilityGate();
-  const deps = { hasCapability, role, returnDeps };
+  const deps = { hasCapability, role: scanJourneyRole(useSessionAccess(), role), returnDeps };
   return useIsPhone() ? <WarehouseShell deps={deps} /> : <ScanWorkspace deps={deps} />;
 }
 
@@ -1003,7 +1023,12 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
           direct URL. The component self-gates to admin/dispatcher via useAuth and shows
           the standard No Access state otherwise (real gate, not route obscurity);
           Firestore Rules are unchanged. Isolated from PartsList/PartDetail. */}
-      <Route path="/admin/diagnostics/inventory-parts-parity" element={<PartsShadowParityDiagnostics />} />
+      {/* FIREBASE EXIT F1 (G8): this diagnostic compares the Firestore parts shadow with its replacement -- a diagnostic OF
+          Firebase. Where EOS is the source there is no Firestore parts shadow to compare, so the route is retired there
+          (it falls to the catch-all). Where Firebase is the source it is exactly as it was. */}
+      {!EOS_SESSION_SOURCE && (
+        <Route path="/admin/diagnostics/inventory-parts-parity" element={<PartsShadowParityDiagnostics />} />
+      )}
 
       {/* EMPLOYEE SELF VIEW. Not a navigation group: it is reached from the rail identity block and
           belongs to every signed-in person regardless of role. It renders only the session the shell
@@ -1324,7 +1349,15 @@ export default function App() {
   // granted only from a successful, current-principal decision; denied while loading, on
   // error/unavailable/malformed, when signed out, and across a principal change. Since the callable
   // is undeployed, this stays fail-closed in production until a separate deployment + authorization.
-  const { hasCapability, accessVersion, accessResolving } = useReportCapabilities(user);
+  const { hasCapability, accessVersion, accessResolving, hasEosKey, reload: reloadEosAccess, feedStatus } = useReportCapabilities(user);
+  // FIREBASE EXIT F1: the one EOS capability answer, offered to every screen's action gates (access/sessionAccess.js). Where
+  // Firebase is the source `eosSource` is false and every gate keeps its legacy answer.
+  const sessionAccess = useMemo(() => ({
+    eosSource: EOS_SESSION_SOURCE,
+    settled: feedStatus === "ready" || feedStatus === "failed",
+    holds: hasEosKey ?? (() => false),
+    reload: reloadEosAccess ?? (() => {}),
+  }), [hasEosKey, reloadEosAccess, feedStatus]);
   // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
   // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
   // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
@@ -1488,8 +1521,10 @@ export default function App() {
   }
 
   return (
+    <SessionAccessContext.Provider value={sessionAccess}>
     <InventoryProvider>
       <BrowserRouter basename={ROUTER_BASENAME}>
+        <EosAccessRouteRefresh />
         {/* Records WHERE the user was when a crash happens. The root error boundary sits above the
             Router and cannot ask react-router anything -- least of all when the crash IS a routing
             problem -- so the trail is kept in a module the boundary can read without context. */}
@@ -1520,5 +1555,6 @@ export default function App() {
         </div>
       </BrowserRouter>
     </InventoryProvider>
+    </SessionAccessContext.Provider>
   );
 }

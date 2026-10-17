@@ -156,9 +156,11 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // inventory.returns.intake, the one memberless Role the Owner ruling names.
   // 482 -> 488 (MIGRATION_BACKED 424 -> 430): migration 1764590000000, CRM activity (F7b, #243) -- crm.activity.read / .create mirrored
   // to the current Firebase holders admin, owner and crmActivityContributor; no new holder.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 488);
+  // 488 -> 489 (MIGRATION_BACKED 430 -> 431): migration 1764600000000, Data Import staging (F1, #244) -- admin.dataImport.stage,
+  // the one Firebase holder admin; no new holder.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 489);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 430, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 431, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

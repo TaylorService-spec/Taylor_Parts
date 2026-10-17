@@ -37,6 +37,7 @@
 // the original paragraph that was always the point.
 import { auth } from "../firebase/firebase.js";
 import { currentEosSessionToken, humanEosTokenSource } from "../auth/eosSession.js";
+import { ACCESS_CHANGING_OPERATIONS, notifyEosAccessChanged } from "../access/eosAccessEvents.js";
 
 /** The operations the server accepts. Mirrored so a typo fails here rather than as a 404. */
 export const ADMIN_READ_OPERATIONS = Object.freeze([
@@ -302,6 +303,9 @@ export async function callPolicyApi(operation, input = {}, options = {}) {
     return failure("INTERNAL", `the Administration API returned ${response.status}`);
   }
   if (body.ok === true) {
+    // FIREBASE EXIT F1: a landed authority change re-reads the caller's own capabilities (no polling; see
+    // access/useEosCapabilityFeed.js). Harmless where nothing listens.
+    if (ACCESS_CHANGING_OPERATIONS.includes(operation)) notifyEosAccessChanged();
     return Object.freeze({ ok: true, data: body.data, tenantId: body.tenantId, operation });
   }
   return failure(

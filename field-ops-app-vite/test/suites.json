@@ -1276,6 +1276,10 @@
     {
       "file": "test/eosLoginClient.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/f1SessionAccess.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

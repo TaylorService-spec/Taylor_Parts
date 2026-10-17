@@ -8813,3 +8813,62 @@ So merging empties nothing. The **production** copy (Firestore `manufacturers` �
   - the copy CLI end to end.
 - `roleCapabilityAuthorityBaselinePostgres`: 487.
 - The migration test pins exactly the three holders.
+
+## #244 — The session and capability feed come from EOS where an EOS API is declared; Firebase stays the sole source elsewhere (Firebase exit F1, 2026-10-17)
+
+**Status: CONTROLLER DECIDED under the Owner's blanket authorization to replace all Firebase dependencies and the preserve-functionality-and-access rule (F1 brief, 2026-10-17).** Merge and deployment follow the normal gate. No production access, no real-user change, no historical data copy.
+
+**Why.** Every signed-in person generated Firebase traffic before any screen drew: two Firestore reads for identity (`users/{uid}`, `employees/{id}`), a live `users/{uid}.accessVersion` snapshot plus the `resolveEffectiveAccessCallable` callable for capabilities (twice: the shell and the Account page), and two more snapshots for the technician link (`users.technicianId`, `fieldops_technicians`). Navigation was already decided by EOS in nonprod; the rest of the session was not.
+
+**Rule.**
+- **One compile-time choice.** `access/eosSessionSource.js`: `EOS_SESSION_SOURCE` is the existing navigation flag (`EOS_NAVIGATION_AUTHORITY_READY`, resolved from `config/environments.json`, true only where an `eosApi` is declared — today `platform-sandbox`). `scripts/eosApiEnvironmentContract.test.mjs` already refuses a true flag without a configured API. No new registry key.
+  - **Declared: EOS is the SOLE source.** No Firebase read is made for identity, capabilities or the technician link, and nothing falls back to Firebase on a failure or an empty answer.
+  - **Not declared (production, local emulator, certification, integration): Firebase is the SOLE source, byte-for-byte as before.** The Firestore/callable code is unchanged; the choice is made at build time, never at run time.
+- **Identity** (`auth/eosEmployeeSession.js`): `resolveMyExperienceContext` gives `employeeId`; `readMyEmployeeProfile` gives `displayName` and `employmentStatus`. `role` is null and `operationalRoles` is empty — the same shape an EOS-login session already has.
+  - **An unlinked principal is a null identity, not an `identityError`.** A profile refused 404 / 409 / 412, an experience context with no employee, and a refused Principal (403) all resolve to a null identity. Only an unreachable, failing or malformed service throws, and that is the retryable error, never a default role.
+- **Capabilities** (rule 1: the gate follows the server; rule 4: no live push). `resolveMyCapabilities` is read once per signed-in principal and refetched on window focus, on a route change, and after a governed role change (`access/useEosCapabilityFeed.js`):
+  - Focus and route refreshes are throttled (5 s) so a burst of navigation is one request. A governed authority change (the Administration client's `assignRole`, `revokeRole`, grants and conditions) refetches at once. **There is no polling loop.**
+  - **A slow or failed read is a SETTLED deny.** The read is bounded at 10 s; a failed, refused, malformed or never-answering read denies and ends the shell's "Loading…". A refetch that fails denies; no stale grant is kept. A previous principal's answer is never shown to the next.
+  - **`accessVersion`** has no EOS self-read. It is synthesised as an integer that advances only when the fetched capability set differs from the one held, so a focus refresh that changes nothing re-keys no list.
+- **Rule 2 — Firebase-only ids.** A Firebase permission id is asked under an EOS name only through a closed same-meaning table (`access/eosCapabilityAccess.js`); every other id is asked under its own name, and an id with no EOS key is denied, never inferred. `test/f1SessionAccess.test.mjs` proves the table against the migrations that define the EOS catalog.
+  - **Translated (same meaning, evidence named in the table):** `service.inboundWork.read` → `inboundWork.request.read`; `report.definition.read` → `reportDefinition.read` (identical holders: admin, owner, reportViewer); `finance.read` → `finance.invoice.read` (the Owner's finance split, `credEquivalence.ts`); `financialPolicy.profile.read` / `.configure` → `finance.policy.read` / `.prepare`.
+  - **Registered in EOS, holders mirrored exactly (migration `1764600000000`): `admin.dataImport.stage`.** It gates the Data Import preview step on a screen that is reachable under the EOS source (its surface `administration.dataImport` is earned by `admin.dataImport.execute`, and `execute` exists in EOS but `stage` did not). One capability on the existing `dataImport` Object (no new Object declaration), one grant: `admin`, the only Firebase holder. The Owner does not hold it. Grant-bearing (Owner ruling E): the authority baseline goes 488 → 489 in the same change. **No admin fence is needed:** admin is a Firebase holder, so the whole-catalog import does not widen. **It is admin-only by PARITY with the Firebase catalog, not by Owner ruling A:** like `admin.securityPolicy.write` it is listed as parity-admin-only in the Owner-contract and persona proofs and is deliberately NOT added to the 19-key Owner exclusion (that would make it a system invariant no ruling decided).
+  - **No EOS twin and no reachable consumer — recorded, not registered** (`FIREBASE_IDS_WITHOUT_EOS_TWIN`): `report.customer.read`, `.contact.read`, `.location.read`, `.equipment.read`, `report.definition.create` / `.rename` / `.duplicate` / `.delete` (Report Builder and Saved Reports are absent from the EOS navigation: `NAV_SURFACE_GAPS`; reporting moves with F7e); `inventory.location.bin.read` / `.manage` (Warehouse Racking is a declared gap; bins move with F6); `inventory.balance.read` and `finance.visibility.*` (read only by My Dashboard cards, which the EOS source does not mount, and the legacy phone shell); `administration.emailIntake.read` (declared, never consulted). They answer false, which hides nothing, because their screens are already absent. **Each re-enters this feed with the slice that makes its surface reachable, registered then with holders mirrored from the Firebase catalog (the #242 / #243 pattern).** Registering them now would mint authority for screens nobody can open.
+  - Already EOS keys under the same name, so already followed: `crm.activity.read` (#243), `inventory.returns.intake` (#242).
+- **Rule 3 — legacy-role gates.** Each is re-expressed as the EOS capability the server already applies, at its one site (`access/sessionAccess.js`; where Firebase is the source each keeps its legacy answer):
+
+| Gate | Surface | Under EOS |
+|---|---|---|
+| G1 | Dispatch Board renders | `workOrder.lifecycle.dispatch` **or** `.schedule` (the board's door is earned by dispatch; schedule and dispatch are separate controls since #2116) |
+| G2 | Jobs › New Work Order | `workOrder.create` |
+| G3 | Reorder-queue notifications | `reorder.request.read` — the capability the governed Reorder reads behind the bell require (`REORDER_READ`). The parity candidate `reorder.request.read.queue` is SUPERSEDED and held by no Role, so it would have denied the Administrator too |
+| G4 | Work Order office actions | each legal action offered only if its capability is held: `.ready`, `.schedule` (also Return to queue), `.dispatch`, `.close`, `.cancel` |
+| G5 | Account governed-field pencils | `customer.governedField.write`, the authority `eosCrm/accountAuthority.ts` applies |
+| G6 | Request Reorder (manual quantity) | `reorder.request.create.manual` |
+| G7 | Scan › technician Work Order workflow | `workOrder.execution.record` plus the EOS employee link (the technician id is the EOS `employeeId`) |
+| G8 | Parts shadow-parity diagnostics | **Retired where EOS is the source.** It diffs Firestore against its replacement — a diagnostic of Firebase; its route is not mounted there. Unchanged where Firebase is the source |
+
+  - **Technician display.** The name is the Employee's display name. The `TECH_STATUS` pill has no EOS twin and is **omitted**, not invented.
+- **Rule 5.** `technicianId` and `operationalRoles` come from the EOS Employee; there is no `operationalRoles` under EOS (Owner ruling E), so nothing reads one.
+- **Rule 6 — parity.** The F1-0 table (`persona-capability-parity`, #2131) is resolved as follows.
+  - **WIDEN (74 cells, shell ids and gates).** These are EOS answers that already exist: the server enforces them today. The client now offers what the server allows (rule 1). **F1 changes no EOS grant beyond the one mirrored above, so there is no server-side widening and no STOP item.**
+  - **UNMAPPED_ALLOW (22 cells, Administrator and financeAccounting):** resolved by the translations, the registration and the recorded gaps above. The Administrator loses no reachable control.
+  - **NARROW (9 cells).**
+    - **G3 for the Administrator and the dispatcher** disappears with the gate choice: both hold `reorder.request.read`.
+    - **The other seven are financeAccounting** (`inventory.catalog.manage`, `fulfillment.coordinatedVisit.read`, and gates G1–G4). They are acceptable because EOS already refuses those actions, so the UI now matches the server.
+    - **The financeAccounting persona's legacy role of "dispatcher" is a data anomaly** (a finance login holding the dispatch legacy role). It is reported, not preserved.
+  - **Administrator NARROW.** The one that remains is **`inventory.returns.intake`** (#242 fenced it: admin holds it only by governed clerk assignment). **The Controller grants Rudy Admin (`admin@sandbox.invalid`, principal `639c1970-dbdb-4bc0-af7c-118559151e2f`) the role `inventoryReturnsIntakeClerk` after deploy**, through the governed preview → `assignRole` path with actor `ownerExecutive` (the `rudyAdminGrant.mjs` pattern). No other Role is needed.
+
+**What is NOT changed.**
+- Production and every environment without an `eosApi`: the Firebase path, byte for byte.
+- The exported `resolveEffectiveAccessCallable` Cloud Function is **not** removed (production still uses it; removal needs a GATED equivalence record).
+- `firestore.rules`: untouched.
+
+**Exit ratchet.** The frontend `firebase_functions_client` and `firestore_client` baselines each lose `metadata/definitions/accountPageComponents.js` (the Account page carried its own copy of the shell's `accessVersion` subscription and callable client; it now shares the one in `access/useReportCapabilities.js`): 242 → 240 (functions client 14 → 13, Firestore client 9 → 8). `auth/employeeSession.js`, `hooks/useCurrentTechnician.js` and `access/useReportCapabilities.js` stay in the baseline **because production and the other environments without an EOS API still use them**; they leave when those environments do.
+
+**Proof.**
+- `f1SessionAccess` (node): the translation table and the recorded gaps against the EOS catalog; every gate key is a registered EOS key; the decision seam; the Firebase-free sources; each gate's one site.
+- `eosSessionAuthContext` (vitest): identity — linked, unlinked, 404 / 409 / 412, 403, unreachable, malformed; the feed — one-shot, settled deny on failure, refusal, malformed and timeout, throttle, role-change refetch, version advance, no polling, no cross-principal leak; both branches of `useReportCapabilities`, the Account page decisions and `useCurrentTechnician`.
+- `workOrderActionEmphasis` (vitest): G4 offers exactly the held capabilities.
+- Server: the baseline, replay, vocabulary and migration-chain pins move together (capabilities 142 → 143, grants 488 → 489, migrations 101 → 102).
+- Network proof on nonprod (V2): after deploy, for every persona, the shell and session screens show 0 Firestore `users` / `employees` / `fieldops_technicians` reads and 0 `resolveEffectiveAccessCallable` calls. The Controller records it.

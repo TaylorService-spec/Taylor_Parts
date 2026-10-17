@@ -161,6 +161,10 @@ const NON_GATE_ALLOWLIST = {
   "domain/partLookup.js": ["inventory.serializedAsset.read", "inventory.location.display.read"], // (d)
   "domain/financialPolicyView.js": ["financialPolicy.profile.read"], // (d)
   "hooks/useMyWorkOrderCapabilities.js": ["workOrder.create"], // (e)
+  // (f) Firebase exit F1 (DECISIONS #244): EOS capability KEYS the session action gates (G1-G7) are re-expressed as. They are
+  // asked of the caller's EOS capability set (access/useEosCapabilityFeed.js), never of the Firebase feed, so no Firebase request
+  // set could or should ask about them; test/f1SessionAccess.test.mjs proves each is a registered EOS key.
+  "access/sessionAccess.js": ["workOrder.create", "customer.governedField.write", "reorder.request.create.manual"],
 };
 
 function allowed(rel, id) {

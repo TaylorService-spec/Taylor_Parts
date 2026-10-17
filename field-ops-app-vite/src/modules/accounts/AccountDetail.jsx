@@ -40,6 +40,7 @@ import {
 import { formatClockTime } from "../../domain/displayTimestamp.js";
 import { useIsPhone } from "../../navigation/useIsPhone.js";
 import { useAuth } from "../../auth/AuthContext";
+import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
 import { useCommercialCapabilities } from "../../hooks/useCommercialCapabilities.js";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
@@ -374,7 +375,10 @@ export default function AccountDetail() {
   // PRESENTATION -- it decides which pencils appear, and it decides nothing else. Rules remain the
   // enforcement: a dispatcher who reaches the write anyway is denied at the server, exactly as
   // AccountForm already relies on (it does not hide these fields from them either).
-  const isAdmin = role === "admin";
+  // FIREBASE EXIT F1 (G5): where EOS is the session source `role` is null, and the pencils follow the EOS Account write
+  // authority the server already applies -- customer.governedField.write (eosCrm/accountAuthority.ts). `isAdmin` keeps its
+  // name because fieldEditability() takes it; it now means "may change the governed fields".
+  const isAdmin = sessionDecision(useSessionAccess(), SESSION_GATE_KEYS.accountGovernedFields, role === "admin");
   const accountEditability = useCallback(
     (fieldId) => fieldEditability(accountRecordPage, fieldId, {
       isAdmin,

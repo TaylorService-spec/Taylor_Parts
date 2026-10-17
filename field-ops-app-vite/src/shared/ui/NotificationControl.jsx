@@ -11,6 +11,7 @@
 // as they were, and an unauthorized principal renders nothing and reads nothing.
 import { useMemo } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useMyAssignedReorderRequests } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
@@ -62,9 +63,15 @@ export default function NotificationControl({ accessVersion } = {}) {
   // thing in the footer; it fails closed to nothing and the shell keeps working.
   const auth = useAuth() ?? {};
   const { user, role } = auth;
-  const canSeeReorderRequests = previewHasPermission("reorder.request.read.queue", role, {
-    fallback: role === "admin" || role === "dispatcher",
-  });
+  // FIREBASE EXIT F1: where EOS is the session source the bell follows reorder.request.read -- the capability the governed
+  // Reorder reads below require -- instead of the legacy role (access/sessionAccess.js, gate reorderQueue).
+  const canSeeReorderRequests = sessionDecision(
+    useSessionAccess(),
+    SESSION_GATE_KEYS.reorderQueue,
+    previewHasPermission("reorder.request.read.queue", role, {
+      fallback: role === "admin" || role === "dispatcher",
+    }),
+  );
   const { resolveName } = useCanonicalPartNames({
     uid: user?.uid,
     accessVersion,

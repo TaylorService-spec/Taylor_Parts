@@ -13,6 +13,11 @@ import { resolveEmployeeSession } from "./employeeSession";
 import { clearEosSession, readEosSession } from "./eosSession";
 import { eosSessionUser, resolveEosSessionIdentity } from "./eosSessionIdentity";
 import { operationsApiClient } from "../services/operationsApiClient.js";
+import { workforceApiClient } from "../services/workforceApiClient.js";
+// FIREBASE EXIT F1: where an EOS API is declared, identity comes from EOS (the person still signs in through Firebase);
+// elsewhere the Firestore path below is the sole source. A compile-time choice -- there is no fallback on failure.
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
+import { resolveEosEmployeeSession } from "./eosEmployeeSession.js";
 // EOS NATIVE LOGIN (docs/architecture/eos-native-identity.md, 3(e)): the human front door. Off unless the build enables it.
 import { eosHumanLoginEnabled, eosLoginClient } from "./eosLoginClient.js";
 
@@ -157,13 +162,16 @@ export function AuthProvider({ children }) {
         // mechanism from before Phase 3 -- resolveEmployeeSession()
         // just factors the getDoc() calls into a directly-testable
         // function; see its own comment above.
-        const session = await resolveEmployeeSession(u.uid);
+        const session = EOS_SESSION_SOURCE
+          ? await resolveEosEmployeeSession({ operations: operationsApiClient, workforce: workforceApiClient })
+          : await resolveEmployeeSession(u.uid);
         if (!isMounted || thisGeneration !== generation) return;
 
         setRole(session.role);
         setEmployeeId(session.employeeId);
         setDisplayName(session.displayName);
-        setOperationalRoles(session.operationalRoles);
+        // An EOS-sourced session carries no legacy role list (scope and eligibility are the server's): the empty default.
+        setOperationalRoles(session.operationalRoles ?? []);
         setEmploymentStatus(session.employmentStatus);
         setLoading(false);
       } catch (err) {
