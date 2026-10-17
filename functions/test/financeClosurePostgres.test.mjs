@@ -40,6 +40,8 @@ const { capabilitiesForRoleKeys, protectedAdministratorKeys } = require("../lib/
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 const TENANT = "t-fclose";
+const ISO_ACCOUNT = "acct-iso"; // a customer of BOTH operating companies: the Taylor/Ventana negative-isolation fixture
+const ISO_VENTANA_ONLY = "acct-iso-v"; // a customer of Ventana ONLY: must look exactly like no account to a Taylor-only caller
 const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance", AN = "/operations/analysis";
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
@@ -654,6 +656,50 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     void financed; void ic;
   });
 
+  await t.test("ACCOUNT: listObligations narrows to one CRM account inside the reached companies; a bad id is refused, an unknown one is empty", async () => {
+    const acctCount = async (companies, accountId, status = null) => Number((await one(`SELECT count(*)::int n FROM eos_finance.obligations o
+      JOIN eos_finance.financial_counterparties cp ON cp.tenant_id=o.tenant_id AND cp.id=o.counterparty_id
+      WHERE o.tenant_id=$1 AND o.operating_company_id = ANY($2) AND cp.crm_account_id=$3 AND ($4::text IS NULL OR o.status=$4)`, [TENANT, companies, accountId, status])).n);
+    // THE ISOLATION FIXTURE, created here and never assumed: one CRM Account that is a customer of BOTH companies, with one
+    // Taylor and one Ventana receivable. The SCOPE test below proves the Taylor/Ventana denial against it.
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ($1,$2,'Shared Customer','ACTIVE','f','f')`, [ISO_ACCOUNT, TENANT]);
+    await q(`INSERT INTO eos_crm.account_relationship_types (tenant_id, account_id, relationship_type) VALUES ($1,$2,'CUSTOMER')`, [TENANT, ISO_ACCOUNT]);
+    for (const companyKey of ["taylor", "ventana"]) {
+      const { out } = await directPackage({ account: ISO_ACCOUNT, price: 1200, companyKey });
+      assert.ok(await receivableOf(out.packageId), `fixture: a ${companyKey} receivable for ${ISO_ACCOUNT} (${JSON.stringify(out).slice(0, 300)})`);
+    }
+    assert.deepEqual([await acctCount(["taylor"], ISO_ACCOUNT), await acctCount(["ventana"], ISO_ACCOUNT)], [1, 1], "fixture: one obligation per company");
+    // ...and one Account that is a customer of VENTANA ONLY: to a Taylor-only caller it must be indistinguishable from none.
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ($1,$2,'Ventana-Only Customer','ACTIVE','f','f')`, [ISO_VENTANA_ONLY, TENANT]);
+    await q(`INSERT INTO eos_crm.account_relationship_types (tenant_id, account_id, relationship_type) VALUES ($1,$2,'CUSTOMER')`, [TENANT, ISO_VENTANA_ONLY]);
+    assert.ok(await receivableOf((await directPackage({ account: ISO_VENTANA_ONLY, price: 900, companyKey: "ventana" })).out.packageId), "fixture: a Ventana-only receivable");
+    assert.deepEqual([await acctCount(["taylor"], ISO_VENTANA_ONLY), await acctCount(["ventana"], ISO_VENTANA_ONLY)], [0, 1], "fixture: Ventana only");
+
+    const acct = ISO_ACCOUNT;
+    const taylor = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct })).items;
+    assert.deepEqual(taylor.map((o) => [o.operatingCompanyId, o.counterparty.crmAccountId]), [["taylor", acct]], "exactly that account's Taylor obligation");
+    const ventana = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "ventana", crmAccountId: acct })).items;
+    assert.deepEqual(ventana.map((o) => [o.operatingCompanyId, o.counterparty.crmAccountId]), [["ventana", acct]], "exactly that account's Ventana obligation");
+    const cons = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "consolidated", crmAccountId: acct })).items;
+    assert.deepEqual(cons.map((o) => o.operatingCompanyId).sort(), ["taylor", "ventana"], "the consolidated read is both companies' rows for the account, no more");
+    // The row is the obligation register's own shape: amounts and references only -- no part, quantity or unit cost (the
+    // cost INPUTS #2084 withholds on the workspace rows never appear on an obligation row at all).
+    for (const o of cons) {
+      assert.deepEqual(Object.keys(o).sort(), ["counterparty", "currency", "dueOn", "id", "kind", "operatingCompanyId", "originatedMinor",
+        "outstandingMinor", "overdue", "settledMinor", "sourceDomain", "sourceRecordId", "status"]);
+    }
+    const open = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct, status: "OPEN" })).items;
+    assert.ok(open.length === await acctCount(["taylor"], acct, "OPEN") && open.every((o) => o.status === "OPEN"), "combined with status: the intersection");
+    assert.deepEqual(ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: "acct-does-not-exist" })).items, []);
+    for (const bad of ["", "   ", 5, null]) refused(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: bad }), 400, "ACCOUNT_INVALID", JSON.stringify(bad));
+    // The filter grants nothing: no key, no rows, whatever account is named.
+    refused(await fn(techP, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct }), 403, "CAPABILITY_REQUIRED");
+    // Sales holds finance.payment.read FLAT (migration 1761609600000 L157-158) but no Finance company assignment, so it
+    // reaches NO company: naming its own customer's Account reads nothing.
+    assert.equal((await capabilitiesForRoleKeys(pool, TENANT, ["salesperson"])).has("finance.payment.read"), true, "precondition: sales holds the view key flat");
+    for (const c of ["taylor", "ventana", "consolidated"]) refused(await fn(salesP, "listObligations", { operatingCompanyId: c, crmAccountId: acct }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE", `sales ${c}`);
+  });
+
   // ── COMPANY ASSIGNMENT IS MANDATORY (Owner ruling 2026-10-13; Financials Workspace P0 correction 2026-10-14) ──
   await t.test("SCOPE: Finance reads and settlement commands need the key AND an explicit company assignment; Consolidated needs every company", async () => {
     const OUT = "OUTSIDE_OPERATING_COMPANY_SCOPE";
@@ -677,6 +723,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
         refused(await fn(who, "readFinanceWorkspace", c === undefined ? {} : { operatingCompanyId: c }), 403, OUT, `unassigned: ${c}`);
       }
       refused(await fn(who, "listObligations", { operatingCompanyId: "taylor" }), 403, OUT);
+      refused(await fn(who, "listObligations", { operatingCompanyId: "taylor", crmAccountId: ISO_ACCOUNT }), 403, OUT, "naming an Account gives no reach");
       refused(await fn(who, "listSettlements", { operatingCompanyId: "taylor" }), 403, OUT);
       refused(await fn(who, "readObligation", { obligationId: taylorObligation }), 404, "OBLIGATION_NOT_FOUND");
       refused(await fn(who, "readSettlement", { settlementId: taylorSettlement }), 404, "SETTLEMENT_NOT_FOUND");
@@ -700,6 +747,31 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.deepEqual(Object.keys(body).sort(), Object.keys(outside).sort(), "the same refusal shape: existence is not revealed");
     }
     refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "ventana" }), 403, OUT);
+    // NEGATIVE ISOLATION (never skipped): naming an Account that holds a Ventana obligation does not widen reach. The
+    // Ventana row must exist, or this proves nothing -- the ACCOUNT test created it.
+    const isoVentana = (await one(`SELECT o.id FROM eos_finance.obligations o JOIN eos_finance.financial_counterparties cp ON cp.tenant_id=o.tenant_id AND cp.id=o.counterparty_id
+      WHERE o.tenant_id=$1 AND o.operating_company_id='ventana' AND cp.crm_account_id=$2`, [TENANT, ISO_ACCOUNT]))?.id;
+    assert.ok(isoVentana, `fixture: ${ISO_ACCOUNT} must hold a Ventana obligation for the isolation proof`);
+    refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "ventana", crmAccountId: ISO_ACCOUNT }), 403, OUT);
+    refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "consolidated", crmAccountId: ISO_ACCOUNT }), 403, OUT);
+    refused(await fn(ctrlT, "listObligations", { crmAccountId: ISO_ACCOUNT }), 403, OUT);
+    const isoTaylorOnly = ok(await fn(ctrlT, "listObligations", { operatingCompanyId: "taylor", crmAccountId: ISO_ACCOUNT })).items;
+    assert.deepEqual(isoTaylorOnly.map((o) => o.operatingCompanyId), ["taylor"], "a Taylor-only caller sees the account's Taylor row only");
+    assert.ok(!isoTaylorOnly.some((o) => o.id === isoVentana), "and never the Ventana obligation");
+    refused(await fn(ctrlT, "readObligation", { obligationId: isoVentana }), 404, "OBLIGATION_NOT_FOUND");
+    // EQUIVALENCE: to a Taylor-only caller a Ventana-only Account is exactly a nonexistent one -- the same empty list in Taylor,
+    // and the same refusal body (decided by company scope BEFORE the account is looked at) in Ventana / Consolidated.
+    const none = "acct-does-not-exist";
+    assert.deepEqual(ok(await fn(ctrlT, "listObligations", { operatingCompanyId: "taylor", crmAccountId: ISO_VENTANA_ONLY })),
+      ok(await fn(ctrlT, "listObligations", { operatingCompanyId: "taylor", crmAccountId: none })), "Ventana-only account == no account");
+    for (const c of ["ventana", "consolidated"]) {
+      const a = refused(await fn(ctrlT, "listObligations", { operatingCompanyId: c, crmAccountId: ISO_VENTANA_ONLY }), 403, OUT);
+      const b = refused(await fn(ctrlT, "listObligations", { operatingCompanyId: c, crmAccountId: none }), 403, OUT);
+      const shape = (r) => [Object.keys(r).sort(), r.code, r.message];
+      assert.deepEqual(shape(a), shape(b), `${c}: the same refusal for a Ventana account and a nonexistent one`);
+    }
+    // Scope is decided first, so a malformed id outside reach is refused as out of scope, not as invalid input.
+    refused(await fn(ctrlT, "listObligations", { operatingCompanyId: "ventana", crmAccountId: "" }), 403, OUT);
     refused(await fn(ctrlT, "listSettlements", { operatingCompanyId: "consolidated" }), 403, OUT);
     refused(await fn(ctrlT, "readObligation", { obligationId: ventanaObligation }), 404, "OBLIGATION_NOT_FOUND");
     refused(await fn(ctrlT, "readObligation", { obligationId: "obl-does-not-exist" }), 404, "OBLIGATION_NOT_FOUND");
