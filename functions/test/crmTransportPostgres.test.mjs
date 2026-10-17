@@ -27,11 +27,11 @@ const RECORD = ["customer.record.read", "customer.record.create", "customer.reco
 
 test("offline: the CRM transport is a closed, authenticated envelope routed by server.ts", async () => {
   assert.deepEqual([...http.CRM_OPERATIONS].sort(), [
-    "createAccount", "createAccountLocation", "createContact", "getAccount", "getAccountLocation", "getContact",
-    "importAccountContacts", "listAccountContacts", "listAccountLocations", "listAccountOwnershipHistory", "listAccounts",
+    "createAccount", "createAccountActivity", "createAccountLocation", "createContact", "getAccount", "getAccountLocation", "getContact",
+    "importAccountContacts", "listAccountActivities", "listAccountContacts", "listAccountLocations", "listAccountOwnershipHistory", "listAccounts",
     "updateAccount", "updateAccountLocation", "updateContact",
   ]);
-  assert.equal(http.CRM_OPERATIONS.length, 14);
+  assert.equal(http.CRM_OPERATIONS.length, 16); // 14 -> 16: the Account activity read and create (#243, F7b).
   for (const name of ["deleteAccount", "runSQL", "assignAccountOwner", "toString", "__proto__", "constructor"]) assert.equal(http.isCrmOperation(name), false, name);
   assert.deepEqual([eosApiDomainFor("/crm/customer"), eosApiDomainFor("/crm/customer?x=1"), eosApiDomainFor("/commercial/sales"), eosApiDomainFor("/crmcustomer")],
     ["crm", "crm", "commercial", "administration"]);

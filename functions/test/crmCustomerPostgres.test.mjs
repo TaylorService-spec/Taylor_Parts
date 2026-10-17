@@ -93,17 +93,18 @@ const columns = (table) => query(
 
 // ============================ the schema exists, and holds exactly what it claims ============================
 
-test("eos_crm stands beside eos_policy and eos_ops, with its three record tables and nothing else", { skip: SKIP }, async () => {
+test("eos_crm stands beside eos_policy and eos_ops, with its record tables and nothing else", { skip: SKIP }, async () => {
   await fresh();
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_crm' ORDER BY 1",
   );
   // Migration 008's three record tables, plus migration 025's (wave D1-A): the Account's normalized multi-valued
   // business facts and the CRM create-idempotency receipts, plus migration 1759924800000's append-only Account
-  // ownership history. Still no location or inventory table of any kind.
+  // ownership history, plus migration 1764590000000's Account activity log (#243, F7b). Still no location or inventory
+  // table of any kind.
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
     "account_lines_of_business", "account_locations", "account_ownership_history", "account_relationship_types", "account_tags", "accounts",
-    "command_receipts", "contacts",
+    "activities", "command_receipts", "contacts",
   ]);
 
   // AND eos_ops IS UNCHANGED. eosOpsPostgres.test.mjs asserts eos_ops holds "exactly four foundation

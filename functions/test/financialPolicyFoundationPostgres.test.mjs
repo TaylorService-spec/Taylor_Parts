@@ -18,7 +18,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -139,6 +139,10 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const held = await one(`SELECT (SELECT count(*) FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE c.key LIKE 'finance.policy.%')
       + (SELECT count(*) FROM eos_policy.principal_capabilities pc JOIN eos_policy.capabilities c ON c.id = pc.capability_id WHERE c.key LIKE 'finance.policy.%') AS n`);
     assert.equal(Number(held.n), 0, "after the seed, the baseline and the live Service delta, NO Role and no Principal holds a finance.policy.* key");
+    // Later lanes' migrations sit above #232's; peel them first, measured from the tree rather than pinned, and restore
+    // them last, so the before/after comparisons below are about #232's two migrations alone.
+    const newer = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql") && f > "1764570000000_financial-policy-withdraw-cancel.sql").length;
+    if (newer) migrate("down", newer);
     const grantsBefore = await grantSnapshot();
     const directBefore = await directSnapshot();
     const capCount = async () => Number((await one(`SELECT count(*) AS n FROM eos_policy.capabilities`)).n);
@@ -159,6 +163,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.deepEqual(await columns(), ["cancelled_by", "withdrawn_by"]);
     assert.deepEqual(await grantSnapshot(), grantsBefore, "re-applied: every existing Role grant is exactly as before");
     assert.deepEqual(await directSnapshot(), directBefore);
+    if (newer) migrate("up", newer);
     // The existing Finance read, pinned as the baseline measures it: the migration moves none of its holders.
     assert.deepEqual(grantsBefore.filter((g) => g.cap === "finance.payment.read").map((g) => g.role), ["accountingManager", "admin", "controller",
       "fieldManager", "financeManager", "generalManager", "owner", "partsAssociate", "partsManager", "purchasingManager", "salesManager", "salesperson",
