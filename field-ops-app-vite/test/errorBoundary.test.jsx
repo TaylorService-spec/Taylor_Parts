@@ -138,3 +138,43 @@ describe("ErrorBoundary", () => {
     window.location = original;
   });
 });
+
+// STALE BUNDLE AFTER A DEPLOY (crash ZDJ11-58EILS on /service/dispatcher-board): a lazy route chunk the old index names is
+// gone. The boundary reloads ONCE -- guarded in sessionStorage, so it can never loop -- and otherwise behaves as before.
+describe("ErrorBoundary -- stale bundle after a deploy", () => {
+  function StaleChunk() { throw new TypeError("Failed to fetch dynamically imported module: https://app.example/assets/DispatcherBoard-abc123.js"); }
+  let reload;
+  let realLocation;
+  beforeEach(() => {
+    sessionStorage.clear();
+    reload = vi.fn();
+    realLocation = window.location;
+    delete window.location;
+    window.location = { ...realLocation, reload };
+  });
+  afterEach(() => {
+    window.location = realLocation;
+    sessionStorage.clear();
+  });
+
+  test("reloads once, automatically, and says it is loading the latest version", () => {
+    render(<ErrorBoundary><StaleChunk /></ErrorBoundary>);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status").textContent).toMatch(/Loading the latest version/);
+    expect(sessionStorage.getItem("eos.staleBundleReloadAt")).toMatch(/^\d+$/);
+  });
+
+  test("the GUARD: a second stale-chunk failure right after the reload shows the crash screen, never another reload", () => {
+    sessionStorage.setItem("eos.staleBundleReloadAt", String(Date.now()));
+    render(<ErrorBoundary><StaleChunk /></ErrorBoundary>);
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByText("Something went wrong")).toBeTruthy();
+  });
+
+  test("any other crash never reloads automatically", () => {
+    render(<ErrorBoundary><Boom shouldThrow /></ErrorBoundary>);
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("eos.staleBundleReloadAt")).toBeNull();
+    expect(screen.getByText("Something went wrong")).toBeTruthy();
+  });
+});

@@ -258,6 +258,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/staleBundleReload.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/zonedTime.test.mjs",
       "runner": "node --test"
     },
