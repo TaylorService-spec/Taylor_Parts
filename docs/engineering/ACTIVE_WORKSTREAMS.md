@@ -27,6 +27,50 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Governed Work Order list query, company-isolated, + technician-availability read isolation (readTechnicianAvailability / findAvailableTechnicianSlots); explicit COMPANY_AUTHORITY_REQUIRED refusal on Jobs / Board / My Work (PR #2110)
+- Agent/session:       Claude Code Lane Filtering · Role: builder; Lane D: independent reviewer; controller merges
+- Branch / worktree:   PR #2110 branch · Lane Filtering clone (private PG :55433)
+- Base commit:         `ef199c11`
+- Owned paths:         the #2110 diff
+- Shared paths req'd:  this registry · `functions/src/eosOps/workOrderAvailability.ts` (Scheduling PR-2 merges after and keeps both sides)
+- Dependencies:        #2116 (merged)
+- Expected outcome:    no-authority caller gets an explicit refusal, never an empty list; availability reads isolated and tested separately from list isolation
+- Protected boundaries:standing delivery authority (green exact-head CI + Lane D); no grant, role, identity, Firebase or production change; NO employee-read role used for second-company reach
+- Lifecycle stage:     INTEGRATION
+
+- Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
+- Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
+- Branch / worktree:   flake-fix branch · Lane Firebase clone (private PG :55507)
+- Base commit:         `ef199c11`
+- Owned paths:         `functions/test/assignmentScopeRuntimePostgres.test.mjs`
+- Shared paths req'd:  this registry
+- Dependencies:        none (test-only). Repo-wide `endPoolAndDrain` helper is a SEPARATE later PR, after #2110 and Scheduling PR-2
+- Expected outcome:    the teardown flake no longer fails CI
+- Protected boundaries:none beyond standing delivery authority
+- Lifecycle stage:     SANDBOX VERIFIED
+
+- Capability:          Honest refusal wording — Jobs (Job Assignments) and My Dashboard Service Attention classify refusals through workOrderOutcome.js (FORBIDDEN → denied, COMPANY_AUTHORITY_REQUIRED → company-authority message, NOT_YET_ACTIVATED → not enabled; outages keep retry copy)
+- Agent/session:       Claude Code Lane C · Role: builder; Lane D: independent reviewer; controller merges
+- Branch / worktree:   `work/eos-lane-c-wo-refusal-wording` · Lane C clone
+- Base commit:         #2110 head (rebases onto post-#2110 main)
+- Owned paths:         `modules/jobs/Jobs.jsx` (refusal branch) · `modules/dashboard/MyDashboard.jsx` (ServiceAttentionModule) · `test/workOrderRefusalHonesty.test.jsx`
+- Shared paths req'd:  this registry · `.github/workflows/dispatch-north-star-tests.yml` (suite + triggers; controller-accepted)
+- Dependencies:        #2110 (reuses its refusal copy)
+- Expected outcome:    refusals never read as outages
+- Protected boundaries:none beyond standing delivery authority
+- Lifecycle stage:     SANDBOX VERIFIED
+
+- Capability:          Training documentation for the 2026-10-16/17 batch (dispatch #2113/#2116/#2110, Scan balance state, read-only Manufacturers, Customers portfolio message) — final sign-off item
+- Agent/session:       Claude Code EOS controller · Role: builder
+- Branch / worktree:   `docs/training-dispatch-and-exit-2026-10-17` · `D:/eos-training`
+- Base commit:         `ef199c11`
+- Owned paths:         `docs/user-guide/{README.md,dispatch/**,inventory/scan-workspace.md,inventory/view-manufacturers.md,accounts-customers/browse-and-search-customers.md}`
+- Shared paths req'd:  none (PR-2 owns `docs/user-guide/administration/view-an-employee-work-schedule.md`)
+- Dependencies:        #2110 and Scheduling PR-2 merged; guides verified against the deployed app
+- Expected outcome:    end-user guides match the shipped behavior
+- Protected boundaries:none
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Firebase exit lane (O-1, DECISIONS #234) — PR-A unrouted Technicians chain, PR-B dormant / flag-dead clients, PR-C Timestamp-only types; read-only investigations of the 27 no-client write callables, the bin dual path and the operator inventory checklist (Owner decisions 2026-10-15)
 - Agent/session:       Claude Code Firebase-exit lane session · Role: builder; Lane D: independent reviewer
 - Branch / worktree:   `work/eos-firebase-exit` (PR-A, then B and C serialized on it) · `D:/eos-fb-exit`
@@ -36,7 +80,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none; A → B → C serialized because each edits the baseline and the pins
 - Expected outcome:    exit baseline 265 → 261 (A) → 257 (B) → 247 (C) with no runtime change; investigation report to the coordinator
 - Protected boundaries:no production change, Firebase deploy, undeploy or authentication cutover; no merge without exact-head Owner authorization
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED — PR-A #2109 `931c8af8`, PR-B #2114 `6a677c42`, PR-C #2115 `5eeaaf07` (baseline 247); nonprod deployed and verified
 
 - Capability:          Dispatcher Board: governed-zone grid + capability-gated placement controls (Owner "CONTINUE AND RECONCILE TRACKER" item 8, 2026-10-16, DECISIONS #240)
 - Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
@@ -47,7 +91,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none blocking; #2110 owns the tenant-wide availability-read follow-up
 - Expected outcome:    grid in the company's zone; Schedule controls only for schedule-capability holders
 - Protected boundaries:standing delivery authority (green exact-head CI + Lane D); no grant, role, identity, Firebase or production change
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `ef199c11` (#2116); nonprod Render+Vercel deployed and verified 2026-10-17
 
 - Capability:          Jobs + Dispatcher Board on one governed scheduling path; Schedule dialog defaults to a valid future time (Owner "FIX JOBS AND DISPATCH" 2026-10-16, DECISIONS #239)
 - Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
@@ -58,7 +102,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        coordinated with Scheduling PR-2 (it edits workOrderAvailability.ts elsewhere; holds DECISIONS #238) and the Firebase-exit lane (AuthContext untouched)
 - Expected outcome:    Jobs dispatches/schedules; dialog never opens on a past time; same commands/authority/availability on both surfaces
 - Protected boundaries:no merge or deploy without Owner exact-head authorization; no role, grant, identity, migration or Firebase change
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `3f5ed759` (#2113); nonprod deployed and verified
 
 - Capability:          P0 rental company security — all 18 /operations/rental operations under EOS Core company authority (Owner rulings D1–D8 2026-10-15, DECISIONS #236)
 - Agent/session:       Claude Code EOS controller / security lane · Role: builder; Lane D: independent reviewer
@@ -80,7 +124,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        #2105 (DECISIONS #235) merged; Scheduling PR-2 waits on this
 - Expected outcome:    no cross-company schedule or unavailability write; out-of-company == missing; no mutation on refusal
 - Protected boundaries:security PR — no merge or deploy without Owner authorization; no role, grant, identity or employee change
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `5e4afa12` (#2111); nonprod deployed and verified (cross-company PG-proven; no live Ventana data)
 
 - Capability:          EOS Core Company Authority V1 — Analysis / My Work company isolation (Owner security ruling 2026-10-15, DECISIONS #235)
 - Agent/session:       Claude Code EOS controller / Lane B session · Role: builder; Lane D: independent reviewer
@@ -102,7 +146,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Owner decisions SCH-D1..D4 in the design doc; Lane UX shared compact components (reuse, not fork)
 - Expected outcome:    governed schedule visible/editable from the Employee record; board names link by employeeId with return state; subdued elapsed time; nonworking / unconfigured time drawn, never defaulted
 - Protected boundaries:no schema, permission, role or business-rule change and no merge/deploy without Owner approval
-- Lifecycle stage:     SANDBOX BUILD — PR-1 (presentation-only board corrections) open for review; PR-2 blocked on G-9; PR-3 after PR-1; PR-4 deferred
+- Lifecycle stage:     PR-1 MERGED `7a1c4cd7` (#2108); PR-2 (Work Schedule tab, hold lifted) in INTEGRATION; PR-3 after PR-2; PR-4 deferred
 
 - Capability:          Lane A (Employee UX) — My Work #172 correction, split frontend-first (Owner decision 2026-10-15)
 - Agent/session:       Claude Code Lane A session · Role: builder
@@ -113,7 +157,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (separate from Lane B #2098, Lane C, the Firebase exit)
 - Expected outcome:    sections carry a `hasMore` boolean, never a count; the UI renders both API shapes with no number and no "undefined"
 - Protected boundaries:no merge or deploy without Owner authorization; merging to main auto-deploys nonprod (= activation)
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED #2099 `a1261486` (API hasMore)
 
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
