@@ -124,6 +124,6 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 
 **Restored, on EOS.** The New Manufacturer, Rename and Status flow that PR-B removed now calls `createManufacturer` / `updateManufacturer` / `changeManufacturerStatus` on the Catalog API (`postgresManufacturerWriter.ts`). See DECISIONS #241.
 
-**Merge precondition.** `eos_ops.manufacturers` must hold the Firestore manufacturers on nonprod first. It was measured empty, and there is no operator copy script yet.
+**Nonprod data.** `eos_ops.manufacturers` is empty on nonprod, and so is its source: the sandbox Firestore `manufacturers` collection was measured at 0 documents and cannot have grown since. Rules deny writes, the write client was removed in PR-B, and the callables are frozen. No nonprod copy is needed. The production copy is a separate Owner-gated step (DECISIONS #241).
 
 **Server callables kept.** `getManufacturerCatalog` and the three write callables stay deployed and frozen until an operator undeploy (reserved).

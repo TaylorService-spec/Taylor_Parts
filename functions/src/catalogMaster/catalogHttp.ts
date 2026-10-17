@@ -93,8 +93,10 @@ export const CATALOG_READ_REQUIREMENTS: Readonly<Record<CatalogReadOperation, re
   probePartAlias: [CATALOG_READ_CAPABILITY, "inventory.catalog.manage"],
   lookupScannedPart: [CATALOG_READ_CAPABILITY],
   // BOTH keys: inventory.catalog.read is what the retired getManufacturerCatalog checked, and inventory.manufacturer.read
-  // is the PostgreSQL authority's own (manufacturerAuthority.ts). Migration 1761782400000 grants the second to exactly
-  // the nineteen Roles holding the first, so requiring both is never wider than either path.
+  // is the PostgreSQL authority's own (manufacturerAuthority.ts). Requiring both is never wider than either path. MEASURED, the
+  // two are NOT held by the same Roles: migration 1761782400000 granted the second to the nineteen Roles that held the first
+  // THEN, and Roles that gained catalog.read later (commercialSharedContext, technician, equipmentInstaller,
+  // inventoryLookupReader) did not get it -- those principals are refused here. The Owner decision is open (DECISIONS #241).
   listManufacturers: [CATALOG_READ_CAPABILITY, MANUFACTURER_READ],
   getManufacturer: [CATALOG_READ_CAPABILITY, MANUFACTURER_READ],
   searchManufacturers: [CATALOG_READ_CAPABILITY, MANUFACTURER_READ],

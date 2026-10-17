@@ -3,7 +3,8 @@
 **What this lets you do:** See the manufacturers that Parts link to, add a new one, correct a name, and make one Active or Inactive.
 
 **Who can do it:**
-- **Opening the page and seeing the list:** anyone whose access includes reading the parts catalog (the same access that opens **Inventory > Parts**).
+- **Opening the page:** anyone whose access includes reading the parts catalog (the same access that opens **Inventory > Parts**).
+- **Seeing the list:** you also need manufacturer read access. Without it the page opens but says **"You do not have access to Manufacturers."**
 - **Adding a manufacturer or correcting a name:** you also need catalog management access.
 - **Making a manufacturer Active or Inactive:** you also need catalog activation access.
 

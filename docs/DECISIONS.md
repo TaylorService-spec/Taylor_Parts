@@ -8679,13 +8679,27 @@ Client: `field-ops-app-vite/test/employeeWorkScheduleTab.test.jsx` shows a refus
 
 **Rule.**
 - **The read is the Catalog API's.** `listManufacturers`, `getManufacturer` and `searchManufacturers` on `/operations/catalog` read `eos_ops.manufacturers` through `eosOps/manufacturerAuthority.ts`.
-  - They require `inventory.catalog.read` (what the retired callable checked) **and** `inventory.manufacturer.read` (the PostgreSQL authority's own key). Migration 1761782400000 grants the second to exactly the nineteen Roles holding the first, so the pair is never wider than either path.
+  - They require `inventory.catalog.read` (what the retired callable checked) **and** `inventory.manufacturer.read` (the PostgreSQL authority's own key). Requiring both is never wider than either path.
+  - **Measured, the two keys are not held by the same Roles.** Migration 1761782400000 granted `inventory.manufacturer.read` to the nineteen Roles that held `inventory.catalog.read` at that time. Roles that gained `inventory.catalog.read` later did not get it. The live nonprod captures (2026-10-17) show three personas holding `inventory.catalog.read` **without** `inventory.manufacturer.read`:
+    - nationalAccountsSales (`commercialSharedContext`);
+    - retailSales (`commercialSharedContext`);
+    - serviceTechnician (`technician`, `equipmentInstaller`, `inventoryLookupReader`).
+  - For them the door opens (`inventory.catalog`) but the list is refused, and Part screens show manufacturer ids without names.
   - The list is bounded at 1,000 rows and says `truncated` past that. It carries each row's `updatedAt`, the writer's concurrency token.
 - **The writes are the Catalog API's.** `createManufacturer`, `updateManufacturer` and `changeManufacturerStatus` dispatch to `catalogMaster/postgresManufacturerWriter.ts`: `inventory.catalog.manage` for create and rename, `inventory.catalog.activate` for status. They sit behind the same ACTIVE authority and DQ-034 mutation hold as the Part writers. There is no delete.
 - **The client has no fallback.** `services/manufacturerCatalogClient.js` replaces the callable client. The screen restores New Manufacturer, Rename and Status, and shows the server's answer (the Supplier administration pattern, #196).
 - **The door follows the read (R-1 Option A).** `inventory/manufacturers` maps to the existing `inventory.catalog` surface. The row changes kind and nothing is added: ungoverned 39 → 38, cutover 23 → 24, register 62. Production (legacy source) is byte-identical, and the item stays `navHidden`.
 
-**Precondition for merge.** `eos_ops.manufacturers` held 0 rows on nonprod when last measured, and there is no operator copy for it. Merging deploys nonprod. If the table is empty, the screen and the Part forms' manufacturer names read empty there until an operator copies the Firestore manufacturers. That copy is a nonprod data write and is reserved.
+**Open Owner decision: the three personas above.** This PR implements **none** of the options, and requiring both keys stays.
+- (i) Grant `inventory.manufacturer.read` to `commercialSharedContext`, `technician`, `equipmentInstaller` and `inventoryLookupReader`. This is a governed grant.
+- (ii) Accept that those Roles see the door and are refused the list.
+- (iii) Make the door require both keys.
+
+**Nonprod data (controller ruling, 2026-10-17).** `eos_ops.manufacturers` is empty on nonprod, and so is the source:
+- `eosOps/migration/manufacturerMigration.ts` measured the sandbox Firestore `manufacturers` collection at 0 documents.
+- It cannot have grown since: Rules deny client writes, the only write client was removed in PR-B (#2114), and the write callables are frozen.
+
+So merging empties nothing. The **production** copy (Firestore `manufacturers` → `eos_ops.manufacturers`) is a separate Owner-gated step. Its operator tool is held until the Owner rules on extending the 2026-09-14 migration-exporter exception to `manufacturers`.
 
 **Unchanged.** The Firebase callables (`getManufacturerCatalog`, `createManufacturer`, `updateManufacturer`, `changeManufacturerStatus`) stay deployed and frozen; retiring them is an operator undeploy. `CALLABLE_SOURCES` still names `getManufacturerCatalog` for the list-view validator only.
 

@@ -398,7 +398,8 @@ export const NAV_DOMAINS = [
       // App.jsx branch; admin/dispatcher via the legacy default (production, unchanged).
       // EOS SOURCE (Manufacturers R-1 Option A, Owner-approved; Firebase exit F5, 2026-10-17): the door is the
       // existing `inventory.catalog` surface, earned by inventory.catalog.read -- the SAME capability its list
-      // read requires (with inventory.manufacturer.read, held by the same nineteen Roles). Before this the row had
+      // read requires, together with inventory.manufacturer.read (not held by every catalog.read Role -- DECISIONS #241,
+      // an open Owner decision: those principals reach the door and are refused the list). Before this the row had
       // no surface, so the EOS source refused it to every principal, Administrator included. It stays navHidden:
       // the screen is reached from Catalog, not added to the rail.
       { key: "manufacturers", label: "Manufacturers", path: "manufacturers", navHidden: true },

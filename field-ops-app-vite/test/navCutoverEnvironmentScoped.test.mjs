@@ -600,8 +600,8 @@ test("EOS: Administration Permissions opens only on the existing Objects surface
     assert.equal(isNavItemVisible(item, role, keysFor(role), eosContext(eosAuthority([]))), false,
       `the role literal "${role}" opened Permissions under the governed source`);
   }
-});
-
+});
+
 // MANUFACTURERS R-1 OPTION A (2026-10-17, Firebase exit F5): `inventory/manufacturers` moved UNGOVERNED -> CUTOVER because the
 // destination now earns the existing `inventory.catalog` surface -- the surface its list read's capability already earns.
 test("TRANSITION: inventory/manufacturers changed kind (R-1 Option A), and nothing was added", () => {

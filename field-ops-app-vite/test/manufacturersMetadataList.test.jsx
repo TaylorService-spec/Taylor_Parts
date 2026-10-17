@@ -144,8 +144,8 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
       expect(["doc-alpha-123", "doc-beta-456"]).toContain(row.key);
     }
   });
-});
-
+});
+
 describe("manufacturerCatalogClient -- the Catalog API, not a Firebase callable (Firebase exit F5)", () => {
   it("lists through listManufacturers and maps id -> manufacturerId, carrying updatedAt and truncated", async () => {
     catalogApiClient.call.mockResolvedValue({ ok: true, result: { truncated: true, manufacturers: [{ id: "m1", name: "Taylor", status: "ACTIVE", provenance: "NATIVE", updatedAt: "t1" }] } });
@@ -159,6 +159,12 @@ describe("manufacturerCatalogClient -- the Catalog API, not a Firebase callable 
     expect(await fetchManufacturerCatalog()).toEqual({ errorStatus: "denied" });
     catalogApiClient.call.mockResolvedValue({ ok: false, code: "UNREACHABLE" });
     expect(await fetchManufacturerCatalog()).toEqual({ errorStatus: "unavailable" });
+  });
+
+  it("never throws: a client that fails to load or throws is unavailable, never an exception", async () => {
+    const broken = { call: () => { throw new Error("chunk load failed"); } };
+    expect(await fetchManufacturerCatalog({ client: broken })).toEqual({ errorStatus: "unavailable" });
+    expect((await manufacturerCommands.create({ manufacturerId: "m1", name: "T" }, { client: broken })).kind).toBe("error");
   });
 
   it("the three writes send the writer's own envelopes", async () => {

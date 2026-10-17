@@ -13,13 +13,24 @@
 // Firebase app. manufacturerQueries.js (and every Part form through useManufacturerCatalog) stays free of that side effect.
 const defaultClient = async () => (await import("./catalogApiClient.js")).catalogApiClient;
 
+// "Never throws" made true: a module that fails to load (a stale bundle after a deploy) is a failed call, not an exception.
+const UNLOADABLE = Object.freeze({ ok: false, code: "UNREACHABLE", message: "the Catalog client could not be loaded" });
+async function callCatalog(deps, operation, input) {
+  try {
+    const client = deps.client ?? (await defaultClient());
+    return await (input === undefined ? client.call(operation) : client.call(operation, input));
+  } catch {
+    return UNLOADABLE;
+  }
+}
+
 /**
  * The full Manufacturer list. Returns { result } in the envelope domain/manufacturerCatalogView.js reads
  * ({status:"ready", manufacturers, excludedCount, truncated}), or { errorStatus: "denied" | "unavailable" }.
  * Never throws. `truncated` is the server saying more rows exist than its bound (MANUFACTURER_LIST_MAX).
  */
 export async function fetchManufacturerCatalog(deps = {}) {
-  const res = await (deps.client ?? (await defaultClient())).call("listManufacturers");
+  const res = await callCatalog(deps, "listManufacturers");
   if (!res.ok) return { errorStatus: res.code === "FORBIDDEN" ? "denied" : "unavailable" };
   const manufacturers = res.result?.manufacturers;
   if (!Array.isArray(manufacturers)) return { errorStatus: "unavailable" };
@@ -54,7 +65,7 @@ export function manufacturerWriteOutcome(res) {
 }
 
 const command = async (operation, input, deps = {}) =>
-  manufacturerWriteOutcome(await (deps.client ?? (await defaultClient())).call(operation, input));
+  manufacturerWriteOutcome(await callCatalog(deps, operation, input));
 
 export const manufacturerCommands = Object.freeze({
   create: ({ manufacturerId, name }, deps) =>
