@@ -7,3 +7,5 @@ export { default as PageHeader } from "./PageHeader.jsx";
 export { default as SectionHeader } from "./SectionHeader.jsx";
 export { default as StatusIndicator } from "./StatusIndicator.jsx";
 export { default as CompactMetric } from "./CompactMetric.jsx";
+export { default as InfoTip } from "./InfoTip.jsx";
+export { default as Toolbar } from "./Toolbar.jsx";

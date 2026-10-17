@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
-import { Button } from "../../shared/ui/primitives/index.js";
+import { Button, SectionHeader } from "../../shared/ui/primitives/index.js";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import { RECEIVING_TRANSPORT_READY } from "../../config/receivingReadiness.js";
 import {
@@ -327,25 +327,26 @@ function ScanWorkspaceBody({ deps }) {
 
   return (
     <div className="fo-panel">
-      <WorkspaceHeader title="Scan" />
-      <p className="fo-muted">
-        Scanning identifies what you are holding. What you may then do with it depends on your
-        authority and on the job in front of you — so this list shows only workflows you can actually
-        complete.
-      </p>
+      {/* Compact UX Standard: the "why this list" paragraph is the title's InfoTip (hover, focus or
+          tap). Each workflow's own description stays visible beside its button -- it is what the
+          operator chooses by, and a phone has no hover. */}
+      <WorkspaceHeader
+        title="Scan"
+        help="Scanning identifies what you are holding. What you may then do with it depends on your authority and on the job in front of you — so this list shows only workflows you can actually complete."
+      />
 
       {workflows.empty ? (
         // NEVER A BLANK SCREEN. An empty workspace with no explanation is indistinguishable from a
         // broken one, and the reasons below are what tell the user which it is.
-        <section className="fo-panel" aria-label="No scanning workflows available">
-          <h3>No Scanning Workflows Are Available to You</h3>
+        <section className="fo-scan-section" aria-label="No scanning workflows available">
+          <SectionHeader level={3} title="No Scanning Workflows Are Available to You" />
           <p className="fo-muted">
             Nothing here is broken — there is simply no scanning workflow your current access and
             assignments allow. The reasons are listed below.
           </p>
         </section>
       ) : (
-        <ul className="fo-scan-workflows">
+        <ul className="fo-scan-workflows fo-scan-workflows--menu">
           {workflows.available.map(({ workflow }) => (
             <li key={workflow}>
               <Button type="button" variant="primary" onClick={() => setActive(workflow)}>
@@ -358,8 +359,8 @@ function ScanWorkspaceBody({ deps }) {
       )}
 
       {workflows.unavailable.length > 0 && (
-        <section className="fo-panel" aria-label="Not available to you">
-          <h3>Not Available to You</h3>
+        <section className="fo-scan-section" aria-label="Not available to you">
+          <SectionHeader level={3} title="Not Available to You" />
           <ul className="fo-list">
             {workflows.unavailable.map(({ workflow, reason }) => (
               <li key={workflow} className="fo-muted">
