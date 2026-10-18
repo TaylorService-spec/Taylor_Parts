@@ -183,3 +183,16 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 - `domain/employees.js` (its only remaining export was the directory query) is folded into `hooks/useEmployeeDirectory.js` and deleted (baseline −1).
 - **Left on the Firebase path, and named:** `modules/financials/FinancialsInvoiceDetail.jsx`, `FinancialsAccountsReceivable.jsx` and `FinancialsEmployeePerformance.jsx` still use `useEmployeeDirectory`. Their finance facts are Firebase until F7c-2, they name Employee ids carried on those facts, and the Financials read files belong to the F7c lane. They move to `useGovernedEmployeeDirectory` in the same change as their reads (a one-line swap, same return shape).
 - **Open decision (recorded in DECISIONS #247):** `ACTOR_DISPLAY_READ_CAPABILITIES` admits only holders of a customer, opportunity, sales agreement, sales order or work order read. A Parts or Purchasing reader without one of those gets "Unknown user" / "Unknown assignee". Widening the server gate is a server-side widening and was not done.
+
+## B3: Warehouse and receiving move to EOS (2026-10-18; DECISIONS #B3)
+
+| Firebase call removed from the EOS build | Replaced by |
+| --- | --- |
+| `services/receivingCallableClient.js`: `receiveInventoryStock` (canonical PURCHASE_ORDER), `getPurchaseOrderReceivingProgress`, `listReceivablePurchaseOrders`, `listReceivingLocationOptions` | `services/eosSupplierReceivingClient.js` → `/operations/inventory` (`receiveSupplierPurchaseOrder`, `readSupplierPurchaseOrderProgress`, `listReceivableSupplierPurchaseOrders`, `listSupplierReceivingLocationOptions`) |
+| `services/binCommandClient.js`: `createBin`, `renameBin`, `deactivateBin`, `reactivateBin`, `previewBinCreates`, `listBins` | `services/eosRackingClient.js` → `/admin/policy` (`createBins`, `renameRackingBin`, `setRackingBinStatus`, `previewBinCreates`, `listRackingBins`) |
+| `services/operationsQueries.ts` `fetchWarehouses` as the racking planner's Firestore picker | `listRackingWarehouses` (the caller's companies' warehouses only) |
+| `hooks/useInventoryActions.js`: the Firestore `inventory_actions` listener | `services/legacyInventoryNotesClient.js` → `listLegacyInventoryActionNotes` (read-only archive) |
+
+- **The files stay.** Each Firebase-calling file keeps its Firebase arm for the builds that declare no EOS API (production), so the baseline file count does not move; the choice is a build-time ternary, never a runtime fallback. The Firebase arms leave with the production cutover (level D) and the server callables with an operator undeploy (reserved).
+- **The `RECEIVING_TRANSPORT_READY` gate is the Firebase arm's alone.** The EOS supplier receive has no readiness constant: the server decides authority on every call, and a refusal is a bounded outcome. It is never "unavailable" by design (Owner ruling 4).
+- **Nothing is copied.** The Firebase bins are censused offline (`scripts/exportBinSnapshot.js` + `scripts/binCensus.js`, operator-run, not yet run); the `inventory_actions` copy and any `purchase_orders` copy stay HELD.

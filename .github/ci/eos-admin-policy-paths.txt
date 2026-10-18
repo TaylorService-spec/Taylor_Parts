@@ -907,3 +907,17 @@ field-ops-app-vite/src/auth/authSource.js
 field-ops-app-vite/src/auth/AuthContext.jsx
 field-ops-app-vite/src/modules/administration/ApprovalRequests.jsx
 field-ops-app-vite/src/modules/administration/UserDetail.jsx
+# Firebase exit B3 (DECISIONS #B3): warehouse and receiving off Firebase -- the supplier purchase order receipt, the Warehouse Racking planner,
+# the archived legacy notes and the bin census. The suites AND their subjects (the commands, the planner, the census, the migration).
+functions/test/rackingPlannerOffline.test.mjs
+functions/test/rackingPlannerPostgres.test.mjs
+functions/test/supplierPurchaseOrderReceivingPostgres.test.mjs
+functions/src/eosOps/supplierPurchaseOrderReceiving.ts
+functions/src/eosOps/legacyInventoryActionNotes.ts
+functions/src/eosOps/warehouseBinAdministration.ts
+functions/src/eosOps/binRackingPlan.ts
+functions/src/eosOps/migration/binCensus.ts
+functions/src/eosOps/receiveReorderStockCommand.ts
+functions/scripts/binCensus.js
+functions/scripts/exportBinSnapshot.js
+functions/migrations/1764630000000_warehouse-receiving-bins-on-eos.sql

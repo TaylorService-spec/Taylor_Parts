@@ -23,7 +23,8 @@
 ## Where a part's history is now
 - **Part detail > Activity** lists the part's stock movements from the inventory ledger, newest first. That is the record of what actually moved.
 - **Warehouse Manager home > View Activity** (next to a part) opens the same movements for that part, limited to the warehouses you work in: the movement, the quantity, the work order if there is one, and when. If the list cannot be loaded it says so; it never shows an empty list in place of a failure.
-- The old notes are still there to read. On Part detail and on the Warehouse Manager home they appear in a separate section titled **Legacy notes (frozen 2026-08-30; not stock movements)** (in older environments the Part detail section is titled **Inventory Action History**). They are read-only, no new notes can be added, and they were never a record of stock movement. They are not part of the Activity list above them.
+- The old notes are kept as an **archive**. On Part detail and on the Warehouse Manager home they appear in a separate section titled **Archived legacy notes (frozen 2026-08-30; not stock movements)** (in environments that have not moved to EOS the Part detail section is titled **Inventory Action History**). They are read-only, no new notes can be added, and they were never a record of stock movement — they are what someone once wrote down, not what is on the shelf. They are not part of the Activity list above them.
+- **The archive may be empty.** The old notes are copied into the archive only when the Owner authorises it. Until then the section says "The archive of legacy notes has not been loaded in this environment, so there is nothing to show" — which does **not** mean no notes were ever recorded. Once the archive is loaded, a part with no notes says "No archived legacy notes for this part."
 
 ## Related
 - [Find a part and check its stock](find-a-part.md)
