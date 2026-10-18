@@ -134,14 +134,20 @@ test("changedFiles: a non-ASCII or space-bearing path arrives as its real name, 
 test("COMPLETENESS: every suite and script the gated jobs run is selected by the list", () => {
   const globs = loadGlobs(ROOT);
   const pkg = JSON.parse(readFileSync(resolve(ROOT, "functions/package.json"), "utf8"));
+  // The two suite lists live in the REGISTRY (functions/test/adminPolicySuites.json), run by scripts/runAdminPolicySuites.mjs:
+  // package.json names only the runner and the group, so registering a suite never edits package.json.
+  const registry = JSON.parse(readFileSync(resolve(ROOT, "functions/test/adminPolicySuites.json"), "utf8"));
   const executed = new Set();
-  for (const script of ["test:adminPolicy", "test:adminPolicyPostgres"]) {
+  for (const [script, group] of [["test:adminPolicy", "offline"], ["test:adminPolicyPostgres", "postgres"]]) {
     const command = pkg.scripts[script];
     assert.ok(command, `functions/package.json has no ${script}`);
-    const suites = command.split(/\s+/).filter((t) => /\.test\.[cm]?[jt]sx?$/.test(t));
-    assert.ok(suites.length > 50, `${script} names suspiciously few suites (${suites.length})`);
+    assert.match(command, new RegExp(`scripts/runAdminPolicySuites\\.mjs ${group}$`), `${script} runs the ${group} group of the registry`);
+    const suites = registry[group];
+    assert.ok(Array.isArray(suites) && suites.length > 50, `the registry's ${group} group names suspiciously few suites (${suites?.length})`);
     for (const s of suites) executed.add(`functions/${s}`);
   }
+  // The registry and its runner are themselves run by the gated jobs: an edit to either must fire the lane.
+  for (const f of ["functions/test/adminPolicySuites.json", "functions/scripts/runAdminPolicySuites.mjs"]) executed.add(f);
   for (const line of jobBlock("surfaces").split("\n")) {
     if (!/^\s*run:\s*(node --test|npx vitest run)\s/.test(line)) continue;
     for (const t of line.split(/\s+/).filter((x) => /^test\/.+\.test\.[cm]?[jt]sx?$/.test(x))) {
