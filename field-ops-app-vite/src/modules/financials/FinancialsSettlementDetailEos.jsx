@@ -88,7 +88,7 @@ export default function FinancialsSettlementDetailEos() {
             <section className="ns-section" aria-label="Reconciliation evidence">
               <div className="ns-section__head"><h2 className="ns-section__title">Reconciliation Evidence</h2></div>
               {s.reconciliations.length > 0 ? (
-                <ul className="fin-handoffs">
+                <ul className="fin-exception-list">
                   {s.reconciliations.map((r) => (
                     <li key={r.id}>{statusLabel(r.outcome)} · external reference {r.externalReference ?? "not recorded"}{r.reason ? ` — ${r.reason}` : ""}</li>
                   ))}

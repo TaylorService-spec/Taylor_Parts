@@ -151,6 +151,8 @@ test("the Service activation authority delta, applied through Administration and
     const serviceManager = await person("uid-sa-fieldmgr", ["fieldManager"]);
     // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
     await grantSyntheticCompanyAuthority(pool, TENANT, dispatcher.principalId, ["taylor", "ventana"]);
+    // D-248-1 (DECISIONS #B1): scheduling a Work Order now needs explicit company authority, so the second Service Office role holds it too.
+    await grantSyntheticCompanyAuthority(pool, TENANT, serviceManager.principalId, ["taylor", "ventana"]);
     const techA = await person("uid-sa-tech-a", ["technician"], { id: "emp-sa-a" });
     const techB = await person("uid-sa-tech-b", ["technician"], { id: "emp-sa-b" });
     const techVentana = await person("uid-sa-tech-v", ["technician"], { id: "emp-sa-v", company: "ventana" });

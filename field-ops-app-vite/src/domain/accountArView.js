@@ -106,7 +106,7 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
   // B1: the EOS read tells a RESTRICTED reader so (Finance visibility limited to credited / team receivables): "none" then means none visible.
   const restricted = result.restricted === true;
 
-  if (invoices.length === 0) return { kind: ACCOUNT_AR_STATE.EMPTY, recordNoun, restricted };
+  if (invoices.length === 0) return { kind: ACCOUNT_AR_STATE.EMPTY, recordNoun, ...(restricted ? { restricted } : {}) };
 
   const outstandingLines = Object.entries(summary.outstandingByCurrency ?? {}).map(
     ([currency, amountMinor]) => ({ currency, text: formatMinor(amountMinor, currency) })
@@ -128,7 +128,7 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
     // receivables (DECISIONS #245), which are NOT accounting invoices (#197), so that envelope names its own noun and the
     // screens say "Receivable" instead of "Invoice". A noun the read did not name is never guessed.
     recordNoun,
-    restricted,
+    ...(restricted ? { restricted } : {}),
     openCount: summary.openCount ?? 0,
     overdueCount: summary.overdueCount ?? 0,
     outstandingLines,

@@ -118,6 +118,9 @@ test("Work Order journey acceptance through /operations/work-orders", { skip: SK
   // G-9 (DECISIONS #237): the synthetic scheduler holds explicit company authority over the technicians it configures.
   await grantSyntheticCompanyAuthority(pool, T,
     (await q("SELECT id FROM eos_policy.principals WHERE external_subject = $1", [DISPATCHER])).rows[0].id, ["taylor"]);
+  // D-248-1 (DECISIONS #B1): creating / scheduling a Work Order needs explicit company authority too.
+  await grantSyntheticCompanyAuthority(pool, T,
+    (await q("SELECT id FROM eos_policy.principals WHERE external_subject = $1", [SVC_MGR])).rows[0].id, ["taylor"]);
   const TECH_A = await persona({ subject: "tech-a", capabilities: [...WO_KEYS("technician"), ...PROPOSED_TECHNICIAN],
     employee: { id: "emp-j-a", name: "Avery Tech" } });
   const TECH_B = await persona({ subject: "tech-b", capabilities: [...WO_KEYS("technician"), ...PROPOSED_TECHNICIAN],

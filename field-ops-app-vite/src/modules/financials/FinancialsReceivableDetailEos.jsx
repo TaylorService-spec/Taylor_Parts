@@ -122,7 +122,7 @@ export default function FinancialsReceivableDetailEos() {
             <section className="ns-section" aria-label="Accounting handoffs">
               <div className="ns-section__head"><h2 className="ns-section__title">Accounting Handoffs</h2></div>
               {found.accountingHandoffs.length > 0 ? (
-                <ul className="fin-handoffs">
+                <ul className="fin-exception-list">
                   {found.accountingHandoffs.map((h) => (
                     <li key={h.id}>{statusLabel(h.payloadKind)} · {statusLabel(h.status)}{h.providerDocumentReference ? ` · accounting reference ${h.providerDocumentReference}` : " · no accounting reference yet"}</li>
                   ))}

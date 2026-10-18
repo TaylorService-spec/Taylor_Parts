@@ -18,6 +18,7 @@
 //
 // Real PostgreSQL. Set POLICY_TEST_DATABASE_URL; without it the database half SKIPS.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -219,6 +220,8 @@ test("real mailbox ingestion on PostgreSQL through /operations/inbound-work", { 
   const ADMIN_B = await persona("intake-admin-b", ["inboundWork.intake.manage"]);
   const REVIEWER = await persona("reviewer", ["inboundWork.request.read", "inboundWork.request.accept", "inboundWork.request.decline",
     "inboundWork.request.attach", "workOrder.create"]);
+  // D-248-1 (DECISIONS #B1): Accept creates a Work Order, which needs the reviewer's own authority over the company it states.
+  await grantSyntheticCompanyAuthority(pool, T, REVIEWER.principalId, ["taylor"]);
   const NOBODY = await persona("nobody", []);
   const call = async (who, operation, input = {}) => {
     const res = await handleOperationsRequest({ reader: repo, pool, workOrderPostgresState: "ACTIVE",
