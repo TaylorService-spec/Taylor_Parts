@@ -181,6 +181,28 @@ test("V7 the display-name plan: provider or administration names only; never ema
   assert.equal(principalDisplayNameRefusal("Marguerite O’Neil-Lopez"), null);
 });
 
+test("V9 MET-1: the counters are a restricted Administration read, and /health carries no authentication detail", () => {
+  const S = require("../lib/eosAuth/eosLoginService.js");
+  assert.deepEqual({ ...S.LOGIN_ADMINISTRATION_OPERATIONS.readAuthVerifierDiagnostics }, { mutation: false, capability: "admin.securityPolicy.read" });
+  assert.ok(S.isLoginAdministrationOperation("readAuthVerifierDiagnostics"));
+  // The handler wiring: no source composed -> refused; a source -> the governance read gets it (the gate lives in the governance class).
+  const seen = [];
+  const governance = { readAuthVerifierDiagnostics: (actor, source) => { seen.push(source()); return { ok: true }; } };
+  const handlerOff = S.createLoginAdministration({}, governance, null);
+  assert.throws(() => handlerOff("readAuthVerifierDiagnostics", {}, {}), /not composed/);
+  const handlerOn = S.createLoginAdministration({}, governance, () => ({ firebaseVerifier: "disabled", verified: { eos_human: 1 } }));
+  assert.deepEqual(handlerOn("readAuthVerifierDiagnostics", {}, {}), { ok: true });
+  assert.deepEqual(seen, [{ firebaseVerifier: "disabled", verified: { eos_human: 1 } }]);
+  // The gate is in the governance read itself, on the security-policy read key.
+  const service = readFileSync(join(HERE, "..", "src/eosAuth/eosLoginService.ts"), "utf8");
+  assert.match(service, /async readAuthVerifierDiagnostics\(actor: AdminActor, source: AuthVerifierDiagnosticsSource\) \{\s*const held = await actorCapabilities\(this\.repo, actor\);\s*if \(!held\.has\("admin\.securityPolicy\.read"\)\) throw new LoginRefusal\("FORBIDDEN"/);
+  // /health: the health callback in server.ts builds its object with no `auth` key and no verifier metric.
+  const server = readFileSync(join(HERE, "..", "src/eosApi/server.ts"), "utf8");
+  const block = /health: async \(\) => \{[\s\S]*?\n    \},/.exec(server)?.[0] ?? "";
+  assert.ok(block.length > 0 && block.includes("migrations:"), "found the health callback");
+  assert.doesNotMatch(block, /\bauth\s*:|verifierMetrics|firebaseVerifier/);
+});
+
 test("V8 no Firebase, Google or JWT package and no key literal on the new EOS-side modules and the enrollment tool", () => {
   const files = ["src/eosAuth/verifierMetrics.ts", "scripts/enrollPersonaLogins.js"];
   for (const f of files) {

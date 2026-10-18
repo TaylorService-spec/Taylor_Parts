@@ -1883,6 +1883,17 @@ export class EosSecurityEventGovernance {
    * retention), its row count, and the SHA-256 of the canonical export (NDJSON, ordered by occurred_at, id) -- the digest
    * an operator's export must reproduce and a restore must match. Writes NOTHING.
    */
+  /**
+   * MET-1: the verifier mode and the per-type counts, to an administrator only (admin.securityPolicy.read, the key the
+   * Administration security surfaces read on). It returns exactly what the source gives -- counts and the mode, never a
+   * token, subject, principal, tenant, key or address -- and writes nothing.
+   */
+  async readAuthVerifierDiagnostics(actor: AdminActor, source: AuthVerifierDiagnosticsSource) {
+    const held = await actorCapabilities(this.repo, actor);
+    if (!held.has("admin.securityPolicy.read")) throw new LoginRefusal("FORBIDDEN", 'not authorized: "admin.securityPolicy.read" is required');
+    return Object.freeze({ ...source() });
+  }
+
   async planAuthenticationEventArchive(actor: AdminActor) {
     await this.requireRead(actor);
     const policy = await this.currentPolicy(actor.tenantId);
@@ -1936,6 +1947,9 @@ export const LOGIN_ADMINISTRATION_OPERATIONS = Object.freeze({
   readAuthenticationEvents: { mutation: false, capability: "admin.principalAccess.read" },
   planAuthenticationEventArchive: { mutation: false, capability: "admin.principalAccess.read" },
   setAuthenticationEventRetention: { mutation: true, capability: "admin.securityPolicy.write" },
+  // MET-1 (Owner ruling): the verifier mode and the per-type verification counts are RESTRICTED OPERATOR DIAGNOSTICS, read here with an
+  // administrator session on admin.securityPolicy.read -- never on the unauthenticated /health. Counts and mode only.
+  readAuthVerifierDiagnostics: { mutation: false, capability: "admin.securityPolicy.read" },
 } as const);
 export type LoginAdministrationCapability = "admin.roleAssignment.write" | "admin.credentialReset.initiate" | "admin.userStatus.write";
 export type LoginAdministrationOperation = keyof typeof LOGIN_ADMINISTRATION_OPERATIONS;
@@ -1944,9 +1958,16 @@ export const isLoginAdministrationOperation = (name: unknown): name is LoginAdmi
 
 export type LoginAdministrationHandler = (operation: LoginAdministrationOperation, actor: AdminActor, input: Record<string, unknown>) => Promise<unknown>;
 
-export function createLoginAdministration(service: EosLoginService, governance: EosSecurityEventGovernance): LoginAdministrationHandler {
+/** The verifier mode and per-type counts (server.ts composes it from verifierMetrics.ts). Counts and mode only. */
+export type AuthVerifierDiagnosticsSource = () => Readonly<Record<string, unknown>>;
+
+export function createLoginAdministration(service: EosLoginService, governance: EosSecurityEventGovernance,
+  diagnostics: AuthVerifierDiagnosticsSource | null = null): LoginAdministrationHandler {
   return (operation, actor, input) => {
     switch (operation) {
+      case "readAuthVerifierDiagnostics":
+        if (!diagnostics) throw new LoginRefusal("NOT_FOUND", "verifier diagnostics are not composed on this service");
+        return governance.readAuthVerifierDiagnostics(actor, diagnostics);
       case "readLoginAccount": return service.readLoginAccount(actor, input);
       case "provisionLoginAccount": return service.provisionLoginAccount(actor, input);
       case "reissueLoginEnrollment": return service.reissueLoginEnrollment(actor, input);
