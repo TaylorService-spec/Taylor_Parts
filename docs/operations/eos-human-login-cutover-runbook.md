@@ -110,6 +110,22 @@ node scripts/enrollPersonaLogins.js ... --apply --credentialsOut /tmp/eos-person
   ```
   Store the decrypted file in the secure store (or the existing sandbox-credentials mechanism, `scripts/sandboxCredentials.mjs`, which this change leaves read-only). Point the harness at it with `EOS_PERSONA_CREDENTIALS_FILE`.
 
+**Employee enrollment, step 5 addendum (B2-x; `--employees` on the same tool).** Owner direction 2026-10-18: every nonprod employee who is not Inactive can sign in to EOS. The persona set above covers 16; this covers the scaled sample workforce (`np-taylor-*`) and the synthetic workforce (`synthetic-np-emp-*`). Run from `/opt/render/project/src/functions` in the `eos-api-nonprod` shell, dry run first, and read the plan before `--apply`:
+```
+node scripts/enrollPersonaLogins.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL --tenantKey taylor-nonprod \
+  --employees all-missing --adminPrincipalId <administrator principal id> \
+  --reason "<at least 40 characters naming the purpose>" --operator "<your name or handle>"   # dry run: PLANNED / SKIPPED_EXISTS / SKIPPED_EXCLUDED / REFUSED
+node scripts/enrollPersonaLogins.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL --tenantKey taylor-nonprod \
+  --employees all-missing --adminPrincipalId <administrator principal id> \
+  --reason "<at least 40 characters naming the purpose>" --operator "<your name or handle>" \
+  --apply --credentialsOut /tmp/eos-employee-credentials.json
+```
+`--employees` also takes a comma-separated list of ids instead of `all-missing`. Same file schema as the persona run (`eos.persona-login-credentials/1`, `personaKey` = the Employee id), the same encrypt-and-shred handling, and the same fences (named nonprod target, dry run default, no credential flag, file outside the repository, created exclusively with mode 0600, written before each enrollment commits, never reset or replaced, stop at the first failure). In addition:
+- **Who.** Only ids prefixed `np-taylor-` or `synthetic-np-emp-`. The login name is the Employee's own `work_email`, which must be a reserved `*.invalid` address (missing, malformed, or any other domain is `REFUSED`). Status must be ACTIVE, CONTRACTOR or ON_LEAVE; an INACTIVE, TERMINATED or RETIRED Employee, or one with a separation date, is `REFUSED` when named and `SKIPPED_EXCLUDED` under `all-missing`. An ON_LEAVE Employee is enrolled but cannot sign in until ACTIVE (the access gate is not widened); the plan marks it with `signInNote`.
+- **What it adds** per Employee: a human EOS identity (`user.<hex>`, the one Administration > Users "Create sign-in" mints) on the Employee's linked Principal, and a login account on it with a password, an active authenticator and ten recovery codes. The Principal id, its primary identity (`nonprod-sample.*` or `eos-synthetic-nonprod`), Roles, scopes, membership and Employee link do not move. A Principal that already holds an EOS identity (a persona's, or any human one) is never displaced (`REFUSED` when named, `SKIPPED_EXCLUDED` under `all-missing`); a live login is `SKIPPED_EXISTS`; an Owner or Administrator is refused by the service.
+- **No Principal.** A `synthetic-np-emp-*` Employee with no Principal gets one through the existing governed path only: `ensureTenantPrincipal` (provider `eos-synthetic-nonprod`, subject `synthetic-np-principal-<id minus prefix>`, ACTIVE membership, no Security Role, no display name) and `establishLink` (`OPERATOR_ASSERTED`, asserted by `--adminPrincipalId` with the composed reason), exactly as the synthetic workforce seed does; each writes its own audit or assertion record, and the enrollment writes `enrollEmployeeLogin`. `--adminPrincipalId` must hold an active Role that may assign Roles (read from PostgreSQL). An `np-taylor-*` Employee with no Principal is `REFUSED`: the sample seed owns those. The new Principal has no display name until `populatePrincipalDisplayNames.js` (`enteredNames`) names it.
+- **Re-running** after a partial failure is safe: a Principal that exists is found by its subject, a link that exists is not re-asserted, and every enrolled Employee is `SKIPPED_EXISTS`.
+
 **ACTOR-NAME-1 (`functions/scripts/populatePrincipalDisplayNames.js`).** Names come from exactly two sources and are never inferred from an email address or copied from an Employee.
 ```
 # the identity provider's verified profile name (needs EOS_FIREBASE_OPERATOR_ACCESS_TOKEN for this one session):

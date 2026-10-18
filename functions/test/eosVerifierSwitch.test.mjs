@@ -215,3 +215,40 @@ test("V8 no Firebase, Google or JWT package and no key literal on the new EOS-si
   const enroll = require("../scripts/enrollPersonaLogins.js");
   assert.ok(!enroll.KNOWN_FLAGS.filter((f) => f !== "tenantKey").some((f) => /password|secret|token|key/i.test(f)));
 });
+
+test("V10 B2-x employee mode: the invocation fences refuse before anything is loaded; the id and status rules equal the service's", () => {
+  const enroll = require("../scripts/enrollPersonaLogins.js");
+  const S = require("../lib/eosAuth/eosLoginService.js");
+  assert.deepEqual([...enroll.EMPLOYEE_ID_PREFIXES], [...S.ENROLLABLE_EMPLOYEE_ID_PREFIXES]);
+  assert.deepEqual([...enroll.ENROLLABLE_STATUSES], [...S.ENROLLABLE_EMPLOYMENT_STATUSES]);
+  assert.ok(!enroll.ENROLLABLE_STATUSES.some((s) => ["INACTIVE", "TERMINATED", "RETIRED"].includes(s)), "separated and inactive Employees are never enrollable");
+  const env = { EOS_ENVIRONMENT: "nonprod", DATABASE_URL: "postgres://unused" };
+  const parse = (argv) => require("../scripts/measureEmployeeReferenceIntegrity.js").parseArgs(argv);
+  const reason = "give the nonprod sample employees an EOS sign-in for acceptance";
+  const good = ["--environment", "platform-sandbox", "--databaseUrlEnv", "DATABASE_URL", "--tenantKey", "taylor", "--reason", reason, "--operator", "Test Operator"];
+  const emp = (...more) => parse([...good, "--adminPrincipalId", "p-admin", ...more]);
+  const ok = enroll.assertInvocation(emp("--employees", "all-missing"), env);
+  assert.deepEqual([ok.employees, ok.personas, ok.apply, ok.adminPrincipalId], ["all-missing", [], false, "p-admin"]);
+  assert.deepEqual(enroll.assertInvocation(emp("--employees", "np-taylor-tech-04,synthetic-np-emp-records-clerk"), env).employees, ["np-taylor-tech-04", "synthetic-np-emp-records-clerk"]);
+  // WHO: only the two prefixes; a persona employee, a real-looking id and a malformed id are refused before any connection.
+  for (const id of ["emp-persona-dispatcher", "syn-g9-np-tech-moving", "np-taylor-", "NP-TAYLOR-TECH-04", "np-taylor-x/y", "someone@example.com"]) {
+    assert.throws(() => enroll.assertInvocation(emp("--employees", id), env), /EMPLOYEE_ID_REFUSED/, id);
+  }
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "np-taylor-tech-04,np-taylor-tech-04"), env), /DUPLICATE_EMPLOYEE/);
+  // MODE: exactly one target set; the administering Principal belongs to employee mode only.
+  assert.throws(() => enroll.assertInvocation(parse([...good, "--adminPrincipalId", "p-admin"]), env), /MODE_REQUIRED/);
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing", "--personas", "all"), env), /MODE_REQUIRED/);
+  assert.throws(() => enroll.assertInvocation(parse([...good, "--employees", "all-missing"]), env), /--adminPrincipalId is required/);
+  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--adminPrincipalId", "p-admin"]), env), /ARGUMENT_REFUSED/);
+  // The inherited fences still hold in this mode.
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing", "--password", "x"), env), /CREDENTIAL_ARGUMENT_REFUSED/);
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing", "--role", "admin"), env), /UNKNOWN_FLAG_REFUSED/);
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing"), { ...env, EOS_ENVIRONMENT: "production" }), /EOS_ENVIRONMENT must read exactly 'nonprod'/);
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing", "--apply"), env), /--credentialsOut is required/);
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing", "--apply", "--credentialsOut", join(HERE, "..", "creds.json")), env), /inside this repository/);
+  assert.throws(() => enroll.assertInvocation(emp("--employees", "all-missing", "--credentialsOut", join(tmpdir(), "b2x.json")), env), /only with --apply/);
+  // The composed reason (`<reason> [<employee id>] by <operator>`) must fit the audit limit for the longest id.
+  const long = parse(["--environment", "platform-sandbox", "--databaseUrlEnv", "DATABASE_URL", "--tenantKey", "taylor", "--reason", "r".repeat(400),
+    "--operator", "Test Operator", "--adminPrincipalId", "p-admin", "--employees", "all-missing"]);
+  assert.throws(() => enroll.assertInvocation(long, env), /REASON_TOO_LONG/);
+});

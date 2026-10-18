@@ -2,7 +2,9 @@
 //   (P1-P3) synthetic persona enrollment -- a password login and an authenticator on the persona's OWN EOS binding;
 //   (P4-P6) the persona password session, its isolation, and the machine path beside it;
 //   (P7)    the verifier switch: Firebase bearers refused without the Firebase verifier being called, and the /health counters;
-//   (P8)    ACTOR-NAME-1: governed principal display names.
+//   (P8)    ACTOR-NAME-1: governed principal display names;
+//   (P9)    B2-x: employee mode -- sample and synthetic Employees get a login on a human identity, a missing Principal is created
+//           through the governed path, and the fences hold.
 //
 // Its OWN disposable database. Keys are generated in memory; the Firebase verifier is a FAKE that counts its calls. Nothing
 // contacts Firebase, Google or any network other than the loopback database and the loopback API.
@@ -320,5 +322,173 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     const afterDigest = await authorityDigest();
     assert.deepEqual({ ...afterDigest, principals: null }, { ...authorityBefore, principals: null }, "no authority row moved");
     assert.equal(afterDigest.principals, authorityBefore.principals, "the principal's id, provider, subject and status are unchanged (display_name is not in the digest)");
+  });
+
+  await t.test("P9 B2-x employee mode: sample and synthetic Employees get a login; a missing Principal is created through the governed path; fences hold", async () => {
+    const { mkdtempSync, readFileSync, rmSync, statSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { enrollPersonaLoginsRun } = require("../scripts/enrollPersonaLogins.js");
+    const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
+    const { hasAdministrationAuthority } = require("../lib/adminPolicy/administrationAuthority.js");
+    const links = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
+    const { normalizeLoginIdentifier } = require("../lib/eosAuth/eosLoginService.js");
+    const deps = { PostgresPolicyRepository, EosLoginService, credentialCrypto: C, ensureTenantPrincipal, hasAdministrationAuthority, links, normalizeLoginIdentifier,
+      nonprodPersonaSubject: require("../lib/eosAuth/nonprodPersonas.js").nonprodPersonaSubject };
+    const base = { tenantKey: "persona-proof", adminPrincipalId: adminPrincipalId, reason: "B2-x proof: give the nonprod employees an EOS sign-in", operator: "Proof Operator", environmentId: "platform-sandbox" };
+
+    const employee = (id, status, email) => q(
+      `INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, work_email, updated_at) VALUES ($1,$2,$3,'taylor',$4,'2020-01-01T00:00:00Z')`, [id, tenantId, status, email]);
+    const sample = async (employeeId, subject, binding = null) => {
+      const role = await repo.getRoleByKey(tenantId, "generalEmployee");
+      const principalId = await repo.transact({ tenantId, uid: "employee-fixture" }, async (tx) => {
+        const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "eos", displayName: null });
+        await tx.createTenantMembership(p.id);
+        const v = await tx.bumpAccessVersion(p.id);
+        await tx.createAssignment({ principalId: p.id, roleId: role.id, scopeType: "global", scopeValue: null, status: "active",
+          grantedBy: "employee-fixture", grantedAt: new Date(Date.now() - 60_000).toISOString(), accessVersionAtGrant: v });
+        return p.id;
+      });
+      await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason)
+               VALUES ($1,$2,$3,$4,'taylor','OPERATOR_ASSERTED','employee-fixture','B2-x proof fixture')`, [`epl-${employeeId}`, tenantId, principalId, employeeId]);
+      if (binding) await bindPrincipalEosIdentity(repo, bindAs, { principalId, externalSubject: binding, reason: "B2-x proof: a persona-bound sample principal" });
+      return principalId;
+    };
+    await employee("np-taylor-tech-04", "ACTIVE", "np-taylor-tech-04@taylor.invalid");
+    const techPrincipal = await sample("np-taylor-tech-04", "nonprod-sample.tech-04");
+    await employee("synthetic-np-emp-records-clerk", "ACTIVE", "synthetic-np-emp-records-clerk@taylor.invalid"); // NO Principal
+    await employee("synthetic-np-emp-technician-on-leave", "ON_LEAVE", "synthetic-np-emp-technician-on-leave@taylor.invalid"); // NO Principal
+    await employee("np-taylor-gone", "INACTIVE", "np-taylor-gone@taylor.invalid");
+    const gonePrincipal = await sample("np-taylor-gone", "nonprod-sample.gone");
+    await employee("synthetic-np-emp-persona-bound", "ACTIVE", "synthetic-np-emp-persona-bound@taylor.invalid");
+    await sample("synthetic-np-emp-persona-bound", "nonprod-sample.persona-bound", "nonprod-persona.officeManager");
+    await employee("emp-real-person-2", "ACTIVE", "real.person@taylor.invalid"); // not a sample/synthetic id: never selected
+
+    const counts = async () => JSON.stringify((await q(`SELECT
+      (SELECT count(*)::int FROM eos_policy.principals) p, (SELECT count(*)::int FROM eos_policy.employee_principal_links) l,
+      (SELECT count(*)::int FROM eos_policy.principal_identities) i, (SELECT count(*)::int FROM eos_policy.login_accounts) a,
+      (SELECT count(*)::int FROM eos_policy.audit_events) e`)).rows[0]);
+    const outcomes = (report) => Object.fromEntries(report.personas.map((x) => [x.employeeId, x.reason ? `${x.outcome}:${x.reason}` : x.outcome]));
+
+    // ---- a dry run plans and writes nothing; the excluded and the persona-bound are not targets under all-missing.
+    const before = await counts();
+    const dry = await enrollPersonaLoginsRun(pool, { ...base, employees: "all-missing", apply: false }, deps);
+    assert.equal(dry.outcome, "PLANNED", JSON.stringify(dry));
+    assert.deepEqual(outcomes(dry), {
+      "np-taylor-gone": "SKIPPED_EXCLUDED:EMPLOYEE_STATUS_EXCLUDED",
+      "np-taylor-tech-04": "PLANNED",
+      "synthetic-np-emp-persona-bound": "SKIPPED_EXCLUDED:PRINCIPAL_HOLDS_EOS_IDENTITY",
+      "synthetic-np-emp-records-clerk": "PLANNED",
+      "synthetic-np-emp-technician-on-leave": "PLANNED",
+    });
+    assert.equal(dry.personas.find((x) => x.employeeId === "synthetic-np-emp-records-clerk").createPrincipal, true);
+    assert.match(dry.personas.find((x) => x.employeeId === "synthetic-np-emp-technician-on-leave").signInNote, /ACTIVE or CONTRACTOR/);
+    assert.equal(await counts(), before, "a dry run writes nothing");
+
+    // ---- named, the same Employees are REFUSED (and so is a missing one); a refusal blocks an apply wholesale.
+    const refused = await enrollPersonaLoginsRun(pool, { ...base, employees: ["np-taylor-gone", "synthetic-np-emp-persona-bound", "np-taylor-nobody"], apply: false }, deps);
+    assert.equal(refused.outcome, "REFUSED");
+    assert.deepEqual(outcomes(refused), {
+      "np-taylor-gone": "REFUSED:EMPLOYEE_STATUS_EXCLUDED", "synthetic-np-emp-persona-bound": "REFUSED:PRINCIPAL_HOLDS_EOS_IDENTITY", "np-taylor-nobody": "REFUSED:EMPLOYEE_NOT_FOUND",
+    });
+    await assert.rejects(enrollPersonaLoginsRun(pool, { ...base, adminPrincipalId: tech, employees: "all-missing", apply: false }, deps), /ADMINISTRATOR_UNAUTHORIZED/);
+
+    // ---- apply: credentials to a file outside the repository, nothing secret in the report.
+    const dir = mkdtempSync(join(tmpdir(), "b2x-creds-"));
+    const credentialsOut = join(dir, "credentials.json");
+    process.env.EOS_AUTH_FACTOR_KEYS = authEnv.EOS_AUTH_FACTOR_KEYS;
+    process.env.EOS_AUTH_FACTOR_KEY_ID = authEnv.EOS_AUTH_FACTOR_KEY_ID;
+    try {
+      const applied = await enrollPersonaLoginsRun(pool, { ...base, employees: "all-missing", apply: true, credentialsOut }, deps);
+      assert.equal(applied.outcome, "ENROLLED", JSON.stringify(applied));
+      const file = JSON.parse(readFileSync(credentialsOut, "utf8"));
+      assert.equal(file.schema, "eos.persona-login-credentials/1");
+      assert.deepEqual(file.entries.map((e) => [e.personaKey, e.state]), [["np-taylor-tech-04", "enrolled"], ["synthetic-np-emp-records-clerk", "enrolled"], ["synthetic-np-emp-technician-on-leave", "enrolled"]]);
+      if (process.platform !== "win32") assert.equal(statSync(credentialsOut).mode & 0o777, 0o600);
+      const reportText = JSON.stringify(applied);
+      for (const e of file.entries) assert.ok(!reportText.includes(e.password) && !reportText.includes(e.totpSecretBase32) && e.recoveryCodes.every((c) => !reportText.includes(c)), "the report carries no credential");
+      const entry = (key) => file.entries.find((e) => e.personaKey === key);
+
+      // The sample Principal kept its primary identity and gained ONE human EOS identity; the clerk's Principal was created governed.
+      const sampleIds = (await q(`SELECT identity_provider, external_subject FROM eos_policy.principals WHERE id = $1`, [techPrincipal])).rows[0];
+      assert.deepEqual(sampleIds, { identity_provider: "eos", external_subject: "nonprod-sample.tech-04" });
+      const binding = (await q(`SELECT external_subject FROM eos_policy.principal_identities WHERE principal_id = $1 AND status = 'active'`, [techPrincipal])).rows;
+      assert.equal(binding.length, 1);
+      assert.match(binding[0].external_subject, /^user\.[0-9a-f]{32}$/);
+      const clerk = (await q(`SELECT p.id, p.identity_provider, p.external_subject, p.display_name, m.status AS membership FROM eos_policy.principals p JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id
+                              WHERE p.external_subject = 'synthetic-np-principal-records-clerk'`)).rows;
+      assert.equal(clerk.length, 1);
+      assert.deepEqual({ ...clerk[0], id: null }, { id: null, identity_provider: "eos-synthetic-nonprod", external_subject: "synthetic-np-principal-records-clerk", display_name: null, membership: "active" });
+      const link = (await q(`SELECT link_source, asserted_by, assertion_reason, status FROM eos_policy.employee_principal_links WHERE employee_id = 'synthetic-np-emp-records-clerk'`)).rows;
+      assert.equal(link.length, 1);
+      assert.equal(link[0].link_source, "OPERATOR_ASSERTED");
+      assert.equal(link[0].asserted_by, adminPrincipalId);
+      assert.match(link[0].assertion_reason, /by Proof Operator$/);
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE principal_id = $1`, [clerk[0].id])).rows[0].n, 0, "a created Principal holds no Security Role");
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = 'tenant.addPrincipal' AND target_id = $1`, [clerk[0].id])).rows[0].n, 1);
+      const audits = (await q(`SELECT action, actor_uid, after FROM eos_policy.audit_events WHERE action = 'enrollEmployeeLogin' ORDER BY occurred_at`)).rows;
+      assert.equal(audits.length, 3, "one audit event per enrollment");
+      assert.ok(!JSON.stringify(audits).includes(entry("np-taylor-tech-04").password), "no secret in the audit");
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.login_accounts WHERE status = 'active' AND mfa_required`)).rows[0].n, 3, "three new active accounts (the persona account was disabled in P5)");
+
+      // The sample Employee signs in (password, authenticator) with a HUMAN token that resolves to the Principal it always had.
+      const secretOf = (b32) => { // RFC 4648 base32, unpadded
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0; let value = 0; const out = [];
+        for (const ch of b32) { value = (value << 5) | alphabet.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+        return Buffer.from(out);
+      };
+      const first = await post("/auth/login", { identifier: entry("np-taylor-tech-04").loginIdentifier, password: entry("np-taylor-tech-04").password });
+      assert.equal(first.status, 200, JSON.stringify(first.body));
+      assert.equal(first.body.status, "MFA_REQUIRED");
+      const done = await post("/auth/login/mfa", { challenge: first.body.challenge, code: C.totpCodeAt(secretOf(entry("np-taylor-tech-04").totpSecretBase32), C.totpStepAt(Math.floor(Date.now() / 1000))) });
+      assert.equal(done.status, 200, JSON.stringify(done.body));
+      assert.match(JSON.parse(Buffer.from(done.body.session.accessToken.split(".")[1], "base64url").toString()).sub, /^user\.[0-9a-f]{32}$/);
+      const exp = await experience(done.body.session.accessToken);
+      assert.equal(exp.status, 200, JSON.stringify(exp.body));
+      assert.equal(exp.body.result?.principalId ?? exp.body.data?.principalId, techPrincipal);
+      // ON_LEAVE enrolls but the DQ-007 gate still refuses the sign-in.
+      const leave = await post("/auth/login", { identifier: entry("synthetic-np-emp-technician-on-leave").loginIdentifier, password: entry("synthetic-np-emp-technician-on-leave").password });
+      assert.equal(leave.status, 401, "an ON_LEAVE Employee cannot sign in until ACTIVE");
+
+      // ---- idempotent: a re-run skips every enrolled Employee and writes nothing.
+      const afterApply = await counts();
+      const again = await enrollPersonaLoginsRun(pool, { ...base, employees: "all-missing", apply: false }, deps);
+      assert.deepEqual(outcomes(again), {
+        "np-taylor-gone": "SKIPPED_EXCLUDED:EMPLOYEE_STATUS_EXCLUDED", "np-taylor-tech-04": "SKIPPED_EXISTS:login account is active; never reset or replaced",
+        "synthetic-np-emp-persona-bound": "SKIPPED_EXCLUDED:PRINCIPAL_HOLDS_EOS_IDENTITY", "synthetic-np-emp-records-clerk": "SKIPPED_EXISTS:login account is active; never reset or replaced",
+        "synthetic-np-emp-technician-on-leave": "SKIPPED_EXISTS:login account is active; never reset or replaced",
+      });
+      assert.equal(await counts(), afterApply);
+      // A credentials file is never overwritten.
+      await assert.rejects(enrollPersonaLoginsRun(pool, { ...base, employees: "all-missing", apply: true, credentialsOut }, deps), /never overwrites/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    // ---- data that breaks a rule is REFUSED when named: a non-reserved address; a sample Employee with no Principal (the seed owns it).
+    await employee("np-taylor-bad-email", "ACTIVE", "someone@example.com");
+    await sample("np-taylor-bad-email", "nonprod-sample.bad-email");
+    await employee("np-taylor-no-principal", "ACTIVE", "np-taylor-no-principal@taylor.invalid");
+    const bad = await enrollPersonaLoginsRun(pool, { ...base, employees: ["np-taylor-bad-email", "np-taylor-no-principal"], apply: false }, deps);
+    assert.deepEqual(outcomes(bad), { "np-taylor-bad-email": "REFUSED:EMPLOYEE_EMAIL_NOT_RESERVED_INVALID", "np-taylor-no-principal": "REFUSED:SAMPLE_EMPLOYEE_HAS_NO_PRINCIPAL" });
+
+    // ---- the service's own fences, beneath the tool.
+    const enrollEmployee = (over) => service.enrollEmployeeLogin({
+      tenantId, employeeId: "np-taylor-gone", principalId: gonePrincipal, loginIdentifier: "np-taylor-gone@taylor.invalid",
+      password: randomBytes(24).toString("base64url"), totpSecret: C.newTotpSecret(), recoveryCodes: C.newRecoveryCodes(),
+      reason: "B2-x proof: service fence", ...over,
+    });
+    await assert.rejects(enrollEmployee({}), /status does not allow a sign-in/);
+    await assert.rejects(enrollEmployee({ employeeId: "emp-real-person-2" }), /not a nonprod sample or synthetic Employee/);
+    await assert.rejects(enrollEmployee({ employeeId: "np-taylor-tech-04" }), /not linked to exactly that Employee/);
+    await assert.rejects(enrollEmployee({ loginIdentifier: "someone@example.com" }), /reserved \.invalid address/);
+    await assert.rejects(new EosLoginService({ pool, repo, signer: eosAuth.humanLogin.signer, issuer: ISS, audience: AUD, environment: "local",
+      factorKeyring: eosAuth.humanLogin.factorKeyring, passwordHashParameters: FAST_HASH }).enrollEmployeeLogin({
+      tenantId, employeeId: "np-taylor-gone", principalId: gonePrincipal, loginIdentifier: "x@taylor.invalid", password: "irrelevant-password-1", totpSecret: C.newTotpSecret(), recoveryCodes: C.newRecoveryCodes(), reason: "B2-x proof: outside nonprod" }), /nonprod only/);
+    // The administering Principal (a real person's) is never enrolled by this tool, even when linked to a prefixed Employee.
+    await employee("np-taylor-admin-linked", "ACTIVE", "np-taylor-admin-linked@taylor.invalid");
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason)
+             VALUES ('epl-admin-linked',$1,$2,'np-taylor-admin-linked','taylor','OPERATOR_ASSERTED','employee-fixture','B2-x proof fixture')`, [tenantId, adminPrincipalId]);
+    await assert.rejects(enrollEmployee({ employeeId: "np-taylor-admin-linked", principalId: adminPrincipalId, loginIdentifier: "np-taylor-admin-linked@taylor.invalid" }), /Owner or Administrator is not enrolled/);
   });
 });
