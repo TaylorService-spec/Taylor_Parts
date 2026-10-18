@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import AccountArSection from "../src/modules/accounts/AccountArSection.jsx";
 import { useAccountAr } from "../src/hooks/useAccountAr.js";
+import { accountArFromObligations } from "../src/domain/accountReceivablesEos.js";
 
 vi.mock("../src/hooks/useAccountAr.js", () => ({ useAccountAr: vi.fn() }));
 
@@ -133,5 +134,36 @@ describe("AccountArSection", () => {
     expect(container.textContent).toMatch(/never inferred/i);
     // The section still totals nothing: no consolidated figure was smuggled in with the column.
     expect(container.textContent).not.toMatch(/\$175\.00/);
+  });
+
+  // ── F7c (DECISIONS #245): the EOS source reads the Finance register's receivables, which are not invoices ──
+  const obligation = (o = {}) => ({
+    id: "ob-1", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", sourceDomain: "BILLING_PACKAGE", sourceRecordId: "bpk-1",
+    dueOn: "2026-11-01", overdue: false, originatedMinor: "20000", settledMinor: "5000", outstandingMinor: "15000",
+    counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acc-1", name: "Harbor" }, ...o,
+  });
+
+  it("says Receivable, not Invoice, for the EOS envelope, and states an overdue flag without inventing a day count", () => {
+    useAccountAr.mockReturnValue({
+      loading: false,
+      errorStatus: null,
+      result: accountArFromObligations([{ items: [obligation({ id: "ob-9", overdue: true })], truncated: false }]),
+    });
+    const { container } = render(<AccountArSection accountId="acc-1" />);
+    expect(screen.getByText("Receivable")).toBeTruthy();
+    expect(screen.queryByText("Invoice")).toBeNull();
+    expect(container.textContent).toMatch(/per receivable/);
+    expect(screen.getByText("ob-9")).toBeTruthy();
+    expect(screen.getByText(/Overdue/)).toBeTruthy();
+    expect(container.textContent).not.toMatch(/\d+d overdue/);
+    expect(screen.getAllByText(/\$150\.00/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/1 open, 1 overdue/)).toBeTruthy();
+  });
+
+  it("an EOS account with no receivables says so in its own noun", () => {
+    useAccountAr.mockReturnValue({ loading: false, errorStatus: null, result: accountArFromObligations([{ items: [], truncated: false }]) });
+    render(<AccountArSection accountId="acc-1" />);
+    expect(screen.getByText(/No receivables on this account/)).toBeTruthy();
+    expect(screen.queryByText(/No invoices/)).toBeNull();
   });
 });

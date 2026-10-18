@@ -66,7 +66,7 @@ function ArRow({ item }) {
   return (
     <li className="ns-attn__row">
       <span className="ns-attn__fact">
-        Invoice <strong>{item.invoiceNumber}</strong>
+        {item.recordNoun ?? "Invoice"} <strong>{item.invoiceNumber}</strong>
         {item.outstandingText ? <span className="ns-attn__emph"> · {item.outstandingText}</span> : null}
         {item.daysOverdueText ? <span className="ns-attn__emph"> · {item.daysOverdueText}</span> : null}
       </span>
