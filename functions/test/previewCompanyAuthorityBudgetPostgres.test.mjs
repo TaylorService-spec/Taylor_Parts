@@ -14,7 +14,7 @@ import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { buildPreviewWorld, privateDatabase } from "./support/authorityPreviewFixture.mjs";
+import { FIELD_GROUPS, buildPreviewWorld, privateDatabase } from "./support/authorityPreviewFixture.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -142,7 +142,7 @@ test("PREVIEW COMPANY AUTHORITY: set-based, equal to the per-principal resolver,
   });
 
   await t.test("4. DIGEST: grants are covered; adding one moves the digest and a stale digest is refused at commit", async () => {
-    const committer = createAuthorityChangeCommit({ pool });
+    const committer = createAuthorityChangeCommit({ pool, fieldGroups: FIELD_GROUPS });
     const MAND = { ...world.deps, commitAuthorityChange: committer, previewMandatory: true };
     const as = (op, input) => executeAdminOperation(MAND, { caller: { externalSubject: ADMIN, identityProvider: "firebase" }, operation: op, input, requestId: `b-${op}` });
     const input = { employeeId: grantable[7], operatingCompanyId: "ventana", reason: REASON };
