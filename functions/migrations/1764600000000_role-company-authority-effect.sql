@@ -21,6 +21,16 @@
 -- capability and every capability it holds is a finance.* key, and a non-finance capability cannot be inserted into a
 -- FINANCE_ONLY Role. A direct write is refused with a named error.
 
+-- LOCK ORDER (both write paths take the Role row FIRST, then read role_capabilities), so an invalid FINANCE_ONLY Role /
+-- non-finance capability pair cannot commit in EITHER order:
+--   reclassification (UPDATE roles): holds the Role row's exclusive tuple lock while its trigger reads role_capabilities
+--     (and capabilities.key); it waits for any in-flight capability write on that Role, then sees it committed and refuses.
+--   capability entering a Role (INSERT / UPDATE OF role_id, capability_id on role_capabilities): the guard locks the Role row
+--     FOR SHARE unconditionally (the effect is tested afterwards, not in the lock query's filter); it waits for an in-flight
+--     reclassification, then re-reads the committed Role (READ COMMITTED) and refuses.
+--   capability key rename (UPDATE OF key on capabilities): locks every holder Role FOR SHARE in id order, then tests each.
+-- Proved with two real connections in both orders: functions/test/financeOnlyCompanyAccessPostgres.test.mjs 9a, 9b, 9c.
+
 SET search_path = eos_policy, public;
 
 ALTER TABLE roles
