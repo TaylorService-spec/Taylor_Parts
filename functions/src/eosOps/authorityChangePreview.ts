@@ -64,7 +64,7 @@ import {
   loadActiveWorkflowDefinitions,
   type ActiveWorkflowDefinition,
 } from "../adminPolicy/workflowResponsibilities";
-import { resolveCompanyAuthority } from "./companyAuthority";
+import { resolveCompanyAuthorityForMembers } from "./companyAuthority";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization";
 import { administrationReachDimension, grantedSurfaceKeys } from "./experienceAuthority";
@@ -356,6 +356,12 @@ interface SnapshotContext {
   readonly workflows: readonly ActiveWorkflowDefinition[];
   /** Role keys a SECURITY_ROLE binding of an ACTIVE workflow names: only their holders can carry a responsibility. */
   readonly boundRoleKeys: ReadonlySet<string>;
+  /**
+   * Every member's company authority for THIS side, decided by ONE set-based read (two round trips for the whole tenant), never
+   * a resolver call per member: the snapshot runs for every member on both sides of a change, and a per-member read exhausted the
+   * preview budget on a remote database (DECISIONS #249 follow-up).
+   */
+  readonly companyAuthority: ReadonlyMap<string, { readonly companies: readonly string[] }>;
 }
 
 const MEMOIZED_READS = new Set(["listRoles", "listCapabilities", "listObjects", "listRoleCapabilities", "listGrantConditions",
@@ -393,7 +399,9 @@ async function snapshotContext(q: PolicyQueryable, repo: PolicyRepository, tenan
       if (key) boundRoleKeys.add(key);
     }
   }
-  return { q, repo: reader, tenantId, fieldGroups, conditions, workflows, boundRoleKeys };
+  const memberIds = sorted(await reader.listTenantPrincipalIds(tenantId));
+  const companyAuthority = await resolveCompanyAuthorityForMembers(q as unknown as Pick<PoolClient, "query">, tenantId, memberIds);
+  return { q, repo: reader, tenantId, fieldGroups, conditions, workflows, boundRoleKeys, companyAuthority };
 }
 
 async function principalAuthority(sc: SnapshotContext, principalId: string): Promise<PrincipalAuthoritySnapshot> {
@@ -434,7 +442,7 @@ async function principalAuthority(sc: SnapshotContext, principalId: string): Pro
   const operationalScopes = employeeId ? await dims.listOperationalScopes(tenantId, employeeId) : [];
   // Company reach (DECISIONS #249): decided by the SAME resolver every operation uses, so a company-access grant, a revoke or an
   // expiry shows up as the company it adds or removes -- and as nothing else (no capability, no surface).
-  const companyAuthority = [...(await resolveCompanyAuthority(q as unknown as Pick<PoolClient, "query">, tenantId, principalId)).companies];
+  const companyAuthority = [...(sc.companyAuthority.get(principalId)?.companies ?? [])];
   const administrationReach = await administrationReachDimension(q, tenantId, principalId);
   const surfaces = await grantedSurfaceKeys({ tenantId, principalId, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld },
     { employeeId, workEligibility, operationalScopes, administrationReach });
