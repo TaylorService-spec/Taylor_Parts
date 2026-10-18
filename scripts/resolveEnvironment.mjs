@@ -295,7 +295,7 @@ export function resolveEnvironment(registry, id, { requireFirebaseIdentity = tru
   // EOS-ONLY SIGN-IN BUILD (Firebase exit B2). The build asks for it (VITE_AUTH_SOURCE=eos); the registry decides whether
   // that is allowed. Allowed only where the environment (a) lists 'eos' in `authSources`, (b) is not a production-role
   // environment, and (c) declares an EOS API to sign in against. The resolved environment then carries NO Firebase identity
-  // at all: the bundle holds no Firebase config and firebase/firebase.js initialises nothing. Production cannot get here.
+  // at all: the bundle holds no Firebase config and the Firebase module is aliased to an inert stand-in (vite.config.js). Production cannot get here.
   if (authSource === 'eos') {
     if (env.role === 'production') {
       throw new EnvironmentResolutionError('EOS_AUTH_REFUSED_PRODUCTION', `Environment '${requested}' is a production-role environment; an EOS-only sign-in build is nonprod only.`);

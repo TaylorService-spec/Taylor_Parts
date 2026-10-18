@@ -19,21 +19,12 @@ import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 //
 // FAILS CLOSED: the build throws on an unknown or unprovisioned environment, so
 // this constant is always a complete, deliberate identity.
-//
-// EOS-ONLY SIGN-IN BUILD (Firebase exit B2): the resolver injects NULL here (scripts/resolveEnvironment.mjs, authSource
-// "eos"), and then NOTHING below initialises: no app, no Firestore, no Auth, no Functions, no network call to any Google
-// endpoint. `db`, `auth` and `functions` are null. The business screens that still import them (listed per batch in
-// docs/operations/eos-human-login-cutover-runbook.md) cannot reach Firebase in that build and fail through their existing
-// error paths -- recorded as "blocked by known unmigrated dependencies", never silently succeeding.
 const firebaseConfig = __APP_FIREBASE_CONFIG__;
 
-/** Which environment this bundle was built for: { id, role, deployment }. (Defined apart so sign-in screens need not import this module.) */
-export { APP_ENVIRONMENT } from "../config/appEnvironment.js";
+/** Which environment this bundle was built for: { id, role, deployment }. */
+export const APP_ENVIRONMENT = __APP_ENVIRONMENT__;
 
-/** False in an EOS-only sign-in build: there is no Firebase app, and db / auth / functions below are null. */
-export const FIREBASE_INITIALIZED = Boolean(firebaseConfig);
-
-const app = !firebaseConfig ? null : initializeApp({
+const app = initializeApp({
   apiKey: firebaseConfig.apiKey,
   authDomain: firebaseConfig.authDomain,
   projectId: firebaseConfig.projectId,
@@ -42,12 +33,12 @@ const app = !firebaseConfig ? null : initializeApp({
   appId: firebaseConfig.appId,
   ...(firebaseConfig.measurementId ? { measurementId: firebaseConfig.measurementId } : {}),
 });
-export const db = app ? getFirestore(app) : null;
-export const auth = app ? getAuth(app) : null;
+export const db = getFirestore(app);
+export const auth = getAuth(app);
 // Work Order Engine v1.2 (Epic 1): region must match functions/src's deploy
 // region (onCall({ region: ... })). Now environment-resolved rather than a
 // literal, so a future environment can deploy Functions elsewhere.
-export const functions = app ? getFunctions(app, firebaseConfig.functionsRegion) : null;
+export const functions = getFunctions(app, firebaseConfig.functionsRegion);
 
 // Local dev/agent-driven smoke testing only -- opt-in via ?emulator=1,
 // same URL-param mode-switching pattern as config/env.js's ?env=demo.
@@ -60,7 +51,7 @@ export const functions = app ? getFunctions(app, firebaseConfig.functionsRegion)
 // See .claude/skills/run-field-ops-app-vite/ for the driver that uses
 // this to sign in against the Firestore/Auth emulator without ever
 // authenticating against production.
-if (app && import.meta.env.DEV && typeof window !== "undefined"
+if (import.meta.env.DEV && typeof window !== "undefined"
   && new URLSearchParams(window.location.search).get("emulator") === "1") {
   // Ports are overridable so a session can move off a port the host has taken. The defaults are
   // firebase.json's, so nothing changes unless an override is set. This exists because 8080 is

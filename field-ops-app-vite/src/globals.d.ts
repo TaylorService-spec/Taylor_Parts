@@ -17,11 +17,12 @@ declare const __APP_FIREBASE_CONFIG__: {
   appId: string;
   measurementId?: string;
   functionsRegion: string;
-} | null; // null in an EOS-only sign-in build (__APP_AUTH_SOURCE__ "eos")
+};
 declare const __APP_ENVIRONMENT__: { id: string; role: string; deployment: string };
 declare const __APP_READINESS__: Record<string, boolean>;
 // Firebase exit B2 — how people sign in to this bundle: "firebase" (default) or "eos" (EOS-only sign-in; the bundle then
-// carries NO Firebase config, so __APP_FIREBASE_CONFIG__ is null). The registry decides where "eos" is allowed.
+// carries NO Firebase config, and the build aliases the Firebase module to firebase/firebaseAbsent.js, so it is never
+// loaded). The registry decides where "eos" is allowed.
 declare const __APP_AUTH_SOURCE__: "firebase" | "eos";
 
 // Per-environment capability activation (spec 2026-08-14) — build-time array of

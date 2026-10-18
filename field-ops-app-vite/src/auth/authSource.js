@@ -7,7 +7,7 @@
 //   false  Firebase sign-in, exactly as before. Production is ALWAYS this: a production-role bundle can never be EOS-only,
 //          whatever the define says (checked here as well as in the resolver -- two independent refusals).
 //   true   EOS is the SOLE sign-in. AuthContext never subscribes to Firebase auth, the API clients never ask Firebase for
-//          a token, firebase/firebase.js initialises nothing, and EOS human login is on without any other variable.
+//          a token, the Firebase module is aliased to an inert stand-in (nothing initialised), and EOS human login is on without any other variable.
 //
 // There is deliberately NO runtime override. A test injects the choice through the argument.
 import { appEnvironmentRole } from "../config/environmentRole.js";

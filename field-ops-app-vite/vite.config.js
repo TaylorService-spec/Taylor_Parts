@@ -124,6 +124,17 @@ export default defineConfig({
     // authoritative gate is the backend callable resolver.
     __APP_CAPABILITY_ACTIVATION_OVERRIDES__: JSON.stringify(APP_ENV.capabilityActivationOverrides),
   },
+  // FIREBASE EXIT B2: in an EOS-only sign-in build the Firebase module is never loaded. Every import of it (any relative
+  // depth, with or without ".js") is aliased to an inert stand-in whose handles are null, so no Firebase app is initialised
+  // and no config is needed. Any other build has no alias and loads the real module, unchanged.
+  resolve: APP_ENV.authSource === 'eos'
+    ? {
+        alias: [{
+          find: /^(?:\.{1,2}\/)+firebase\/firebase(?:\.js)?$/,
+          replacement: resolvePath(CONFIG_DIR, 'src/firebase/firebaseAbsent.js'),
+        }],
+      }
+    : {},
   plugins: [react(), emitVersionManifest(APP_COMMIT, APP_ENV)],
   build: {
     chunkSizeWarningLimit: 800,

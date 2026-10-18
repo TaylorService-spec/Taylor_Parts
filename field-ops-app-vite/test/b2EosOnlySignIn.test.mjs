@@ -73,14 +73,26 @@ test("EOS login is on in an EOS-only build without any second variable, and neve
   assert.equal(eosHumanLoginEnabled({ flag: undefined, role: "sandbox", eosAuthOnly: false }), false);
 });
 
-test("firebase/firebase.js initialises nothing when the injected config is null", () => {
-  const src = read("firebase/firebase.js");
-  assert.match(src, /const app = !firebaseConfig \? null : initializeApp\(/);
-  assert.match(src, /export const db = app \? getFirestore\(app\) : null;/);
-  assert.match(src, /export const auth = app \? getAuth\(app\) : null;/);
-  assert.match(src, /export const functions = app \? getFunctions\(app, firebaseConfig\.functionsRegion\) : null;/);
-  assert.match(src, /if \(app && import\.meta\.env\.DEV/, "the emulator hook needs an app too");
-  assert.match(src, /export const FIREBASE_INITIALIZED = Boolean\(firebaseConfig\);/);
+test("an EOS-only build never loads the Firebase module: the vite config aliases it to an inert stand-in, and the real shim is untouched", () => {
+  const stand = read("firebase/firebaseAbsent.js");
+  assert.match(stand, /export const db = null;/);
+  assert.match(stand, /export const auth = null;/);
+  assert.match(stand, /export const functions = null;/);
+  assert.doesNotMatch(stand, /from ["']firebase\//, "the stand-in imports no Firebase SDK");
+  const config = readFileSync(join(HERE, "..", "vite.config.js"), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(config.includes("resolve: APP_ENV.authSource === 'eos'"), "the alias is conditional on the EOS-only build");
+  assert.ok(config.includes("replacement: resolvePath(CONFIG_DIR, 'src/firebase/firebaseAbsent.js')"));
+  assert.ok(/:\s*\{\},\s*plugins:/.test(config), "no alias in any other build");
+  // The alias pattern (copied here from the config) matches every spelling of the import used in src, and nothing else.
+  const found = /find: (\/.*\/),\n/.exec(config);
+  assert.ok(found, "the alias pattern is present");
+  const re = new RegExp(found[1].slice(1, -1));
+  for (const ok of ["../firebase/firebase", "../firebase/firebase.js", "../../firebase/firebase", "./firebase/firebase.js"]) assert.ok(re.test(ok), ok);
+  for (const no of ["firebase/firestore", "firebase/app", "../firebase/firebaseAbsent.js", "../firebase/other"]) assert.ok(!re.test(no), no);
+  // The real shim is unchanged: still the canonical Firestore/Functions handle exporter the census tracks.
+  const real = read("firebase/firebase.js");
+  assert.match(real, /export const db = getFirestore\(app\);/);
+  assert.match(real, /export const functions = getFunctions\(app, firebaseConfig\.functionsRegion\);/);
 });
 
 test("the sign-in screens read the environment WITHOUT importing the Firebase module", () => {
