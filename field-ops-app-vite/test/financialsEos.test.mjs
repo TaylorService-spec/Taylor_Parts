@@ -106,7 +106,7 @@ test("reads: consolidated principal -> one consolidated overview and one consoli
   const s = server({ readMyFinanceCompanyAccess: access(["taylor", "ventana"]), readFinanceOverview: overview(), listObligations: { items: [row()] } });
   const out = await fetchFinancialFactsFromEos({ factTypes: ["INVOICE"] }, 200, { call: s.call });
   assert.equal(out.result.status, "ready");
-  assert.deepEqual(s.calls.map(([op, i]) => [op, i.operatingCompanyId ?? null]),
+  assert.deepEqual(s.calls.map(([op, i]) => [op, i?.operatingCompanyId ?? null]),
     [["readMyFinanceCompanyAccess", null], ["readFinanceOverview", "consolidated"], ["listObligations", "consolidated"]]);
   assert.equal(s.calls[2][1].kind, "RECEIVABLE");
   const one = server({ readMyFinanceCompanyAccess: access(["taylor", "ventana"]), readFinanceOverview: overview(), listObligations: { items: [] } });
