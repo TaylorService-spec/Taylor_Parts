@@ -338,11 +338,11 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     const listed = okData(await as(ADMIN_SUBJECT, "listEmployeeCompanyAuthority", { employeeId: "e-win1" }));
     assert.equal(listed.grants.find((g) => g.id === scheduled.id).displayState, "SCHEDULED");
 
-    const until = new Date(Date.now() + 3000).toISOString();
+    const until = new Date(Date.now() + 5000).toISOString();
     const expiring = okData(await as(ADMIN_SUBJECT, "grantCompanyAuthority", grantInput("e-win2", "ventana", { effectiveUntil: until })), "expiring");
     assert.equal(new Date(expiring.effectiveUntil).toISOString(), until);
     assert.deepEqual(await companies(win2), ["taylor", "ventana"], "in-window");
-    await sleep(3600);
+    await sleep(5600);
     assert.deepEqual(await companies(win2), ["taylor"], "expired on the database clock, with no job and no revoke");
     assert.equal((await grantsOf("e-win2"))[0].status, "active", "the row is still 'active': expiry is a read-time fact");
     assert.equal(okData(await as(ADMIN_SUBJECT, "listEmployeeCompanyAuthority", { employeeId: "e-win2" })).grants[0].displayState, "EXPIRED");

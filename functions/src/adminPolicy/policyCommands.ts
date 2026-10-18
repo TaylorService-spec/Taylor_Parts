@@ -1435,7 +1435,7 @@ function companyGrantStore(repo: PolicyReader): void {
 async function refuseSelfCompanyGrant(repo: PolicyReader, actor: AdminActor, employeeId: string): Promise<void> {
   const fact = await repo.getLinkedEmployeeAccessFact(actor.tenantId, actor.uid);
   // An ambiguous link carries every employee id joined; the actor is any of them.
-  if (fact && fact.employeeId.split(",").includes(employeeId)) {
+  if (fact && (fact.employeeId === employeeId || fact.employeeId.split(",").includes(employeeId))) {
     throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not grant company access to its own Employee");
   }
 }
@@ -1461,7 +1461,8 @@ async function decideCompanyGrant(
   const existing = (await repo.listCompanyAuthorityGrants!(actor.tenantId, employeeId))
     .find((g) => g.status === "active" && g.operatingCompanyId === companyId);
   if (!existing) return null;
-  const sameWindow = (from === null || Date.parse(existing.effectiveFrom) === Date.parse(from))
+  // A request with no stated start means "effective now": it matches an existing grant only if that one is already in effect.
+  const sameWindow = (from === null ? Date.parse(existing.effectiveFrom) <= Date.now() : Date.parse(existing.effectiveFrom) === Date.parse(from))
     && (until === null ? existing.effectiveUntil === null : existing.effectiveUntil !== null && Date.parse(existing.effectiveUntil) === Date.parse(until));
   if (sameWindow) return existing;
   throw new AdministrationRefusal("COMPANY_GRANT_EXISTS",

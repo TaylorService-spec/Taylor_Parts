@@ -1623,6 +1623,7 @@ function classify(err: unknown): AdminApiFailureCode {
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
       || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") || err.code === "SALES_CHANNEL_INVALID"
       || err.code === "DIRECT_GRANT_SCOPE_UNSUPPORTED" || err.code === "COMPANY_AUTHORITY_EFFECT_INVALID"
+      || err.code === "COMPANY_GRANT_WINDOW_INVALID"
       ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
