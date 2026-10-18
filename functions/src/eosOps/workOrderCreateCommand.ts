@@ -27,6 +27,7 @@ import { serviceProviderAuthorized } from "../eosCommercial/fulfillment/serviceP
 import type { Pool } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding.js";
+import { resolveCompanyAuthority } from "./companyAuthority.js";
 import { allocateWorkOrderNumber } from "./workOrderNumbering.js";
 import { WORK_ORDER_STATUSES, type WorkOrderStatus } from "./workOrderLifecycle.js";
 
@@ -210,6 +211,14 @@ export async function createWorkOrder(
     // so a native Ventana Work Order fails closed right here.
     let operatingCompanyKey: string;
     try {
+      // D-248-1 (Owner confirmed security defect; EOS Core company authority, DECISIONS #235/#237): capability FIRST (above), then
+      // company. The stated company must be one the caller is authorized for; none at all is COMPANY_AUTHORITY_REQUIRED, and a
+      // company outside them answers exactly like a company with no ACTIVE key binding (out of scope == unknown).
+      const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
+      if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+      if (!authority.companies.includes(actor.operatingCompanyId)) {
+        throw Object.assign(new Error("out of scope"), { code: "OPERATING_COMPANY_KEY_NOT_BOUND" });
+      }
       operatingCompanyKey = await resolveOperatingCompanyKeyForCompany(client, actor.tenantId, actor.operatingCompanyId);
     } catch (err) {
       const code = (err as { code?: string }).code ?? "";
