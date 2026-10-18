@@ -573,7 +573,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.deepEqual(adminOnly, [
       "admin.dataImport.execute", "customer.governedField.write", "equipment.install",
       "equipment.model.manage", "inventory.catalog.activate", "inventory.cycleCount.cancel",
-      "inventory.cycleCount.create", "inventory.cycleCount.reconcile", "inventory.cycleCount.submit",
+      "inventory.cycleCount.create", "inventory.cycleCount.reconcile", "inventory.cycleCount.submit", "inventory.location.bin.manage",
       "inventory.placement.record", "inventory.stock.receive", "inventory.stock.relocate",
       "inventory.transfer.cancel", "inventory.transfer.dispatch", "inventory.transfer.receive",
       "opportunity.createSalesOrder", "salesAgreement.accept", "workOrder.lifecycle.cancel",
@@ -1194,11 +1194,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const EXPECTED_SURFACE_COUNTS = {
       // Rental (#207): + rental.workspace for every persona whose Role holds rental.agreement.read.
       // Analysis (#208): + analysis.workspace for every persona holding a read a measure is decided on (or the report catalog read).
-      "owner-executive": 23, "administrator": 25, "general-manager": 17, "office-manager": 4,
+      "owner-executive": 24, "administrator": 26, "general-manager": 17, "office-manager": 4,
       "service-manager": 14, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
       "contract-technician": 3, "technician-on-leave": 0, "retail-sales-a": 9, "retail-sales-b": 9,
       "national-accounts-sales": 9, "parts-manager": 14, "parts-associate": 9,
-      "warehouse-manager": 13, "warehouse-associate": 8, "records-clerk": 0,
+      "warehouse-manager": 14, "warehouse-associate": 8, "records-clerk": 0,
       "finance-controller": 13, "report-analyst": 0, "restricted-user": 0,
     };
     // EVERY persona is covered. A persona added to the manifest without a measured expectation here

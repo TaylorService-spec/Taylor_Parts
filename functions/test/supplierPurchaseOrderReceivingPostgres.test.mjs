@@ -248,9 +248,9 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
     const m = await q(`SELECT movement_type::text AS t, quantity_delta, location_type::text AS lt, location_id, occurred_at, source_id FROM eos_ops.inventory_movements WHERE source_id = $1 ORDER BY quantity_delta DESC`, [second.receivingId]);
     assert.deepEqual(m.rows.map((r) => [r.t, r.quantity_delta, r.lt, r.location_id]), [["RECEIVED", 6, "WAREHOUSE", "wh-1"], ["RECEIVED", 1, "WAREHOUSE", "wh-1"], ["RECEIVED", 1, "WAREHOUSE", "wh-1"]]);
     assert.equal(m.rows[0].occurred_at.toISOString(), FIXED.toISOString());
-    // The order is now closed: a further receipt is refused by the status gate (a replay of an applied one is not -- see below).
+    // The order is now closed: a further NEW receipt is refused (every line is already satisfied; the status gate itself is proved on a CANCELLED order below). A replay of an applied one is not -- see below.
     const closed = await refusal(() => run(request(id, { idempotencyKey: "k-late" })));
-    assert.equal(closed.code, "STATUS_NOT_RECEIVABLE");
+    assert.equal(closed.code, "RECEIPT_LINE_ALREADY_SATISFIED");
     const progress = await cmd.readSupplierPurchaseOrderProgress({ pool }, actor(), { purchaseOrderId: id });
     assert.deepEqual([progress.derivedState, progress.storedStatus, progress.receivable, progress.version], ["RECEIVED", "RECEIVED", false, 2]);
     // Cost is UNKNOWN, never zero: no cost evidence, a visible COST_EVIDENCE_MISSING exception for every received line, and no payable.

@@ -43,7 +43,7 @@
   "seedBoundaryMigration": "1761523200000",
   "deployment": {
     "$comment": "WHAT THIS FILE MEASURES, AFTER RULING E. It is the authority a DETERMINISTIC REBUILD of this repository produces -- the five-phase pipeline above -- and the rebuild guard proves expected == actual with ZERO unexplained. Ruling E requires a grant-bearing migration and the baseline that explains it to land in ONE change, so the moment migration 1762300800000 entered migrations/ this number moved with it. It is therefore AHEAD of the live nonprod row count until that migration is deployed, and saying so here is the point: 'what the repository produces' and 'what nonprod holds right now' are two questions and both stay answerable. This is NOT blessed live drift (AN2). Drift is a row in the database that nothing in the repository explains; this is a row in the repository that the database has not run yet, and it is named, counted and attributable to one migration.",
-    "rebuildTotal": 503,
+    "rebuildTotal": 510,
     "measuredInNonprodAt": "2026-09-24",
     "measuredInNonprodTotal": 387,
     "notYetAppliedToNonprod": [
@@ -55,7 +55,8 @@
       "migration:1764520000000",
       "migration:1764580000000",
       "migration:1764590000000",
-      "migration:1764620000000"
+      "migration:1764620000000",
+      "migration:1764630000000"
     ],
     "appliedToNonprodBy": "the ordinary deploy (functions migrate:up); lane BO did not and may not apply it"
   },

@@ -422,6 +422,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // Firebase exit B1 appended 1764620000000 (finance visibility mirror + credit trigger): its reversal is clean (nothing names it), so
     // it is peeled first and this proof still runs against ITS OWN migration, which the final `up` below restores along with it.
     const newest = async () => (await q(`SELECT name FROM public.pgmigrations ORDER BY id DESC LIMIT 1`)).rows[0].name;
+    // Firebase exit B3 appended 1764630000000 (warehouse receiving + bins on EOS): its down is guarded and clean when nothing was written to it, so it is peeled first too.
+    if ((await newest()) === "1764630000000_warehouse-receiving-bins-on-eos") migrate("down", 1);
     if ((await newest()) === "1764620000000_finance-visibility-and-credit-immutability") migrate("down", 1);
     const last = await newest();
     assert.equal(last, "1764610000000_employee-company-authority-grants", "this is the newest migration (after the later finance visibility migration is peeled)");
