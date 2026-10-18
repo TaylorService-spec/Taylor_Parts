@@ -104,9 +104,11 @@ test("Finance-only company assignments grant Finance reach only, in PostgreSQL",
 
   await t.test("3: return intake, scheduling and dispatch for Ventana stay refused without separate operational authority", async () => {
     const intake = (company, key) => call(fo, INV, "recordReturnIntake", { operatingCompanyId: company, partId: "PRT-1", source: "CUSTOMER", condition: "OPENED", quantity: 1, idempotencyKey: key });
-    refusedWith(await intake("ventana", "k-v"), "OPERATING_COMPANY_NOT_GOVERNED", "Ventana return intake");
+    const ventana = await intake("ventana", "k-v");
+    refusedWith(ventana, "INVALID_INPUT", "Ventana return intake");
+    assert.match(ventana.body.message, /not an active operating company you may act for/);
     const unknown = await intake("nope", "k-n");
-    assert.deepEqual(unknown.body.code, "OPERATING_COMPANY_NOT_GOVERNED", "out of scope reads like unknown");
+    assert.deepEqual([unknown.status, unknown.body.code, unknown.body.message], [ventana.status, ventana.body.code, ventana.body.message], "out of scope reads like unknown");
     assert.equal((await intake("taylor", "k-t")).status, 200, "the home company still works");
     const pto = { employeeId: "e-vtech", kind: "PTO", start: "2030-10-20T00:00:00Z", end: "2030-10-21T00:00:00Z", reason: "fonly" };
     refusedWith(await call(fo, WO, "recordTechnicianUnavailability", pto), "EMPLOYEE_NOT_FOUND", "a Ventana technician is not the caller's to schedule");
