@@ -104,6 +104,9 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
   const bindAs = { tenantId, uid: adminPrincipalId, heldRoleKeys: ["admin"] };
   await bindPrincipalEosIdentity(repo, bindAs, { principalId: tech, externalSubject: "nonprod-persona.serviceTechnician", reason: "persona fixture" });
   await bindPrincipalEosIdentity(repo, bindAs, { principalId: disp, externalSubject: "nonprod-persona.dispatcher", reason: "persona fixture" });
+  // An administrator persona: the EOS bearer that reads the restricted verifier diagnostics (MET-1).
+  const adm = await makePrincipal("persona-administrator", "admin", "fb-persona-admin");
+  await bindPrincipalEosIdentity(repo, bindAs, { principalId: adm, externalSubject: "nonprod-persona.administrator", reason: "persona fixture" });
 
   const authorityDigest = async () => (await q(`SELECT
       (SELECT md5(string_agg(id || principal_id || role_id || status::text || scope_type, ',' ORDER BY id)) FROM eos_policy.user_role_assignments WHERE tenant_id = $1) ura,
@@ -264,21 +267,35 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     assert.equal(refused.status, 401, "a disabled persona login refuses sign-in uniformly");
   });
 
-  await t.test("P7 the verifier switch: a Firebase bearer is refused WITHOUT the Firebase verifier running; /health reports the counters", async () => {
-    const before = await health();
-    assert.equal(before.auth.firebaseVerifier, "disabled");
+  await t.test("P7 the verifier switch: a Firebase bearer is refused WITHOUT the Firebase verifier running; the counters are a RESTRICTED administrator read, never /health", async () => {
+    // MET-1 (Owner ruling): no authentication counter on the unauthenticated /health; an administrator reads them over EOS.
+    const diag = (token) => post("/admin/policy", { operation: "readAuthVerifierDiagnostics", input: {} }, bearer(token));
+    const adminToken = machineToken("nonprod-persona.administrator");
+    const readBefore = await diag(adminToken);
+    assert.equal(readBefore.status, 200, JSON.stringify(readBefore.body));
+    const before = { auth: readBefore.body.data };
+    assert.equal(before.auth.firebaseVerifier, "disabled", "the EOS bearer path reaches the read while the Firebase verifier is disabled");
+    const denied = await diag(machineToken("nonprod-persona.dispatcher"));
+    assert.equal(denied.status, 403, "a principal without admin.securityPolicy.read is refused");
+    assert.equal(JSON.stringify(denied.body).includes("verified"), false, "and learns no count");
+    assert.equal((await diag("not-a-token")).status, 401, "no bearer, no read");
+    const healthBody = await health();
+    assert.equal("auth" in healthBody, false, "/health carries no auth block");
+    assert.doesNotMatch(JSON.stringify(healthBody), /verified|refused|firebaseVerifier|eos_human|eos_persona/);
     const calls = firebaseCalls;
     const res = await post("/admin/policy", { operation: "listTenantPrincipals", input: {} }, { authorization: "Bearer fb-token.fb-admin-uid" });
     assert.equal(res.status, 401);
     const op = await post("/operations/experience", { operation: "resolveMyExperienceContext" }, { authorization: "Bearer fb-token.fb-admin-uid" });
     assert.equal(op.status, 401);
     assert.equal(firebaseCalls, calls, "the Firebase verifier was never called");
-    const after = await health();
+    const readAfter = await diag(adminToken);
+    assert.equal(readAfter.status, 200);
+    const after = { auth: readAfter.body.data };
     assert.equal(after.auth.refused.firebase_disabled - before.auth.refused.firebase_disabled, 2);
     assert.equal(after.auth.verified.firebase, 0);
     assert.ok(after.auth.verified.eos_persona >= 2 && after.auth.verified.eos_human >= 1, JSON.stringify(after.auth));
-    assert.deepEqual(Object.keys(after.auth).sort(), ["firebaseVerifier", "refused", "since", "verified"], "counts and a start time only");
-    assert.ok(!JSON.stringify(after).includes("fb-admin-uid") && !JSON.stringify(after).includes(tech), "no subject or principal in /health");
+    assert.deepEqual(Object.keys(after.auth).sort(), ["firebaseVerifier", "refused", "since", "verified"], "counts, the mode and a start time only");
+    assert.ok(!JSON.stringify(after).includes("fb-admin-uid") && !JSON.stringify(after).includes(tech), "no subject or principal in the diagnostics");
   });
 
   await t.test("P8 ACTOR-NAME-1: a governed display name from a stated source; no inference, no authority change, no-op silent", async () => {
