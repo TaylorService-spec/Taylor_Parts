@@ -16,6 +16,19 @@ const STATUS_WORDS = Object.freeze({
   disabled: "Sign-in disabled",
 });
 
+// What the administrator is told once the server has applied an action (the re-read then shows the new state).
+export const LOGIN_ACTION_DONE_WORDS = Object.freeze({
+  provisionLoginAccount: "Sign-in created.",
+  reissueLoginEnrollment: "New setup code issued.",
+  issueLoginReset: "Password reset code issued.",
+  unlockLoginAccount: "Sign-in unlocked.",
+  revokeLoginSessions: "Signed out on every device.",
+  resetLoginMfa: "Two-step verification reset: the authenticator and recovery codes were removed.",
+  setLoginMfaRequirement: "Two-step verification requirement updated.",
+  setLoginAccountStatus: "Sign-in status updated.",
+  retireLoginAccount: "Sign-in removed.",
+});
+
 function OneTimeCode({ label, code, expiresAt, onDone }) {
   return (
     <div className="fo-panel" role="status" style={{ marginTop: 8 }}>
@@ -34,6 +47,7 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [oneTime, setOneTime] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const load = useCallback(async () => {
     const r = await api("readLoginAccount", { principalId });
@@ -53,13 +67,16 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
     if (confirmWords && typeof window !== "undefined" && !window.confirm(confirmWords)) return;
     setBusy(true);
     setActionError(null);
+    setNotice(null);
     const r = await api(operation, { principalId, reason: reason.trim(), ...input });
     setBusy(false);
     if (!r.ok) { setActionError(r.message ?? r.code); return; }
     setReason("");
     if (after) after(r.data);
     await load();
+    setNotice(LOGIN_ACTION_DONE_WORDS[operation] ?? "Done.");
   };
+  const noticeLine = notice ? <p className="fo-muted" role="status">{notice}</p> : null;
 
   if (state.status === "loading") return <p className="fo-muted">Loading sign-in…</p>;
   if (state.status === "failed") return <p role="alert">The EOS sign-in could not be read: {state.error}</p>;
@@ -93,6 +110,7 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
             (d) => setOneTime({ label: "Setup code", code: d.enrollmentTicket, expiresAt: d.enrollmentTicketExpiresAt }))}>Create sign-in</Button>
         </div>
         {actionError ? <p role="alert">{actionError}</p> : null}
+        {noticeLine}
         {oneTime ? <OneTimeCode {...oneTime} onDone={() => setOneTime(null)} /> : null}
       </div>
     );
@@ -134,6 +152,7 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
         <Button variant="secondary" loading={busy} onClick={() => run("retireLoginAccount", {})}>Remove sign-in</Button>
       </div>
       {actionError ? <p role="alert">{actionError}</p> : null}
+      {noticeLine}
       {oneTime ? <OneTimeCode {...oneTime} onDone={() => setOneTime(null)} /> : null}
       {state.data.recentEvents?.length ? (
         <details>
