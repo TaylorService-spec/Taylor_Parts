@@ -1,4 +1,4 @@
-import { useEmployeeDirectory } from "./useEmployeeDirectory.js";
+import { useEmployeeDirectory } from "../hooks/useEmployeeDirectory.js"; // (spelled with its directory so the f2rF4 import ratchet names this chooser)
 import { useGovernedEmployeeDirectory } from "./useGovernedEmployeeDirectory.js";
 import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
 
