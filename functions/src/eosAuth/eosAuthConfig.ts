@@ -30,6 +30,11 @@
 //                                         measurement before relying on either.
 //   EOS_AUTH_CLIENT_IP_DIAGNOSTIC_SHA256  optional, 64 hex, nonprod only: mounts the one-time client-address measurement
 //                                         (clientIpDiagnostic.ts). Independent of EOS_HUMAN_LOGIN; unset after use.
+//   EOS_AUTH_FIREBASE_VERIFIER            optional, "enabled" | "disabled" (default enabled). THE VERIFIER SWITCH (Firebase
+//                                         exit B2): "disabled" turns the Firebase `verifyIdToken` fallback OFF, so the
+//                                         service verifies EOS tokens only and a Firebase bearer is refused without
+//                                         ever loading firebase-admin. Requires EOS_HUMAN_LOGIN=enabled (a service that
+//                                         refuses Firebase and has no human login would let nobody in). Nonprod only.
 //   EOS_AUTH_MULTI_TENANT_SESSIONS        optional, "enabled" | "disabled" (default disabled). Disabled: a human login is
 //                                         single-tenant (a Principal with a membership elsewhere is refused). Enabled:
 //                                         Owner ruling D-12 -- a Principal may belong to several tenants and each session
@@ -65,6 +70,11 @@ export interface EosAuthRuntime {
    */
   /** The client-address measurement (clientIpDiagnostic.ts): the SHA-256 of its operator credential, or null (unmounted). */
   readonly clientIpDiagnosticSha256?: string | null;
+  /**
+   * Is the Firebase `verifyIdToken` fallback on? Absent = "enabled" (every existing construction). "disabled" is only
+   * produced by readEosAuthConfig, only with human login, only in nonprod: the service then verifies EOS tokens only.
+   */
+  readonly firebaseVerifier?: "enabled" | "disabled";
   readonly humanLogin: {
     readonly signer: EosSigner;
     readonly factorKeyring: FactorKeyring | null;
@@ -115,6 +125,9 @@ function readEosAuthConfigCore(env: NodeJS.ProcessEnv, serviceEnvironment: strin
     if (humanLoginEnabled) throw new EosAuthConfigError("EOS_HUMAN_LOGIN=enabled requires EOS token verification to be configured");
     if (present(signingRaw) || present(kid) || present(credentialHash)) {
       throw new EosAuthConfigError("EOS signing/issuer variables are set but EOS_AUTH_VERIFY_KEYS is not");
+    }
+    if ((env.EOS_AUTH_FIREBASE_VERIFIER ?? "").trim() === "disabled") {
+      throw new EosAuthConfigError("EOS_AUTH_FIREBASE_VERIFIER=disabled requires EOS token verification to be configured");
     }
     return EOS_AUTH_DISABLED;
   }
@@ -190,5 +203,13 @@ function readEosAuthConfigCore(env: NodeJS.ProcessEnv, serviceEnvironment: strin
   } else if (present(env.EOS_AUTH_COOKIE_SAMESITE) || present(env.EOS_AUTH_TRUSTED_PROXY_HOPS)) {
     throw new EosAuthConfigError("EOS_AUTH_COOKIE_SAMESITE / EOS_AUTH_TRUSTED_PROXY_HOPS are set but EOS_HUMAN_LOGIN is not enabled");
   }
-  return Object.freeze({ verify, issuer, audience, personaIssuer, humanLogin });
+  // THE VERIFIER SWITCH. Read last so every earlier refusal (partial keys, production) wins over it.
+  const firebaseRaw = (env.EOS_AUTH_FIREBASE_VERIFIER ?? "enabled").trim();
+  if (firebaseRaw !== "enabled" && firebaseRaw !== "disabled") {
+    throw new EosAuthConfigError("EOS_AUTH_FIREBASE_VERIFIER must be 'enabled' or 'disabled'");
+  }
+  if (firebaseRaw === "disabled" && !humanLogin) {
+    throw new EosAuthConfigError("EOS_AUTH_FIREBASE_VERIFIER=disabled requires EOS_HUMAN_LOGIN=enabled: a service that refuses Firebase tokens and has no human login would admit nobody");
+  }
+  return Object.freeze({ verify, issuer, audience, personaIssuer, humanLogin, firebaseVerifier: firebaseRaw });
 }

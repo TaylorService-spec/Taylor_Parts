@@ -1,7 +1,11 @@
 // ADMINISTRATION USERS CONSOLIDATION -- the client SEAM for the Administration > Users callables that
 // remain: the legacy audit read (listRecordChangeHistory) and the EXISTING User Access commands
-// (setUserStatus, assignApprovedRole, revokeRole, readPrincipalAccessState), named here rather than
-// reimplemented.
+// (setUserStatus, readPrincipalAccessState), named here rather than reimplemented.
+//
+// SECURITY ROLES ARE NOT HERE (Firebase exit B2). `assignApprovedRole` / `revokeRole` were unused by any screen since
+// lane CP-C moved Role assignment to PostgreSQL `assignRole` / `revokeRole` (EmployeeSecurityRoles.jsx); their wrappers
+// are removed so no screen can write the Firestore `roleAssignments` store by accident. In an EOS-only sign-in build NONE of
+// this seam is reached: Users administration uses the EOS Sign-in section (login administration over /admin/policy).
 //
 // NO EMPLOYEE PROFILE WRITER LIVES HERE ANY MORE (EMP-RT-W1C). The `updateEmployeeProfile` callable
 // wrote the retired Firestore employees record; PostgreSQL has been the Employee authority since the
@@ -30,10 +34,7 @@ import { functions } from "../firebase/firebase";
 const HISTORY_CALLABLE = "listRecordChangeHistory";
 // The EXISTING Issue #226 trusted command. Named here, not reimplemented.
 const STATUS_CALLABLE = "setUserStatus";
-// The EXISTING Issue #226 role-assignment command. Named here, not reimplemented.
-const ASSIGN_ROLE_CALLABLE = "assignApprovedRole";
-// The EXISTING revoke half of the same authority, and the trusted READ (Owner ruling 2026-09-06).
-const REVOKE_ROLE_CALLABLE = "revokeRole";
+// The trusted READ (Owner ruling 2026-09-06).
 const PRINCIPAL_ACCESS_CALLABLE = "readPrincipalAccessState";
 
 /** The outcomes any caller of this seam must be able to render. */
@@ -94,58 +95,6 @@ export async function setUserStatus({ principalUid, status, idempotencyKey }) {
 }
 
 /**
- * Assign one already-approved, non-privileged Role to a principal. Resolves (never rejects).
- *
- * The EXISTING `assignApprovedRole` trusted command -- the SINGLE-ADMIN path. It refuses any
- * privileged Role outright (that is grantRole's two-person route), resolves the roleId against its
- * own server-side allowlist, re-authorizes the caller on `admin.roleAssignment.write`, and writes
- * one audited roleAssignment. `actorUid` is derived server-side from the authenticated context and
- * is never sent from here, exactly as with setUserStatus above.
- *
- * `scope` is passed through rather than defaulted in this seam: what a Role means at global vs a
- * narrower scope is a governance question the command owns, and a default invented here would be
- * this file quietly making it.
- */
-export async function assignApprovedRole({ principalUid, roleId, scope, idempotencyKey }) {
-  try {
-    const res = await httpsCallable(functions, ASSIGN_ROLE_CALLABLE)({
-      principalUid,
-      roleId,
-      scope,
-      idempotencyKey,
-    });
-    return {
-      ok: true,
-      result: ADMIN_USER_RESULT.APPLIED,
-      assignmentId: res?.data?.assignmentId ?? null,
-    };
-  } catch (err) {
-    return { ok: false, ...mapAdminUserError(err) };
-  }
-}
-
-/**
- * Revoke ONE governed Role assignment by its assignment id. Resolves (never rejects).
- *
- * The EXISTING `revokeRole` trusted command. It takes an ASSIGNMENT id rather than a roleId
- * because a principal may hold the same Role more than once at different scopes -- "remove
- * salesperson" would be ambiguous, "remove this assignment" is not. That id comes from
- * readPrincipalAccessState below and from nowhere else on the client.
- *
- * `approverUid` exists on the command for PRIVILEGED revocations and is deliberately not passed
- * here: this seam serves the single-admin path only. A privileged revocation submitted without it
- * is refused server-side, which is the correct outcome rather than something to work around.
- */
-export async function revokeRole({ assignmentId, idempotencyKey }) {
-  try {
-    await httpsCallable(functions, REVOKE_ROLE_CALLABLE)({ assignmentId, idempotencyKey });
-    return { ok: true, result: ADMIN_USER_RESULT.APPLIED };
-  } catch (err) {
-    return { ok: false, ...mapAdminUserError(err) };
-  }
-}
-
-/**
  * One principal's CURRENT access state -- account status and active governed Roles. Resolves
  * (never rejects).
  *
@@ -193,8 +142,6 @@ export async function listRecordChangeHistory({ targetType, targetId, limit }) {
 /** The seam object the Users surfaces consume (injectable for tests). */
 export const administrationUsersClient = {
   setUserStatus,
-  assignApprovedRole,
-  revokeRole,
   readPrincipalAccessState,
   listRecordChangeHistory,
 };

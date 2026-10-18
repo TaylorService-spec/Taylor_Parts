@@ -551,3 +551,12 @@ The measurement uses the `/auth/diagnostics/client-ip` route (`functions/src/eos
 The migrator's verbose log of every migration's SQL had reached **1,044,000 bytes**. That is within 4 KB of Node's default 1 MiB `execFileSync`/`spawnSync` buffer, and **141 PostgreSQL test files** spawn the migrator with that default. Any next migration, from any lane, would fail all of them with `ENOBUFS`. This branch's migration crossed the line first.
 
 The fix is in the harnesses: an explicit `maxBuffer` on every migrator spawn, applied mechanically and listed in the commit. Trimming this migration would only have moved the cliff to the next one.
+
+## 11. Firebase exit B2 addendum (2026-10-17): EOS-only sign-in, the verifier switch, persona logins
+
+Operator steps: `docs/operations/eos-human-login-cutover-runbook.md`. Decision record: DECISIONS #B2. Privileged approvals: `docs/governance/privileged-approvals-inventory-b2.md`.
+
+- **EOS-only sign-in build.** `VITE_AUTH_SOURCE=eos`, allowed only where `config/environments.json` lists `eos` in `authSources` (platform-sandbox), the role is not production, an `eosApi` is declared and the EOS session source is on. The bundle then holds **no Firebase config**; `firebase/firebase.js` initialises nothing; `AuthContext` and `adminPolicyApiClient.currentIdToken` never touch Firebase. The coexistence table in `eos-native-identity-firebase-coexistence.md` describes the other builds.
+- **Verifier switch.** `EOS_AUTH_FIREBASE_VERIFIER=disabled` (needs `EOS_HUMAN_LOGIN=enabled`; nonprod only). A non-EOS bearer is refused before the Firebase verifier is called. `/health` reports `auth.firebaseVerifier` and the per-type counters (`verified.eos_human`, `verified.eos_persona`, `verified.firebase`, `refused.*`) with a start time.
+- **D-11 amended, narrowly (named PL-1).** The 16 synthetic personas may hold a password login **on their own existing binding**, created only by operator tooling (`enrollPersonaLogins.js`; no HTTP route). The access token of such a session carries the persona subject plus `sid` and passes the same session gate as a human token; the persona issuer's token (no `sid`) is unchanged. A persona login is disabled, never retired. A real person is never enrolled this way (D-9 re-enrollment stands).
+- **Principal display names (ACTOR-NAME-1).** `setPrincipalDisplayName`, from a verified provider profile or an Administration-entered name; never email, never Employee.

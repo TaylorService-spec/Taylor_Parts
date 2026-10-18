@@ -1,4 +1,4 @@
-import { APP_ENVIRONMENT } from "../firebase/firebase";
+import { APP_ENVIRONMENT } from "../config/appEnvironment.js";
 import VerenwardMark from "../shared/brand/VerenwardMark";
 
 // AUTH SHELL -- identity, environment and support chrome shared by the sign-in

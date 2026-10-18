@@ -14,9 +14,10 @@
 // CONCURRENCY. Two tabs share one cookie. A refresh is serialised across tabs with the Web Locks API where the browser
 // has it, and a REFRESH_SUPERSEDED answer (a sibling tab rotated first) is retried once with the cookie it left behind.
 //
-// OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled AND the bundle is not a production build (Owner D-1).
+// OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled (or is an EOS-only sign-in build) AND the bundle is not a production build (Owner D-1).
 
 import { setHumanEosTokenSource } from "./eosSession.js";
+import { EOS_AUTH_ONLY } from "./authSource.js";
 
 export const CSRF_HEADER = "x-eos-csrf";
 /** Refresh this long before the access token expires, so a request never carries one about to lapse. */
@@ -40,8 +41,10 @@ function environmentRole() {
   }
 }
 
-export function eosHumanLoginEnabled({ flag = readEnv("VITE_EOS_HUMAN_LOGIN"), role = environmentRole() } = {}) {
-  return flag === "enabled" && role !== "production";
+// An EOS-only sign-in build (auth/authSource.js, Firebase exit B2) IS the front door: it needs no second variable, because it
+// has no other way in. Otherwise the flag decides, as before. Never in a production bundle.
+export function eosHumanLoginEnabled({ flag = readEnv("VITE_EOS_HUMAN_LOGIN"), role = environmentRole(), eosAuthOnly = EOS_AUTH_ONLY } = {}) {
+  return role !== "production" && (eosAuthOnly === true || flag === "enabled");
 }
 
 function apiBase(explicit) {

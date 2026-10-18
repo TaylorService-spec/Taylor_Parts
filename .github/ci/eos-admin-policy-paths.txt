@@ -874,3 +874,16 @@ functions/src/eosAuth/**
 # under a watched directory, so a change to either must trigger the gate.
 functions/src/finance/financialPolicyProfile.ts
 functions/src/workOrderConsumption/consumptionActivation.ts
+
+# FIREBASE EXIT B2 (EOS-only sign-in, verifier switch, persona logins, principal display names): its suites and the subjects they pin.
+functions/test/eosVerifierSwitch.test.mjs
+functions/test/eosPersonaLoginPostgres.test.mjs
+functions/scripts/enrollPersonaLogins.js
+functions/scripts/populatePrincipalDisplayNames.js
+scripts/resolveEnvironment.mjs
+scripts/eosPersonaSession.mjs
+field-ops-app-vite/test/b2AuthContextEosOnly.test.jsx
+field-ops-app-vite/src/auth/authSource.js
+field-ops-app-vite/src/auth/AuthContext.jsx
+field-ops-app-vite/src/modules/administration/ApprovalRequests.jsx
+field-ops-app-vite/src/modules/administration/UserDetail.jsx

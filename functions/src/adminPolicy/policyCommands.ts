@@ -849,6 +849,79 @@ export async function revokePrincipalEosIdentity(
   });
 }
 
+// ════════════════════ PRINCIPAL DISPLAY NAME (ACTOR-NAME-1) ════════════════════
+//
+// Who acted is shown by name wherever EOS shows an actor (resolvePrincipalDisplayNames), and that name is
+// eos_policy.principals.display_name. It was empty for most Principals, so authors rendered as "Unknown user".
+//
+// WHERE A NAME MAY COME FROM -- exactly two sources, each VERIFIED by a person or a provider, and the source is recorded
+// on the audit event:
+//   IDENTITY_PROVIDER_PROFILE  the display name the identity provider holds on the Principal's own account
+//   ADMINISTRATION_ENTERED     a name an administrator stated (the 16 synthetic personas, which have no real profile)
+// NEVER inferred from an email address and NEVER copied from the linked Employee (Owner ruling B: EOS does not expose the
+// Employee link through a Principal name). A name that looks like an email address is refused here, so an inference
+// cannot reach the column even by mistake.
+//
+// IT CHANGES A LABEL, NOT AN IDENTITY. The Principal id, its subject, status, memberships and Roles are untouched, no
+// access version moves, and every audit event that names this Principal keeps naming the same actor id.
+
+export const PRINCIPAL_DISPLAY_NAME_SOURCES = Object.freeze(["IDENTITY_PROVIDER_PROFILE", "ADMINISTRATION_ENTERED"] as const);
+export type PrincipalDisplayNameSource = (typeof PRINCIPAL_DISPLAY_NAME_SOURCES)[number];
+
+export interface SetPrincipalDisplayNameInput {
+  readonly principalId: string;
+  readonly displayName: string;
+  readonly source: PrincipalDisplayNameSource;
+  readonly reason: string;
+}
+
+/** The name rule, shared with the operator tool's dry run so a plan cannot propose a name the command would refuse. */
+export function principalDisplayNameRefusal(value: unknown): string | null {
+  if (typeof value !== "string") return "the display name must be text";
+  if (value !== value.trim()) return "the display name must not begin or end with whitespace";
+  if (value.length < 2 || value.length > 120) return "the display name must be 2-120 characters";
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f<>]/.test(value)) return "the display name must not contain control characters or markup";
+  if (value.includes("@")) return "a display name that contains '@' looks like an email address; names are never inferred from email";
+  return null;
+}
+
+export async function setPrincipalDisplayName(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: SetPrincipalDisplayNameInput,
+): Promise<PrincipalRecord> {
+  // Naming who a Principal IS is assignment-shaped authority, the same gate as rebindPrincipalIdentity.
+  await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  const principalId = nonEmpty(input.principalId, "principalId");
+  const reason = nonEmpty(input.reason, "reason");
+  if (reason.length > 500) throw new PolicyValidationError("reason is too long");
+  if (!(PRINCIPAL_DISPLAY_NAME_SOURCES as readonly string[]).includes(input.source)) {
+    throw new PolicyValidationError("source must be IDENTITY_PROVIDER_PROFILE or ADMINISTRATION_ENTERED");
+  }
+  const refusal = principalDisplayNameRefusal(input.displayName);
+  if (refusal) throw new PolicyValidationError(refusal);
+
+  const principal = await repo.getPrincipal(principalId);
+  if (!principal) throw new PolicyValidationError("principal not found");
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+  // NO-OP IS SILENT: restating the name a Principal already has writes nothing and appends no audit event.
+  if (principal.displayName === input.displayName) return principal;
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const updated = await tx.setPrincipalDisplayName(principalId, input.displayName);
+    await tx.appendAudit({
+      ...auditBase(actor, "setPrincipalDisplayName", "principal", principalId, reason),
+      before: { displayName: principal.displayName },
+      after: { displayName: updated.displayName, source: input.source },
+    });
+    return updated;
+  });
+}
+
 // ════════════════════ ROLE ASSIGNMENT — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
 
 export interface AssignRoleInput {

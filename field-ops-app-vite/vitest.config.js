@@ -26,6 +26,9 @@ export default defineConfig({
       appId: "test-app-id",
       functionsRegion: "us-central1",
     }),
+    // Firebase exit B2: how people sign in to the bundle. The test bundle is the ordinary Firebase one; a suite that needs
+    // the EOS-only branch injects it through the seam's own argument (auth/authSource.js), never by flipping this.
+    __APP_AUTH_SOURCE__: JSON.stringify("firebase"),
     __APP_READINESS__: JSON.stringify({
       RECEIVING_TRANSPORT_READY: false,
       // Every readiness key the app reads must appear here, false by default. A key that is merely

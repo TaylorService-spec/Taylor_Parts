@@ -20,7 +20,10 @@ function resolveActiveEnvironment() {
   const registry = JSON.parse(
     readFileSync(resolvePath(CONFIG_DIR, '../config/environments.json'), 'utf8'),
   )
-  return resolveEnvironment(registry, process.env.VITE_ENVIRONMENT_ID || null)
+  // FIREBASE EXIT B2: VITE_AUTH_SOURCE=eos asks for an EOS-only sign-in build (no Firebase config in the bundle). The
+  // resolver refuses unless the registry allows it for this environment; unset or 'firebase' is today's build, unchanged.
+  const authSource = process.env.VITE_AUTH_SOURCE || 'firebase'
+  return resolveEnvironment(registry, process.env.VITE_ENVIRONMENT_ID || null, { authSource })
 }
 
 // INV-CONVERGENCE-E Stage A completion -- deterministic application/build commit
@@ -107,6 +110,8 @@ export default defineConfig({
     // Public Firebase Web client configuration — a project identifier, not a
     // credential. Access is enforced by Firestore Rules + Auth.
     __APP_FIREBASE_CONFIG__: JSON.stringify(APP_ENV.firebase),
+    // How people sign in to this bundle: 'firebase' (default) or 'eos' (no Firebase config at all; see the resolver).
+    __APP_AUTH_SOURCE__: JSON.stringify(APP_ENV.authSource),
     __APP_ENVIRONMENT__: JSON.stringify({
       id: APP_ENV.id, role: APP_ENV.role, deployment: APP_ENV.deployment,
     }),

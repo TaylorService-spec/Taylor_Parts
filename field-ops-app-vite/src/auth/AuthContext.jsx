@@ -20,6 +20,11 @@ import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
 import { resolveEosEmployeeSession } from "./eosEmployeeSession.js";
 // EOS NATIVE LOGIN (docs/architecture/eos-native-identity.md, 3(e)): the human front door. Off unless the build enables it.
 import { eosHumanLoginEnabled, eosLoginClient } from "./eosLoginClient.js";
+// FIREBASE EXIT B2: in an EOS-only sign-in build there is no Firebase app (auth is null) and this context never touches
+// Firebase: no subscription, no sign-in, no sign-out, no password-reset email. The EOS session is the only way in.
+import { EOS_AUTH_ONLY } from "./authSource.js";
+
+const eosOnlyRefusal = () => Promise.reject(Object.assign(new Error("this build signs in through EOS only"), { code: "EOS_AUTH_ONLY" }));
 
 const AuthContext = createContext();
 
@@ -123,6 +128,21 @@ export function AuthProvider({ children }) {
       };
     }
 
+    // EOS-ONLY SIGN-IN: no EOS session means signed out. Firebase auth state is never subscribed (there is no Firebase app).
+    if (EOS_AUTH_ONLY) {
+      setUser(null);
+      setRole(null);
+      setEmployeeId(null);
+      setDisplayName(null);
+      setOperationalRoles([]);
+      setEmploymentStatus(null);
+      setIdentityError(null);
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
     const unsub = onAuthStateChanged(auth, async (u) => {
       generation += 1;
       const thisGeneration = generation;
@@ -204,7 +224,7 @@ export function AuthProvider({ children }) {
   }, [retryGeneration]);
 
   const login = (email, password) =>
-    signInWithEmailAndPassword(auth, email, password);
+    EOS_AUTH_ONLY ? eosOnlyRefusal() : signInWithEmailAndPassword(auth, email, password);
 
   // After an EOS login stored its session: resolve identity from the EOS API, exactly as for any EOS session.
   const eosSignedIn = useCallback(() => setRetryGeneration((n) => n + 1), []);
@@ -224,7 +244,7 @@ export function AuthProvider({ children }) {
       setEmploymentStatus(null);
       setRetryGeneration((n) => n + 1);
     }
-    return signOut(auth);
+    return EOS_AUTH_ONLY ? undefined : signOut(auth);
   };
 
   // AUTH-PR-2 self-service recovery (email-input path). Fire-and-forget: asks
@@ -233,7 +253,7 @@ export function AuthProvider({ children }) {
   // exists (see Login.jsx). This does not touch auth STATE, so AuthContext
   // remains the single source of auth truth. Username-input recovery and
   // username login are DEFERRED (D-RESOLVER) and are intentionally absent.
-  const resetPassword = (email) => sendPasswordResetEmail(auth, email);
+  const resetPassword = (email) => (EOS_AUTH_ONLY ? eosOnlyRefusal() : sendPasswordResetEmail(auth, email));
 
   return (
     <AuthContext.Provider

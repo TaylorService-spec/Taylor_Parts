@@ -22,6 +22,21 @@
 4. Check your email for the reset link. If it doesn't arrive, wait for the **Resend email** button to become available (it's on a short cooldown) and try again.
 5. Click **Back to sign in** — or use your browser's Back button, which now also returns you to the sign-in form — when you're done.
 
+## If your workspace signs in through EOS (non-production workspaces)
+
+Some non-production workspaces (the label under the workspace name says **Sandbox**) have moved from the work-email
+sign-in above to the EOS sign-in. You can tell by the field name: it says **Sign-in name**, not **Work email**.
+
+1. Type your **Sign-in name** (your administrator tells you what it is) and your **Password**, then click **Sign in**.
+2. If your account uses two-step verification, the next screen asks for the **six-digit code** from your authenticator
+   app. If you cannot use the app, click **Use a recovery code instead** and enter one of the recovery codes you saved.
+3. The first time (or after a reset) you have no password yet. Click **Have a setup or reset code?**, enter the code
+   your administrator gave you in person or by phone, choose a password of at least 12 characters, then sign in.
+
+There is no "email me a reset link" in this workspace. If you forget your password, ask your administrator for a
+**reset code**; it works once and expires. Five wrong tries in a row lock the account for a few minutes — wait, or ask
+your administrator to unlock it.
+
 ## Tips / common problems
 - **"We could not sign you in with that email and password."** appears if the email or password is wrong. Re-type both carefully (watch for caps lock) and try again.
 - **"No access" screen after signing in** — this means your login worked but your account hasn't been given a role yet. It shows the email you're signed in as and a **Check again** button to use once an administrator has granted access. You can't fix this yourself — contact your administrator and give them the email address shown.

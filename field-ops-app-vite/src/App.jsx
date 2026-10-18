@@ -127,6 +127,10 @@ import Login from "./auth/Login";
 // EOS native login (docs/architecture/eos-native-identity.md): the human front door, when the build enables it.
 import EosLogin from "./auth/EosLogin";
 import { eosHumanLoginEnabled } from "./auth/eosLoginClient.js";
+// FIREBASE EXIT B2: in an EOS-only sign-in build a screen whose batch has not migrated cannot reach Firebase; its failure
+// is contained to the content area (components/RouteErrorBoundary.jsx) rather than replacing the whole app.
+import { EOS_AUTH_ONLY } from "./auth/authSource.js";
+import RouteErrorBoundary from "./components/RouteErrorBoundary.jsx";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
 import { ROLE_NAV_ACCESS, ROLES } from "./domain/constants";
@@ -1552,7 +1556,13 @@ export default function App() {
             allowedLegacyKeys={eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys}
             operationalContext={operationalContext}
           >
-            <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
+            {EOS_AUTH_ONLY ? (
+              <RouteErrorBoundary>
+                <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
+              </RouteErrorBoundary>
+            ) : (
+              <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
+            )}
           </AppShell>
         </div>
       </BrowserRouter>
