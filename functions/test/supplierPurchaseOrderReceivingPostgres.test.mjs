@@ -84,8 +84,17 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
                   ('epl-v','t1',$3,'e-v','ventana','OPERATOR_ASSERTED','f','test','active'),
                   ('epl-x','t1',$4,'e-x','taylor','OPERATOR_ASSERTED','f','test','active')`, [receiver, receiver2, ventanaReceiver, crossReceiver]);
   // The cross-company receiver is a Taylor Employee with an explicit, active company-access grant for Ventana: it REACHES both companies.
-  await q(`INSERT INTO eos_policy.employee_company_authority_grants (id, tenant_id, employee_id, operating_company_id, reason, granted_by)
-           VALUES ('ecag-x-v','t1','e-x','ventana','fixture: reach both companies','f')`);
+  // Written under the Administration marker, exactly as grantCompanyAuthority writes it (a trigger refuses any other writer).
+  {
+    const gc = await pool.connect();
+    try {
+      await gc.query("BEGIN");
+      await gc.query(`SELECT set_config('eos_policy.administration_command', 'on', true)`);
+      await gc.query(`INSERT INTO eos_policy.employee_company_authority_grants (id, tenant_id, employee_id, operating_company_id, reason, granted_by)
+                      VALUES ('ecag-x-v','t1','e-x','ventana','fixture: reach both companies','f')`);
+      await gc.query("COMMIT");
+    } catch (e) { await gc.query("ROLLBACK"); throw e; } finally { gc.release(); }
+  }
   // The receiver holds the WAREHOUSE scope over wh-1 and wh-closed, NOT wh-2; receiver2 holds wh-1 and wh-2; the Ventana receiver holds wh-v.
   await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
            VALUES ('os-r-1','t1','e-r','WAREHOUSE','wh-1', now(),'fixture'), ('os-r-c','t1','e-r','WAREHOUSE','wh-closed', now(),'fixture'),
