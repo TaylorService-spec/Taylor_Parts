@@ -282,8 +282,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 101 -> 102: 1764600000000 -- Role company-authority classification (DECISIONS #248): roles.company_authority_effect + two governing triggers; no capability, no grant, no Sample Company data.
 // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): one table + a store guard; no capability, no grant, no Sample Company data.
 // 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys, 15 grants to the current Firebase holders, a credit trigger. No Sample Company data.
-const PINNED_LAST_MIGRATION = "1764620000000_finance-visibility-and-credit-immutability";
-const PINNED_MIGRATION_COUNT = 104;
+// 104 -> 105: 1764630000000 -- Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive. No Sample Company data.
+const PINNED_LAST_MIGRATION = "1764630000000_warehouse-receiving-bins-on-eos";
+const PINNED_MIGRATION_COUNT = 105;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

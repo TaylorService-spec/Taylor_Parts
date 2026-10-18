@@ -146,6 +146,13 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze([
   "createBin",
   "relabelBin",
   "setBinStatus",
+  // Firebase exit B3: the Warehouse Racking planner, gated on the server by inventory.location.bin.read / .manage.
+  "listRackingWarehouses",
+  "listRackingBins",
+  "previewBinCreates",
+  "createBins",
+  "renameRackingBin",
+  "setRackingBinStatus",
   // OD-T7 (Controller 2026-10-01): truck / MOBILE-location registry, gated on the server by its own registry capability.
   "listTrucks",
   "readTruck",

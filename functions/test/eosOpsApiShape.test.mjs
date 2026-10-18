@@ -43,7 +43,9 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       // Truck Inventory activation (2026-10-01): the operational truck roster and one truck's stock.
       "listTruckRoster", "readTruckStock",
       // Returns intake (Firebase exit F7a, DECISIONS #242): the caller's companies and receiving warehouses.
-      "listReturnIntakeOptions"]);
+      "listReturnIntakeOptions",
+      // Supplier purchase order receiving + the archived legacy notes (Firebase exit B3, DECISIONS #B3).
+      "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "listLegacyInventoryActionNotes"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -56,6 +58,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
     // Returns intake (Firebase exit F7a, DECISIONS #242): intake only, no ledger movement (#118).
     "recordReturnIntake",
+    // Supplier purchase order receiving (Firebase exit B3): the canonical PURCHASE_ORDER source, no fallback to or from receiveReorderStock.
+    "receiveSupplierPurchaseOrder",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
@@ -224,7 +228,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // + listPurchaseOrderSupplierOptions (the governed supplier selection, DECISIONS #193; 2026-10-02).
   // + supplier administration (createSupplier / updateSupplier / setSupplierStatus / listSupplierOrganizationOptions; DECISIONS #196).
   // + governed part-supplier terms (listPartSupplierItems + four commands; SUP-1).
-  assert.equal(reorderOps.length, 39);
+  // + the supplier purchase order receipt and its three reads, and the archived legacy notes read (Firebase exit B3, DECISIONS #B3): 39 -> 44.
+  assert.equal(reorderOps.length, 44);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

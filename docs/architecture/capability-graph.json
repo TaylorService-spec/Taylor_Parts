@@ -2131,7 +2131,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/eosOps/experienceAuthority.ts"
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/legacyInventoryActionNotes.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -2140,7 +2141,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3843,15 +3844,15 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/configurationOperations.ts",
           "functions/src/inventoryLocation/binCommands.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
-        "serverReferenceCount": 2,
-        "clientReferenceCount": 3,
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3871,18 +3872,19 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/configurationOperations.ts",
+          "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/inventoryLocation/binCommands.ts",
           "functions/src/inventoryLocation/stockRelocationCallables.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 3,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

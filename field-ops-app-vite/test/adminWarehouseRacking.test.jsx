@@ -9,6 +9,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-li
 import AdminWarehouseRacking from "../src/modules/administration/AdminWarehouseRacking.jsx";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../src/services/rackingApply.js";
 import { BIN_CALLABLES } from "../src/services/binCommandClient.js";
+import { createEosRackingClient } from "../src/services/eosRackingClient.js";
 
 afterEach(cleanup);
 
@@ -354,5 +355,98 @@ describe("the bounded apply runner", () => {
 
   it("an empty plan is a no-op, not a hang", async () => {
     expect(await applyProposals({ rows: [], createBin: async () => ({}) })).toEqual([]);
+  });
+});
+
+// ═══════════════ ON EOS (Firebase exit B3, DECISIONS #B3): the SAME screen over the Administration operations ═══════════════
+//
+// The screen is one component; the client is chosen at BUILD time. Here the EOS client is injected with a fake transport so the real screen
+// is driven end to end: every call is an Administration operation (none a Firebase callable), a stated REASON gates every change, a batch
+// apply is shown PER BIN (created / already there / not created), and a partial result is never presented as a success.
+describe("on EOS: the same screen, the Administration operations, a stated reason, per-bin outcomes", () => {
+  const eosFake = (over = {}) => {
+    const calls = [];
+    const answers = {
+      listRackingBins: () => ({ items: [BIN], truncated: false }),
+      previewBinCreates: ({ proposals }) => ({ rows: proposals.map((p) => ({ idempotencyKey: p.idempotencyKey, code: `${p.aisle}0${p.bay}-00${p.position}`, classification: "NEW", reason: null })) }),
+      createBins: ({ proposals }) => ({
+        requested: proposals.length, created: 1, unchanged: 1, refused: 0, complete: true,
+        items: proposals.map((p, index) => ({ index, outcome: index === 0 ? "CREATED" : "UNCHANGED", classification: index === 0 ? "NEW" : "ALREADY_EXISTS", code: `A01-00${p.position}`, binId: `bin_${index}` })),
+      }),
+      renameRackingBin: () => ({ changed: true }),
+      setRackingBinStatus: () => ({ changed: true }),
+      ...over,
+    };
+    const callApi = async (operation, input) => {
+      calls.push([operation, input]);
+      const v = typeof answers[operation] === "function" ? answers[operation](input) : answers[operation];
+      return v?.ok === false ? v : { ok: true, data: v };
+    };
+    return { calls, client: createEosRackingClient({ callApi }) };
+  };
+
+  it("lists, previews and applies through the Administration operations, with the stated reason, and shows each bin's own outcome", async () => {
+    const { calls, client } = eosFake();
+    mount({ client });
+    await selectWarehouse();
+    await waitFor(() => expect(document.querySelector("table.fo-table")).toBeTruthy());
+    describeRack({ area: "parts room", bays: "1", positions: "2" });
+    fireEvent.click(screen.getByText("Preview These Bins"));
+    await screen.findByText("Create 2 Bins");
+    // No change without a stated reason.
+    expect(screen.getByText("Create 2 Bins").closest("button").disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "initial racking layout" } });
+    await waitFor(() => expect(screen.getByText("Create 2 Bins").closest("button").disabled).toBe(false));
+    fireEvent.click(screen.getByText("Create 2 Bins"));
+    await screen.findByText("Result");
+    const create = calls.find(([op]) => op === "createBins");
+    expect(create[1].reason).toBe("initial racking layout");
+    expect(create[1].warehouseId).toBe("WH-1");
+    expect(create[1].proposals.map((p) => p.position)).toEqual([1, 3]);
+    expect(calls.every(([op]) => ["listRackingBins", "previewBinCreates", "createBins"].includes(op))).toBe(true);
+    expect(screen.getAllByText("Created").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Already There").length).toBeGreaterThan(0);
+  });
+
+  it("a partial result is shown per bin, with the registry's reason -- never as a success", async () => {
+    const { client } = eosFake({
+      createBins: ({ proposals }) => ({
+        items: proposals.map((p, index) => (index === 0
+          ? { index, outcome: "CREATED", classification: "NEW", code: "A01-001", binId: "b0" }
+          : { index, outcome: "REFUSED", classification: "POSITION_TAKEN", reason: "position_taken_by_another_bin", code: "A01-003", binId: null })),
+      }),
+    });
+    mount({ client });
+    await selectWarehouse();
+    await waitFor(() => expect(document.querySelector("table.fo-table")).toBeTruthy());
+    describeRack({ bays: "1", positions: "2" });
+    fireEvent.click(screen.getByText("Preview These Bins"));
+    await screen.findByText("Create 2 Bins");
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "layout" } });
+    fireEvent.click(screen.getByText("Create 2 Bins"));
+    await screen.findByText("Result");
+    expect(screen.getAllByText("Not Created").length).toBeGreaterThan(0);
+    expect(screen.getByText(/rack position already belongs to another bin/)).toBeTruthy();
+  });
+
+  it("a name edit, a deactivation and a reactivation carry the stated reason; none is attempted without one", async () => {
+    const { calls, client } = eosFake();
+    mount({ client });
+    await selectWarehouse();
+    await waitFor(() => expect(document.querySelector("table.fo-table")).toBeTruthy());
+    expect(screen.getByText("Deactivate").closest("button").disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "retiring a damaged shelf" } });
+    await waitFor(() => expect(screen.getByText("Deactivate").closest("button").disabled).toBe(false));
+    fireEvent.click(screen.getByText("Deactivate"));
+    await waitFor(() => expect(calls.some(([op]) => op === "setRackingBinStatus")).toBe(true));
+    expect(calls.find(([op]) => op === "setRackingBinStatus")[1]).toEqual({ binId: "bin_abc", status: "INACTIVE", reason: "retiring a damaged shelf" });
+  });
+
+  it("a refused list is a refusal, never an empty rack; the EOS client hides nothing behind 'no bins'", async () => {
+    const { client } = eosFake({ listRackingBins: { ok: false, code: "FORBIDDEN", message: "not authorized" } });
+    mount({ client });
+    await selectWarehouse();
+    expect(await screen.findByText(/not authorized/)).toBeTruthy();
+    expect(screen.queryByText(/No bins are configured/)).toBeNull();
   });
 });

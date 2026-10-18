@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, SectionHeader, StatusIndicator, CompactMetric, Button } from "../../shared/ui/primitives";
 import { Field, FormError, FormStatus } from "../../shared/ui/form";
 import { binCommandClient } from "../../services/binCommandClient";
+import { eosRackingClient, loadRackingWarehouses } from "../../services/eosRackingClient.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { WAREHOUSE_RACKING_GATE } from "../../access/shellCapabilityGates.js";
 import BinLabelsAndExport from "./BinLabelsAndExport";
 import TruckLocationScopeBindings from "./TruckLocationScopeBindings";
@@ -10,7 +12,7 @@ import TruckRegistry from "./TruckRegistry";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { fetchWarehouses } from "../../services/operationsQueries";
-import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
+import { applyProposals, applyProposalsBatched, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
 import {
   generateRackingLayout,
   binIdempotencyKey,
@@ -40,8 +42,9 @@ import {
 // `bin_code_claims` (deny-all to every client, permanently) and `listBins` returns no idempotency
 // key, so a locally guessed verdict would be a guess presented as a fact.
 //
-// APPLY IS N GOVERNED CREATES. One `createBin` per bin, bounded concurrency, per-row outcomes. There
-// is no bulk write path and no aggregate "success"; partial success is normal and shown as such.
+// APPLY IS N GOVERNED CREATES. One bin per transaction, per-row outcomes, no aggregate "success"; partial success is
+// normal and shown as such. On Firebase that is one `createBin` call per bin (bounded concurrency); on EOS (B3) the server
+// applies a chunk of bins itself, STILL one bin per transaction, and answers per item (services/rackingApply.js).
 //
 // NO QUANTITY, NO CUSTODY. This screen configures PLACES. What sits in them is the ledger's business
 // and appears nowhere here.
@@ -58,9 +61,16 @@ const CAP_MANAGE = WAREHOUSE_RACKING_GATE.manage;
 // Mirrors BIN_PREVIEW_MAX_PROPOSALS.
 const PREVIEW_CHUNK = 250;
 
+// WHICH SOURCE ANSWERS, decided once at BUILD time (Firebase exit B3, DECISIONS #B3) by the same compile-time flag F1 uses: where an EOS API is
+// declared the planner reads and writes eos_ops.bins; everywhere else the Firebase callables and the Firestore warehouse picker are the sole
+// source, exactly as before. No runtime fallback in either direction.
+const DEFAULT_CLIENT = EOS_SESSION_SOURCE ? eosRackingClient : binCommandClient;
+const DEFAULT_LOAD_WAREHOUSES = EOS_SESSION_SOURCE ? loadRackingWarehouses : fetchWarehouses;
+
 const CLASSIFICATION_COPY = {
   NEW: { tone: "positive", label: "New", hint: "Will be created." },
   ALREADY_EXISTS: { tone: "info", label: "Already Exists", hint: "Applying again changes nothing." },
+  POSITION_TAKEN: { tone: "attention", label: "Position Taken", hint: "Another bin already occupies this rack position. It cannot be created." },
   CODE_RESERVED: { tone: "attention", label: "Code Taken", hint: "Another bin already holds this code. It cannot be created." },
   INVALID: { tone: "critical", label: "Invalid", hint: "The registry refused this location." },
   INTEGRITY_ERROR: { tone: "critical", label: "Needs Attention", hint: "The stored record is inconsistent. Do not apply." },
@@ -197,7 +207,7 @@ function BinRow({ bin, canManage, onRename, onSetStatus, onLabel, busy }) {
 
 // ═══════════════════════════════════ the screen ═══════════════════════════════════
 
-export default function AdminWarehouseRacking({ client = binCommandClient, loadWarehouses = fetchWarehouses, hasCapability, scopeBindingApi }) {
+export default function AdminWarehouseRacking({ client = DEFAULT_CLIENT, loadWarehouses = DEFAULT_LOAD_WAREHOUSES, hasCapability, scopeBindingApi }) {
   // Fail closed: an absent previewer means no capability, never "assume yes".
   const canRead = typeof hasCapability === "function" ? hasCapability(CAP_READ) === true : false;
   const canManage = typeof hasCapability === "function" ? hasCapability(CAP_MANAGE) === true : false;
@@ -206,8 +216,14 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
   const [warehouseId, setWarehouseId] = useState("");
   const [bins, setBins] = useState(null);
   const [listError, setListError] = useState(null);
+  const [truncatedList, setTruncatedList] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  // The stated reason every EOS Administration change carries (one per request). The Firebase callables take none.
+  const needReason = client.requiresReason === true;
+  const [reason, setReason] = useState("");
+  const reasonOk = !needReason || reason.trim() !== "";
+  const withReason = (request) => (needReason ? { ...request, reason: reason.trim() } : request);
 
   const [area, setArea] = useState("");
   const [aisleMode, setAisleMode] = useState("range");
@@ -241,6 +257,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
     try {
       const res = await client.listBins({ warehouseId: id });
       setBins(res?.bins ?? []);
+      setTruncatedList(res?.truncated === true);
     } catch (err) {
       // A refused read is a refusal, never an empty rack.
       setBins(null);
@@ -328,7 +345,10 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
   const onApply = useCallback(async () => {
     setBusy(true);
     try {
-      const results = await applyProposals({ rows: applicable, createBin: client.createBin });
+      // EOS: the server applies the bins one-per-transaction and answers per item; Firebase: one governed createBin per bin, a few at a time.
+      const results = typeof client.createBins === "function"
+        ? await applyProposalsBatched({ rows: applicable, createBins: client.createBins, warehouseId, reason: reason.trim() })
+        : await applyProposals({ rows: applicable, createBin: client.createBin });
       setApplied(results);
       await refreshBins(warehouseId);
       // The plan's verdicts are now stale by definition -- the rows just created are no longer NEW.
@@ -337,7 +357,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
     } finally {
       setBusy(false);
     }
-  }, [applicable, client, refreshBins, warehouseId, plan, runPreview]);
+  }, [applicable, client, refreshBins, warehouseId, plan, runPreview, reason]);
 
   const mutate = useCallback(async (label, fn) => {
     setBusy(true);
@@ -384,6 +404,12 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
         </select>
       </Field>
 
+      {warehouseId && canManage && needReason && (
+        <Field id="racking-reason" label="Reason" hint="Recorded with every bin you create, rename or change here. Required before any change.">
+          <input type="text" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      )}
+
       {warehouseId && canRead && (
         <>
           <SectionHeader
@@ -393,6 +419,9 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
             actions={bins ? <CompactMetric value={bins.length} label="Bins" /> : null}
           />
           {listError && <FormError id="racking-list-error">{listError}</FormError>}
+          {bins && truncatedList && (
+            <StatusIndicator tone="attention">Only the first bins are shown; this warehouse has more than the list can carry.</StatusIndicator>
+          )}
           {!listError && bins?.length === 0 && (
             <StatusIndicator tone="info">No bins are configured in this warehouse yet.</StatusIndicator>
           )}
@@ -414,14 +443,14 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
                     key={bin.binId}
                     bin={bin}
                     canManage={canManage}
-                    busy={busy}
+                    busy={busy || !reasonOk}
                     onLabel={(b) => setLabelRequest({ binId: b.binId, at: Date.now() })}
-                    onRename={(b, name) => mutate("Name", () => client.renameBin({ binId: b.binId, name }))}
+                    onRename={(b, name) => mutate("Name", () => client.renameBin(withReason({ binId: b.binId, name })))}
                     onSetStatus={(b, status) => mutate(
                       status === "ACTIVE" ? "Reactivation" : "Deactivation",
                       () => (status === "ACTIVE"
-                        ? client.reactivateBin({ binId: b.binId })
-                        : client.deactivateBin({ binId: b.binId })),
+                        ? client.reactivateBin(withReason({ binId: b.binId }))
+                        : client.deactivateBin(withReason({ binId: b.binId }))),
                     )}
                   />
                 ))}
@@ -514,7 +543,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
           {preview && (
             <>
               <div className="fo-racking__summary">
-                {["NEW", "ALREADY_EXISTS", "CODE_RESERVED", "INVALID", "INTEGRITY_ERROR"].map((c) => {
+                {["NEW", "ALREADY_EXISTS", "POSITION_TAKEN", "CODE_RESERVED", "INVALID", "INTEGRITY_ERROR"].map((c) => {
                   const n = previewRows.filter(({ verdict }) => verdict?.classification === c).length;
                   return n > 0 ? <CompactMetric key={c} value={n} label={CLASSIFICATION_COPY[c].label} /> : null;
                 })}
@@ -552,7 +581,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
                 </tbody>
               </table>
 
-              <Button onClick={onApply} disabled={busy || applicable.length === 0}>
+              <Button onClick={onApply} disabled={busy || applicable.length === 0 || !reasonOk}>
                 {applicable.length === 0
                   ? "Nothing to Create"
                   : `Create ${applicable.length} Bin${applicable.length === 1 ? "" : "s"}`}

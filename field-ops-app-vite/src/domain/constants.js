@@ -320,7 +320,12 @@ export const QUANTITY_SOURCE = {
 export const INVENTORY_ACTIONS_COLLECTION = "inventory_actions";
 // The plain label of the frozen inventory_actions notes wherever they are shown beside the EOS ledger (Firebase exit F2-remainder,
 // DECISIONS #246, interim until D-246-1): they are history, never stock movement.
-export const LEGACY_INVENTORY_NOTES_LABEL = "Legacy notes (frozen 2026-08-30; not stock movements)";
+export const LEGACY_INVENTORY_NOTES_LABEL = "Archived legacy notes (frozen 2026-08-30; not stock movements)";
+
+// The empty-state words for the archived legacy notes under EOS (Firebase exit B3, Owner ruling 8). An archive nobody has loaded must never read as
+// "no notes were ever recorded": that would be a claim about the data the screen has not read.
+export const LEGACY_NOTES_ARCHIVE_NOT_LOADED = "The archive of legacy notes has not been loaded in this environment, so there is nothing to show. This does not mean no notes were ever recorded.";
+export const LEGACY_NOTES_NONE_FOR_PART = "No archived legacy notes for this part.";
 
 export const INVENTORY_ACTION_TYPE = {
   RECEIVE_STOCK: "RECEIVE_STOCK",

@@ -13,7 +13,8 @@ import {
   fetchReceivingLocationOptions,
   submitCanonicalReceive,
 } from "../../services/receivingCallableClient.js";
-import { canonicalPoStatusWords } from "../../domain/receivingWorkspaceQueue.js";
+import { canonicalPoStatusWords, SUPPLIER_PO_EMPTY_COPY } from "../../domain/receivingWorkspaceQueue.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { titleCase } from "../../shared/display/displayLabels.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -117,7 +118,7 @@ function OrderPicker({ deps, onPick }) {
         <p className="fo-inline-error" role="alert">The list of orders could not be loaded.</p>
       )}
       {state === FIELD_STATE.READY && orders.length === 0 && (
-        <p className="fo-muted">No purchase orders are awaiting receipt.</p>
+        <p className="fo-muted">{(EOS_SESSION_SOURCE ? SUPPLIER_PO_EMPTY_COPY.EOS : SUPPLIER_PO_EMPTY_COPY.FIREBASE).short}</p>
       )}
       {state === FIELD_STATE.READY && orders.length > 0 && (
         <ul className="fo-list">
@@ -241,11 +242,13 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   useEffect(() => {
     let live = true;
     (async () => {
-      const res = await api.fetchReceivingLocationOptions();
+      // The destinations are the ORDER's (its own operating company, in the receiver's warehouse scope) -- Firebase exit B3. The Firebase
+      // transport ignores the argument; the EOS one requires it.
+      const res = await api.fetchReceivingLocationOptions(purchaseOrderId);
       if (live) setLocations({ status: res.status, options: res.options ?? [] });
     })();
     return () => { live = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [purchaseOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reconciliation = useMemo(
     () => reconcile(queue, progress?.lines ?? []),

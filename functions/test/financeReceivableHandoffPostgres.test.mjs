@@ -37,7 +37,8 @@ test("8 / 9 / 30 / 31 / 32. static: no tax provider / rate / jurisdiction; provi
   const mig = readFileSync(new URL("../migrations/1764460000000_receivable-tax-evidence-accounting-handoff.sql", import.meta.url), "utf8");
   assert.equal(/quickbooks|netsuite|sage|dynamics|xero|credential|api_key|secret|password|token/i.test(mig.replace(/^\s*--.*$/gm, "")), false, "no provider-specific schema or credential");
   const ops = [...http.OPERATIONS_READ_OPERATIONS, ...http.OPERATIONS_MUTATION_OPERATIONS];
-  assert.equal(ops.some((o) => /receivable|obligation|handoff|package|invoice/i.test(o)), false, "21: no operation manufactures a receivable, package or handoff");
+  // listReceivableSupplierPurchaseOrders (Firebase exit B3) is a READ of supplier orders still awaiting goods -- "receivable" in the receiving sense, not an AR receivable.
+  assert.equal(ops.filter((o) => o !== "listReceivableSupplierPurchaseOrders").some((o) => /receivable|obligation|handoff|package|invoice/i.test(o)), false, "21: no operation manufactures a receivable, package or handoff");
 });
 
 test("Finance Activation 2: tax evidence -> READY package -> EOS receivable -> accounting handoff", { skip: SKIP, concurrency: 1 }, async (t) => {

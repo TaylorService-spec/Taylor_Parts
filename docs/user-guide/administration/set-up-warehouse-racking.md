@@ -8,10 +8,19 @@ one at a time.
 A bin is a **place**: a shelf position you can point at. It is not a stock balance. Nothing on this
 screen says how much is in a bin — that is tracked separately.
 
-> **Not turned on yet.** Both bin permissions are switched off across the whole system and are not
-> granted to any role, so today this screen tells you which permission you are missing instead of
-> letting you read or change anything. That is not a fault. Reading the rack and changing it are two
-> separate permissions, so you may end up able to see the bins but not edit them.
+> **Permissions.** Reading the rack (**inventory.location.bin.read**) and changing it
+> (**inventory.location.bin.manage**) are two separate permissions, so you may be able to see the bins
+> but not edit them; the screen tells you which one is missing instead of showing an empty rack.
+> They are held by the same roles as before the move to EOS — Administrator, the Inventory Bin
+> Administrator role (and, to read only, Owner and the put-away and stock-movement operator roles).
+> Nobody gained access by the move.
+>
+> **Your company.** You see, and can rack, only the warehouses of the companies you work for. A
+> warehouse of another company behaves exactly as if it did not exist. If your account has no company
+> at all, the screen refuses rather than showing nothing.
+>
+> **A reason is required.** Anything you create, rename or take out of use is recorded with the reason
+> you type in the **Reason** box at the top; the buttons stay off until you give one.
 
 ## How a bin is described
 
@@ -53,7 +62,8 @@ actually happen:
 |---|---|
 | **New** | It will be created. |
 | **Already exists** | This exact bin is already there. Applying again changes nothing. |
-| **Code taken** | Another bin already holds that code. This one cannot be created. |
+| **Position taken** | Another bin already occupies that rack position (for example one added by hand earlier). This one cannot be created. |
+| **Code taken** | Another bin already holds, or once held, that code. A code is never reissued, so an old printed label can never mean somewhere else. This one cannot be created. |
 | **Invalid** | The system refused the location — usually a bad area or aisle. |
 | **Needs attention** | The stored record is inconsistent. Don't apply; raise it. |
 
@@ -67,12 +77,16 @@ minute ago is not an answer to the one on screen now.
 
 Click **Create N bins**. Only the rows marked *New* are created.
 
-Bins are created one at a time, a few at once, so **some can succeed while others fail** — for
-example if someone else is configuring the same aisle. That is normal, not an error. The result
-table gives one line per bin: *Created*, *Already there*, or *Not created* with the reason.
+Each bin is saved on its own, so **some can succeed while others fail** — for example if the
+position is already taken or someone else is configuring the same aisle. That is normal, not an
+error, and a failure never undoes the bins that did save. The result table gives one line per bin:
+*Created*, *Already there*, or *Not created* with the reason. There is never a single "all done"
+message that could hide a refused bin.
 
 If a bin says *Already there*, you have not created a duplicate. Running the same layout twice is
-safe.
+safe — it is also what to do if your connection dropped part-way: run it again and only the bins that
+were missing are created. If a result row says its outcome is *unknown* (the connection dropped before
+the answer arrived), the screen has not assumed it worked: preview again to see what exists.
 
 ## Add one bin
 
@@ -84,8 +98,8 @@ the layout later will report it as already there rather than clashing with it.
 
 ## Change a bin that already exists
 
-- **Rename** gives a bin a friendly name (`Fast movers`). Correcting a bin's code keeps the same
-  bin, so labels and history still point at the right place.
+- **Rename** gives a bin a friendly name (`Fast movers`). It changes the name only; the bin keeps its
+  code and its label. (Moving a bin to a new rack position is a separate administration step.)
 - **Deactivate** takes a bin out of use — the list then shows it as *Out of use*. **Reactivate**
   brings it back to *In use*.
 

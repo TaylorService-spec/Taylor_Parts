@@ -115,7 +115,8 @@
     "test/roleCompanyAuthorityEffect.test.mjs",
     "test/employeeCompanyAuthorityGrants.test.mjs",
     "test/eosVerifierSwitch.test.mjs",
-    "test/financeVisibility.test.mjs"
+    "test/financeVisibility.test.mjs",
+    "test/rackingPlannerOffline.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -280,6 +281,9 @@
     "test/previewCompanyAuthorityBudgetPostgres.test.mjs",
     "test/eosPersonaLoginPostgres.test.mjs",
     "test/financeVisibilityPostgres.test.mjs",
-    "test/workOrderCommandCompanyAuthorityPostgres.test.mjs"
+    "test/workOrderCommandCompanyAuthorityPostgres.test.mjs",
+    "test/supplierPurchaseOrderReceivingPostgres.test.mjs",
+    "test/rackingPlannerPostgres.test.mjs",
+    "test/supplierPoFixtureLoaderPostgres.test.mjs"
   ]
 }

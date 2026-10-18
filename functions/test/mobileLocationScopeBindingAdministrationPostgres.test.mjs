@@ -31,7 +31,7 @@ const require = createRequire(import.meta.url);
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 const { bootstrapTenant, bootstrapAdministrator, ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
-const { MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, FINANCE_CONFIGURATION_CAPABILITY, SYSTEM_CONFIGURATION_CAPABILITY, SALES_DISCOUNT_AUTHORITY_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
+const { RACKING_READ_CAPABILITY, RACKING_MANAGE_CAPABILITY, MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY, WAREHOUSE_MASTER_CAPABILITY, TRUCK_REGISTRY_CAPABILITY, FINANCE_CONFIGURATION_CAPABILITY, SYSTEM_CONFIGURATION_CAPABILITY, SALES_DISCOUNT_AUTHORITY_CAPABILITY, ADMIN_CONFIGURATION_OPERATIONS } = require("../lib/adminPolicy/configurationOperations.js");
 const { isFinanceConfigurationOperation } = require("../lib/eosFinance/financeConfigurationAdministration.js");
 const { isSystemConfigurationOperation } = require("../lib/eosOps/systemConfigurationAdministration.js");
 const { isSalesDiscountAuthorityOperation } = require("../lib/salesAuthority/salesDiscountAuthority.js");
@@ -56,13 +56,16 @@ test("the capability is one closed constant, and stays out of both PERMISSION_CA
   // own closed constant; every OTHER configuration operation is the binding capability.
   assert.equal(WAREHOUSE_MASTER_CAPABILITY, "warehouse.record.manage");
   const warehouseOps = new Set(WAREHOUSE_ADMIN_OPERATIONS);
+  // ... and the Warehouse racking planner operations (Firebase exit B3, Owner ruling 7) under the bin administrator's own read / manage keys.
+  const RACKING_OPERATIONS = new Set(["listRackingWarehouses", "listRackingBins", "previewBinCreates", "createBins", "renameRackingBin", "setRackingBinStatus"]);
   // ... and the truck / MOBILE registry operations (Controller OD-T7, 2026-10-01) under theirs.
   assert.equal(TRUCK_REGISTRY_CAPABILITY, "inventory.truckRegistry.manage");
   const truckOps = new Set(TRUCK_REGISTRY_ADMIN_OPERATIONS);
   // ... and the Finance configuration operations (DECISIONS #203, 2026-10-02) under theirs.
   assert.equal(FINANCE_CONFIGURATION_CAPABILITY, "finance.configuration.manage");
   for (const [name, op] of Object.entries(ADMIN_CONFIGURATION_OPERATIONS)) {
-    assert.equal(op.capability, warehouseOps.has(name) ? WAREHOUSE_MASTER_CAPABILITY : truckOps.has(name) ? TRUCK_REGISTRY_CAPABILITY
+    assert.equal(op.capability, RACKING_OPERATIONS.has(name) ? (op.mutation ? RACKING_MANAGE_CAPABILITY : RACKING_READ_CAPABILITY)
+      : warehouseOps.has(name) ? WAREHOUSE_MASTER_CAPABILITY : truckOps.has(name) ? TRUCK_REGISTRY_CAPABILITY
       : isFinanceConfigurationOperation(name) ? FINANCE_CONFIGURATION_CAPABILITY
         // ... and System Configuration / Employee Sales Authority (Owner rulings #204) under theirs.
         : isSystemConfigurationOperation(name) ? SYSTEM_CONFIGURATION_CAPABILITY

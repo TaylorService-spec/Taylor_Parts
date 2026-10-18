@@ -156,6 +156,9 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "inventory.action.read",
   "inventory.catalog.manage",
   "inventory.catalog.read",
+  // Firebase exit B3 (DECISIONS #B3, migration 1764630000000): inventory.location.bin.read, registered in PostgreSQL and mirrored to owner (the
+  // contract's existing OWNER_PERMISSIONS declaration, now in vocabulary). 48 -> 49. inventory.location.bin.manage is admin-only, as in Firebase.
+  "inventory.location.bin.read",
   "inventory.serializedAsset.read",
   "inventory.transaction.read",
   "inventory.transfer.create",
@@ -176,9 +179,9 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "workOrder.transition",
 ];
 
-check("Owner's governed (in-vocabulary) capabilities are exactly the 48 in the contract", () => {
+check("Owner's governed (in-vocabulary) capabilities are exactly the 49 in the contract", () => {
   assert.deepEqual(ownerInVocabulary, [...OWNER_CONTRACT_IN_VOCABULARY].sort());
-  assert.equal(ownerInVocabulary.length, 48, "48 governed capabilities -- the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1)");
+  assert.equal(ownerInVocabulary.length, 49, "49 governed capabilities -- the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3)");
 });
 
 check("administration READS do not separate Owner from Administrator", () => {
@@ -224,7 +227,7 @@ check("Owner's legacy declaration of Administration-grant-only keys cannot becom
 
 // ═══════════════ 3. The exclusions are real ═══════════════
 
-check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys measured in nonprod", () => {
+check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 20 admin-only keys measured in nonprod", () => {
   // admin.securityPolicy.write (migration 1762646400000) is admin-only by PARITY with the Role-name
   // invariant it replaced -- "what a Role may do is admin only" -- NOT by Owner ruling A. It is
   // deliberately NOT added to the ruling-A exclusion list: that would make it a SYSTEM INVARIANT
@@ -232,24 +235,25 @@ check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys 
   // (admin.systemConfiguration.manage was admin-only under #204; Owner ruling #205 grants it to owner too.)
   const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
   const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id) && !PARITY_ADMIN_ONLY.includes(id)).sort();
-  assert.equal(measuredAdminOnly.length, 19);
+  // 19 -> 20: inventory.location.bin.manage (Firebase exit B3, 1764630000000) -- admin and the memberless bin administrator hold it, owner does not.
+  assert.equal(measuredAdminOnly.length, 20);
   assert.deepEqual([...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES].sort(), measuredAdminOnly);
   for (const id of PARITY_ADMIN_ONLY) assert.ok(LIVE_ADMIN.has(id) && !LIVE_OWNER.has(id), id);
 });
 
-check("Owner declares NONE of the 19 admin-only capabilities", () => {
+check("Owner declares NONE of the 20 admin-only capabilities", () => {
   for (const id of OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES) {
     assert.equal(OWNER.has(id), false, `owner must not declare the admin-only capability ${id}`);
   }
 });
 
-check("the exclusions were an over-declaration, not an invention -- admin still holds all 17 declarable ones", () => {
+check("the exclusions were an over-declaration, not an invention -- admin still holds all 18 declarable ones", () => {
   // Guards against "fixing" the drift by narrowing ADMIN instead of OWNER, which would silently
   // revoke authority the business does grant.
   const declarable = OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES.filter((id) =>
     PERMISSION_CATALOG.some((p) => p.id === id),
   );
-  assert.equal(declarable.length, 17);
+  assert.equal(declarable.length, 18);
   for (const id of declarable) assert.ok(ADMIN.has(id), `admin must still hold ${id}`);
 });
 
@@ -368,7 +372,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 139 -> 140: inventory.returns.intake (Returns intake on EOS Core, #242, 1764580000000), granted only to the memberless inventoryReturnsIntakeClerk.
   // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
   // 142 -> 147: the five finance.visibility.* keys (Firebase exit B1, 1764620000000), mirrored to admin and owner (all five), salesperson (self), salesManager (team) and the three money Roles (consolidated).
-  assert.equal(VOCABULARY.size, 147);
+  // 147 -> 149: inventory.location.bin.read / .manage (Firebase exit B3, 1764630000000), mirrored to admin, inventoryBinAdministrator (both), owner and the two bin-reading operator Roles (read).
+  assert.equal(VOCABULARY.size, 149);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

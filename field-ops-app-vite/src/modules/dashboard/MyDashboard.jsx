@@ -67,6 +67,8 @@ import { useSubmissionQueue } from "../../hooks/useSubmissionQueue.js";
 import { governedOpportunitySource } from "../../access/opportunitySource.js";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient.js";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport.js";
+import { SUPPLIER_PO_EMPTY_COPY } from "../../domain/receivingWorkspaceQueue.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
 import { useWorkOrderTechnicianDirectory } from "../../hooks/useWorkOrderTechnicianDirectory.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus.js";
@@ -771,7 +773,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                     <PreviewList
                       preview={previews.receivingQueue}
                       subject="Purchase orders awaiting receipt"
-                      emptyCopy="No purchase orders are awaiting receipt"
+                      emptyCopy={(EOS_SESSION_SOURCE ? SUPPLIER_PO_EMPTY_COPY.EOS : SUPPLIER_PO_EMPTY_COPY.FIREBASE).short.replace(/[.]$/, "")}
                       viewAll={{ href: reachableHref(destinationGroups, "inventory", "receiving"), label: "Open Receiving" }}
                       renderRow={(po) => ({
                         key: po.purchaseOrderId,

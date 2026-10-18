@@ -1,17 +1,25 @@
 # Receive a supplier purchase order (multi-scan)
 
-**Status: built, not yet switched on** · Inventory > Receiving > Supplier purchase order
+**Status: live where the EOS service is in use (nonprod); built but not switched on elsewhere** · Inventory > Receiving > Supplier purchase order
 
 Scan a whole delivery against one supplier purchase order, check what arrived against what was
 ordered, fix mistakes, and submit it as one receipt.
 
-## Right now this screen is unavailable
+## Where this works
 
-Receiving is built and governed but has not been switched on in this environment. The screen says so
-rather than showing an empty list of orders — an empty list would claim there is nothing awaiting
-receipt, which is not something it can currently know.
+In an environment that runs on the EOS service (the nonprod environments), the list of orders, each
+order's progress and the receipt itself all come from EOS — nothing here asks the old Firebase
+system. In an environment that has not moved yet, the screen says that receiving is built but not
+switched on, rather than showing an empty list of orders — an empty list would claim there is nothing
+awaiting receipt, which is not something it can know there.
 
-Everything below is exactly how it will work once it is switched on.
+**Where the orders come from.** There is no screen yet for raising a supplier purchase order in EOS.
+The old system had no screen for it either: its test orders were put there by operator seed scripts, not
+raised by a person. An order appears here only when an operator has loaded it for your company (in a
+test environment, the governed synthetic loader puts in two labelled SYNTHETIC/UAT orders). **If the
+list is empty, it says so: "No supplier purchase orders have been loaded in this environment." That is
+not the same as nothing being on order** — it means EOS holds none yet. Ask your administrator to load
+them; it does not mean something is broken.
 
 ## Which journey to use
 
@@ -28,8 +36,10 @@ unchanged. This guide covers the other one.
 
 ## Who can use it
 
-You need **inventory.stock.receive** — Administrator, Dispatcher, or Owner. If you don't have it,
-the screen tells you plainly rather than showing an empty screen.
+You need **inventory.stock.receive** — Administrator, Dispatcher, or Owner — and your account must be
+linked to an Employee who works for a company. You only ever see, open and receive the purchase
+orders **of your own company**: an order of another company behaves exactly as if it did not exist.
+If you don't have the permission, the screen tells you plainly rather than showing an empty screen.
 
 ## Steps
 
@@ -41,7 +51,9 @@ the screen tells you plainly rather than showing an empty screen.
    hardware scanner. Scan a serialized item's **serial**, not just the part.
 5. Watch the **Scanned now** and **Remaining after** columns as you go.
 6. Fix anything in **Needs attention** (see below).
-7. Choose the **receiving location**.
+7. Choose the **receiving location**. You are offered the active warehouses of the order's own
+   company that you have been given to work in — never a truck, and never another company's
+   warehouse.
 8. Select **Submit receipt**.
 
 You'll get a per-line receipt: what was received, what is still outstanding, and the order's new
@@ -99,6 +111,16 @@ current outstanding quantities.
 
 If someone else received against the same order while you were counting, your submission is refused
 rather than applied against figures you never saw. Reload and recount.
+
+If your connection drops while you submit, submit again from the same screen: the receipt carries a
+number that makes a retry safe. If the first attempt did go through, the retry simply shows the same
+receipt again — it never receives the goods twice.
+
+## What it does not know
+
+A supplier purchase order here has no price, so the receipt records **no cost** for what arrived. The
+system lists each received line as "cost evidence missing" for Finance rather than recording a cost of
+zero.
 
 ## Related
 

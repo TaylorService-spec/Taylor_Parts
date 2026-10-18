@@ -61,7 +61,10 @@ test("only administering call sites opt in to reach: the experience surfaces and
     // Grant-impact preview (PR 3): READS the reach DIMENSION (administrationReachDimension) to reproduce the experience
     // surface projection in its before/after snapshots, exactly as resolveExperienceContext does. Not an opt-in: it
     // authorizes nothing and no `administrationReach: true` appears in it (the line scan above still holds).
-    "eosOps/authorityChangePreview.ts"]);
+    "eosOps/authorityChangePreview.ts",
+    // Supplier PO receiving (Firebase exit B3): its location picker passes the explicit OPT-OUT `administrationReach: false` (an execution picker offers only
+    // where the caller can act). The line scan above still holds: no `administrationReach: true` appears in it.
+    "eosOps/supplierPurchaseOrderReceiving.ts"]);
   const users = files.filter((f) => /\badministrationReach\b(?![A-Za-z])/.test(readFileSync(f, "utf8").replace(/from "[^"]*administrationReach[^"]*"/g, "")))
     .map((f) => f.slice(SRC.length + 1));
   assert.deepEqual(users.filter((f) => !KNOWN.has(f)), [], "a new administrationReach opt-in site needs review");

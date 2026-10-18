@@ -63,6 +63,8 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "inventory.catalogAdmin",
   "inventory.cycleCount.count",
   "inventory.cycleCount.review",
+  // Warehouse Racking (Firebase exit B3): earned server-side by inventory.location.bin.read.
+  "inventory.racking",
   "inventory.reorderQueue",
   "inventory.transfers",
   "purchasing.purchaseOrders",

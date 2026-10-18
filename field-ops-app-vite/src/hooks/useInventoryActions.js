@@ -3,6 +3,16 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { INVENTORY_ACTIONS_COLLECTION } from "../domain/constants";
 import { INVENTORY_ACTIONS_UNAVAILABLE } from "../domain/inventoryActionsAvailability.js";
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
+import { boundedRead, READ_TIMEOUT_MS } from "../access/boundedRead.js";
+import { readArchivedNotes } from "../services/legacyInventoryNotesClient.js";
+
+// FIREBASE EXIT B3 (DECISIONS #B3; Owner ruling 8): WHICH SOURCE ANSWERS is decided once at BUILD time by the F1 flag. Where an EOS API is
+// declared the notes come from the READ-ONLY EOS ARCHIVE (eos_ops.legacy_inventory_action_notes, listLegacyInventoryActionNotes,
+// inventory.action.read) -- never Firestore, so the build makes no Firebase request. Everywhere else the frozen Firestore collection is the sole
+// source, exactly as before. The notes are ARCHIVED EVIDENCE of what was once recorded, never current facts and never stock movements; the
+// archive is empty until an Owner-authorized copy loads it (the copy is HELD), and `archiveLoaded` is how a screen tells "nothing has been
+// archived here" from "this Part has no archived notes".
 
 // Sprint 2.1.9 -- Inventory Actions Foundation. Realtime from the
 // start (not a one-shot read that would need the same fix
@@ -18,7 +28,7 @@ import { INVENTORY_ACTIONS_UNAVAILABLE } from "../domain/inventoryActionsAvailab
 // `db` is null (the Firebase module is aliased to an inert stand-in), and `collection(null, ...)` THROWS: at module scope
 // that threw while the lazy screen chunk evaluated, taking the whole Part Detail / Warehouse Manager screen into the route
 // boundary. Here a null `db` is a settled read state instead, and only the legacy-notes panel says so.
-export function useInventoryActionsForPart(partId) {
+function useInventoryActionsFromFirestore(partId) {
   const [state, setState] = useState({ data: [], loading: true, error: null });
 
   useEffect(() => {
@@ -52,3 +62,30 @@ export function useInventoryActionsForPart(partId) {
 
   return state;
 }
+
+function useArchivedInventoryActionNotes(partId) {
+  const [state, setState] = useState({ partId, data: [], loading: Boolean(partId), error: null, archiveLoaded: null });
+
+  useEffect(() => {
+    if (!partId) { setState({ partId, data: [], loading: false, error: null, archiveLoaded: null }); return undefined; }
+    let cancelled = false;
+    setState({ partId, data: [], loading: true, error: null, archiveLoaded: null });
+    // BOUNDED: a read that never answers settles as an error, never an infinite "Loading".
+    boundedRead(
+      (signal) => readArchivedNotes(partId, { signal }).then((ok) => ({ ok: true, ...ok }), (err) => ({ ok: false, error: err?.code ?? "unknown" })),
+      READ_TIMEOUT_MS,
+      { ok: false, error: "UNREACHABLE" },
+    ).then((answer) => {
+      if (cancelled) return;
+      setState(answer.ok
+        ? { partId, data: answer.rows, loading: false, error: null, archiveLoaded: answer.archiveLoaded }
+        : { partId, data: [], loading: false, error: answer.error, archiveLoaded: null });
+    });
+    return () => { cancelled = true; };
+  }, [partId]);
+
+  // A different Part never sees the previous Part's answer, not even for the render before the new read starts.
+  return state.partId === partId ? state : { partId, data: [], loading: Boolean(partId), error: null, archiveLoaded: null };
+}
+
+export const useInventoryActionsForPart = EOS_SESSION_SOURCE ? useArchivedInventoryActionNotes : useInventoryActionsFromFirestore;

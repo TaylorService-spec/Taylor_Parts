@@ -18,6 +18,8 @@ import {
   QUEUE_STATE,
   RECEIVING_JOURNEY,
 } from "../../domain/receivingWorkspaceQueue";
+import { SUPPLIER_PO_EMPTY_COPY } from "../../domain/receivingWorkspaceQueue";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -254,8 +256,8 @@ function AwaitingReceiptQueue({ queue, onOpen }) {
       {queue.state === QUEUE_STATE.EMPTY && (
         <EmptyState
           variant="database"
-          title="Nothing awaiting receipt"
-          message="Both governed sources were read and no purchase order is currently awaiting receipt."
+          title={(EOS_SESSION_SOURCE ? SUPPLIER_PO_EMPTY_COPY.EOS : SUPPLIER_PO_EMPTY_COPY.FIREBASE).title}
+          message={(EOS_SESSION_SOURCE ? SUPPLIER_PO_EMPTY_COPY.EOS : SUPPLIER_PO_EMPTY_COPY.FIREBASE).message}
         />
       )}
 
