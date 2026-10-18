@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createEosLoginClient, eosHumanLoginEnabled, eosLoginMessage, REFRESH_LEAD_MS, CSRF_HEADER } from "../src/auth/eosLoginClient.js";
+import { createEosLoginClient, eosHumanLoginEnabled, eosLoginMessage, REFRESH_LEAD_MS, REQUEST_TIMEOUT_MS, CSRF_HEADER } from "../src/auth/eosLoginClient.js";
 
 const b64url = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const accessToken = (expMs, n = 0, sub = `user.${"ab".repeat(16)}`) =>
@@ -162,6 +162,22 @@ test("self-service calls carry the access token; a password change adopts the fr
   assert.match(calls.find((x) => x.path === "/auth/account").headers.authorization, /^Bearer ey/);
   await c.changePassword("old", "new");
   assert.equal(c.currentSession().token, accessToken(NOW + 300_000, 5));
+});
+
+test("a request that never answers is abandoned as NETWORK, and a first-load refresh settles signed out (never an endless wait)", async () => {
+  const signals = [];
+  // A transport that ignores the abort signal entirely, and one that honours it: both are bounded.
+  const never = (_url, init) => { signals.push(init.signal); return new Promise(() => {}); };
+  const honours = (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+  for (const fetchImpl of [never, honours]) {
+    const c = createEosLoginClient({ fetchImpl, baseUrl: "https://api.test/", timeoutMs: 25, locks: null });
+    await assert.rejects(c.login("a@x.test", "pw"), (e) => e.name === "EosLoginError" && e.code === "NETWORK");
+    assert.equal(await c.refresh(), null, "a refresh that cannot reach the server settles with no session");
+    assert.equal(c.currentSession(), null);
+  }
+  assert.ok(signals.every((s) => s && typeof s.aborted === "boolean"), "each request carried an AbortSignal");
+  assert.ok(signals.every((s) => s.aborted === true), "and it was aborted at the bound");
+  assert.equal(REQUEST_TIMEOUT_MS, 15_000);
 });
 
 test("the login client imports nothing from Firebase and references no browser storage", () => {

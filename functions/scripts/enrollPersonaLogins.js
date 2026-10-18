@@ -37,16 +37,17 @@
 // Exit 0 when clean; 2 when refused or a persona failed (the run stops at the first failure when applying).
 "use strict";
 
-const { readFileSync, openSync, writeSync, closeSync, fsyncSync, ftruncateSync } = require("node:fs");
-const { isAbsolute, join, relative, resolve } = require("node:path");
+const { readFileSync, openSync, writeSync, closeSync, fsyncSync, ftruncateSync, realpathSync } = require("node:fs");
+const { isAbsolute, join, relative, resolve, dirname, basename } = require("node:path");
 const { generateKeyPairSync, randomBytes } = require("node:crypto");
 const { assertMeasurementTarget, parseArgs } = require("./measureEmployeeReferenceIntegrity.js");
 const { assertNonprodRuntime } = require("./measureWorkforceActivation.js");
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const MIN_REASON_LENGTH = 40;
-const MAX_REASON_LENGTH = 500;
-const KNOWN_FLAGS = Object.freeze(["environment", "databaseUrlEnv", "tenantKey", "personas", "reason", "credentialsOut", "apply"]);
+const MAX_COMPOSED_REASON_LENGTH = 470;
+const OPERATOR_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{2,39}$/;
+const KNOWN_FLAGS = Object.freeze(["environment", "databaseUrlEnv", "tenantKey", "personas", "reason", "operator", "credentialsOut", "apply"]);
 const CREDENTIAL_BEARING_FLAGS = Object.freeze([
   "password", "token", "secret", "credential", "credentials", "totp", "totpSecret", "recoveryCode", "recoveryCodes",
   "key", "factorKey", "factorKeys", "apiKey", "databaseUrl", "connectionString", "signingKey",
@@ -80,13 +81,20 @@ function assertInvocation(args, env) {
   const { environmentId, connectionString } = assertMeasurementTarget(args, env);
   assertNonprodRuntime(env);
   if (FROZEN_ENVIRONMENTS.includes(environmentId)) refuse("ENVIRONMENT_FROZEN", `--environment '${environmentId}' is the frozen Certification world.`);
-  for (const flag of ["tenantKey", "personas", "reason"]) {
+  for (const flag of ["tenantKey", "personas", "reason", "operator"]) {
     if (typeof args[flag] !== "string" || args[flag].trim() === "" || args[flag] === "true") refuse("ARGUMENT_REQUIRED", `--${flag} is required and has no default`);
   }
+  // WHO RAN IT is part of the audited reason. The label is a person's name or handle, appended to every enrollment's reason.
+  const operator = args.operator.trim();
+  if (!OPERATOR_LABEL.test(operator)) refuse("OPERATOR_REFUSED", "--operator must be 3-40 characters of letters, digits, space . _ @ - (a name or handle)");
   const reason = args.reason.trim();
   if (reason.length < MIN_REASON_LENGTH) refuse("REASON_NOT_SPECIFIC", `--reason needs at least ${MIN_REASON_LENGTH} characters`);
-  if (reason.length > MAX_REASON_LENGTH) refuse("REASON_TOO_LONG", `--reason may hold at most ${MAX_REASON_LENGTH} characters`);
   const registry = loadPersonaRegistry();
+  // The recorded reason is `<reason> [<personaKey>] by <operator>`; its worst case must fit the audit limit with room to spare.
+  const longestKey = Math.max(...[...registry.keys()].map((k) => k.length));
+  if (reason.length + ` [${"x".repeat(longestKey)}] by ${operator}`.length > MAX_COMPOSED_REASON_LENGTH) {
+    refuse("REASON_TOO_LONG", `--reason plus the persona key and operator suffix may hold at most ${MAX_COMPOSED_REASON_LENGTH} characters`);
+  }
   const requested = args.personas.trim() === "all" ? [...registry.keys()] : args.personas.split(",").map((s) => s.trim()).filter(Boolean);
   if (requested.length === 0) refuse("ARGUMENT_REQUIRED", "--personas names no persona");
   for (const key of requested) {
@@ -98,8 +106,16 @@ function assertInvocation(args, env) {
   if (apply) {
     if (typeof args.credentialsOut !== "string" || args.credentialsOut === "true") refuse("ARGUMENT_REQUIRED", "--credentialsOut is required with --apply: where the generated credentials are written");
     if (!isAbsolute(args.credentialsOut)) refuse("CREDENTIALS_PATH_REFUSED", "--credentialsOut must be an absolute path");
-    credentialsOut = resolve(args.credentialsOut);
-    const rel = relative(REPO_ROOT, credentialsOut);
+    // SYMLINK-SAFE: the check is made on the REAL parent directory. A symlinked directory outside the repository that points
+    // back inside it (or the reverse) cannot smuggle the file into the working tree.
+    let realParent;
+    try {
+      realParent = realpathSync(dirname(resolve(args.credentialsOut)));
+    } catch {
+      refuse("CREDENTIALS_PATH_REFUSED", "the parent directory of --credentialsOut must already exist");
+    }
+    credentialsOut = join(realParent, basename(args.credentialsOut));
+    const rel = relative(realpathSync(REPO_ROOT), credentialsOut);
     if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
       refuse("CREDENTIALS_PATH_REFUSED", "--credentialsOut is inside this repository; credentials never go in the working tree (a commit would carry them)");
     }
@@ -109,7 +125,7 @@ function assertInvocation(args, env) {
   } else if (args.credentialsOut !== undefined) {
     refuse("CREDENTIALS_PATH_REFUSED", "--credentialsOut is accepted only with --apply (a dry run generates no credential)");
   }
-  return { environmentId, connectionString, tenantKey: args.tenantKey.trim(), personas: requested, reason, apply, credentialsOut };
+  return { environmentId, connectionString, tenantKey: args.tenantKey.trim(), personas: requested, reason, operator, apply, credentialsOut };
 }
 
 /** A password that passes the policy by construction: 24 random bytes, base64url, 32 characters. */
@@ -197,7 +213,7 @@ async function enrollPersonaLoginsRun(pool, options, deps) {
       try {
         await service.enrollPersonaLogin({
           tenantId: tenant.id, personaKey: item.personaKey, principalId: item.principalId, loginIdentifier: item.loginIdentifier,
-          password, totpSecret, recoveryCodes, reason: `${options.reason} [${item.personaKey}]`,
+          password, totpSecret, recoveryCodes, reason: `${options.reason} [${item.personaKey}] by ${options.operator}`,
         });
       } catch (err) {
         file.update(item.personaKey, { state: "not-enrolled" });

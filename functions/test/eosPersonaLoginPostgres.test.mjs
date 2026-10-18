@@ -294,6 +294,8 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = 'setPrincipalDisplayName' AND target_id = $1`, [tech])).rows[0].n, 1, "a restated name writes no audit event");
     await assert.rejects(setPrincipalDisplayName(repo, bindAs, { principalId: disp, displayName: "someone@example.test", source: "IDENTITY_PROVIDER_PROFILE", reason: "an email-shaped name" }), /looks like an email address/);
     await assert.rejects(setPrincipalDisplayName(repo, bindAs, { principalId: disp, displayName: "Valid Name", source: "INFERRED", reason: "bad source" }), /source must be/);
+    await assert.rejects(setPrincipalDisplayName(repo, bindAs, { principalId: disp, displayName: "SERVICE TECHNICIAN (SYNTHETIC)", source: "IDENTITY_PROVIDER_PROFILE", reason: "a case-different duplicate of another principal's name" }),
+      /already has that display name/);
     await assert.rejects(setPrincipalDisplayName(repo, { tenantId, uid: disp, heldRoleKeys: ["dispatcher"] }, { principalId: real, displayName: "Valid Name", source: "ADMINISTRATION_ENTERED", reason: "not an administrator" }), /not authorized|required/i);
     await assert.rejects(setPrincipalDisplayName(repo, bindAs, { principalId: "no-such-principal", displayName: "Valid Name", source: "ADMINISTRATION_ENTERED", reason: "unknown principal" }), /principal not found/);
     assert.equal(await accessVersions(), versionsBefore, "a name is a label: no access version moved");

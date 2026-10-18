@@ -19,7 +19,7 @@ import {
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
-import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { useInventoryActionsForPart, INVENTORY_ACTIONS_UNAVAILABLE } from "../../hooks/useInventoryActions";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
 import { useReorderPurchaseOrderVoid } from "../../hooks/useReorderPurchaseOrderVoids";
 import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
@@ -1290,7 +1290,9 @@ function InventoryActionsPanel({ partId }) {
         failed={!!actionsError}
         isEmpty={recentActions.length === 0}
         loadingText="Loading inventory action history..."
-        failedText="Unable to load the inventory action history right now. Try again shortly."
+        failedText={actionsError === INVENTORY_ACTIONS_UNAVAILABLE
+          ? "The legacy notes are not available in this build."
+          : "Unable to load the inventory action history right now. Try again shortly."}
         emptyText="No inventory notes were ever recorded for this part."
       >
         <table className="fo-table">

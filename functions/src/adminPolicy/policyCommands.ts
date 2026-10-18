@@ -911,6 +911,18 @@ export async function setPrincipalDisplayName(
   // NO-OP IS SILENT: restating the name a Principal already has writes nothing and appends no audit event.
   if (principal.displayName === input.displayName) return principal;
 
+  // NO TWO PRINCIPALS OF A TENANT WEAR THE SAME NAME, compared case-insensitively. A provider profile name is editable by its
+  // account holder; a duplicate is how one actor would pass for another in an audit trail. (Not serialised: this is an
+  // operator-tooling command, one name at a time, and the plan in the tool lists collisions before anything is applied.)
+  const folded = input.displayName.trim().toLowerCase();
+  for (const otherId of await repo.listTenantPrincipalIds(actor.tenantId)) {
+    if (otherId === principalId) continue;
+    const other = await repo.getPrincipal(otherId);
+    if (other?.displayName && other.displayName.trim().toLowerCase() === folded) {
+      throw new PolicyValidationError("another principal in this tenant already has that display name");
+    }
+  }
+
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const updated = await tx.setPrincipalDisplayName(principalId, input.displayName);
     await tx.appendAudit({

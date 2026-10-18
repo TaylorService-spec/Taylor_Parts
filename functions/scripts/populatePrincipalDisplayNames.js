@@ -112,6 +112,24 @@ function planNames(principals, candidateFor, refusal) {
     if (why) { out.unresolved.push({ principalId: p.id, identityProvider: p.identityProvider, externalSubject: p.externalSubject, reason: "NAME_REJECTED", detail: why }); continue; }
     out.planned.push({ principalId: p.id, displayName: name });
   }
+  // NO TWO PRINCIPALS WEAR THE SAME NAME (case-insensitive, tenant-wide). A provider profile name is editable by the account
+  // holder, so a duplicate is how one actor would pass as another in an audit trail. A name that collides with an existing
+  // one, or with another planned name, is NOT applied: every collider is listed as unresolved (NAME_DUPLICATE) for a human
+  // to decide. The command re-checks the same rule at write time.
+  const fold = (n) => n.trim().toLowerCase();
+  const existing = new Set(principals.filter((p) => typeof p.displayName === "string" && p.displayName.trim() !== "").map((p) => fold(p.displayName)));
+  const counts = new Map();
+  for (const item of out.planned) counts.set(fold(item.displayName), (counts.get(fold(item.displayName)) ?? 0) + 1);
+  const byId = new Map(principals.map((p) => [p.id, p]));
+  const kept = [];
+  for (const item of out.planned) {
+    const key = fold(item.displayName);
+    if (existing.has(key) || counts.get(key) > 1) {
+      const p = byId.get(item.principalId);
+      out.unresolved.push({ principalId: p.id, identityProvider: p.identityProvider, externalSubject: p.externalSubject, reason: "NAME_DUPLICATE" });
+    } else kept.push(item);
+  }
+  out.planned = kept;
   return out;
 }
 

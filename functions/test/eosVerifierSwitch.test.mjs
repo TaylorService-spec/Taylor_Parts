@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -118,21 +119,29 @@ test("V6 the tooling refuses before it can contact anything (invocation fences, 
   const good = ["--environment", "platform-sandbox", "--databaseUrlEnv", "DATABASE_URL", "--tenantKey", "taylor"];
   const parse = (argv) => require("../scripts/measureEmployeeReferenceIntegrity.js").parseArgs(argv);
   const reason = "enroll the sixteen synthetic personas for the EOS login proof";
-  // enrollment
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--password", "x"]), env), /CREDENTIAL_ARGUMENT_REFUSED/);
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", "short"]), env), /REASON_NOT_SPECIFIC/);
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "notAPersona", "--reason", reason]), env), /UNKNOWN_PERSONA/);
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason]), { ...env, EOS_ENVIRONMENT: "production" }), /EOS_ENVIRONMENT must read exactly 'nonprod'/);
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--apply"]), env), /--credentialsOut is required/);
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", "relative.json"]), env), /absolute path/);
+  // enrollment (every enrollment invocation names its --operator)
+  const eparse = (argv) => parse([...argv, "--operator", "Test Operator"]);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--password", "x"]), env), /CREDENTIAL_ARGUMENT_REFUSED/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", "short"]), env), /REASON_NOT_SPECIFIC/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "notAPersona", "--reason", reason]), env), /UNKNOWN_PERSONA/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason]), { ...env, EOS_ENVIRONMENT: "production" }), /EOS_ENVIRONMENT must read exactly 'nonprod'/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--apply"]), env), /--credentialsOut is required/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", "relative.json"]), env), /absolute path/);
+  // --operator is required, well-formed, and part of the bounded composed reason
+  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason]), env), /--operator is required/);
+  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--operator", "x;rm"]), env), /OPERATOR_REFUSED/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", "r".repeat(450)]), env), /REASON_TOO_LONG/);
+  assert.doesNotThrow(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", "r".repeat(400)]), env));
   const insideRepo = join(HERE, "..", "creds.json");
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", insideRepo]), env), /inside this repository/);
-  const outside = join(HERE, "..", "..", "..", "..", "outside-the-repo-creds.json");
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", outside]), env), /FACTOR_KEY_MISSING|factor/);
-  const dry = enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason]), env);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", insideRepo]), env), /inside this repository/);
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", join(HERE, "..", "no-such-dir", "creds.json")]), env), /parent directory/);
+  const outside = join(tmpdir(), "b2-outside-the-repo-creds.json");
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--apply", "--credentialsOut", outside]), env), /FACTOR_KEY_MISSING|factor/);
+  const dry = enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason]), env);
   assert.equal(dry.apply, false);
   assert.equal(dry.personas.length, 16);
-  assert.throws(() => enroll.assertInvocation(parse([...good, "--personas", "all", "--reason", reason, "--credentialsOut", outside]), env), /only with --apply/);
+  assert.equal(dry.operator, "Test Operator");
+  assert.throws(() => enroll.assertInvocation(eparse([...good, "--personas", "all", "--reason", reason, "--credentialsOut", outside]), env), /only with --apply/);
   // display names
   const nameArgs = [...good, "--adminPrincipalId", "p-admin", "--reason", "populate principal display names from verified identity data"];
   assert.throws(() => names.assertInvocation(parse([...nameArgs, "--source", "inferFromEmail"]), env), /SOURCE_REFUSED/);
@@ -158,6 +167,16 @@ test("V7 the display-name plan: provider or administration names only; never ema
   assert.deepEqual(plan.alreadyNamed, [{ principalId: "p2" }]);
   assert.deepEqual(plan.unresolved.map((u) => [u.principalId, u.reason]), [["p3", "NAME_REJECTED"], ["p4", "PROVIDER_ACCOUNT_HAS_NO_PROFILE_NAME"], ["p5", "NOT_A_PROVIDER_ACCOUNT"]]);
   assert.ok(plan.unresolved.every((u) => !("email" in u)), "an unresolved row never carries an email or an Employee name");
+  // A provider profile name is editable by its holder: a duplicate (any case, tenant-wide) is never applied, and every collider is listed.
+  const dup = planNames([
+    { id: "d1", identityProvider: "firebase", externalSubject: "ud1", displayName: null },
+    { id: "d2", identityProvider: "firebase", externalSubject: "ud2", displayName: null },
+    { id: "d3", identityProvider: "firebase", externalSubject: "ud3", displayName: null },
+    { id: "d4", identityProvider: "firebase", externalSubject: "ud4", displayName: "Existing Person" },
+    { id: "d5", identityProvider: "firebase", externalSubject: "ud5", displayName: null },
+  ], (p) => ({ name: { ud1: "Pat Lee", ud2: "PAT LEE", ud3: "Unique Name", ud5: "existing person" }[p.externalSubject] }), principalDisplayNameRefusal);
+  assert.deepEqual(dup.planned, [{ principalId: "d3", displayName: "Unique Name" }]);
+  assert.deepEqual(dup.unresolved.map((u) => [u.principalId, u.reason]).sort(), [["d1", "NAME_DUPLICATE"], ["d2", "NAME_DUPLICATE"], ["d5", "NAME_DUPLICATE"]]);
   for (const bad of ["a", " padded ", "x@y.test", "<b>bold</b>", "line\nbreak", "x".repeat(121), 42]) assert.ok(principalDisplayNameRefusal(bad), String(bad));
   assert.equal(principalDisplayNameRefusal("Marguerite O’Neil-Lopez"), null);
 });

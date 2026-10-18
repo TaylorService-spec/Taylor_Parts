@@ -22,6 +22,8 @@ import { EOS_AUTH_ONLY } from "./authSource.js";
 export const CSRF_HEADER = "x-eos-csrf";
 /** Refresh this long before the access token expires, so a request never carries one about to lapse. */
 export const REFRESH_LEAD_MS = 60_000;
+/** Every request to the EOS API is abandoned after this long and reported as the NETWORK failure. */
+export const REQUEST_TIMEOUT_MS = 15_000;
 const SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 
 function readEnv(name) {
@@ -97,6 +99,7 @@ function defaultLocks() {
 export function createEosLoginClient(deps = {}) {
   const fetchImpl = deps.fetchImpl ?? (typeof fetch === "function" ? fetch.bind(globalThis) : null);
   const now = deps.now ?? (() => Date.now());
+  const timeoutMs = deps.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const locks = deps.locks === undefined ? defaultLocks() : deps.locks;
   let access = null; // { token, subject, expiresAtMs } -- memory only
   let inflightRefresh = null;
@@ -106,24 +109,43 @@ export function createEosLoginClient(deps = {}) {
   async function post(path, body, accessToken = null) {
     const base = apiBase(deps.baseUrl);
     if (!base || !fetchImpl) throw new EosLoginError("NOT_CONFIGURED");
+    // EVERY REQUEST IS BOUNDED. A server that never answers (a cold start, a dropped connection) must end as the existing
+    // NETWORK failure, not an endless "Loading..." -- at first load a refresh that fails means signed out, settled. The
+    // AbortController cancels the request; the race guarantees the bound even for a transport that ignores the signal.
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    let timer = null;
+    const timedOut = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        try { controller?.abort(); } catch { /* the bound below still holds */ }
+        reject(new EosLoginError("NETWORK"));
+      }, timeoutMs);
+    });
     let res;
+    let json = null;
     try {
-      res = await fetchImpl(`${base}${path}`, {
+      const sent = fetchImpl(`${base}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json", [CSRF_HEADER]: "1", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
         body: JSON.stringify(body ?? {}),
         // The refresh cookie rides on every /auth/* call; it is HttpOnly, so this code never sees it.
         credentials: "include",
         cache: "no-store",
+        ...(controller ? { signal: controller.signal } : {}),
       });
-    } catch {
-      throw new EosLoginError("NETWORK");
-    }
-    let json = null;
-    try {
-      json = await res.json();
-    } catch {
-      json = null;
+      sent.catch(() => {});
+      try {
+        res = await Promise.race([sent, timedOut]);
+      } catch {
+        throw new EosLoginError("NETWORK");
+      }
+      try {
+        json = await Promise.race([res.json(), timedOut]);
+      } catch (err) {
+        if (err instanceof EosLoginError) throw err;
+        json = null;
+      }
+    } finally {
+      clearTimeout(timer);
     }
     if (!res.ok || !json || json.ok !== true) {
       throw new EosLoginError(json?.code ?? "UNAVAILABLE", json?.detail ?? null, res.status);

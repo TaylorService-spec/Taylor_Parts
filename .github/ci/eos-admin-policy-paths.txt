@@ -883,6 +883,9 @@ functions/scripts/populatePrincipalDisplayNames.js
 scripts/resolveEnvironment.mjs
 scripts/eosPersonaSession.mjs
 field-ops-app-vite/test/b2AuthContextEosOnly.test.jsx
+field-ops-app-vite/test/b2LazyScreensWithoutFirebase.test.jsx
+field-ops-app-vite/src/hooks/useInventoryActions.js
+field-ops-app-vite/src/auth/eosLoginClient.js
 field-ops-app-vite/src/auth/authSource.js
 field-ops-app-vite/src/auth/AuthContext.jsx
 field-ops-app-vite/src/modules/administration/ApprovalRequests.jsx

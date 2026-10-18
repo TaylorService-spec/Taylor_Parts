@@ -5,7 +5,7 @@ import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory }
 import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } from "../../domain/partsCatalogView";
 import { useAuth } from "../../auth/AuthContext";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
-import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { useInventoryActionsForPart, INVENTORY_ACTIONS_UNAVAILABLE } from "../../hooks/useInventoryActions";
 import { usePartMovementHistory, PART_MOVEMENT_LIMIT } from "../../hooks/usePartMovementHistory.js";
 import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
@@ -123,7 +123,9 @@ function PartActivityPanel({ partId, resolveName, onClose, legacyOnly = false })
         failed={!!actionsError}
         isEmpty={actions.length === 0}
         loadingText="Loading part activity..."
-        failedText="Unable to load part activity right now. Try again shortly."
+        failedText={actionsError === INVENTORY_ACTIONS_UNAVAILABLE
+          ? "The legacy notes are not available in this build."
+          : "Unable to load part activity right now. Try again shortly."}
         emptyText="No logged activity yet for this part."
       >
         <div className="fo-table-scroll">
