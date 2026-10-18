@@ -5,7 +5,8 @@ import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory }
 import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } from "../../domain/partsCatalogView";
 import { useAuth } from "../../auth/AuthContext";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
-import { useInventoryActionsForPart, INVENTORY_ACTIONS_UNAVAILABLE } from "../../hooks/useInventoryActions";
+import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { INVENTORY_ACTIONS_UNAVAILABLE } from "../../domain/inventoryActionsAvailability.js";
 import { usePartMovementHistory, PART_MOVEMENT_LIMIT } from "../../hooks/usePartMovementHistory.js";
 import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";

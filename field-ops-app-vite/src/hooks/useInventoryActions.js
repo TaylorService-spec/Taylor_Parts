@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { INVENTORY_ACTIONS_COLLECTION } from "../domain/constants";
+import { INVENTORY_ACTIONS_UNAVAILABLE } from "../domain/inventoryActionsAvailability.js";
 
 // Sprint 2.1.9 -- Inventory Actions Foundation. Realtime from the
 // start (not a one-shot read that would need the same fix
@@ -17,8 +18,6 @@ import { INVENTORY_ACTIONS_COLLECTION } from "../domain/constants";
 // `db` is null (the Firebase module is aliased to an inert stand-in), and `collection(null, ...)` THROWS: at module scope
 // that threw while the lazy screen chunk evaluated, taking the whole Part Detail / Warehouse Manager screen into the route
 // boundary. Here a null `db` is a settled read state instead, and only the legacy-notes panel says so.
-export const INVENTORY_ACTIONS_UNAVAILABLE = "unavailable-in-this-build";
-
 export function useInventoryActionsForPart(partId) {
   const [state, setState] = useState({ data: [], loading: true, error: null });
 

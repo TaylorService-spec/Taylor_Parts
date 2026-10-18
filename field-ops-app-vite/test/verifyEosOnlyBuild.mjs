@@ -25,7 +25,8 @@ assert.ok(env?.firebase && env.authSources?.includes("eos"), "platform-sandbox d
 // searched for only as a CONFIG PROPERTY (`projectId: "..."`); the other five values are unique strings searched for verbatim.
 const identity = ["apiKey", "authDomain", "storageBucket", "messagingSenderId", "appId"].map((k) => env.firebase[k]);
 assert.ok(identity.every((v) => typeof v === "string" && v.length >= 8), "every identity value is long enough to search for");
-const projectIdProperty = new RegExp(`projectId["']?\\s*:\\s*["']${env.firebase.projectId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`);
+// (The minifier writes string literals with backticks, double or single quotes; accept any.)
+const projectIdProperty = new RegExp(`projectId["'\`]?\\s*:\\s*["'\`]${env.firebase.projectId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'\`]`);
 
 function build(extraEnv) {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "eos-only-build-"));

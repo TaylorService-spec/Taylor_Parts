@@ -19,7 +19,8 @@ import {
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
-import { useInventoryActionsForPart, INVENTORY_ACTIONS_UNAVAILABLE } from "../../hooks/useInventoryActions";
+import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { INVENTORY_ACTIONS_UNAVAILABLE } from "../../domain/inventoryActionsAvailability.js";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
 import { useReorderPurchaseOrderVoid } from "../../hooks/useReorderPurchaseOrderVoids";
 import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
