@@ -41,7 +41,11 @@ const SCHEMA = "eos_policy";
 
 /** Every human EOS subject. Never `nonprod-persona.` -- the two issuers can never mint for each other's subjects. */
 export const HUMAN_SUBJECT_PREFIX = "user.";
-export const newHumanSubject = (): string => `${HUMAN_SUBJECT_PREFIX}${randomBytes(16).toString("hex")}`;
+/** The Employees operator enrollment may reach (enrollEmployeeLogin): the scaled sample workforce and the synthetic workforce, nothing else. */
+export const ENROLLABLE_EMPLOYEE_ID_PREFIXES: readonly string[] = Object.freeze(["np-taylor-", "synthetic-np-emp-"]);
+/** ON_LEAVE is enrollable (Owner, 2026-10-18) but cannot sign in until ACTIVE: DQ-007 admits ACTIVE and CONTRACTOR only. */
+export const ENROLLABLE_EMPLOYMENT_STATUSES: readonly string[] = Object.freeze(["ACTIVE", "CONTRACTOR", "ON_LEAVE"]);
+export const newHumanSubject =(): string => `${HUMAN_SUBJECT_PREFIX}${randomBytes(16).toString("hex")}`;
 export const isHumanSubject = (subject: string): boolean => /^user\.[0-9a-f]{32}$/.test(subject);
 /**
  * A subject that can hold a LOGIN SESSION: a human, or one of the 16 synthetic personas once it has been enrolled with a
@@ -1597,6 +1601,129 @@ export class EosLoginService {
     });
   }
 
+  /** The input checks the two operator enrollments share, in the order both always ran them. Throws; returns the clean values. */
+  private enrollmentInputs(input: { loginIdentifier: unknown; reason: string; totpSecret: Buffer; recoveryCodes: readonly string[] }) {
+    const identifier = normalizeLoginIdentifier(input.loginIdentifier);
+    if (!identifier) throw new LoginRefusal("INVALID_INPUT", "loginIdentifier must be 3-128 of a-z 0-9 . _ @ + -");
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (reason.length < 20 || reason.length > 500) throw new LoginRefusal("REASON_REQUIRED", "a stated reason of 20-500 characters is required");
+    const keyring = this.deps.factorKeyring;
+    if (!keyring) throw new LoginRefusal("MFA_NOT_CONFIGURED");
+    if (!Buffer.isBuffer(input.totpSecret) || input.totpSecret.length !== 20) throw new LoginRefusal("INVALID_INPUT", "the authenticator secret must be 20 bytes");
+    const codes = input.recoveryCodes.map((c) => normalizeRecoveryCode(c));
+    if (codes.length !== 10 || codes.some((c) => c === null) || new Set(codes).size !== codes.length) {
+      throw new LoginRefusal("INVALID_INPUT", "exactly ten distinct recovery codes are required");
+    }
+    return { identifier, reason, keyring, codes: codes as string[] };
+  }
+
+  /**
+   * ENROLL ONE NONPROD SAMPLE OR SYNTHETIC EMPLOYEE with a password login and a second factor (Firebase exit B2-x, Owner
+   * direction 2026-10-18: every nonprod employee who is not Inactive can sign in to EOS).
+   *
+   * OPERATOR TOOLING ONLY, like enrollPersonaLogin: not in LOGIN_ADMINISTRATION_OPERATIONS, no HTTP route; the only caller is
+   * functions/scripts/enrollPersonaLogins.js (--employees), run by an operator who holds the database and the factor key.
+   *
+   * WHO. Only an Employee whose id starts `np-taylor-` (the scaled sample workforce) or `synthetic-np-emp-` (the synthetic
+   * workforce), whose `.invalid` work address is the login identifier, whose status is ACTIVE, CONTRACTOR or ON_LEAVE, and who is
+   * linked to the Principal named, with no separation date; the login identifier must BE that Employee's `work_email`. A login
+   * once retired (for the Principal or the name) is never re-created here. `assertedBy` (the administering Principal) is recorded
+   * in the audit event. A real person cannot be reached: nothing else passes the prefix and the `.invalid` fences.
+   *
+   * WHAT IT ADDS. A human EOS identity (`user.<hex>`, the same binding Administration > Users > "Create sign-in" mints) on the
+   * Principal, and a login account on it that is ACTIVE with a password, an ACTIVE authenticator and ten recovery codes. The
+   * Principal id, its primary identity, Roles, scopes, membership and Employee link do not move, so the sample Principal stays
+   * inspectable under its own primary subject.
+   *
+   * WHAT IT NEVER DOES. It never resets or replaces (a live login account is a CONFLICT), and it never displaces an identity:
+   * a Principal that already holds an active EOS binding (a persona's, or a human's) is refused. ON_LEAVE enrolls but cannot yet
+   * sign in: the DQ-007 gate admits ACTIVE and CONTRACTOR only, and this does not widen it.
+   */
+  async enrollEmployeeLogin(input: {
+    tenantId: string; employeeId: unknown; principalId: string; loginIdentifier: unknown; password: unknown;
+    totpSecret: Buffer; recoveryCodes: readonly string[]; reason: string;
+    /** The administering Principal that asserted this enrollment (the tool's --adminPrincipalId); recorded in the audit event. */
+    assertedBy: string;
+  }) {
+    if (this.deps.environment !== "nonprod") throw new LoginRefusal("FORBIDDEN", "employee enrollment is nonprod only");
+    if (typeof input.assertedBy !== "string" || input.assertedBy.trim() === "") throw new LoginRefusal("INVALID_INPUT", "assertedBy (the administering Principal) is required");
+    const employeeId = input.employeeId;
+    if (typeof employeeId !== "string" || !ENROLLABLE_EMPLOYEE_ID_PREFIXES.some((p) => employeeId.startsWith(p))) {
+      throw new LoginRefusal("INVALID_INPUT", "employeeId is not a nonprod sample or synthetic Employee");
+    }
+    const { identifier, reason, keyring, codes } = this.enrollmentInputs(input);
+    if (!identifier.endsWith(".invalid")) throw new LoginRefusal("INVALID_INPUT", "an enrolled Employee signs in with a reserved .invalid address");
+    const principalId = input.principalId;
+    const principal = await this.deps.repo.getPrincipal(principalId);
+    if (!principal || principal.status !== "active") throw new LoginRefusal("CONFLICT", "that principal is not active");
+    const membership = await this.deps.repo.getMembership(input.tenantId, principalId);
+    if (!membership || membership.status !== "active") throw new LoginRefusal("CONFLICT", "that principal is not an active member of this tenant");
+    const fact = await this.deps.repo.getLinkedEmployeeAccessFact(input.tenantId, principalId);
+    if (!fact || ("ambiguous" in fact && fact.ambiguous) || fact.employeeId !== employeeId) {
+      throw new LoginRefusal("CONFLICT", "EMPLOYEE_LINK_REQUIRED: the principal is not linked to exactly that Employee");
+    }
+    if (!fact.employmentStatus || !ENROLLABLE_EMPLOYMENT_STATUSES.includes(fact.employmentStatus)) {
+      throw new LoginRefusal("CONFLICT", "that Employee's status does not allow a sign-in");
+    }
+    // The login name IS the Employee's own work address, and a separated Employee is not enrolled whatever the status says.
+    const { rows: emp } = await this.deps.pool.query(
+      `SELECT work_email, separation_date FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [input.tenantId, employeeId]);
+    if (emp.length !== 1 || emp[0].separation_date != null) throw new LoginRefusal("CONFLICT", "that Employee has a separation date");
+    if (typeof emp[0].work_email !== "string" || emp[0].work_email.trim().toLowerCase() !== identifier) {
+      throw new LoginRefusal("CONFLICT", "the login identifier must be the Employee's own work_email");
+    }
+    if (await this.deps.repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER)) {
+      throw new LoginRefusal("CONFLICT", "that principal already has an active EOS identity");
+    }
+    // A login someone retired on purpose is never silently re-created for the same Principal or the same login name.
+    const { rows: retired } = await this.deps.pool.query(
+      `SELECT 1 FROM ${SCHEMA}.login_accounts WHERE status = 'retired' AND (principal_id = $1 OR login_identifier = $2) LIMIT 1`, [principalId, identifier]);
+    if (retired.length > 0) throw new LoginRefusal("CONFLICT", "LOGIN_RETIRED: a login for that principal or login name was retired");
+    // The administering Principals are real people's (the Owner and Administrator); nothing here enrolls them.
+    if (await this.holdsProtectedAdministeringRoleIn(principalId, input.tenantId)) {
+      throw new LoginRefusal("PROTECTED_TARGET", "an Owner or Administrator is not enrolled by this tool");
+    }
+    const policy = passwordPolicyRefusal(input.password, identifier);
+    if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
+    const hash = await hashPassword(input.password as string, this.hashParameters);
+
+    return this.tx(async (c) => {
+      // Re-checked under the transaction: a second run racing this one cannot create a second account or binding.
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-employee-login:${principalId}`]);
+      if (await this.liveAccountForPrincipal(c, principalId, true)) throw new LoginRefusal("CONFLICT", "that principal already has a login account");
+      if (await this.accountByIdentifier(c, identifier)) throw new LoginRefusal("CONFLICT", "that login identifier is in use");
+      const policyTx = makeTransaction(c, { tenantId: input.tenantId, uid: principalId });
+      const subject = newHumanSubject();
+      const binding = await policyTx.createPrincipalIdentityBinding({
+        principalId, identityProvider: EOS_IDENTITY_PROVIDER, externalSubject: subject, createdBy: principalId,
+        reason: `employee login: ${reason}`.slice(0, 500),
+      });
+      await policyTx.bumpAccessVersion(principalId);
+      const accountId = randomUUID();
+      const factorId = randomUUID();
+      const now = this.now();
+      try {
+        await c.query(
+          `INSERT INTO ${SCHEMA}.login_accounts (id, tenant_id, principal_id, binding_id, login_identifier, status, password_hash,
+             password_changed_at, credential_version, mfa_required, created_by, created_at, updated_at, reason)
+           VALUES ($1,$2,$3,$4,$5,'active',$6,$7,1,TRUE,$3,$7,$7,$8)`,
+          [accountId, input.tenantId, principalId, binding.id, identifier, hash, now, reason]);
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") throw new LoginRefusal("CONFLICT", "that login identifier or principal already has a login account");
+        throw err;
+      }
+      await c.query(
+        `INSERT INTO ${SCHEMA}.login_mfa_factors (id, account_id, kind, status, secret_sealed, created_at, confirmed_at)
+         VALUES ($1,$2,'totp','active',$3,$4,$4)`,
+        [factorId, accountId, encryptFactorSecret(keyring, input.totpSecret, factorId), now]);
+      await this.storeRecoveryCodes(c, keyring, accountId, codes);
+      await this.audit(c, input.tenantId, principalId, "enrollEmployeeLogin", accountId, null,
+        { employeeId, assertedBy: input.assertedBy.trim(), loginIdentifier: identifier, bindingId: binding.id, subject, mfaRequired: true, factor: "totp", recoveryCodes: codes.length }, reason);
+      await this.event(c, { event: "enrollEmployeeLogin", outcome: "success", accountId, principalId, tenantId: input.tenantId });
+      return Object.freeze({ accountId, principalId, loginIdentifier: identifier, subject });
+    });
+  }
+
   /**
    * ENROLL ONE OF THE 16 SYNTHETIC PERSONAS with a password login and a second factor (Firebase exit B2, Owner decision 2).
    *
@@ -1623,17 +1750,7 @@ export class EosLoginService {
     if (this.deps.environment !== "nonprod") throw new LoginRefusal("FORBIDDEN", "persona enrollment is nonprod only");
     if (!isNonprodPersonaKey(input.personaKey)) throw new LoginRefusal("INVALID_INPUT", "personaKey is not one of the governed persona keys");
     const personaKey = input.personaKey;
-    const identifier = normalizeLoginIdentifier(input.loginIdentifier);
-    if (!identifier) throw new LoginRefusal("INVALID_INPUT", "loginIdentifier must be 3-128 of a-z 0-9 . _ @ + -");
-    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
-    if (reason.length < 20 || reason.length > 500) throw new LoginRefusal("REASON_REQUIRED", "a stated reason of 20-500 characters is required");
-    const keyring = this.deps.factorKeyring;
-    if (!keyring) throw new LoginRefusal("MFA_NOT_CONFIGURED");
-    if (!Buffer.isBuffer(input.totpSecret) || input.totpSecret.length !== 20) throw new LoginRefusal("INVALID_INPUT", "the authenticator secret must be 20 bytes");
-    const codes = input.recoveryCodes.map((c) => normalizeRecoveryCode(c));
-    if (codes.length !== 10 || codes.some((c) => c === null) || new Set(codes).size !== codes.length) {
-      throw new LoginRefusal("INVALID_INPUT", "exactly ten distinct recovery codes are required");
-    }
+    const { identifier, reason, keyring, codes } = this.enrollmentInputs(input);
     const principalId = input.principalId;
     const principal = await this.deps.repo.getPrincipal(principalId);
     if (!principal || principal.status !== "active") throw new LoginRefusal("CONFLICT", "that principal is not active");
