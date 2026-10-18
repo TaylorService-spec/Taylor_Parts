@@ -65,8 +65,13 @@ DECLARE
     v_role TEXT;
     v_cap  TEXT;
 BEGIN
+    -- FOR SHARE on the Role row: a concurrent reclassification (the UPDATE of roles locks the same row before its own
+    -- trigger reads role_capabilities) and a capability insert or move that did not go through the Administration command
+    -- (which already holds the tenant governance lock) therefore serialise. Whichever commits second sees the other's
+    -- result at READ COMMITTED, so a Role can never end up FINANCE_ONLY while holding a non-finance capability.
     SELECT r.key INTO v_role FROM eos_policy.roles r
-     WHERE r.id = NEW.role_id AND r.tenant_id = NEW.tenant_id AND r.company_authority_effect = 'FINANCE_ONLY';
+     WHERE r.id = NEW.role_id AND r.tenant_id = NEW.tenant_id AND r.company_authority_effect = 'FINANCE_ONLY'
+       FOR SHARE OF r;
     IF v_role IS NULL THEN RETURN NEW; END IF;
     SELECT c.key INTO v_cap FROM eos_policy.capabilities c WHERE c.id = NEW.capability_id;
     IF v_cap IS NOT NULL AND v_cap NOT LIKE 'finance.%' THEN
@@ -75,9 +80,34 @@ BEGIN
     RETURN NEW;
 END
 $fn$;
+-- INSERT and a MOVE (UPDATE of role_id or capability_id) are the same act: a capability entering a Role.
 CREATE TRIGGER role_capabilities_finance_only_guard
-    BEFORE INSERT ON role_capabilities
+    BEFORE INSERT OR UPDATE OF role_id, capability_id ON role_capabilities
     FOR EACH ROW EXECUTE FUNCTION role_capabilities_finance_only_guard();
+
+-- A capability KEY is not immutable in the schema (no trigger or constraint stops an UPDATE of capabilities.key), so a
+-- key change that would turn a FINANCE_ONLY Role's finance.* key into a non-finance key is refused as well.
+CREATE FUNCTION capabilities_finance_only_key_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+DECLARE
+    v_role TEXT;
+BEGIN
+    IF NEW.key = OLD.key OR NEW.key LIKE 'finance.%' THEN RETURN NEW; END IF;
+    SELECT r.key INTO v_role
+      FROM eos_policy.role_capabilities rc
+      JOIN eos_policy.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+     WHERE rc.capability_id = NEW.id AND r.company_authority_effect = 'FINANCE_ONLY'
+     LIMIT 1
+       FOR SHARE OF r;
+    IF v_role IS NOT NULL THEN
+        RAISE EXCEPTION 'FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY: capability % is held by FINANCE_ONLY role %; renaming it to % would give that Role a non-finance capability', OLD.key, v_role, NEW.key;
+    END IF;
+    RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER capabilities_finance_only_key_guard
+    BEFORE UPDATE OF key ON capabilities
+    FOR EACH ROW EXECUTE FUNCTION capabilities_finance_only_key_guard();
 
 -- Down Migration
 SET search_path = eos_policy, public;
@@ -95,6 +125,8 @@ BEGIN
 END
 $$;
 
+DROP TRIGGER IF EXISTS capabilities_finance_only_key_guard ON capabilities;
+DROP FUNCTION IF EXISTS capabilities_finance_only_key_guard();
 DROP TRIGGER IF EXISTS role_capabilities_finance_only_guard ON role_capabilities;
 DROP FUNCTION IF EXISTS role_capabilities_finance_only_guard();
 DROP TRIGGER IF EXISTS roles_company_authority_effect_governed ON roles;

@@ -207,6 +207,17 @@ const toField = (r: Record<string, unknown>): ObjectFieldRecord => ({
   ...provenance(r),
 });
 
+/**
+ * NOT NULL DEFAULT 'OPERATIONAL' with a two-value CHECK (migration 1764600000000). An ABSENT column (a database seeded before
+ * that migration) is the default; any other stored value is unreadable and FAILS CLOSED, as the company-authority resolver does,
+ * rather than being read as the wider value.
+ */
+const roleEffectOf = (value: unknown): PolicyRoleRecord["companyAuthorityEffect"] => {
+  if (value === undefined || value === "OPERATIONAL") return "OPERATIONAL";
+  if (value === "FINANCE_ONLY") return "FINANCE_ONLY";
+  throw new PolicyStoreError("a Role's stored company_authority_effect is not a known value");
+};
+
 const toRole = (r: Record<string, unknown>): PolicyRoleRecord => ({
   id: String(r.id),
   tenantId: String(r.tenant_id),
@@ -215,8 +226,7 @@ const toRole = (r: Record<string, unknown>): PolicyRoleRecord => ({
   description: (r.description as string | null) ?? null,
   origin: r.origin as PolicyRoleRecord["origin"],
   protected: r.protected === true,
-  // NOT NULL DEFAULT 'OPERATIONAL' with a two-value CHECK (migration 1764600000000).
-  companyAuthorityEffect: r.company_authority_effect === "FINANCE_ONLY" ? "FINANCE_ONLY" : "OPERATIONAL",
+  companyAuthorityEffect: roleEffectOf(r.company_authority_effect),
   ...provenance(r),
 });
 

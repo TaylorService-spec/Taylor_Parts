@@ -135,6 +135,45 @@ test("Finance-only company assignments grant Finance reach only, in PostgreSQL",
     const other = (await q(`SELECT company_authority_effect AS e FROM eos_policy.roles WHERE id = 'role-other-fca'`)).rows[0].e;
     assert.equal(other, "OPERATIONAL", "classifying this tenant's Role touched no other tenant's");
     assert.equal((await resolveCompanyAuthority(pool, OTHER, fo.principalId)).gap, "PRINCIPAL_NOT_ACTIVE");
+
+    // The other tenant gets its own people and the SAME-KEY Role, assigned at Ventana; its classification is its own.
+    for (const c of ["taylor", "ventana"]) {
+      await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,$2,'ACTIVE','fixture','fixture','fixture')`, [OTHER, c]);
+    }
+    await q(`INSERT INTO eos_policy.principals (id,external_subject,identity_provider,status) VALUES ('p-other','p-other','eos','active')`);
+    await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status) VALUES ('m-p-other',$1,'p-other','active')`, [OTHER]);
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,display_name) VALUES ('e-other',$1,'ACTIVE','taylor','Other Tenant Person')`, [OTHER]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ('l-other',$1,'p-other','e-other','taylor','OPERATOR_ASSERTED','active','f','f')`, [OTHER]);
+    await q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+             VALUES ('ura-other',$1,'p-other','role-other-fca','operatingCompany','ventana','active','f',0,'f','f')`, [OTHER]);
+    // Classification is a governed act; this raw transaction stands in for the other tenant's Administrator (the marker the command sets).
+    const classifyOther = async (effect) => {
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query(`SELECT set_config('eos_policy.administration_command', 'on', true)`);
+        if (effect === "FINANCE_ONLY") {
+          await c.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+                         SELECT 'rc_other_fin', $1, 'role-other-fca', c.id, 'f','f','f' FROM eos_policy.capabilities c WHERE c.key = 'finance.payment.read'
+                         ON CONFLICT DO NOTHING`, [OTHER]);
+        }
+        await c.query(`UPDATE eos_policy.roles SET company_authority_effect = $1 WHERE id = 'role-other-fca'`, [effect]);
+        await c.query("COMMIT");
+      } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); }
+    };
+    const here = async () => ({ fo: await companies(fo), foFinance: await financeCompanies(fo), mixed: await companies(mixed), role: await effectOf(FINANCE_COMPANY_ACCESS_ROLE) });
+    const hereBefore = await here();
+    assert.deepEqual(hereBefore, { fo: ["taylor"], foFinance: ["ventana"], mixed: ["taylor", "ventana"], role: "FINANCE_ONLY" });
+    assert.deepEqual((await resolveCompanyAuthority(pool, OTHER, "p-other")).companies, ["taylor", "ventana"], "the other tenant's same-key Role is still OPERATIONAL");
+
+    await classifyOther("FINANCE_ONLY");
+    assert.deepEqual((await resolveCompanyAuthority(pool, OTHER, "p-other")).companies, ["taylor"], "classified there, narrowed there");
+    assert.deepEqual(await here(), hereBefore, "...and this tenant's company authority and Finance reach did not move");
+
+    await classifyOther("OPERATIONAL");
+    assert.deepEqual((await resolveCompanyAuthority(pool, OTHER, "p-other")).companies, ["taylor", "ventana"], "widened there");
+    assert.deepEqual(await here(), hereBefore, "...and this tenant's Finance-only Role is still Finance-only");
   });
 
   await t.test("6: no Administrator bypass -- Administrator standing reaches no company, in general authority or Finance", async () => {
@@ -170,6 +209,20 @@ test("Finance-only company assignments grant Finance reach only, in PostgreSQL",
       /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/);
     // A finance.* key is still welcome; a person without Administration authority cannot classify.
     assert.equal((await grant(FINANCE_COMPANY_ACCESS_ROLE, "finance.policy.read")).ok, true);
+    // A MOVE is an entry too: re-pointing an existing row at a non-finance capability, or moving a non-finance row INTO the
+    // Role, is refused exactly like an insert.
+    await assert.rejects(() => q(`UPDATE eos_policy.role_capabilities SET capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = 'workOrder.record.read')
+        WHERE tenant_id = $1 AND role_id = (SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2)
+          AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = 'finance.policy.read')`, [TENANT, FINANCE_COMPANY_ACCESS_ROLE]),
+      /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/);
+    await assert.rejects(() => q(`UPDATE eos_policy.role_capabilities SET role_id = (SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = $2)
+        WHERE tenant_id = $1 AND role_id = (SELECT id FROM eos_policy.roles WHERE tenant_id = $1 AND key = 'ventanaOffice')
+          AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = 'workOrder.record.read')`, [TENANT, FINANCE_COMPANY_ACCESS_ROLE]),
+      /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/);
+    // capabilities.key is NOT immutable in the schema, so renaming a finance key a FINANCE_ONLY Role holds into a non-finance key is refused.
+    await assert.rejects(() => q(`UPDATE eos_policy.capabilities SET key = 'zz.renamed.operational' WHERE key = 'finance.policy.read'`),
+      /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/);
+    assert.equal(Number((await q(`SELECT count(*)::int AS n FROM eos_policy.capabilities WHERE key = 'finance.policy.read'`)).rows[0].n), 1, "the key is unchanged");
     const ungoverned = await executeAdminOperation({ repo }, { caller: { externalSubject: fo.subject, identityProvider: "firebase" }, operation: "updateRole",
       input: { roleId: (await roleOf(FINANCE_COMPANY_ACCESS_ROLE)).id, companyAuthorityEffect: "OPERATIONAL", reason: REASON }, requestId: "r-fonly-ungoverned" });
     assert.deepEqual([ungoverned.ok, ungoverned.code], [false, "FORBIDDEN"]);
