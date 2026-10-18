@@ -54,11 +54,9 @@ export const FIREBASE_IDS_WITHOUT_EOS_TWIN = Object.freeze({
   "inventory.location.bin.read": "Warehouse Racking (administration/warehouseRacking): NAV_SURFACE_GAPS; bins move with F6.",
   "inventory.location.bin.manage": "Warehouse Racking (administration/warehouseRacking): NAV_SURFACE_GAPS; bins move with F6.",
   "inventory.balance.read": "Only My Dashboard cards and the legacy phone shell read it; neither is reachable under the EOS source.",
-  "finance.visibility.self": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
-  "finance.visibility.team": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
-  "finance.visibility.businessUnit": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
-  "finance.visibility.company": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
-  "finance.visibility.consolidated": "Only My Dashboard cards read it; not reachable under the EOS source. The EOS receivables read (listObligations) decides company reach.",
+  // finance.visibility.{self,team,businessUnit,company,consolidated} LEFT this table in Firebase exit B1 (DECISIONS #B1): migration
+  // 1764620000000 registers all five in EOS under the SAME names, mirrored to the Firebase holders, so they are asked under their own
+  // names. The EOS server applies them inside every Finance read (eosFinance/financeVisibility.ts); self and team are INACTIVE.
   "financialPolicy.profile.read": "Read by no mounted control: AdminFinancialPolicy reads the EOS finance.policy operations directly. read -> finance.policy.read is the only like-for-like pair; it is not translated because nothing asks.",
   "financialPolicy.profile.configure": "Read by no mounted control, and configure -> finance.policy.prepare is not a same-meaning equivalence (configure is a deployment-time act on a DRAFT or APPROVED profile; prepare drafts and submits).",
   "administration.emailIntake.read": "Declared, never consulted: the Email & Communications door is earned by inboundWork.intake.manage.",

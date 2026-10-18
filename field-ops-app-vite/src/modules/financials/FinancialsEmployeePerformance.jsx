@@ -30,7 +30,7 @@ import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useFinancialsEmployeeDirectory } from "../../hooks/useFinancialsEmployeeDirectory.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
   FACTS_STATE,
@@ -65,7 +65,9 @@ export default function FinancialsEmployeePerformance() {
   // A PERSON'S NAME, NOT THEIR KEY. The rollup is keyed by creditedSalespersonId because that is
   // the frozen financial fact; the directory only supplies the label a human reads. The grouping
   // never uses the name — a display name is mutable, and money must not regroup when someone marries.
-  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  // D-247-2: the governed name read (only the credited people in this rollup) where EOS is the source; the Firestore directory elsewhere.
+  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useFinancialsEmployeeDirectory(
+    ready ? (result.byCreditedSalesperson ?? []).map((r) => r.key) : []);
 
   const rows = ready && view === "credit" ? (result.byCreditedSalesperson ?? []).map(rollupRow) : [];
   // Sorting reads the server's own per-currency figures for the same row, keyed by the credited id.

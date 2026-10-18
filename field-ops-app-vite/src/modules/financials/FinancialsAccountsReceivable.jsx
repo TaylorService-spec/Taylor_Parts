@@ -20,7 +20,7 @@ import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows, agingSlots, unagedNote } from "../../domain/financialFactsView.js";
 import { agingCompanySpan } from "../../domain/companyAttribution.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useFinancialsEmployeeDirectory } from "../../hooks/useFinancialsEmployeeDirectory.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { Link } from "react-router-dom";
@@ -58,7 +58,8 @@ export default function FinancialsAccountsReceivable() {
   // own `agingByCompany` and splits nothing; the buckets stay the server's single derivation. On a
   // response without `agingByCompany`, `supplied` is false and no span is claimed.
   const agingSpan = answered ? agingCompanySpan(result) : agingCompanySpan(null);
-  const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
+  // D-247-2: the governed name read (only the credited people on these rows) where EOS is the source; the Firestore directory elsewhere.
+  const { byEmployeeId, loading: dirLoading, error: dirError } = useFinancialsEmployeeDirectory(rows.map((r) => r.creditedSalespersonId).filter(Boolean));
   const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
   const salespersonWords = (row) =>

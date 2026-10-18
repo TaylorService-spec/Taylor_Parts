@@ -13,7 +13,7 @@ const loadAdminClient = () => import("./adminPolicyApiClient.js");
 export const FINANCE_ROUTE = "/operations/finance";
 
 /** Mirrors the server's EOS_FINANCE_OPERATIONS (closed), including the Financial Policy lifecycle (#232). */
-export const FINANCE_READ_OPERATIONS = Object.freeze(["readFinanceWorkspace", "readMyFinanceCompanyAccess", "listObligations", "readObligation", "listSettlements", "readSettlement",
+export const FINANCE_READ_OPERATIONS = Object.freeze(["readFinanceWorkspace", "readFinanceOverview", "readMyFinanceCompanyAccess", "listObligations", "readObligation", "listSettlements", "readSettlement",
   "readMyFinancialPolicyAuthority", "readFinancialPolicy", "listFinancialPolicyVersions"]);
 export const FINANCE_COMMAND_OPERATIONS = Object.freeze(["recordSettlement", "applySettlement", "reverseSettlementApplication", "voidSettlement",
   "reconcileSettlement", "supplyReceiptCostEvidence", "relieveIntercompanySaleInventory",

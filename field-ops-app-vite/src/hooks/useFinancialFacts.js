@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchFinancialFacts } from "../services/financeReadCallableClient.js";
+import { fetchFinancialFactsFromEos } from "../services/eosFinancialsClient.js";
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
+
+// WHICH SOURCE ANSWERS, decided once at BUILD time (Firebase exit B1, DECISIONS #B1) by the same compile-time flag F1 and F7c use
+// (access/eosSessionSource.js): where an EOS API is declared the Financials facts are the Finance register's receivables (the
+// server decides company reach AND credited-person / team reach); everywhere else -- production declares none -- the Firebase
+// callable `listFinancialFacts` is the SOLE source, exactly as before. There is no runtime fallback in either direction.
+export const fetchFacts = EOS_SESSION_SOURCE ? fetchFinancialFactsFromEos : fetchFinancialFacts;
 
 // One-shot read of the governed financial facts within the caller's requested filters.
 //
@@ -22,7 +30,7 @@ export function useFinancialFacts(filters, { limit = 200, enabled = true } = {})
     }
     let cancelled = false;
     setState({ loading: true, errorStatus: null, result: null });
-    fetchFinancialFacts(JSON.parse(key), limit).then(({ result, errorStatus }) => {
+    fetchFacts(JSON.parse(key), limit).then(({ result, errorStatus }) => {
       if (cancelled) return;
       setState({ loading: false, errorStatus: errorStatus ?? null, result: result ?? null });
     });

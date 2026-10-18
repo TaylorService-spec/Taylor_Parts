@@ -1288,6 +1288,10 @@
     {
       "file": "test/f2rF4FirebaseExit.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/financialsEos.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

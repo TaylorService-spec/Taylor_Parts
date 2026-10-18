@@ -34,8 +34,10 @@ export async function fetchAccountReceivablesFromEos(accountId, { call: rawCall 
 
   const access = await call("readMyFinanceCompanyAccess");
   if (!access.ok) return refusal(access);
+  // B1 (DECISIONS #B1): a company whose inner Finance reach is EMPTY (the server says RESTRICTED_EMPTY) reads nothing, so it is not asked
+  // about; the server still re-decides every read, and a restricted reader's rows are only the receivables it may see.
   const companies = Array.isArray(access.result?.companies)
-    ? access.result.companies.map((c) => c?.operatingCompanyId).filter((id) => typeof id === "string" && id.length > 0)
+    ? access.result.companies.filter((c) => c?.visibility !== "RESTRICTED_EMPTY").map((c) => c?.operatingCompanyId).filter((id) => typeof id === "string" && id.length > 0)
     : null;
   if (companies === null) return unavailable();
   // The server reaches this caller to no company: listObligations would refuse every one of them. The same answer, one call earlier.
@@ -55,5 +57,6 @@ export async function fetchAccountReceivablesFromEos(accountId, { call: rawCall 
     return { items, truncated: Array.isArray(items) && items.length >= OBLIGATION_PAGE_LIMIT };
   });
   const result = accountArFromObligations(pages);
-  return result.status === "ready" ? { result } : unavailable();
+  // `restricted`: the server limited what this principal reads to the receivables credited to it / its team -- the screen says so.
+  return result.status === "ready" ? { result: { ...result, restricted: access.result.restricted === true } } : unavailable();
 }

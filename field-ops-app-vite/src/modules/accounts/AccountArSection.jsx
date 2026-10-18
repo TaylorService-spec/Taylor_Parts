@@ -95,7 +95,15 @@ export default function AccountArSection({ accountId }) {
       {view.kind === ACCOUNT_AR_STATE.UNAVAILABLE && (
         <p className="ns-state">Receivables couldn’t be read. Try again later.</p>
       )}
-      {view.kind === ACCOUNT_AR_STATE.EMPTY && <p className="ns-state">No {nounLower}s on this account.</p>}
+      {view.kind === ACCOUNT_AR_STATE.EMPTY && (
+        <p className="ns-state">No {nounLower}s on this account{view.restricted ? " within your Finance visibility (limited to the receivables credited to you or your team)" : ""}.</p>
+      )}
+      {view.kind === ACCOUNT_AR_STATE.READY && view.restricted && (
+        <p className="ns-state" role="note">
+          <strong>A part of this account&rsquo;s receivables.</strong> Your Finance visibility is limited to the receivables credited to you or
+          your team, so the rows and balances below cover only those.
+        </p>
+      )}
       {view.kind === ACCOUNT_AR_STATE.READY && (
         <>
           {showCompany ? (

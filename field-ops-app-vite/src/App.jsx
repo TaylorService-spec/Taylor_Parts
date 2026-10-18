@@ -17,6 +17,7 @@ import { recordNavigation, recordIdentity, diagnosticsVisible } from "./diagnost
 import { routerBasenameFrom } from "./routerBasename";
 import { customerSchedulingToken } from "./services/selfSchedulingApiClient.js";
 const ControlTower = lazy(() => import("./modules/controlTower/ControlTower"));
+import * as financialsPages from "./modules/financials/financialsPages.js";
 import Jobs from "./modules/jobs/Jobs";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
@@ -146,11 +147,9 @@ const SavedReports = lazy(() => import("./modules/reporting/SavedReports"));
 // (finance.read + finance.visibility.*, all inactive today); these pages compose governed
 // reads and honest states only.
 const FinancialsOverview = lazy(() => import("./modules/financials/FinancialsOverview.jsx"));
-const FinancialsInvoiceDetail = lazy(() => import("./modules/financials/FinancialsInvoiceDetail.jsx"));
-const FinancialsPaymentDetail = lazy(() => import("./modules/financials/FinancialsPaymentDetail.jsx"));
-const FinancialsInvoices = lazy(() => import("./modules/financials/FinancialsInvoices.jsx"));
-const FinancialsAccountsReceivable = lazy(() => import("./modules/financials/FinancialsAccountsReceivable.jsx"));
-const FinancialsPayments = lazy(() => import("./modules/financials/FinancialsPayments.jsx"));
+// The five record pages are chosen at BUILD time (modules/financials/financialsPages.js): the EOS Finance register's pages where an
+// EOS API is declared (Firebase exit B1, DECISIONS #B1), the Firebase-backed ones everywhere else.
+const { FinancialsInvoiceDetail, FinancialsPaymentDetail, FinancialsInvoices, FinancialsAccountsReceivable, FinancialsPayments } = financialsPages;
 const FinancialsCustomerFinancials = lazy(() => import("./modules/financials/FinancialsCustomerFinancials.jsx"));
 // Wave UX-2 — billing / corrections.
 const FinancialsBillingQueue = lazy(() => import("./modules/financials/FinancialsBillingQueue.jsx"));

@@ -42,6 +42,10 @@ on:
       - "field-ops-app-vite/src/hooks/useFinancialFacts.js"
       - "field-ops-app-vite/src/services/financeReadCallableClient.js"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
+      - "field-ops-app-vite/test/financialsEosPages.test.jsx"
+      - "field-ops-app-vite/src/services/eosFinancialsClient.js"
+      - "field-ops-app-vite/src/domain/financialsEos.js"
+      - "field-ops-app-vite/src/hooks/useEosFinanceRead.js"
       - "functions/scripts/financialReviewFixtures.mjs"
       - "functions/test/financialReviewFixtures.test.mjs"
       - "functions/src/finance/financeReadProjection.ts"
@@ -68,6 +72,10 @@ on:
       - "field-ops-app-vite/src/hooks/useFinancialFacts.js"
       - "field-ops-app-vite/src/services/financeReadCallableClient.js"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
+      - "field-ops-app-vite/test/financialsEosPages.test.jsx"
+      - "field-ops-app-vite/src/services/eosFinancialsClient.js"
+      - "field-ops-app-vite/src/domain/financialsEos.js"
+      - "field-ops-app-vite/src/hooks/useEosFinanceRead.js"
       - "functions/scripts/financialReviewFixtures.mjs"
       - "functions/test/financialReviewFixtures.test.mjs"
       - "functions/src/finance/financeReadProjection.ts"
@@ -110,6 +118,11 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Wave compositions render honestly (vitest + jsdom)
         run: npx vitest run test/financialsUxLifecycle.test.jsx
+        working-directory: field-ops-app-vite
+      # Firebase exit B1 (DECISIONS #B1): the Financials pages on EOS render from the Finance register with Firebase BLOCKED
+      # (the finance callables and the Firestore employees listener are spies that fail the run if touched).
+      - name: Financials on EOS - acceptance run with Firebase blocked (vitest + jsdom)
+        run: npx vitest run test/financialsEosPages.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the touched surfaces
         run: npx oxlint src/modules/financials src/domain/financialsSurface.js src/navigation/navConfig.js src/App.jsx
