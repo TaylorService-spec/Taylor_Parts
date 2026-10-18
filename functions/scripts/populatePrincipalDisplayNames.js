@@ -207,11 +207,11 @@ async function main() {
   const options = assertInvocation(parseArgs(process.argv.slice(2)), process.env);
   const pg = require("pg");
   const { resolvePolicyDatabaseConfig } = require("../lib/adminPolicy/policyDatabase.js");
-  const commands = require("../lib/adminPolicy/policyCommands.js");
+  const { setPrincipalDisplayName, principalDisplayNameRefusal } = require("../lib/adminPolicy/policyCommands.js");
   const deps = {
     PostgresPolicyRepository: require("../lib/adminPolicy/postgresPolicyRepository.js").PostgresPolicyRepository,
-    setPrincipalDisplayName: commands.setPrincipalDisplayName,
-    principalDisplayNameRefusal: commands.principalDisplayNameRefusal,
+    setPrincipalDisplayName,
+    principalDisplayNameRefusal,
     hasAdministrationAuthority: require("../lib/adminPolicy/administrationAuthority.js").hasAdministrationAuthority,
   };
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: options.connectionString }));

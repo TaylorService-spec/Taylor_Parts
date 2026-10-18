@@ -100,7 +100,13 @@ export function AuthProvider({ children }) {
       setDisplayName(null);
       setOperationalRoles([]);
       setEmploymentStatus(null);
-      resolveEosSessionIdentity(operationsApiClient).then((identity) => {
+      // Where EOS is the session source the identity is the SAME read a Firebase-signed-in person gets (F1): the Employee link
+      // plus the display name and employment status from the governed profile read, so an EOS sign-in shows a name. An EOS
+      // sign-in has no legacy role either way. Elsewhere (production never reaches here) the experience context alone.
+      const resolveIdentity = EOS_SESSION_SOURCE
+        ? resolveEosEmployeeSession({ operations: operationsApiClient, workforce: workforceApiClient })
+        : resolveEosSessionIdentity(operationsApiClient);
+      resolveIdentity.then((identity) => {
         if (!isMounted) return;
         setRole(identity.role);
         setEmployeeId(identity.employeeId);

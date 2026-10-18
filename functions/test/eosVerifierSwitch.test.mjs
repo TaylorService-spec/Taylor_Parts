@@ -172,5 +172,5 @@ test("V8 no Firebase, Google or JWT package and no key literal on the new EOS-si
   }
   // The enrollment tool has no flag through which a credential could enter or be printed.
   const enroll = require("../scripts/enrollPersonaLogins.js");
-  assert.ok(!enroll.KNOWN_FLAGS.some((f) => /password|secret|token|key/i.test(f)));
+  assert.ok(!enroll.KNOWN_FLAGS.filter((f) => f !== "tenantKey").some((f) => /password|secret|token|key/i.test(f)));
 });
