@@ -187,3 +187,30 @@ test("the two commands ride the same mandatory-preview path as assignRole and ar
   assert.ok(api.ADMIN_MUTATION_OPERATIONS.includes("grantCompanyAuthority") && api.ADMIN_MUTATION_OPERATIONS.includes("revokeCompanyAuthority"));
   assert.equal(api.capabilityForAdminRead("listEmployeeCompanyAuthority"), "admin.principalAccess.read");
 });
+
+// ════════════════════ the preview's company authority is set-based (regression guard) ════════════════════
+
+test("the preview snapshot decides company authority with ONE set-based read, never a resolver call per member", async () => {
+  const text = read("src/eosOps/authorityChangePreview.ts");
+  assert.equal(/\bresolveCompanyAuthority\s*\(/.test(text), false, "authorityChangePreview.ts must not call the single-principal resolver (N x 4 round trips per side)");
+  assert.match(text, /resolveCompanyAuthorityForMembers\(/);
+  // And the set-based read really is two round trips whatever the number of members.
+  const { resolveCompanyAuthorityForMembers } = await import("../lib/eosOps/companyAuthority.js");
+  for (const members of [1, 10, 250]) {
+    const ids = Array.from({ length: members }, (_, i) => `p-${i}`);
+    const calls = [];
+    const db = { query: async (sql) => {
+      calls.push(sql);
+      if (calls.length === 1) {
+        return { rows: ids.map((id, i) => ({ principal_id: id, standing: true, employee_id: `e-${i}`, employment_status: "ACTIVE", operating_company_id: "taylor", link_count: "1" })) };
+      }
+      return { rows: ids.map((id) => ({ principal_id: id, id: "taylor" })) };
+    } };
+    const out = await resolveCompanyAuthorityForMembers(db, "t", ids);
+    assert.equal(calls.length, 2, `${members} members took ${calls.length} round trips`);
+    assert.equal(out.size, members);
+    assert.deepEqual([...out.get("p-0").companies], ["taylor"]);
+  }
+  const none = { query: async () => { throw new Error("no query for no members"); } };
+  assert.equal((await resolveCompanyAuthorityForMembers(none, "t", [])).size, 0);
+});

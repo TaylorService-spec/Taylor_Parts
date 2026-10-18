@@ -90,6 +90,79 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
 }
 
 /**
+ * SET-BASED company authority for MANY Principals in TWO round trips, for the Administration preview's tenant-wide snapshots
+ * (eosOps/authorityChangePreview.ts). It decides EXACTLY what `resolveCompanyAuthority` decides -- the identity gate (rule 1),
+ * then the home company, the OPERATIONAL Role expansion with the access-version staleness rule, and the ACTIVE in-window
+ * explicit grants, each company ACTIVE for the tenant -- but for every named Principal at once. The preview snapshots every
+ * member on both sides of a change (and the mandatory commit three times), so a per-member resolver call (four queries each)
+ * multiplied by members and sides exhausted the preview's time budget on a remote database (nonprod, after DECISIONS #249).
+ * The parity of the two functions is a Postgres test (employeeCompanyAuthorityGrantsPostgres.test.mjs); change both together.
+ * Returns companies only (no keys); a Principal that fails the identity gate maps to its gap with no company.
+ */
+export async function resolveCompanyAuthorityForMembers(
+  db: Db, tenantId: string, principalIds: readonly string[],
+): Promise<ReadonlyMap<string, { readonly companies: readonly string[]; readonly gap: CompanyAuthorityGap | null }>> {
+  const out = new Map<string, { readonly companies: readonly string[]; readonly gap: CompanyAuthorityGap | null }>();
+  if (principalIds.length === 0) return out;
+  const ids = [...new Set(principalIds)];
+  // Round trip 1: standing + active links + the linked Employee, for every named Principal.
+  const { rows } = await db.query<{ principal_id: string; standing: boolean; employee_id: string | null; employment_status: string | null;
+    operating_company_id: string | null; link_count: string }>(
+    `SELECT p.id AS principal_id,
+            (p.status = 'active' AND m.status = 'active') AS standing,
+            l.employee_id, e.employment_status::text AS employment_status, e.operating_company_id,
+            count(l.employee_id) OVER (PARTITION BY p.id) AS link_count
+       FROM eos_policy.principals p
+       LEFT JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id AND m.tenant_id = $1 AND m.status = 'active'
+       LEFT JOIN eos_policy.employee_principal_links l ON l.tenant_id = $1 AND l.principal_id = p.id AND l.status = 'active'
+       LEFT JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
+      WHERE p.id = ANY($2::text[])`, [tenantId, ids]);
+  const eligible: { principalId: string; employeeId: string; home: string }[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.principal_id)) continue;
+    seen.add(r.principal_id);
+    const gap = (g: CompanyAuthorityGap) => out.set(r.principal_id, Object.freeze({ companies: Object.freeze([]), gap: g }));
+    if (r.standing !== true) { gap("PRINCIPAL_NOT_ACTIVE"); continue; }
+    if (r.employee_id === null) { gap("EMPLOYEE_LINK_REQUIRED"); continue; }
+    if (Number(r.link_count) > 1) { gap("EMPLOYEE_LINK_AMBIGUOUS"); continue; }
+    if (r.employment_status === null || !ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES.includes(r.employment_status) || r.operating_company_id === null) {
+      gap("EMPLOYEE_NOT_ACCESS_ELIGIBLE"); continue;
+    }
+    eligible.push({ principalId: r.principal_id, employeeId: r.employee_id, home: r.operating_company_id });
+  }
+  for (const id of ids) if (!out.has(id)) out.set(id, Object.freeze({ companies: Object.freeze([]), gap: "PRINCIPAL_NOT_ACTIVE" as const }));
+  if (eligible.length === 0) return out;
+  // Round trip 2: each eligible Principal's companies -- the same three sources as resolveCompanyAuthority, one statement.
+  const companies = await db.query<{ principal_id: string; id: string }>(
+    `SELECT x.principal_id, c.operating_company_id AS id
+       FROM unnest($2::text[], $3::text[], $4::text[]) AS x(principal_id, employee_id, home)
+       JOIN eos_policy.tenant_operating_companies c ON c.tenant_id = $1 AND c.status = 'ACTIVE'
+      WHERE c.operating_company_id = x.home
+         OR EXISTS (SELECT 1 FROM eos_policy.user_role_assignments a
+                      JOIN eos_policy.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+                      LEFT JOIN eos_policy.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
+                     WHERE a.tenant_id = c.tenant_id AND a.principal_id = x.principal_id AND a.status = 'active'
+                       AND a.scope_type = 'operatingCompany' AND a.scope_value = c.operating_company_id
+                       AND r.company_authority_effect = 'OPERATIONAL'
+                       AND a.access_version_at_grant <= coalesce(v.access_version, 0))
+         OR EXISTS (SELECT 1 FROM eos_policy.employee_company_authority_grants g
+                     WHERE g.tenant_id = c.tenant_id AND g.employee_id = x.employee_id AND g.operating_company_id = c.operating_company_id
+                       AND g.status = 'active' AND g.effective_from <= now()
+                       AND (g.effective_until IS NULL OR g.effective_until > now()))
+      ORDER BY 1, 2`,
+    [tenantId, eligible.map((e) => e.principalId), eligible.map((e) => e.employeeId), eligible.map((e) => e.home)]);
+  const byPrincipal = new Map<string, string[]>();
+  for (const r of companies.rows) {
+    const list = byPrincipal.get(r.principal_id) ?? [];
+    list.push(String(r.id));
+    byPrincipal.set(r.principal_id, list);
+  }
+  for (const e of eligible) out.set(e.principalId, Object.freeze({ companies: Object.freeze(byPrincipal.get(e.principalId) ?? []), gap: null }));
+  return out;
+}
+
+/**
  * D6 (P0 rental security): the caller's authorized companies as picker options -- each ACTIVE company with its ACTIVE key(s).
  * Only what resolveCompanyAuthority already decided; nothing is widened, and a caller without authority gets an empty list.
  */
