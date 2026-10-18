@@ -95,11 +95,15 @@ const restrictionPlain = (actor: FinanceReachActor, key: string, company: string
  * to a type or value the runtime does not consume (a businessUnit / location / salesChannel scope, or an unreadable one -- these
  * apply to EVERY company, since the scope cannot be mapped to one). Presence alone restricts; it never confers reach.
  */
+/** A scoped holding applies to `company` when scoped to it, or when its scope cannot be mapped to one company (another type, or no / malformed value). */
+const appliesToCompany = (h: { scopeType: string; scopeValue: string | null }, company: string): boolean =>
+  h.scopeType !== "operatingCompany" || typeof h.scopeValue !== "string" || h.scopeValue.trim() === "" || h.scopeValue === company;
+
 const restrictionPresent = (actor: FinanceReachActor, key: string, company: string): boolean =>
   restrictionPlain(actor, key, company)
   || actor.conditionallyHeld?.has(key) === true
-  || (actor.scopedHeld ?? []).some((h) => h.capabilityKey === key && (h.scopeType !== "operatingCompany" || h.scopeValue === company))
-  || (actor.inertScoped ?? []).some((h) => h.capabilityKey === key && (h.scopeType !== "operatingCompany" || h.scopeValue === company));
+  || (actor.scopedHeld ?? []).some((h) => h.capabilityKey === key && appliesToCompany(h, company))
+  || (actor.inertScoped ?? []).some((h) => h.capabilityKey === key && appliesToCompany(h, company));
 
 /** PURE: the inner reach of `actor` at one operating company (which the outer company rule has already admitted). */
 export function financeVisibilityModeAt(actor: FinanceReachActor, companyId: string, selfTeamActive: boolean): FinanceVisibilityMode {

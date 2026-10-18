@@ -314,6 +314,13 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
     }
     const leaked = JSON.stringify(hiddenApps);
     for (const hiddenId of [stlB, stlD]) assert.ok(!leaked.includes(hiddenId), "a hidden settlement's id appears nowhere in the application");
+    // ...nor anywhere in the WHOLE result: the settlement-application FACTS name their settlement too (source_record_id, copied onto reversals).
+    const whole = JSON.stringify(d);
+    for (const hiddenId of [stlB, stlD]) assert.ok(!whole.includes(hiddenId), "a hidden settlement's id appears nowhere in the entire readObligation result");
+    assert.ok(d.facts.some((f) => f.sourceDomain === "SETTLEMENT" && f.settlementVisible === false && f.sourceRecordId === null && f.reason === null), "its facts survive, de-identified");
+    assert.ok(d.facts.some((f) => f.sourceDomain === "SETTLEMENT" && f.sourceRecordId === stlA), "the visible settlement's fact keeps its source");
+    const wholeFor = async (who) => JSON.stringify(ok(await on(who, "readObligation", { obligationId: o1 })));
+    for (const who of [ctrl, m1]) for (const hiddenId of [stlB, stlD]) assert.ok((await wholeFor(who)).includes(hiddenId), `${who.subject} still sees ${hiddenId}`);
     // Finance and the Team manager (who sees o2 too) see every settlement of these applications.
     assert.ok(ok(await on(ctrl, "readObligation", { obligationId: o1 })).applications.every((a) => a.settlementVisible === true && a.settlementId));
     assert.ok(ok(await on(m1, "readObligation", { obligationId: o1 })).applications.every((a) => a.settlementVisible === true));

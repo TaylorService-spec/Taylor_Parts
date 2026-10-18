@@ -48,6 +48,9 @@ test("F1 (review): a restriction key held through a SCOPE or a CONDITION restric
   assert.equal(mode(scoped("self"), false, "ventana"), "FULL", "scoped to Taylor: no restriction key at Ventana (the other Role's reach stands)");
   assert.equal(mode(scoped("self", "taylor", "businessUnit"), true, "ventana"), "EMPTY", "a scope the runtime does not consume applies to EVERY company and reads nothing");
   assert.equal(mode(scoped("businessUnit"), true), "EMPTY");
+  // L1: an operatingCompany scope with no / malformed value cannot be mapped to a company, so it applies to EVERY company.
+  assert.equal(mode({ capabilities: reach, inertScoped: [{ capabilityKey: "finance.visibility.self", scopeType: "operatingCompany", scopeValue: null }] }, true, "ventana"), "EMPTY");
+  assert.equal(mode({ capabilities: reach, inertScoped: [{ capabilityKey: "finance.visibility.self", scopeType: "operatingCompany", scopeValue: " " }] }, false, "taylor"), "EMPTY");
   // A CONDITIONED grant (flat or scoped) restricts and, nothing evaluating the condition, reads nothing even when activated.
   const conditioned = { capabilities: reach, conditionallyHeld: new Set(["finance.visibility.self"]) };
   assert.equal(mode(conditioned, false), "EMPTY");

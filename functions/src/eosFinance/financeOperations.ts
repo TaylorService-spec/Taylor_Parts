@@ -405,8 +405,21 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
     : String(src.package_company) !== o.operatingCompanyId ? { state: "NOT_ATTRIBUTABLE", reason: "the billing package belongs to a different operating company than the receivable" }
     : src.credited === null || src.credited === undefined ? { state: "UNATTRIBUTED", reason: "the source Sales Order records no credited salesperson" }
     : { state: "ATTRIBUTED", creditedSalespersonEmployeeId: String(src.credited), recordedAt: new Date(src.credited_at).toISOString() };
-  const { rows: facts } = await deps.pool.query(`SELECT id, fact_class, fact_type, amount_minor, effective_at, source_domain, source_record_id, reverses_fact_id, reason
+  const { rows: facts } = await deps.pool.query(`SELECT id, fact_class, fact_type, amount_minor, effective_at, created_at, source_domain, source_record_id, reverses_fact_id, reason
     FROM eos_finance.financial_facts WHERE tenant_id = $1 AND obligation_id = $2 ORDER BY created_at, id`, [t, input.obligationId]);
+  // A settlement-application fact names its settlement (source_record_id = the settlement id, copied onto its reversal). For a settlement the
+  // reader may not read -- the SAME decision as the applications above -- the fact keeps its amount and type but drops the settlement's id,
+  // reason and business date (effectiveAt becomes the date EOS recorded the application).
+  const factSettlementIds = [...new Set(facts.filter((f) => f.source_domain === "SETTLEMENT").map((f) => String(f.source_record_id)))];
+  const visibleSettlementIds = new Set<string>();
+  if (factSettlementIds.length > 0) {
+    const sp: unknown[] = [t, factSettlementIds];
+    const visibleClause = settlementVisibilityClause(vis, "s", sp);
+    const { rows: vs } = await deps.pool.query(`SELECT s.id FROM eos_finance.settlements s WHERE s.tenant_id = $1 AND s.id = ANY($2) AND ${visibleClause}`, sp);
+    for (const r of vs) visibleSettlementIds.add(String(r.id));
+  }
+  const hiddenFact = (f: { source_domain: unknown; source_record_id: unknown }) => f.source_domain === "SETTLEMENT" && !visibleSettlementIds.has(String(f.source_record_id));
+  const hiddenFactIds = new Set(facts.filter(hiddenFact).map((f) => String(f.id)));
   // A settlement the reader may not read (readSettlement answers "not found" for it) is not described here either: the application
   // keeps its amount, status and date, and says only that the settlement is not visible -- no id, kind or source reference.
   const appParams: unknown[] = [t, input.obligationId];
@@ -418,8 +431,13 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
   const { rows: hs } = await deps.pool.query(`SELECT id, status, payload_kind, provider_document_reference FROM eos_finance.accounting_handoffs
     WHERE tenant_id = $1 AND obligation_id = $2 ORDER BY created_at`, [t, input.obligationId]);
   return Object.freeze({ ...o, recordedAt: src.recorded_at ? new Date(src.recorded_at).toISOString() : null, sourceSalesOrder, attribution,
-    facts: facts.map((f) => ({ id: String(f.id), factClass: String(f.fact_class), factType: String(f.fact_type), amountMinor: String(f.amount_minor),
-      effectiveAt: new Date(f.effective_at).toISOString(), sourceDomain: String(f.source_domain), sourceRecordId: String(f.source_record_id), reversesFactId: f.reverses_fact_id ?? null, reason: f.reason ?? null })),
+    facts: facts.map((f) => hiddenFact(f)
+      ? { id: String(f.id), factClass: String(f.fact_class), factType: String(f.fact_type), amountMinor: String(f.amount_minor),
+          effectiveAt: new Date(f.created_at).toISOString(), sourceDomain: String(f.source_domain), sourceRecordId: null, settlementVisible: false,
+          reversesFactId: f.reverses_fact_id && !hiddenFactIds.has(String(f.reverses_fact_id)) ? f.reverses_fact_id : null, reason: null }
+      : { id: String(f.id), factClass: String(f.fact_class), factType: String(f.fact_type), amountMinor: String(f.amount_minor),
+          effectiveAt: new Date(f.effective_at).toISOString(), sourceDomain: String(f.source_domain), sourceRecordId: String(f.source_record_id),
+          reversesFactId: f.reverses_fact_id && !hiddenFactIds.has(String(f.reverses_fact_id)) ? f.reverses_fact_id : null, reason: f.reason ?? null }),
     applications: apps.map((a) => a.settlement_visible === true
       ? { id: String(a.id), settlementVisible: true, settlementId: String(a.settlement_id), amountMinor: String(a.amount_minor), status: String(a.status),
           settlementKind: String(a.kind), sourceReference: String(a.source_reference), businessDate: dateText(a.business_date) }
