@@ -24,6 +24,8 @@ import { peekUnverifiedJws, sha256Hex, EosTokenError } from "./eosAccessToken";
 import type { EosAuthRuntime } from "./eosAuthConfig";
 import { issueNonprodPersonaSession, PersonaIssuanceError } from "./eosSessionIssuer";
 import { isHumanSubject } from "./eosLoginService";
+import { isNonprodPersonaSubject } from "./nonprodPersonas";
+import type { VerifiedPath, VerifierMetrics } from "./verifierMetrics";
 import { bindSessionTenant } from "./requestTenantBinding";
 import { CLIENT_IP_DIAGNOSTIC_ROUTE, createClientIpDiagnosticHandler } from "./clientIpDiagnostic";
 import { isLoginRoute } from "./eosLoginHttp";
@@ -66,27 +68,59 @@ export function createCompositeTokenVerifier(input: {
   readonly firebase: TokenVerifier;
   /** Absent: human login is not mounted, and a human-subject token is refused outright. */
   readonly humanSessionGate?: HumanSessionGate | null;
+  /** Counts which verifier admitted or refused each bearer (verifierMetrics.ts). Absent: nothing is counted. */
+  readonly metrics?: VerifierMetrics | null;
 }): TokenVerifier {
   const { eos, firebase } = input;
   const gate = input.humanSessionGate ?? null;
+  const metrics = input.metrics ?? null;
+  // THE VERIFIER SWITCH (EOS_AUTH_FIREBASE_VERIFIER=disabled): a bearer that is not an EOS token is refused here, before
+  // the Firebase verifier is ever called -- firebase-admin is not loaded, no Google endpoint is contacted.
+  const firebaseOff = eos.firebaseVerifier === "disabled";
+
+  async function verifyEosBearer(bearerToken: string): Promise<{ identity: VerifiedIdentity; path: VerifiedPath }> {
+    if (!eos.verify) throw new EosTokenError("ALGORITHM_REFUSED");
+    const v = eos.verify(bearerToken);
+    const human = isHumanSubject(v.externalSubject);
+    // A LOGIN SESSION is a token that names one (`sid`) -- and every human token must. A persona subject may carry `sid`
+    // ONLY when it is an enrolled persona's password session (enrollPersonaLogin); the persona ISSUER mints none, so a
+    // persona token without `sid` is the machine path and takes none of the session gate.
+    if (human || v.sessionId !== null) {
+      if (!(human || isNonprodPersonaSubject(v.externalSubject))) throw new EosTokenError("CLAIM_REFUSED");
+      if (!gate || !v.sessionId) throw new EosTokenError("CLAIM_REFUSED");
+      const live = await gate(v.externalSubject, v.sessionId);
+      // BIND this request to the session's tenant, or refuse: an unbindable human token could state any tenant.
+      const bound = bindSessionTenant({ identityProvider: v.identityProvider, externalSubject: v.externalSubject,
+        tenantId: live.tenantId, onRefusal: live.onTenantRefusal });
+      if (!bound) throw new EosTokenError("CLAIM_REFUSED");
+      return { identity: { externalSubject: v.externalSubject, identityProvider: v.identityProvider }, path: "eos_human" };
+    }
+    return { identity: { externalSubject: v.externalSubject, identityProvider: v.identityProvider }, path: "eos_persona" };
+  }
+
   return async function verifyBearer(bearerToken: string): Promise<VerifiedIdentity> {
     if (isEosShapedBearer(bearerToken, eos.issuer)) {
-      if (!eos.verify) throw new EosTokenError("ALGORITHM_REFUSED");
-      const v = eos.verify(bearerToken);
-      if (isHumanSubject(v.externalSubject)) {
-        if (!gate || !v.sessionId) throw new EosTokenError("CLAIM_REFUSED");
-        const live = await gate(v.externalSubject, v.sessionId);
-        // BIND this request to the session's tenant, or refuse: an unbindable human token could state any tenant.
-        const bound = bindSessionTenant({ identityProvider: v.identityProvider, externalSubject: v.externalSubject,
-          tenantId: live.tenantId, onRefusal: live.onTenantRefusal });
-        if (!bound) throw new EosTokenError("CLAIM_REFUSED");
-      } else if (v.sessionId !== null) {
-        // Only a login session carries `sid`. A persona token naming one is not a token any issuer here mints.
-        throw new EosTokenError("CLAIM_REFUSED");
+      try {
+        const { identity, path } = await verifyEosBearer(bearerToken);
+        metrics?.verified(path);
+        return identity;
+      } catch (err) {
+        metrics?.refused("eos_invalid");
+        throw err;
       }
-      return { externalSubject: v.externalSubject, identityProvider: v.identityProvider };
     }
-    return firebase(bearerToken);
+    if (firebaseOff) {
+      metrics?.refused("firebase_disabled");
+      throw new EosTokenError("FIREBASE_VERIFIER_DISABLED");
+    }
+    try {
+      const identity = await firebase(bearerToken);
+      metrics?.verified("firebase");
+      return identity;
+    } catch (err) {
+      metrics?.refused("firebase_invalid");
+      throw err;
+    }
   };
 }
 

@@ -349,6 +349,12 @@ jobs:
         run: npx vitest run test/eosSessionAuthContext.test.jsx
         working-directory: field-ops-app-vite
 
+      # FIREBASE EXIT B2: in an EOS-only sign-in build AuthContext never subscribes to, signs in to, signs out of or asks Firebase
+      # for a token. The seam is mocked true; every Firebase entry point is a spy that must not be reached.
+      - name: EOS-only sign-in AuthContext -- client (vitest + jsdom)
+        run: npx vitest run --maxWorkers=2 test/b2AuthContextEosOnly.test.jsx test/b2LazyScreensWithoutFirebase.test.jsx
+        working-directory: field-ops-app-vite
+
       # LANE GA: governed scope pickers -- Operational Scope targets and Sales Channel values come ONLY from the server;
       # no typed scope id; a type with no governed value is shown unavailable with the server's reason.
       - name: Governed scope pickers -- client (vitest + jsdom)

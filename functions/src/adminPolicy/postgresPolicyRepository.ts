@@ -1031,6 +1031,22 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
       return toPrincipal(rows[0]);
     },
 
+    async setPrincipalDisplayName(principalId: string, displayName: string | null) {
+      // TENANT-SCOPED IN SQL, exactly like setPrincipalIdentity: `principals` is a global table, so the membership
+      // EXISTS is what stops one tenant naming another tenant's Principal.
+      const { rows } = await q.query(
+        `UPDATE ${SCHEMA}.principals p
+            SET display_name = $1, updated_at = now()
+          WHERE p.id = $2
+            AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                         WHERE m.principal_id = p.id AND m.tenant_id = $3)
+          RETURNING *`,
+        [displayName, principalId, tenantId],
+      );
+      if (rows.length === 0) throw new PolicyStoreError("principal not found in this tenant");
+      return toPrincipal(rows[0]);
+    },
+
     async createPrincipalIdentityBinding(input: NewPrincipalIdentityBindingInput) {
       // TENANT-SCOPED IN SQL, exactly like setPrincipalIdentity: `principal_identities` is global, so
       // the membership EXISTS is what stops one tenant binding a subject to another tenant's Principal.

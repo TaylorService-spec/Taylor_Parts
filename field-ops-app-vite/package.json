@@ -14,7 +14,8 @@
     "test:components": "vitest run",
     "test": "node scripts/runSuites.mjs",
     "test:reportingOutcomeHonesty": "node test/reportRunOutcome.test.mjs && node test/reportResultState.test.mjs && node test/reportOutcomeContractRatchet.test.mjs",
-    "verify:version": "node test/verifyVersionManifest.mjs"
+    "verify:version": "node test/verifyVersionManifest.mjs",
+    "verify:eos-only": "node test/verifyEosOnlyBuild.mjs"
   },
   "dependencies": {
     "firebase": "^12.15.0",

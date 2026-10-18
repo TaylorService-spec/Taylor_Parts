@@ -268,7 +268,10 @@ export function isKnownProjectId(registry, projectId) {
  * `requireFirebaseIdentity` (default true) rejects environments declared but not
  * yet provisioned, so a build cannot silently produce an app with no backend.
  */
-export function resolveEnvironment(registry, id, { requireFirebaseIdentity = true } = {}) {
+export function resolveEnvironment(registry, id, { requireFirebaseIdentity = true, authSource = 'firebase' } = {}) {
+  if (authSource !== 'firebase' && authSource !== 'eos') {
+    throw new EnvironmentResolutionError('INVALID_AUTH_SOURCE', `authSource must be 'firebase' or 'eos' (got '${authSource}').`);
+  }
   if (!registry || !Array.isArray(registry.environments)) {
     throw new EnvironmentResolutionError('INVALID_REGISTRY', 'Environment registry is missing or malformed.');
   }
@@ -289,7 +292,28 @@ export function resolveEnvironment(registry, id, { requireFirebaseIdentity = tru
     );
   }
 
-  if (requireFirebaseIdentity) {
+  // EOS-ONLY SIGN-IN BUILD (Firebase exit B2). The build asks for it (VITE_AUTH_SOURCE=eos); the registry decides whether
+  // that is allowed. Allowed only where the environment (a) lists 'eos' in `authSources`, (b) is not a production-role
+  // environment, and (c) declares an EOS API to sign in against. The resolved environment then carries NO Firebase identity
+  // at all: the bundle holds no Firebase config and the Firebase module is aliased to an inert stand-in (vite.config.js). Production cannot get here.
+  if (authSource === 'eos') {
+    if (env.role === 'production') {
+      throw new EnvironmentResolutionError('EOS_AUTH_REFUSED_PRODUCTION', `Environment '${requested}' is a production-role environment; an EOS-only sign-in build is nonprod only.`);
+    }
+    if (!Array.isArray(env.authSources) || !env.authSources.includes('eos')) {
+      throw new EnvironmentResolutionError('EOS_AUTH_NOT_PERMITTED', `Environment '${requested}' does not list 'eos' in authSources; refusing an EOS-only sign-in build.`);
+    }
+    // The session itself (identity, capabilities) must come from EOS too, or a signed-in person would have no identity source
+    // in a bundle that holds no Firebase config. It is the F1 flag, true exactly where an EOS API is declared.
+    if (env.readiness?.EOS_NAVIGATION_AUTHORITY_READY !== true) {
+      throw new EnvironmentResolutionError('EOS_AUTH_NO_SESSION_SOURCE', `Environment '${requested}' does not enable EOS_NAVIGATION_AUTHORITY_READY; an EOS-only sign-in build needs EOS to answer the session.`);
+    }
+    if (!env.eosApi) {
+      throw new EnvironmentResolutionError('EOS_AUTH_NO_API', `Environment '${requested}' declares no eosApi; there is nothing to sign in against.`);
+    }
+  }
+
+  if (requireFirebaseIdentity && authSource === 'firebase') {
     if (!env.firebase) {
       throw new EnvironmentResolutionError(
         'ENVIRONMENT_NOT_PROVISIONED',
@@ -382,7 +406,10 @@ export function resolveEnvironment(registry, id, { requireFirebaseIdentity = tru
     role: env.role,
     deployment: env.deployment,
     status: env.status,
-    firebase: env.firebase ? { ...env.firebase } : null,
+    // null in an EOS-only sign-in build, by construction (see above); otherwise the environment's public Firebase config.
+    firebase: authSource === 'eos' ? null : env.firebase ? { ...env.firebase } : null,
+    // How people sign in to THIS bundle: 'firebase' unless the build asked for 'eos' and the registry allowed it.
+    authSource,
     readiness: { ...readiness },
     // Build-time projection of the per-environment activation override set
     // (spec 2026-08-14). Always an array (never absent) so the consumer has a

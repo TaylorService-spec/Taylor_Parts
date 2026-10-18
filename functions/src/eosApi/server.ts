@@ -58,6 +58,7 @@ import { createCompositeTokenVerifier, createEosAuthHttpHandler } from "../eosAu
 import { EosLoginService, EosSecurityEventGovernance, createLoginAdministration, type LoginServiceDeps } from "../eosAuth/eosLoginService";
 import { createLoginHttpHandler, createRateLimiter } from "../eosAuth/eosLoginHttp";
 import { runWithRequestScope } from "../eosAuth/requestTenantBinding";
+import { createVerifierMetrics } from "../eosAuth/verifierMetrics";
 import { createSelfSchedulingHttpHandler } from "../eosOps/selfSchedulingHttp";
 import { SELF_SCHEDULING_ROUTE } from "../eosOps/selfScheduling";
 import { startInboundPollingIfEnabled } from "../eosOps/inboundProviderRuntime";
@@ -230,8 +231,11 @@ export async function startEosApi(
       multiTenantSessions: eosAuth.humanLogin.multiTenantSessions, ...(options.loginServiceOverrides ?? {}),
     })
     : null;
+  // THE VERIFIER-PATH METRIC: which verifier admitted each bearer, by type (verifierMetrics.ts). Read from /health.
+  const verifierMetrics = createVerifierMetrics();
   const verifyToken = options.verifyToken ?? createCompositeTokenVerifier({
     eos: eosAuth,
+    metrics: verifierMetrics,
     firebase: options.firebaseVerifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
     humanSessionGate: loginService ? async (subject, sessionId) => {
       const session = await loginService.checkSession(subject, sessionId, "api");
@@ -291,6 +295,8 @@ export async function startEosApi(
         migrated: health.migrated,
         latencyMs: health.latencyMs,
         migrations: health.appliedMigrations.length,
+        // Firebase exit B2: the verifier switch and the per-type counters. Counts only -- no subject, token or address.
+        auth: { firebaseVerifier: eosAuth.firebaseVerifier ?? "enabled", ...verifierMetrics.snapshot() },
       };
     },
   });

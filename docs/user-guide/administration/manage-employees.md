@@ -96,6 +96,28 @@ Manager and Job Role names are shown as they are named today, not as they were n
 - **No "New user" button.** Adding a person to EOS links them to a sign-in account, which is done through the
   onboarding procedure rather than from this screen.
 
+## Sign-in, reset codes and two-step verification (EOS sign-in workspaces)
+
+On a workspace that signs in through EOS, open the person's record, then **Roles & Access**, then **EOS Sign-in**. This
+one section replaces the old account-status and password-reset buttons.
+
+- **Create sign-in** (for a person who has none): enter their sign-in name, say why, and click it. A **setup code**
+  appears once. Give it to the person directly (in person or by phone); it expires and cannot be shown again. They use
+  it on the sign-in screen to choose their own password. You never see or set their password.
+- **Reset password** gives a one-time **reset code** the same way. Resetting does not sign the person out; **Sign out
+  everywhere** does, and asks you to confirm.
+- **Disable sign-in** stops the person signing in and signs them out at once; **Enable sign-in** turns it back on. Their
+  employment record is not changed. You cannot disable the last enabled Owner or Administrator sign-in.
+- **Unlock** clears a lockout after repeated wrong passwords. **Reset two-step verification** removes a lost
+  authenticator so the person can set up a new one.
+- Every change needs a reason, which is recorded. The page shows the server's own words if something is refused.
+- The 16 sample (synthetic) people used for testing are set up by the operator with a password and an authenticator;
+  you can disable or enable their sign-in here but not remove it.
+- **Privileged role approvals** (Roles & Permissions) are not available in this workspace; the page says so rather than
+  showing an empty list. Assign Security Roles on the person's record as usual.
+- **Legacy change history** (the trail from before the move to EOS) is not shown here; the **Change History** above it is
+  the live record.
+
 ## Related
 
 - [Administration: Policy and Access](../../training/administration-policy-and-access.md) — Security Roles, Object

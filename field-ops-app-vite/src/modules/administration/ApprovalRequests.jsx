@@ -3,6 +3,13 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
 import { identifierLabel, titleCase } from "../../shared/display/displayLabels.js";
+// FIREBASE EXIT B2: the privileged-role approval queue is a FIREBASE mechanism -- Firestore `privilegedRoleRequests`, decided by
+// the `decidePrivilegedRoleRequest` callable as the authenticated Firebase Admin, granting into the Firestore `roleAssignments`
+// store. An EOS-only sign-in build has no Firebase identity to call it with, so this screen states that plainly instead of
+// drawing an empty queue (which would read as "nothing is pending"). The mechanism is PRESERVED, not retired: it stays
+// available in every Firebase-sign-in build, and its retirement needs the evidence in
+// docs/governance/privileged-approvals-inventory-b2.md (no reachable callers, no pending approvals, no required control).
+import { EOS_AUTH_ONLY } from "../../auth/authSource.js";
 
 // ADMINISTRATION > ROLES & PERMISSIONS > APPROVAL REQUESTS
 //
@@ -41,7 +48,27 @@ function scopeLabel(scope) {
   return scope.type === "global" ? "Global" : titleCase(scope.type);
 }
 
-export default function ApprovalRequests({ onPendingCountChange }) {
+export default function ApprovalRequests(props) {
+  return EOS_AUTH_ONLY ? <ApprovalRequestsHeld /> : <ApprovalRequestsQueue {...props} />;
+}
+
+function ApprovalRequestsHeld() {
+  return (
+    <section className="fo-panel" data-approval-requests="HELD">
+      <h3>Privileged role approvals</h3>
+      <p role="status">
+        This queue is not available in the EOS sign-in build. Privileged-role approval requests live in the legacy approval
+        store, which needs a Firebase sign-in to read or decide. Nothing here means none are pending.
+      </p>
+      <p className="fo-muted">
+        Security Roles are assigned and revoked on the Employee record (Roles &amp; Access), under the governed EOS assignment
+        authority. The retirement of the legacy queue is held until it is shown to have no pending requests.
+      </p>
+    </section>
+  );
+}
+
+function ApprovalRequestsQueue({ onPendingCountChange }) {
   const [requests, setRequests] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorText, setErrorText] = useState("");

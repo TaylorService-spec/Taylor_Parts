@@ -26,6 +26,14 @@ import {
 import UserAccessActions from "./UserAccessActions.jsx";
 import EmployeeLoginAccount from "./EmployeeLoginAccount.jsx";
 import { eosHumanLoginEnabled } from "../../auth/eosLoginClient.js";
+// FIREBASE EXIT B2: in an EOS-only sign-in build the Firebase account callables (setUserStatus, readPrincipalAccessState,
+// password reset, listRecordChangeHistory) are not reachable -- there is no Firebase identity to call them with. Account status,
+// password reset and sessions are the EOS Sign-in section (login administration over /admin/policy), the governed Change History
+// is the Workforce trail, and the pre-cutover legacy trail is stated as held (see LEGACY_TRAIL_HELD).
+import { EOS_AUTH_ONLY } from "../../auth/authSource.js";
+
+const LEGACY_TRAIL_HELD =
+  "The pre-cutover legacy trail lives in the legacy audit store, which this sign-in build cannot reach. It is held for the Owner’s historical-data decision; the Change History above is the live, governed record.";
 import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
 import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
@@ -194,7 +202,8 @@ export default function UserDetail({
   const controlPlane = useMemo(() => createAdminControlPlaneClient(policyCall), [policyCall]);
   // Bumped after a direct-exception change so the Effective Access explanation re-reads the server's answer.
   const [accessReadKey, setAccessReadKey] = useState(0);
-  const credential = usePrincipalCredential(principalId, { policyCall });
+  // The Firebase credential subject is only for the Firebase account callables, which an EOS-only build does not have.
+  const credential = usePrincipalCredential(EOS_AUTH_ONLY ? null : principalId, { policyCall });
 
   // ── GOVERNED CHANGE HISTORY (EMP-RT-H1): bumped after anything on this page writes the Employee.
   const [governedHistoryKey, setGovernedHistoryKey] = useState(0);
@@ -205,6 +214,10 @@ export default function UserDetail({
   const [historyNonce, setHistoryNonce] = useState(0);
   useEffect(() => {
     if (!employeeId) return undefined;
+    if (EOS_AUTH_ONLY) {
+      setHistory({ loading: false, rows: [], unavailable: LEGACY_TRAIL_HELD });
+      return undefined;
+    }
     let alive = true;
     setHistory((s) => ({ ...s, loading: true }));
     client
@@ -610,6 +623,17 @@ const capabilityFailureWords = (error) => describeWorkforceFailure(error, WORKFO
  * reached through the governed Principal link; with no link there is no account to act on.
  */
 function AccountActions({ linked, principalLink, credential, accountSubject, actorUid, hasCapability, client }) {
+  if (EOS_AUTH_ONLY) {
+    return (
+      <div className="fo-user-actions" data-account-actions="EOS_SIGN_IN">
+        <h3 className="fo-user-actions__title">Administrative Actions</h3>
+        <p className="fo-muted">
+          Account status, password reset codes, two-step verification and sessions for this person are managed in
+          the EOS Sign-in section above.
+        </p>
+      </div>
+    );
+  }
   if (accountSubject) {
     return <UserAccessActions employee={accountSubject} actorUid={actorUid} hasCapability={hasCapability} statusClient={client} />;
   }

@@ -20,7 +20,10 @@ function resolveActiveEnvironment() {
   const registry = JSON.parse(
     readFileSync(resolvePath(CONFIG_DIR, '../config/environments.json'), 'utf8'),
   )
-  return resolveEnvironment(registry, process.env.VITE_ENVIRONMENT_ID || null)
+  // FIREBASE EXIT B2: VITE_AUTH_SOURCE=eos asks for an EOS-only sign-in build (no Firebase config in the bundle). The
+  // resolver refuses unless the registry allows it for this environment; unset or 'firebase' is today's build, unchanged.
+  const authSource = process.env.VITE_AUTH_SOURCE || 'firebase'
+  return resolveEnvironment(registry, process.env.VITE_ENVIRONMENT_ID || null, { authSource })
 }
 
 // INV-CONVERGENCE-E Stage A completion -- deterministic application/build commit
@@ -107,6 +110,8 @@ export default defineConfig({
     // Public Firebase Web client configuration — a project identifier, not a
     // credential. Access is enforced by Firestore Rules + Auth.
     __APP_FIREBASE_CONFIG__: JSON.stringify(APP_ENV.firebase),
+    // How people sign in to this bundle: 'firebase' (default) or 'eos' (no Firebase config at all; see the resolver).
+    __APP_AUTH_SOURCE__: JSON.stringify(APP_ENV.authSource),
     __APP_ENVIRONMENT__: JSON.stringify({
       id: APP_ENV.id, role: APP_ENV.role, deployment: APP_ENV.deployment,
     }),
@@ -119,6 +124,17 @@ export default defineConfig({
     // authoritative gate is the backend callable resolver.
     __APP_CAPABILITY_ACTIVATION_OVERRIDES__: JSON.stringify(APP_ENV.capabilityActivationOverrides),
   },
+  // FIREBASE EXIT B2: in an EOS-only sign-in build the Firebase module is never loaded. Every import of it (any relative
+  // depth, with or without ".js") is aliased to an inert stand-in whose handles are null, so no Firebase app is initialised
+  // and no config is needed. Any other build has no alias and loads the real module, unchanged.
+  resolve: APP_ENV.authSource === 'eos'
+    ? {
+        alias: [{
+          find: /^(?:\.{1,2}\/)+firebase\/firebase(?:\.js)?$/,
+          replacement: resolvePath(CONFIG_DIR, 'src/firebase/firebaseAbsent.js'),
+        }],
+      }
+    : {},
   plugins: [react(), emitVersionManifest(APP_COMMIT, APP_ENV)],
   build: {
     chunkSizeWarningLimit: 800,

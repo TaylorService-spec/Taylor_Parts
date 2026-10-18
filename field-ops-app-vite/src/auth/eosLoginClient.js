@@ -14,13 +14,16 @@
 // CONCURRENCY. Two tabs share one cookie. A refresh is serialised across tabs with the Web Locks API where the browser
 // has it, and a REFRESH_SUPERSEDED answer (a sibling tab rotated first) is retried once with the cookie it left behind.
 //
-// OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled AND the bundle is not a production build (Owner D-1).
+// OFF unless the build says VITE_EOS_HUMAN_LOGIN=enabled (or is an EOS-only sign-in build) AND the bundle is not a production build (Owner D-1).
 
 import { setHumanEosTokenSource } from "./eosSession.js";
+import { EOS_AUTH_ONLY } from "./authSource.js";
 
 export const CSRF_HEADER = "x-eos-csrf";
 /** Refresh this long before the access token expires, so a request never carries one about to lapse. */
 export const REFRESH_LEAD_MS = 60_000;
+/** Every request to the EOS API is abandoned after this long and reported as the NETWORK failure. */
+export const REQUEST_TIMEOUT_MS = 15_000;
 const SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 
 function readEnv(name) {
@@ -40,8 +43,10 @@ function environmentRole() {
   }
 }
 
-export function eosHumanLoginEnabled({ flag = readEnv("VITE_EOS_HUMAN_LOGIN"), role = environmentRole() } = {}) {
-  return flag === "enabled" && role !== "production";
+// An EOS-only sign-in build (auth/authSource.js, Firebase exit B2) IS the front door: it needs no second variable, because it
+// has no other way in. Otherwise the flag decides, as before. Never in a production bundle.
+export function eosHumanLoginEnabled({ flag = readEnv("VITE_EOS_HUMAN_LOGIN"), role = environmentRole(), eosAuthOnly = EOS_AUTH_ONLY } = {}) {
+  return role !== "production" && (eosAuthOnly === true || flag === "enabled");
 }
 
 function apiBase(explicit) {
@@ -94,6 +99,7 @@ function defaultLocks() {
 export function createEosLoginClient(deps = {}) {
   const fetchImpl = deps.fetchImpl ?? (typeof fetch === "function" ? fetch.bind(globalThis) : null);
   const now = deps.now ?? (() => Date.now());
+  const timeoutMs = deps.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const locks = deps.locks === undefined ? defaultLocks() : deps.locks;
   let access = null; // { token, subject, expiresAtMs } -- memory only
   let inflightRefresh = null;
@@ -103,24 +109,43 @@ export function createEosLoginClient(deps = {}) {
   async function post(path, body, accessToken = null) {
     const base = apiBase(deps.baseUrl);
     if (!base || !fetchImpl) throw new EosLoginError("NOT_CONFIGURED");
+    // EVERY REQUEST IS BOUNDED. A server that never answers (a cold start, a dropped connection) must end as the existing
+    // NETWORK failure, not an endless "Loading..." -- at first load a refresh that fails means signed out, settled. The
+    // AbortController cancels the request; the race guarantees the bound even for a transport that ignores the signal.
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    let timer = null;
+    const timedOut = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        try { controller?.abort(); } catch { /* the bound below still holds */ }
+        reject(new EosLoginError("NETWORK"));
+      }, timeoutMs);
+    });
     let res;
+    let json = null;
     try {
-      res = await fetchImpl(`${base}${path}`, {
+      const sent = fetchImpl(`${base}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json", [CSRF_HEADER]: "1", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
         body: JSON.stringify(body ?? {}),
         // The refresh cookie rides on every /auth/* call; it is HttpOnly, so this code never sees it.
         credentials: "include",
         cache: "no-store",
+        ...(controller ? { signal: controller.signal } : {}),
       });
-    } catch {
-      throw new EosLoginError("NETWORK");
-    }
-    let json = null;
-    try {
-      json = await res.json();
-    } catch {
-      json = null;
+      sent.catch(() => {});
+      try {
+        res = await Promise.race([sent, timedOut]);
+      } catch {
+        throw new EosLoginError("NETWORK");
+      }
+      try {
+        json = await Promise.race([res.json(), timedOut]);
+      } catch (err) {
+        if (err instanceof EosLoginError) throw err;
+        json = null;
+      }
+    } finally {
+      clearTimeout(timer);
     }
     if (!res.ok || !json || json.ok !== true) {
       throw new EosLoginError(json?.code ?? "UNAVAILABLE", json?.detail ?? null, res.status);

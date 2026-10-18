@@ -1292,6 +1292,10 @@
     {
       "file": "test/financialsEos.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/b2EosOnlySignIn.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

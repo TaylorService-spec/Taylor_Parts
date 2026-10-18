@@ -114,6 +114,7 @@
     "test/eosNativeLoginUnit.test.mjs",
     "test/roleCompanyAuthorityEffect.test.mjs",
     "test/employeeCompanyAuthorityGrants.test.mjs",
+    "test/eosVerifierSwitch.test.mjs",
     "test/financeVisibility.test.mjs"
   ],
   "postgres": [
@@ -277,6 +278,7 @@
     "test/financeOnlyCompanyAccessPostgres.test.mjs",
     "test/employeeCompanyAuthorityGrantsPostgres.test.mjs",
     "test/previewCompanyAuthorityBudgetPostgres.test.mjs",
+    "test/eosPersonaLoginPostgres.test.mjs",
     "test/financeVisibilityPostgres.test.mjs",
     "test/workOrderCommandCompanyAuthorityPostgres.test.mjs"
   ]

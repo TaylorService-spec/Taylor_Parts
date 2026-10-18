@@ -239,6 +239,12 @@ export interface PolicyTransaction {
    */
   setPrincipalIdentity(principalId: string, input: PrincipalIdentityBindingInput): Promise<PrincipalRecord>;
   /**
+   * Set (or clear, with null) ONE Principal's display name and nothing else (ACTOR-NAME-1). It writes `display_name` and
+   * `updated_at`: no subject, provider, status, Role or version. Tenant-scoped like setPrincipalIdentity -- an adapter
+   * must refuse a Principal that is not a member of the transaction's tenant.
+   */
+  setPrincipalDisplayName(principalId: string, displayName: string | null): Promise<PrincipalRecord>;
+  /**
    * Add an ADDITIONAL identity binding (provider 'eos') to an existing Principal. Tenant-scoped like
    * setPrincipalIdentity: the Principal must be a member of the transaction's tenant. Refuses a subject
    * already bound (even if revoked) or already a primary, and a second ACTIVE binding for the Principal.
