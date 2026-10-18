@@ -62,7 +62,9 @@ export type EosTokenRefusal =
   | "NOT_YET_VALID"
   | "LIFETIME_EXCEEDED"
   | "CLAIM_REFUSED"
-  | "SUBJECT_MALFORMED";
+  | "SUBJECT_MALFORMED"
+  /** Not a token fault: the bearer is not an EOS token and the Firebase fallback is switched off (EOS_AUTH_FIREBASE_VERIFIER). */
+  | "FIREBASE_VERIFIER_DISABLED";
 
 /** One refusal type. The message is a code only -- never a token, a key or a claim value. */
 export class EosTokenError extends Error {

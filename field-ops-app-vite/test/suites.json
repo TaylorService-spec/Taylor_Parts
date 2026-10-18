@@ -1284,6 +1284,10 @@
     {
       "file": "test/f2rF4FirebaseExit.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/b2EosOnlySignIn.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -10,6 +10,7 @@
 //
 // The target is the EOS API base URL: explicit (`baseUrl`), else EOS_API_BASE_URL, else the eosApi.baseUrl of
 // a NON-production environment in config/environments.json. Production is refused.
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,6 +89,78 @@ export async function callEosApiAsPersona(personaKey, route, payload, options = 
   let body = null;
   try { body = await res.json(); } catch { body = null; }
   return { status: res.status, body };
+}
+
+// ════════════════════ THE PASSWORD SESSION (Firebase exit B2) ════════════════════
+//
+// After B2 an ENROLLED persona can sign in with its password and authenticator exactly as a person does
+// (functions/scripts/enrollPersonaLogins.js). This is the harness side of that: it reads the enrollment tool's credentials
+// file -- named EXPLICITLY by EOS_PERSONA_CREDENTIALS_FILE or `options.credentialsFile`, never discovered -- and signs in over
+// /auth/login and /auth/login/mfa. It is the SAME front door the browser uses, so a proof made with it is a proof of the login.
+// The persona ISSUER above stays the machine path. Neither a credential nor a token is ever printed or put in an error.
+export const PERSONA_CREDENTIALS_FILE_ENV = "EOS_PERSONA_CREDENTIALS_FILE";
+
+const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function base32Decode(text) {
+  let bits = 0; let value = 0; const out = [];
+  for (const ch of String(text).toUpperCase().replace(/[=\s]/g, "")) {
+    const i = BASE32.indexOf(ch);
+    if (i < 0) throw new EosPersonaSessionError("CREDENTIAL_FILE_INVALID", "the authenticator secret is not base32");
+    value = (value << 5) | i; bits += 5;
+    if (bits >= 8) { out.push((value >>> (bits - 8)) & 0xff); bits -= 8; }
+  }
+  return Buffer.from(out);
+}
+
+/** RFC 6238: HMAC-SHA1, 30-second step, six digits. */
+export function totpCode(secretBase32, nowMs = Date.now()) {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(nowMs / 1000 / 30)));
+  const mac = createHmac("sha1", base32Decode(secretBase32)).update(counter).digest();
+  const offset = mac[mac.length - 1] & 0x0f;
+  const n = ((mac[offset] & 0x7f) << 24) | (mac[offset + 1] << 16) | (mac[offset + 2] << 8) | mac[offset + 3];
+  return String(n % 1_000_000).padStart(6, "0");
+}
+
+/**
+ * Sign an ENROLLED persona in with its password and authenticator. Returns { token, expiresAt, personaKey }.
+ * Throws EosPersonaSessionError carrying a code only.
+ */
+export async function loginEosPersona(personaKey, options = {}) {
+  const env = options.env ?? process.env;
+  const file = options.credentialsFile ?? env[PERSONA_CREDENTIALS_FILE_ENV];
+  if (typeof file !== "string" || file.length === 0) {
+    throw new EosPersonaSessionError("NO_CREDENTIALS_FILE", `${PERSONA_CREDENTIALS_FILE_ENV} is not set. The enrollment tool's output file is named explicitly; it is never discovered.`);
+  }
+  let entry;
+  try {
+    entry = (JSON.parse(readFileSync(file, "utf8")).entries ?? []).find((e) => e.personaKey === personaKey && e.state === "enrolled");
+  } catch {
+    throw new EosPersonaSessionError("CREDENTIAL_FILE_INVALID", "the credentials file could not be read as JSON");
+  }
+  if (!entry) throw new EosPersonaSessionError("PERSONA_NOT_ENROLLED", `no enrolled entry for '${personaKey}'`);
+  const base = eosApiBaseUrl({ ...options, env });
+  const origin = options.origin ?? (() => {
+    const registry = JSON.parse(readFileSync(join(REPO_ROOT, "config", "environments.json"), "utf8"));
+    const surface = (registry.environments.find((e) => e.id === (options.environmentId ?? "platform-sandbox"))?.surfaces ?? []).find((s) => s.eosApplication === true);
+    if (!surface) throw new EosPersonaSessionError("NO_APPLICATION_ORIGIN", "the environment declares no EOS application surface; pass `origin`");
+    return surface.url;
+  })();
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const post = async (path, body) => {
+    const res = await fetchImpl(`${base}${path}`, {
+      method: "POST", headers: { "content-type": "application/json", origin, "x-eos-csrf": "1" }, body: JSON.stringify(body),
+    });
+    let json = null;
+    try { json = await res.json(); } catch { json = null; }
+    if (!res.ok || !json?.ok) throw new EosPersonaSessionError(json?.code ?? "LOGIN_FAILED", `login for '${personaKey}' refused at ${path} (HTTP ${res.status})`);
+    return json;
+  };
+  let r = await post("/auth/login", { identifier: entry.loginIdentifier, password: entry.password });
+  if (r.status === "MFA_REQUIRED") r = await post("/auth/login/mfa", { challenge: r.challenge, code: totpCode(entry.totpSecretBase32, options.nowMs ?? Date.now()) });
+  const session = r.session;
+  if (typeof session?.accessToken !== "string") throw new EosPersonaSessionError("LOGIN_FAILED", "no session was issued");
+  return Object.freeze({ token: session.accessToken, expiresAt: session.accessTokenExpiresAt, personaKey });
 }
 
 /** The sessionStorage key the client reads (field-ops-app-vite/src/auth/eosSession.js). */

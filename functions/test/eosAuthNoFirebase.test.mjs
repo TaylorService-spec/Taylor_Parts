@@ -16,6 +16,7 @@ const EOS_AUTH_SRC = readdirSync(join(REPO_ROOT, "functions/src/eosAuth")).filte
 const EOS_PATH_FILES = Object.freeze([
   ...EOS_AUTH_SRC,
   "functions/scripts/bindPrincipalEosIdentity.js",
+  "functions/scripts/enrollPersonaLogins.js",
   "scripts/eosPersonaSession.mjs",
   "field-ops-app-vite/src/auth/eosSession.js",
   "field-ops-app-vite/src/auth/eosSessionIdentity.js",

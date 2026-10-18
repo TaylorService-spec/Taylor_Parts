@@ -249,6 +249,15 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return updated;
       },
 
+      setPrincipalDisplayName: async (principalId, displayName) => {
+        const member = t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId);
+        const found = t.principals.find((x) => x.id === principalId);
+        if (!found || !member) throw new PolicyStoreError("principal not found in this tenant");
+        const updated: PrincipalRecord = { ...found, displayName, updatedAt: this.now() };
+        t.principals[t.principals.indexOf(found)] = updated;
+        return updated;
+      },
+
       createPrincipalIdentityBinding: async (input) => {
         // Same refusals as the PostgreSQL adapter (its CHECK, UNIQUE, partial UNIQUE and trigger), so
         // the two adapters refuse the same call.

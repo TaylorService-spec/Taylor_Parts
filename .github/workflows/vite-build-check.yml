@@ -75,3 +75,8 @@ jobs:
       - name: Verify deployed-version manifest (D1)
         run: npm run verify:version
         working-directory: field-ops-app-vite
+      # FIREBASE EXIT B2 -- built-artifact proof: the EOS-only sign-in bundle (VITE_AUTH_SOURCE=eos) carries none of the
+      # environment's Firebase identity values, and the ordinary bundle carries all of them (so the scan cannot pass vacuously).
+      - name: Verify the EOS-only build carries no Firebase config (B2)
+        run: npm run verify:eos-only
+        working-directory: field-ops-app-vite

@@ -41,3 +41,13 @@ export function nonprodPersonaSubject(key: NonprodPersonaKey): string {
   if (!isNonprodPersonaKey(key)) throw new Error("not a governed nonprod persona key");
   return `${NONPROD_PERSONA_SUBJECT_PREFIX}${key}`;
 }
+
+/**
+ * Is this EOS subject one of the 16 persona subjects? Closed on the key list, so `nonprod-persona.anything-else` is not
+ * a persona. The verifier uses it to tell an enrolled persona's PASSWORD session (carries `sid`) from a persona ISSUER
+ * token (no `sid`).
+ */
+export function isNonprodPersonaSubject(subject: unknown): boolean {
+  return typeof subject === "string" && subject.startsWith(NONPROD_PERSONA_SUBJECT_PREFIX)
+    && isNonprodPersonaKey(subject.slice(NONPROD_PERSONA_SUBJECT_PREFIX.length));
+}

@@ -152,8 +152,18 @@ test("U7 the composite verifier: human tokens need a sid, a passing gate AND a r
   await inScope(() => assert.rejects(withGate(mint({ sub: HUMAN })), /CLAIM_REFUSED/));
   await inScope(() => assert.rejects(without(mint({ sub: HUMAN, sid: "s".repeat(32) })), /CLAIM_REFUSED/, "front door off: human tokens refused"));
   assert.equal((await without(mint({ sub: "nonprod-persona.dispatcher" }))).externalSubject, "nonprod-persona.dispatcher");
-  await inScope(() => assert.rejects(withGate(mint({ sub: "nonprod-persona.dispatcher", sid: "s".repeat(32) })), /CLAIM_REFUSED/));
-  assert.equal(gateCalls.filter(([sub]) => sub !== HUMAN).length, 0, "the gate never runs for persona tokens");
+  // B2: a PERSONA subject may carry `sid` ONLY as an enrolled persona's password session -- and then it goes through the SAME gate.
+  const personaSub = "nonprod-persona.dispatcher";
+  const beforeGate = gateCalls.length;
+  await inScope(async () => assert.deepEqual(await withGate(mint({ sub: personaSub, sid: "s".repeat(32) })), { externalSubject: personaSub, identityProvider: "eos" }));
+  await inScope(() => assert.rejects(withGate(mint({ sub: personaSub, sid: "r".repeat(32) })), /SESSION_INVALID/, "a revoked persona session is refused by the gate"));
+  await inScope(() => assert.rejects(without(mint({ sub: personaSub, sid: "s".repeat(32) })), /CLAIM_REFUSED/, "front door off: a persona session is refused"));
+  assert.equal(gateCalls.length - beforeGate, 2, "the gate ran for the two persona SESSION tokens that reached it");
+  // The persona ISSUER's token (no sid) still never meets the gate; a subject that is neither human nor persona never carries sid.
+  const afterGate = gateCalls.length;
+  assert.equal((await withGate(mint({ sub: personaSub }))).externalSubject, personaSub);
+  await inScope(() => assert.rejects(withGate(mint({ sub: "service.something", sid: "s".repeat(32) })), /CLAIM_REFUSED/));
+  assert.equal(gateCalls.length, afterGate, "the gate ran for neither");
 });
 
 test("U8 human subjects and login identifiers", () => {

@@ -31,7 +31,7 @@
 // Every response is `no-store`. A per-client-address limiter answers 429 before any password work is spent.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VerifiedEosToken } from "./eosAccessToken";
-import { EosLoginService, LoginRefusal, isHumanSubject, type ClientFacts, type IssuedLoginSession } from "./eosLoginService";
+import { EosLoginService, LoginRefusal, isLoginSessionSubject, type ClientFacts, type IssuedLoginSession } from "./eosLoginService";
 import { PasswordWorkSaturated } from "./credentialCrypto";
 import type { EosCookieSameSite } from "./eosAuthConfig";
 
@@ -306,7 +306,7 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
         if (t) {
           try {
             const v = options.verify(t);
-            if (isHumanSubject(v.externalSubject) && v.sessionId) await s.logoutSession(v.externalSubject, v.sessionId, facts);
+            if (isLoginSessionSubject(v.externalSubject) && v.sessionId) await s.logoutSession(v.externalSubject, v.sessionId, facts);
           } catch {
             // An unverifiable bearer revokes nothing and reveals nothing.
           }
@@ -331,7 +331,7 @@ export async function handleLoginRequest(options: LoginHttpOptions, request: Log
       return json(401, { ok: false, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
     }
     // Self-service is for HUMAN login sessions. A persona or Firebase identity has no login account to manage.
-    if (!isHumanSubject(verified.externalSubject) || !verified.sessionId) {
+    if (!isLoginSessionSubject(verified.externalSubject) || !verified.sessionId) {
       return json(403, { ok: false, code: "NOT_A_LOGIN_SESSION", message: "account security requires an EOS login session" }, origin);
     }
     const sub = verified.externalSubject;

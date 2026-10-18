@@ -37,6 +37,7 @@
 // the original paragraph that was always the point.
 import { auth } from "../firebase/firebase.js";
 import { currentEosSessionToken, humanEosTokenSource } from "../auth/eosSession.js";
+import { EOS_AUTH_ONLY } from "../auth/authSource.js";
 import { ACCESS_CHANGING_OPERATIONS, notifyEosAccessChanged } from "../access/eosAccessEvents.js";
 
 /** The operations the server accepts. Mirrored so a typo fails here rather than as a 404. */
@@ -338,6 +339,9 @@ export async function currentIdToken() {
   }
   const eosToken = currentEosSessionToken();
   if (eosToken) return eosToken;
+  // EOS-ONLY SIGN-IN BUILD (Firebase exit B2): there is no Firebase app and NO Firebase fallback. Every API client reaches
+  // its bearer through this function, so removing the fallback here removes it for all of them. No EOS session = no token.
+  if (EOS_AUTH_ONLY) return null;
   const user = auth?.currentUser ?? null;
   if (!user) return null;
   return user.getIdToken();

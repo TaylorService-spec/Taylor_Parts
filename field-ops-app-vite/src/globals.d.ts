@@ -20,6 +20,10 @@ declare const __APP_FIREBASE_CONFIG__: {
 };
 declare const __APP_ENVIRONMENT__: { id: string; role: string; deployment: string };
 declare const __APP_READINESS__: Record<string, boolean>;
+// Firebase exit B2 — how people sign in to this bundle: "firebase" (default) or "eos" (EOS-only sign-in; the bundle then
+// carries NO Firebase config, and the build aliases the Firebase module to firebase/firebaseAbsent.js, so it is never
+// loaded). The registry decides where "eos" is allowed.
+declare const __APP_AUTH_SOURCE__: "firebase" | "eos";
 
 // Per-environment capability activation (spec 2026-08-14) — build-time array of
 // spine capability ids this environment activates despite catalog active:false.

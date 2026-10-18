@@ -35,6 +35,7 @@ import {
   PASSWORD_HASH_PARAMETERS, PASSWORD_MAX_LENGTH,
 } from "./credentialCrypto";
 import { timingSafeEqual } from "node:crypto";
+import { isNonprodPersonaKey, isNonprodPersonaSubject, nonprodPersonaSubject } from "./nonprodPersonas";
 
 const SCHEMA = "eos_policy";
 
@@ -42,6 +43,12 @@ const SCHEMA = "eos_policy";
 export const HUMAN_SUBJECT_PREFIX = "user.";
 export const newHumanSubject = (): string => `${HUMAN_SUBJECT_PREFIX}${randomBytes(16).toString("hex")}`;
 export const isHumanSubject = (subject: string): boolean => /^user\.[0-9a-f]{32}$/.test(subject);
+/**
+ * A subject that can hold a LOGIN SESSION: a human, or one of the 16 synthetic personas once it has been enrolled with a
+ * password login (enrollPersonaLogin). The self-service routes and logout accept either; a persona token WITHOUT `sid` is
+ * the persona issuer's machine token and is never a login session.
+ */
+export const isLoginSessionSubject = (subject: string): boolean => isHumanSubject(subject) || isNonprodPersonaSubject(subject);
 
 const LOGIN_IDENTIFIER = /^[a-z0-9][a-z0-9._@+-]{2,127}$/;
 export function normalizeLoginIdentifier(value: unknown): string | null {
@@ -1128,11 +1135,17 @@ export class EosLoginService {
     const now = this.now();
     await c.query(`UPDATE ${SCHEMA}.login_recovery_codes SET superseded_at = $2 WHERE account_id = $1 AND used_at IS NULL AND superseded_at IS NULL`, [accountId, now]);
     const codes = newRecoveryCodes();
+    await this.storeRecoveryCodes(c, keyring, accountId, codes);
+    return codes;
+  }
+
+  /** Persist the DIGESTS of already-generated recovery codes (the codes themselves are never stored). */
+  private async storeRecoveryCodes(c: PoolClient, keyring: FactorKeyring, accountId: string, codes: readonly string[]): Promise<void> {
+    const now = this.now();
     for (const code of codes) {
       await c.query(`INSERT INTO ${SCHEMA}.login_recovery_codes (id, account_id, key_id, code_digest, created_at) VALUES ($1,$2,$3,$4,$5)`,
         [randomUUID(), accountId, keyring.currentKid, recoveryCodeDigest(keyring, keyring.currentKid, accountId, normalizeRecoveryCode(code) as string), now]);
     }
-    return codes;
   }
 
   /**
@@ -1584,6 +1597,88 @@ export class EosLoginService {
     });
   }
 
+  /**
+   * ENROLL ONE OF THE 16 SYNTHETIC PERSONAS with a password login and a second factor (Firebase exit B2, Owner decision 2).
+   *
+   * OPERATOR TOOLING ONLY. This is NOT in LOGIN_ADMINISTRATION_OPERATIONS and no HTTP route reaches it: the only caller is
+   * functions/scripts/enrollPersonaLogins.js, run by an operator who holds the database and the factor key. A person with
+   * Administration authority cannot attach a password to a persona (the persona model is frozen, D-11), and nobody can use
+   * this on a real person: the target must hold the persona's own EOS binding `nonprod-persona.<key>`.
+   *
+   * WHAT IT PRESERVES. The Principal, its (firebase, uid) alias, its Roles, scopes, membership and Employee link are not
+   * touched, and neither is its persona binding: the login account is bound to THAT SAME binding, so the persona keeps its
+   * one EOS identity and the persona ISSUER keeps working as the machine path. The access token of a persona password
+   * session carries the persona subject plus `sid`, and goes through the same session gate as a human token.
+   *
+   * WHAT IT NEVER DOES. It never resets or replaces: a persona that already has a live login account is refused
+   * (CONFLICT), so re-running the tool cannot change a credential. It returns nothing secret: the caller generated the
+   * password, the authenticator secret and the recovery codes and already holds them.
+   *
+   * The audit event's actor is the persona Principal itself (as for a persona session), with a stated reason.
+   */
+  async enrollPersonaLogin(input: {
+    tenantId: string; personaKey: unknown; principalId: string; loginIdentifier: unknown; password: unknown;
+    totpSecret: Buffer; recoveryCodes: readonly string[]; reason: string;
+  }) {
+    if (this.deps.environment !== "nonprod") throw new LoginRefusal("FORBIDDEN", "persona enrollment is nonprod only");
+    if (!isNonprodPersonaKey(input.personaKey)) throw new LoginRefusal("INVALID_INPUT", "personaKey is not one of the governed persona keys");
+    const personaKey = input.personaKey;
+    const identifier = normalizeLoginIdentifier(input.loginIdentifier);
+    if (!identifier) throw new LoginRefusal("INVALID_INPUT", "loginIdentifier must be 3-128 of a-z 0-9 . _ @ + -");
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (reason.length < 20 || reason.length > 500) throw new LoginRefusal("REASON_REQUIRED", "a stated reason of 20-500 characters is required");
+    const keyring = this.deps.factorKeyring;
+    if (!keyring) throw new LoginRefusal("MFA_NOT_CONFIGURED");
+    if (!Buffer.isBuffer(input.totpSecret) || input.totpSecret.length !== 20) throw new LoginRefusal("INVALID_INPUT", "the authenticator secret must be 20 bytes");
+    const codes = input.recoveryCodes.map((c) => normalizeRecoveryCode(c));
+    if (codes.length !== 10 || codes.some((c) => c === null) || new Set(codes).size !== codes.length) {
+      throw new LoginRefusal("INVALID_INPUT", "exactly ten distinct recovery codes are required");
+    }
+    const principalId = input.principalId;
+    const principal = await this.deps.repo.getPrincipal(principalId);
+    if (!principal || principal.status !== "active") throw new LoginRefusal("CONFLICT", "that principal is not active");
+    const membership = await this.deps.repo.getMembership(input.tenantId, principalId);
+    if (!membership || membership.status !== "active") throw new LoginRefusal("CONFLICT", "that principal is not an active member of this tenant");
+    await this.requireEmployeeLink(input.tenantId, principalId);
+    // THE PERSONA'S OWN BINDING, and nothing else: this is what stops the tool being aimed at a real person.
+    const binding = await this.deps.repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER);
+    if (!binding || binding.status !== "active" || binding.externalSubject !== nonprodPersonaSubject(personaKey)) {
+      throw new LoginRefusal("CONFLICT", "that principal does not hold the persona's own EOS binding");
+    }
+    const policy = passwordPolicyRefusal(input.password, identifier);
+    if (policy) throw new LoginRefusal("PASSWORD_POLICY", policy);
+    const hash = await hashPassword(input.password as string, this.hashParameters);
+
+    return this.tx(async (c) => {
+      // Re-checked under the transaction: a second run racing this one cannot create a second account.
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-persona-login:${principalId}`]);
+      if (await this.liveAccountForPrincipal(c, principalId, true)) throw new LoginRefusal("CONFLICT", "that persona already has a login account");
+      if (await this.accountByIdentifier(c, identifier)) throw new LoginRefusal("CONFLICT", "that login identifier is in use");
+      const accountId = randomUUID();
+      const factorId = randomUUID();
+      const now = this.now();
+      try {
+        await c.query(
+          `INSERT INTO ${SCHEMA}.login_accounts (id, tenant_id, principal_id, binding_id, login_identifier, status, password_hash,
+             password_changed_at, credential_version, mfa_required, created_by, created_at, updated_at, reason)
+           VALUES ($1,$2,$3,$4,$5,'active',$6,$7,1,TRUE,$3,$7,$7,$8)`,
+          [accountId, input.tenantId, principalId, binding.id, identifier, hash, now, reason]);
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") throw new LoginRefusal("CONFLICT", "that login identifier or principal already has a login account");
+        throw err;
+      }
+      await c.query(
+        `INSERT INTO ${SCHEMA}.login_mfa_factors (id, account_id, kind, status, secret_sealed, created_at, confirmed_at)
+         VALUES ($1,$2,'totp','active',$3,$4,$4)`,
+        [factorId, accountId, encryptFactorSecret(keyring, input.totpSecret, factorId), now]);
+      await this.storeRecoveryCodes(c, keyring, accountId, codes as string[]);
+      await this.audit(c, input.tenantId, principalId, "enrollPersonaLogin", accountId, null,
+        { personaKey, loginIdentifier: identifier, bindingId: binding.id, mfaRequired: true, factor: "totp", recoveryCodes: codes.length }, reason);
+      await this.event(c, { event: "enrollPersonaLogin", outcome: "success", accountId, principalId, tenantId: input.tenantId });
+      return Object.freeze({ accountId, principalId, loginIdentifier: identifier, subject: binding.externalSubject });
+    });
+  }
+
   /** Common shape for the per-account administration acts below. */
   private async administer<T>(actor: AdminActor, input: Record<string, unknown>, action: LoginAdministrationOperation,
     preCheckOrFn: ((principalId: string) => Promise<void>) | ((c: PoolClient, a: AccountRow, reason: string) => Promise<{ before: unknown; after: unknown; result: T }>),
@@ -1689,6 +1784,9 @@ export class EosLoginService {
   /** End a login for good: the account retires, its sessions and tickets end, and its EOS binding is revoked. */
   async retireLoginAccount(actor: AdminActor, input: Record<string, unknown>) {
     return this.administer(actor, input, "retireLoginAccount", async (c, a, reason) => {
+      // A PERSONA's login account sits on the persona's own EOS binding, which retiring would REVOKE -- ending the persona
+      // issuer's machine path with it. Personas are disabled (setLoginAccountStatus), never removed here.
+      if (isNonprodPersonaSubject(a.subject)) throw new LoginRefusal("PROTECTED_TARGET", "a persona login is disabled, not removed; its binding belongs to the persona model");
       await this.requireNotLastAdministratorLogin(c, actor.tenantId, a);
       const now = this.now();
       const revoked = await this.revokeSessions(c, a.id, "ACCOUNT_RETIRED");
