@@ -229,6 +229,57 @@ test("Finance-only company assignments grant Finance reach only, in PostgreSQL",
     assert.equal(await effectOf(FINANCE_COMPANY_ACCESS_ROLE), "FINANCE_ONLY");
   });
 
+  await t.test("9: RACE -- a classification and a non-command capability write on the same Role serialise, in both orders", async () => {
+    const mk = async (key) => {
+      assert.equal((await admin("createRole", { key, name: key, reason: "local test tenant only" })).ok, true);
+      assert.equal((await grant(key, "finance.payment.read")).ok, true);
+      return (await roleOf(key)).id;
+    };
+    const blocked = async (pid) => {
+      for (let i = 0; i < 100; i += 1) {
+        if ((await q(`SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'`, [pid])).rows.length > 0) return;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.fail("the second transaction never blocked on the Role row");
+    };
+    const open = async () => {
+      const c = await pool.connect();
+      await c.query("BEGIN");
+      return { c, pid: (await c.query(`SELECT pg_backend_pid() AS pid`)).rows[0].pid };
+    };
+    const insertNonFinance = (c, roleId, id) => c.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+        SELECT $2, $1, $3, c.id, 'f','f','f' FROM eos_policy.capabilities c WHERE c.key = 'workOrder.record.read'`, [TENANT, id, roleId]);
+    const classify = async (c, roleId) => {
+      await c.query(`SELECT set_config('eos_policy.administration_command', 'on', true)`);
+      return c.query(`UPDATE eos_policy.roles SET company_authority_effect = 'FINANCE_ONLY' WHERE id = $1`, [roleId]);
+    };
+    const finish = async (conn, how) => { try { await conn.c.query(how); } finally { conn.c.release(); } };
+
+    // Order 1: the reclassification is in flight (uncommitted) when the non-finance insert arrives -> the insert waits, then refuses.
+    const r1 = await mk("raceClassifyFirst");
+    const a1 = await open(); const b1 = await open();
+    await classify(a1.c, r1);
+    const pending1 = insertNonFinance(b1.c, r1, "rc_race_1").then(() => "inserted", (e) => e.message);
+    await blocked(b1.pid);
+    await finish(a1, "COMMIT");
+    assert.match(await pending1, /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/, "the insert re-read the committed classification");
+    await finish(b1, "ROLLBACK");
+    assert.equal(await effectOf("raceClassifyFirst"), "FINANCE_ONLY");
+
+    // Order 2: the non-finance insert is in flight (uncommitted, holding the Role row FOR SHARE) when the reclassification
+    // arrives -> the reclassification waits, then sees the committed row and refuses. The Role is OPERATIONAL in the
+    // inserter's snapshot, which is exactly the case an effect filter in the lock query would have missed.
+    const r2 = await mk("raceInsertFirst");
+    const a2 = await open(); const b2 = await open();
+    await insertNonFinance(a2.c, r2, "rc_race_2");
+    const pending2 = classify(b2.c, r2).then(() => "classified", (e) => e.message);
+    await blocked(b2.pid);
+    await finish(a2, "COMMIT");
+    assert.match(await pending2, /FINANCE_ONLY_CLASSIFICATION_REFUSED/, "the reclassification saw the committed capability");
+    await finish(b2, "ROLLBACK");
+    assert.equal(await effectOf("raceInsertFirst"), "OPERATIONAL");
+  });
+
   await t.test("REVERSIBLE and per-Role: widening back is the same governed command and restores the expansion; then the classification is restored", async () => {
     assert.equal((await classify(FINANCE_COMPANY_ACCESS_ROLE, "OPERATIONAL")).ok, true);
     assert.deepEqual(await companies(fo), ["taylor", "ventana"]);

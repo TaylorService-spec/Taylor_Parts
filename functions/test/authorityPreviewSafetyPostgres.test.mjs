@@ -306,7 +306,7 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
       "role_capabilities|preview_never_commits|authority_preview_never_commits|13e6cee9d4d1aacbc65b8581adc83b7a",
       // DECISIONS #248 (migration 1764600000000): a non-finance capability cannot enter a FINANCE_ONLY Role. Reads two
       // tables (a FOR SHARE row lock on the Role) then a RAISE -- it writes nothing, so a rolled-back preview is unaffected.
-      "role_capabilities|role_capabilities_finance_only_guard|role_capabilities_finance_only_guard|e297cd4882d3541b18df5521e833aa43",
+      "role_capabilities|role_capabilities_finance_only_guard|role_capabilities_finance_only_guard|4705c8c18bde2089ef420b0e37824763",
       "role_capabilities|role_capabilities_honour_decisions|role_capabilities_honour_decisions|65a8b3f19e87de3edaa7bd126668a3c1",
       "role_capability_decisions|preview_never_commits|authority_preview_never_commits|13e6cee9d4d1aacbc65b8581adc83b7a",
       "role_capability_decisions|role_capability_decisions_append_only|role_capability_decisions_append_only|5cbe15d2240b51a463506dc11ebe90de",

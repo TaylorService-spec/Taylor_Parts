@@ -62,17 +62,22 @@ CREATE TRIGGER roles_company_authority_effect_governed
 CREATE FUNCTION role_capabilities_finance_only_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
 DECLARE
-    v_role TEXT;
-    v_cap  TEXT;
+    v_role   TEXT;
+    v_effect TEXT;
+    v_cap    TEXT;
 BEGIN
-    -- FOR SHARE on the Role row: a concurrent reclassification (the UPDATE of roles locks the same row before its own
-    -- trigger reads role_capabilities) and a capability insert or move that did not go through the Administration command
-    -- (which already holds the tenant governance lock) therefore serialise. Whichever commits second sees the other's
-    -- result at READ COMMITTED, so a Role can never end up FINANCE_ONLY while holding a non-finance capability.
-    SELECT r.key INTO v_role FROM eos_policy.roles r
-     WHERE r.id = NEW.role_id AND r.tenant_id = NEW.tenant_id AND r.company_authority_effect = 'FINANCE_ONLY'
+    -- The Role row is locked FOR SHARE UNCONDITIONALLY (the effect is tested afterwards, in PL/pgSQL, not in the WHERE
+    -- clause): a filter on FINANCE_ONLY would take no lock on a Role that is still OPERATIONAL in this statement's snapshot,
+    -- and a concurrent reclassification could then commit alongside this write. A reclassification (UPDATE of roles) holds
+    -- the row's exclusive tuple lock while its own trigger reads role_capabilities, so the two serialise in both orders:
+    --   this write first   -> the reclassification waits for it and then sees (and refuses on) the new capability row;
+    --   reclassification first -> this write waits, then (READ COMMITTED) re-reads the committed Role and refuses.
+    -- That is all it serialises: a capability entering a Role versus that Role's classification. A write that already goes
+    -- through the Administration command is also serialised by the tenant governance lock.
+    SELECT r.key, r.company_authority_effect INTO v_role, v_effect FROM eos_policy.roles r
+     WHERE r.id = NEW.role_id AND r.tenant_id = NEW.tenant_id
        FOR SHARE OF r;
-    IF v_role IS NULL THEN RETURN NEW; END IF;
+    IF v_effect IS DISTINCT FROM 'FINANCE_ONLY' THEN RETURN NEW; END IF;
     SELECT c.key INTO v_cap FROM eos_policy.capabilities c WHERE c.id = NEW.capability_id;
     IF v_cap IS NOT NULL AND v_cap NOT LIKE 'finance.%' THEN
         RAISE EXCEPTION 'FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY: role % is FINANCE_ONLY and may not hold %; reclassify it through updateRole first', v_role, v_cap;
@@ -90,18 +95,24 @@ CREATE TRIGGER role_capabilities_finance_only_guard
 CREATE FUNCTION capabilities_finance_only_key_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
 DECLARE
-    v_role TEXT;
+    v_role   TEXT;
+    v_effect TEXT;
 BEGIN
     IF NEW.key = OLD.key OR NEW.key LIKE 'finance.%' THEN RETURN NEW; END IF;
-    SELECT r.key INTO v_role
-      FROM eos_policy.role_capabilities rc
-      JOIN eos_policy.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
-     WHERE rc.capability_id = NEW.id AND r.company_authority_effect = 'FINANCE_ONLY'
-     LIMIT 1
-       FOR SHARE OF r;
-    IF v_role IS NOT NULL THEN
-        RAISE EXCEPTION 'FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY: capability % is held by FINANCE_ONLY role %; renaming it to % would give that Role a non-finance capability', OLD.key, v_role, NEW.key;
-    END IF;
+    -- Every Role holding this capability is locked FOR SHARE unconditionally (ordered, so two renames cannot deadlock),
+    -- THEN each is tested, for the same reason as above: a concurrent reclassification of any holder serialises with the rename.
+    FOR v_role, v_effect IN
+        SELECT r.key, r.company_authority_effect
+          FROM eos_policy.role_capabilities rc
+          JOIN eos_policy.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+         WHERE rc.capability_id = NEW.id
+         ORDER BY r.id
+           FOR SHARE OF r
+    LOOP
+        IF v_effect = 'FINANCE_ONLY' THEN
+            RAISE EXCEPTION 'FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY: capability % is held by FINANCE_ONLY role %; renaming it to % would give that Role a non-finance capability', OLD.key, v_role, NEW.key;
+        END IF;
+    END LOOP;
     RETURN NEW;
 END
 $fn$;
