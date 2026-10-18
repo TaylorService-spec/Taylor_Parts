@@ -21,15 +21,21 @@
 -- capability and every capability it holds is a finance.* key, and a non-finance capability cannot be inserted into a
 -- FINANCE_ONLY Role. A direct write is refused with a named error.
 
--- LOCK ORDER (both write paths take the Role row FIRST, then read role_capabilities), so an invalid FINANCE_ONLY Role /
--- non-finance capability pair cannot commit in EITHER order:
---   reclassification (UPDATE roles): holds the Role row's exclusive tuple lock while its trigger reads role_capabilities
---     (and capabilities.key); it waits for any in-flight capability write on that Role, then sees it committed and refuses.
---   capability entering a Role (INSERT / UPDATE OF role_id, capability_id on role_capabilities): the guard locks the Role row
---     FOR SHARE unconditionally (the effect is tested afterwards, not in the lock query's filter); it waits for an in-flight
---     reclassification, then re-reads the committed Role (READ COMMITTED) and refuses.
---   capability key rename (UPDATE OF key on capabilities): locks every holder Role FOR SHARE in id order, then tests each.
--- Proved with two real connections in both orders: functions/test/financeOnlyCompanyAccessPostgres.test.mjs 9a, 9b, 9c.
+
+-- WHAT SERIALISES, AND IN WHAT LOCK ORDER. An invalid FINANCE_ONLY Role / non-finance capability combination cannot commit,
+-- whichever write arrives first. Three pairs of writers, each serialised by row locks (READ COMMITTED: the waiter re-reads
+-- the committed row and re-decides):
+--   1. capability entering a Role (INSERT / UPDATE OF role_id, capability_id on role_capabilities)  vs  reclassification
+--      (UPDATE roles). Role row first. The guard locks the Role row FOR SHARE unconditionally (the effect is tested afterwards,
+--      not in the lock query's filter); the reclassification's UPDATE holds the Role row's exclusive tuple lock while its
+--      trigger reads role_capabilities and capabilities.key. Whichever is second waits, then refuses.
+--   2. capability key rename (UPDATE OF key on capabilities)  vs  reclassification. Role row first: the rename locks every
+--      holder Role FOR SHARE in id order, then tests each; the reclassification as in 1.
+--   3. capability entering a Role  vs  rename of that capability's key. Capability row: when the Role is FINANCE_ONLY the
+--      guard reads the capability FOR KEY SHARE and tests the key it then sees; a rename of a unique key holds the row
+--      exclusively. Rename first: the insert waits, re-reads the new key and refuses. Insert first: the rename waits, and its
+--      holder scan then sees the committed row and refuses.
+-- Proved with real connections in every order: functions/test/financeOnlyCompanyAccessPostgres.test.mjs 9a, 9b, 9c, 9d.
 
 SET search_path = eos_policy, public;
 
@@ -88,7 +94,9 @@ BEGIN
      WHERE r.id = NEW.role_id AND r.tenant_id = NEW.tenant_id
        FOR SHARE OF r;
     IF v_effect IS DISTINCT FROM 'FINANCE_ONLY' THEN RETURN NEW; END IF;
-    SELECT c.key INTO v_cap FROM eos_policy.capabilities c WHERE c.id = NEW.capability_id;
+    -- FOR KEY SHARE conflicts with the exclusive tuple lock of a concurrent rename of this capability's (unique) key, so the
+    -- key tested below is the committed one (see pair 3 in the header).
+    SELECT c.key INTO v_cap FROM eos_policy.capabilities c WHERE c.id = NEW.capability_id FOR KEY SHARE;
     IF v_cap IS NOT NULL AND v_cap NOT LIKE 'finance.%' THEN
         RAISE EXCEPTION 'FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY: role % is FINANCE_ONLY and may not hold %; reclassify it through updateRole first', v_role, v_cap;
     END IF;

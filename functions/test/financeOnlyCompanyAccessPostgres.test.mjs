@@ -329,6 +329,44 @@ test("Finance-only company assignments grant Finance reach only, in PostgreSQL",
     assert.equal(await nonFinanceHeld(), 0);
   });
 
+  await t.test("9d RACE: a finance capability entering a FINANCE_ONLY Role versus a rename of that capability to a non-finance key, in both orders", async () => {
+    const cap = async (id, key) => q(`INSERT INTO eos_policy.capabilities (id,key,description,object_key,action_key,action_kind,display_label)
+      VALUES ($1,$2,'race fixture','raceFixture',$1,'READ','Race')`, [id, key]);
+    const rename = ({ c }, capId) => c.query(`UPDATE eos_policy.capabilities SET key = 'zz.race.nonfinance.' || id WHERE id = $1`, [capId]);
+    const insertCap = ({ c }, roleId, capId, id) => c.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+      VALUES ($3,$1,$2,$4,'f','f','f')`, [TENANT, roleId, id, capId]);
+    const finish = async (conn) => conn.c.query("COMMIT");
+    try {
+      // A FINANCE_ONLY Role (committed) and two finance capabilities it does not hold yet.
+      const role = await raceRole("raceD");
+      const setup = await raceOpen();
+      await reclassify(setup, role);
+      await finish(setup);
+      assert.equal(await effectOf("raceD"), "FINANCE_ONLY");
+      await cap("cap-race-d1", "finance.race.d1"); await cap("cap-race-d2", "finance.race.d2");
+
+      // (i) the rename is first (uncommitted): the insert waits on the capability row, re-reads the new key and is refused.
+      const a = await raceOpen(); const b = await raceOpen();
+      await rename(a, "cap-race-d1");
+      const pending1 = settle(insertCap(b, role, "cap-race-d1", "rc-race-d1"));
+      await waitingOnLock(b.pid);
+      await finish(a);
+      assert.match(await pending1, /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/, "the insert saw the committed non-finance key and was refused");
+
+      // (ii) the insert is first (uncommitted, key still finance): the rename waits, and its holder scan then sees the
+      // committed row and refuses.
+      const d = await raceOpen(); const e = await raceOpen();
+      await insertCap(d, role, "cap-race-d2", "rc-race-d2");
+      const pending2 = settle(rename(e, "cap-race-d2"));
+      await waitingOnLock(e.pid);
+      await finish(d);
+      assert.match(await pending2, /FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY/, "the rename saw the committed holder and was refused");
+    } finally { await raceDone(); }
+    assert.equal(await effectOf("raceD"), "FINANCE_ONLY");
+    assert.equal((await q(`SELECT key FROM eos_policy.capabilities WHERE id = 'cap-race-d2'`)).rows[0].key, "finance.race.d2", "the held capability keeps its finance key");
+    assert.equal(await nonFinanceHeld(), 0, "no non-finance capability sits on a FINANCE_ONLY Role");
+  });
+
   await t.test("REVERSIBLE and per-Role: widening back is the same governed command and restores the expansion; then the classification is restored", async () => {
     assert.equal((await classify(FINANCE_COMPANY_ACCESS_ROLE, "OPERATIONAL")).ok, true);
     assert.deepEqual(await companies(fo), ["taylor", "ventana"]);
