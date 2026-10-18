@@ -51,6 +51,9 @@ import {
   updateFieldDefinition,
   assignRole,
   revokeRole,
+  grantCompanyAuthority,
+  revokeCompanyAuthority,
+  listEmployeeCompanyAuthority,
   grantObjectActionToRole,
   guardRoleCompanyAuthorityEffectChange,
   revokeObjectActionFromRole,
@@ -177,6 +180,9 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   // Lane SC: the Security Role ASSIGNMENT SCOPES the runtime decides -- per scope type its consumers and this
   // tenant's governed values; per Role which scopes it may be assigned at and what each would confer or leave inert.
   "listSupportedAssignmentScopes",
+  // DECISIONS #249: one Employee's home company and explicit company-access grants (history included) + the companies a
+  // grant could name -- the Employee > Company access section. The same authority as listPrincipalRoleAssignments.
+  "listEmployeeCompanyAuthority",
 ] as const);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -193,6 +199,10 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "removeFieldPermissionOverride",
   "assignRole",
   "revokeRole",
+  // DECISIONS #249: explicit Employee company-access grants -- REACH to a company, never a capability. Gated like assignRole
+  // (admin.roleAssignment.write), previewed and committed with the digest like assignRole, one audit event per change.
+  "grantCompanyAuthority",
+  "revokeCompanyAuthority",
   // Object-owned grants. The contract is (objectKey, actionKey, grantee) -- never a capability key.
   "grantObjectActionToRole",
   "revokeObjectActionFromRole",
@@ -312,6 +322,8 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   listSupportedConditionKinds: "rolesPermissions",
   // The Employee > Security Roles picker's vocabulary: the same authority as listPrincipalRoleAssignments.
   listSupportedAssignmentScopes: "users",
+  // The Employee > Company access section: the same authority as the Employee's Security Roles (admin.principalAccess.read).
+  listEmployeeCompanyAuthority: "users",
 });
 
 /** The one capability each Administration read requires. Derived, never restated. */
@@ -972,6 +984,9 @@ async function dispatch(
     case "listSupportedAssignmentScopes":
       return listSupportedAssignmentScopes(repo, actor.tenantId, { roleKey: optionalString(input.roleKey) });
 
+    case "listEmployeeCompanyAuthority":
+      return listEmployeeCompanyAuthority(repo, actor.tenantId, { employeeId: requireString(input.employeeId, "employeeId") });
+
     case "getSecurityRoleDetail":
       return describeSecurityRole(repo, actor.tenantId, requireString(input.roleKey, "roleKey"));
 
@@ -1097,6 +1112,8 @@ async function dispatch(
     case "revokeObjectActionFromPrincipal":
     case "assignRole":
     case "revokeRole":
+    case "grantCompanyAuthority":
+    case "revokeCompanyAuthority":
       return authorityCommand(repo, actor, operation, input, reason);
 
     case "setTenantSalesChannelStatus":
@@ -1297,6 +1314,22 @@ async function authorityCommand(
         assignmentId: requireString(input.assignmentId, "assignmentId"),
         reason: optionalString(input.reason) ? reason : null,
         requireStatedReason: true,
+      });
+
+    case "grantCompanyAuthority":
+      // DECISIONS #249. The Employee, the company and the dates are STATED; the tenant never is. A stated reason, as assignRole.
+      return grantCompanyAuthority(repo, actor, {
+        employeeId: requireString(input.employeeId, "employeeId"),
+        operatingCompanyId: requireString(input.operatingCompanyId, "operatingCompanyId"),
+        effectiveFrom: optionalString(input.effectiveFrom),
+        effectiveUntil: optionalString(input.effectiveUntil),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "revokeCompanyAuthority":
+      return revokeCompanyAuthority(repo, actor, {
+        grantId: requireString(input.grantId, "grantId"),
+        reason: optionalString(input.reason) ? reason : null,
       });
     default: {
       const never: never = operation;

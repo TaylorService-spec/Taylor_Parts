@@ -35,6 +35,8 @@
 // because there is no parameter that would accept the widening. A query for tenant A that returned
 // tenant B's rows is not expressible through this port.
 import type {
+  CompanyAuthorityGrantRecord,
+  CompanyGrantEmployeeFact,
   CredOverride,
   CredSet,
   CapabilityRecord,
@@ -84,6 +86,16 @@ export interface NewRoleCapabilityInput {
   readonly capabilityId: string;
   readonly grantedBy: string;
   readonly grantedAt: string;
+}
+
+/** A new Employee company-access grant. Dates are optional ISO-8601 instants WITH an offset; the store owns id, tenant and clocks. */
+export interface NewCompanyAuthorityGrantInput {
+  readonly employeeId: string;
+  readonly operatingCompanyId: string;
+  readonly reason: string;
+  readonly grantedBy: string;
+  readonly effectiveFrom: string | null;
+  readonly effectiveUntil: string | null;
 }
 
 /** A Principal's DIRECT grant of one canonical capability. The grantee is never an Employee. */
@@ -282,6 +294,13 @@ export interface PolicyTransaction {
   revokeRoleCapability(roleId: string, capabilityId: string): Promise<RoleCapabilityRecord | null>;
   grantPrincipalCapability(input: NewPrincipalCapabilityInput): Promise<PrincipalCapabilityRecord>;
   revokePrincipalCapability(principalId: string, capabilityId: string): Promise<PrincipalCapabilityRecord | null>;
+
+  // ── Employee company-access grants (DECISIONS #249, migration 1764610000000) ──
+  // Optional so an adapter without the table fails closed: grantCompanyAuthority / revokeCompanyAuthority refuse when absent.
+  // The store stamps granted_at / revoked_at and (when no start is stated) effective_from from the DATABASE clock.
+  createCompanyAuthorityGrant?(input: NewCompanyAuthorityGrantInput): Promise<CompanyAuthorityGrantRecord>;
+  /** active -> revoked; the author, the database time and the stated reason are recorded. Returns the stored row. */
+  revokeCompanyAuthorityGrant?(grantId: string, revokedBy: string, revokeReason: string): Promise<CompanyAuthorityGrantRecord>;
 
   createAssignment(input: NewRecord<PolicyRoleAssignmentRecord>): Promise<PolicyRoleAssignmentRecord>;
   setAssignmentStatus(assignmentId: string, status: PolicyAssignmentStatus): Promise<PolicyRoleAssignmentRecord>;
@@ -516,6 +535,14 @@ export interface PolicyReader {
    * refused, never accepted unvalidated. Optional so an adapter without it fails closed.
    */
   listAssignmentScopeValues?(tenantId: TenantId, scopeType: string): Promise<readonly AssignmentScopeValue[] | null>;
+
+  // ── Employee company-access grants (DECISIONS #249). Optional: an adapter without the table fails closed. ──
+  /** One Employee of THIS tenant and its home operating company; null when the id is not an Employee here (another tenant's reads the same). */
+  readCompanyGrantEmployee?(tenantId: TenantId, employeeId: string): Promise<CompanyGrantEmployeeFact | null>;
+  /** One grant of THIS tenant by id (another tenant's reads as absent). */
+  readCompanyAuthorityGrant?(tenantId: TenantId, grantId: string): Promise<CompanyAuthorityGrantRecord | null>;
+  /** Every grant of one Employee, history included, oldest first. */
+  listCompanyAuthorityGrants?(tenantId: TenantId, employeeId: string): Promise<readonly CompanyAuthorityGrantRecord[]>;
 }
 
 export type TenantSalesChannelStatus = "ACTIVE" | "INACTIVE";

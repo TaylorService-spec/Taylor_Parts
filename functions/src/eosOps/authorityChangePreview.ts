@@ -64,6 +64,7 @@ import {
   loadActiveWorkflowDefinitions,
   type ActiveWorkflowDefinition,
 } from "../adminPolicy/workflowResponsibilities";
+import { resolveCompanyAuthority } from "./companyAuthority";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization";
 import { administrationReachDimension, grantedSurfaceKeys } from "./experienceAuthority";
@@ -333,6 +334,8 @@ export interface PrincipalAuthoritySnapshot {
   /** `workflow.action:AUTHORITY via roles` -- the SECURITY_ROLE workflow responsibilities (workflowResponsibilities.ts). */
   readonly workflowResponsibilities: readonly string[];
   readonly latent: readonly string[];
+  /** The ACTIVE operating companies this principal may act for (eosOps/companyAuthority.ts: home, OPERATIONAL Role expansion, explicit company-access grants, DECISIONS #249). Reach only. */
+  readonly companyAuthority: readonly string[];
 }
 
 const sorted = (values: Iterable<string>): string[] => [...new Set(values)].sort();
@@ -421,7 +424,7 @@ async function principalAuthority(sc: SnapshotContext, principalId: string): Pro
         .map((a) => `${roleKeyById.get(a.roleId) ?? a.roleId}@${a.scopeType}=${a.scopeValue ?? ""}`)),
       accessVersion, hadStaleAssignment: policy.hadStaleAssignment,
       flat: [], conditionallyHeld: [], scopedHeld: [], inertScoped: [], protectedAdministratorKeys: [], directGrants: [],
-      surfaces: [], fieldGroups: [], administration: [], workflowResponsibilities: [], latent: sorted(latent),
+      surfaces: [], fieldGroups: [], administration: [], workflowResponsibilities: [], latent: sorted(latent), companyAuthority: [],
     });
   }
   const pc = ctx.principalContext;
@@ -429,6 +432,9 @@ async function principalAuthority(sc: SnapshotContext, principalId: string): Pro
   const employeeId = await dims.linkedEmployeeId(tenantId, principalId);
   const workEligibility = employeeId ? await dims.listWorkEligibility(tenantId, employeeId) : [];
   const operationalScopes = employeeId ? await dims.listOperationalScopes(tenantId, employeeId) : [];
+  // Company reach (DECISIONS #249): decided by the SAME resolver every operation uses, so a company-access grant, a revoke or an
+  // expiry shows up as the company it adds or removes -- and as nothing else (no capability, no surface).
+  const companyAuthority = [...(await resolveCompanyAuthority(q as unknown as Pick<PoolClient, "query">, tenantId, principalId)).companies];
   const administrationReach = await administrationReachDimension(q, tenantId, principalId);
   const surfaces = await grantedSurfaceKeys({ tenantId, principalId, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld },
     { employeeId, workEligibility, operationalScopes, administrationReach });
@@ -477,6 +483,7 @@ async function principalAuthority(sc: SnapshotContext, principalId: string): Pro
     administration: sorted(administration),
     workflowResponsibilities: sorted(workflowResponsibilities),
     latent: [],
+    companyAuthority: sorted(companyAuthority),
   });
 }
 
@@ -497,7 +504,8 @@ export async function snapshotTenantAuthority(
 // ════════════════════ the diff ════════════════════
 
 const LIST_FIELDS = ["heldRoleKeys", "scopedAssignments", "flat", "conditionallyHeld", "scopedHeld", "inertScoped",
-  "protectedAdministratorKeys", "directGrants", "surfaces", "fieldGroups", "administration", "workflowResponsibilities", "latent"] as const;
+  "protectedAdministratorKeys", "directGrants", "surfaces", "fieldGroups", "administration", "workflowResponsibilities", "latent",
+  "companyAuthority"] as const;
 
 export interface PrincipalAuthorityDelta {
   readonly principalId: string;
@@ -512,7 +520,7 @@ export interface PrincipalAuthorityDelta {
 const EMPTY_SNAPSHOT = (principalId: string): PrincipalAuthoritySnapshot => Object.freeze({
   principalId, status: "NOT_A_MEMBER", protectedStanding: null, heldRoleKeys: [], scopedAssignments: [], accessVersion: 0,
   hadStaleAssignment: false, flat: [], conditionallyHeld: [], scopedHeld: [], inertScoped: [], protectedAdministratorKeys: [],
-  directGrants: [], surfaces: [], fieldGroups: [], administration: [], workflowResponsibilities: [], latent: [],
+  directGrants: [], surfaces: [], fieldGroups: [], administration: [], workflowResponsibilities: [], latent: [], companyAuthority: [],
 });
 
 /** One principal's delta, or null when nothing about its effective authority (or its access version) moved. */
@@ -532,7 +540,7 @@ export function diffPrincipalAuthority(before: PrincipalAuthoritySnapshot, after
   if (Object.keys(changes).length === 0 && !status && !accessVersion && !hadStaleAssignment) return null;
   const notes: string[] = [];
   const effective = ["flat", "conditionallyHeld", "scopedHeld", "protectedAdministratorKeys", "surfaces", "fieldGroups", "administration", "workflowResponsibilities"]
-    .some((f) => f in changes);
+    .some((f) => f in changes) || "companyAuthority" in changes;
   if (before.status !== "RESOLVED" && after.status !== "RESOLVED") {
     notes.push(`INELIGIBLE: resolution refuses this principal (${after.status}); the change is LATENT policy only and confers nothing at runtime`);
   }
@@ -546,6 +554,7 @@ export function diffPrincipalAuthority(before: PrincipalAuthoritySnapshot, after
   const protectedStanding = before.protectedStanding ?? after.protectedStanding;
   if (protectedStanding === "OWNER" && (changes.flat?.removed.length ?? 0) > 0) notes.push("PROTECTED_OWNER_REDUCED: a protected Owner loses authority");
   if (protectedStanding === "ADMINISTRATOR" && (changes.flat?.removed.length ?? 0) > 0) notes.push("PROTECTED_ADMINISTRATOR_REDUCED: a protected Administrator loses authority");
+  if (changes.companyAuthority) notes.push("COMPANY_AUTHORITY_CHANGED: the operating companies this principal may act for change (reach only; no capability and no Finance reach changes)");
   if (changes.administration) notes.push("ADMINISTRATION_GATES_CHANGED: what this principal may administer changes");
   if (changes.workflowResponsibilities) notes.push("WORKFLOW_RESPONSIBILITIES_CHANGED: workflow actions this principal is responsible for change");
   return Object.freeze({ principalId: after.principalId, protectedStanding, status, accessVersion, hadStaleAssignment,
@@ -697,6 +706,9 @@ export async function policyStateDigest(q: PolicyQueryable, tenantId: string): P
              ORDER BY l.principal_id, l.employee_id, l.status)
            FROM eos_policy.employee_principal_links l LEFT JOIN eos_workforce.employees e ON e.tenant_id = l.tenant_id AND e.id = l.employee_id
           WHERE l.tenant_id = $1), ''))
+       UNION ALL SELECT 'company_authority_grants', md5(coalesce((SELECT string_agg(g.employee_id || '|' || g.operating_company_id || '|' || g.status || '|' || g.effective_from::text || '|' || coalesce(g.effective_until::text, '')
+             || '|' || (g.status = 'active' AND g.effective_from <= now() AND (g.effective_until IS NULL OR g.effective_until > now()))::text, ',' ORDER BY g.employee_id, g.operating_company_id, g.status, g.effective_from)
+           FROM eos_policy.employee_company_authority_grants g WHERE g.tenant_id = $1), ''))
        UNION ALL SELECT 'sales_channels', md5(coalesce((SELECT string_agg(s.sales_channel::text || '|' || s.status, ',' ORDER BY s.sales_channel::text)
            FROM eos_policy.tenant_sales_channels s WHERE s.tenant_id = $1), ''))
      )

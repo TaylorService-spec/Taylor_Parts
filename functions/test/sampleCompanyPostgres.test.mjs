@@ -280,8 +280,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant). No Sample Company data.
 // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants). No Sample Company data.
 // 101 -> 102: 1764600000000 -- Role company-authority classification (DECISIONS #248): roles.company_authority_effect + two governing triggers; no capability, no grant, no Sample Company data.
-const PINNED_LAST_MIGRATION = "1764600000000_role-company-authority-effect";
-const PINNED_MIGRATION_COUNT = 102;
+// 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): one table + a store guard; no capability, no grant, no Sample Company data.
+const PINNED_LAST_MIGRATION = "1764610000000_employee-company-authority-grants";
+const PINNED_MIGRATION_COUNT = 103;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

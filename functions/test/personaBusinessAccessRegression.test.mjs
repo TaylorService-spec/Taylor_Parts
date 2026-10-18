@@ -311,7 +311,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 98 -> 99: 1764570000000 -- Financial Policy withdraw / cancel (#232 Phase 3): schema only; no capability, no grant.
   // 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant).
   // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants).
-  assert.equal(files.length, 102,"the migration chain moved; re-measure before trusting anything below");
+  // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): one table + a store guard; no capability, no grant.
+  assert.equal(files.length, 103, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

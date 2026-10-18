@@ -14,6 +14,13 @@
 //                     financialPolicyPreparer, ...) supplies Finance reach alone -- eosFinance/financeCompanyAccess.ts and
 //                     financialPolicy.ts decide it from the Role's capabilities and never consult this file -- and
 //                     names no company here. A mixed Role is OPERATIONAL and still expands.
+//   3b. EXPLICIT      every company named by an ACTIVE, in-window Employee company-access grant of THIS Employee
+//       COMPANY GRANT (eos_policy.employee_company_authority_grants, written only by the Administration commands
+//                     grantCompanyAuthority / revokeCompanyAuthority; DECISIONS #249, Option A), when that company is ACTIVE for
+//                     this tenant. Window ends are compared to the DATABASE clock at read time, so a revoke or an expiry applies
+//                     on the next request. A grant confers REACH only -- never a capability, never Finance reach (Finance reads
+//                     its own per-key assignments and never consults this file). It is read only after rule 1: an Employee with
+//                     no access-eligible link has no authority, grants or not.
 //   4. NOTHING ELSE   a global Role, Administrator standing, a Firebase claim or a client-selected company never implies
 //                     any company. Empty = no company data.
 //
@@ -56,9 +63,8 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
     return NONE("EMPLOYEE_NOT_ACCESS_ELIGIBLE");
   }
 
-  // OPTION A SLOT (employee_company_authority_grants, approved 2026-10-17; not built here): its ACTIVE explicit Employee grants
-  // join this disjunction as a THIRD branch beside the home company and the OPERATIONAL role expansion below -- additive, no
-  // change to the Finance rule (R4: an explicit grant is not counted for Finance).
+  // Three sources, one disjunction (rule 2 home company, rule 3 OPERATIONAL Role expansion, rule 3b explicit company-access
+  // grant): additive, and no change to the Finance rule (R4: an explicit grant is not counted for Finance).
   const { rows } = await db.query<{ id: string }>(
     `SELECT c.operating_company_id AS id
        FROM eos_policy.tenant_operating_companies c
@@ -70,8 +76,12 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
                          WHERE a.tenant_id = c.tenant_id AND a.principal_id = $2 AND a.status = 'active'
                            AND a.scope_type = 'operatingCompany' AND a.scope_value = c.operating_company_id
                            AND r.company_authority_effect = 'OPERATIONAL'
-                           AND a.access_version_at_grant <= coalesce(v.access_version, 0)))
-      ORDER BY 1`, [tenantId, principalId, employee.operating_company_id]);
+                           AND a.access_version_at_grant <= coalesce(v.access_version, 0))
+             OR EXISTS (SELECT 1 FROM eos_policy.employee_company_authority_grants g
+                         WHERE g.tenant_id = c.tenant_id AND g.employee_id = $4 AND g.operating_company_id = c.operating_company_id
+                           AND g.status = 'active' AND g.effective_from <= now()
+                           AND (g.effective_until IS NULL OR g.effective_until > now())))
+      ORDER BY 1`, [tenantId, principalId, employee.operating_company_id, employee.employee_id]);
   const companies = rows.map((r) => String(r.id));
   const keys = companies.length === 0 ? [] : (await db.query<{ key: string }>(
     `SELECT DISTINCT operating_company_key AS key FROM eos_policy.tenant_operating_company_keys

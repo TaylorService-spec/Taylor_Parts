@@ -80,6 +80,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listSupportedConditionKinds",
   // Lane SC: the Security Role ASSIGNMENT SCOPES the runtime decides (types, this tenant's values, per-Role assignability).
   "listSupportedAssignmentScopes",
+  // DECISIONS #249: one Employee's home company and explicit company-access grants (the Employee > Company access section).
+  "listEmployeeCompanyAuthority",
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -92,6 +94,9 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "setFieldPermissionOverride",
   "removeFieldPermissionOverride",
   "assignRole",
+  // DECISIONS #249: explicit Employee company-access grants (reach to a company, never a capability).
+  "grantCompanyAuthority",
+  "revokeCompanyAuthority",
   "revokeRole",
   // Object-owned grants. The contract is objectKey + actionKey + grantee, never a capability key.
   // NAMED SO THE CLOSED LIST KEEPS MIRRORING THE SERVER, and called by nothing: this tranche wires

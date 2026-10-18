@@ -38,6 +38,8 @@ const READS = [
   "validateWorkflowVersion", "listWorkflowInstances", "readWorkflowHistory", "listPrincipalWorkflowResponsibilities",
   // Lane SC: the Security Role assignment-scope vocabulary.
   "listSupportedAssignmentScopes",
+  // DECISIONS #249: the Employee > Company access section.
+  "listEmployeeCompanyAuthority",
 ];
 const MUTATIONS = [
   // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the
@@ -45,6 +47,8 @@ const MUTATIONS = [
   // contract with no operation behind it.
   "updateObjectMetadata",
   "createCustomField", "updateCustomFieldMetadata", "createRole", "updateRole", "setObjectPermission",
+  // DECISIONS #249: explicit Employee company-access grants.
+  "grantCompanyAuthority", "revokeCompanyAuthority",
   "setFieldPermissionOverride", "removeFieldPermissionOverride", "assignRole", "revokeRole",
   // Object-owned grants: (objectKey, actionKey, grantee), never a capability key. Mirrored so the
   // closed list stays the server's; no screen sends one yet.

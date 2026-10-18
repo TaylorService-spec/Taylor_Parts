@@ -60,6 +60,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   correct.
 - [View an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record (read-only; changing hours is not switched on yet)
 - [Give someone Finance access to a company](./administration/give-finance-access-to-a-company.md) — a Role's "Finance access only" setting, so a Finance company assignment does not add the company to everyday work
+- [Give an Employee access to another company](./administration/give-an-employee-access-to-another-company.md) — explicit company access for one Employee: reach to a company, no permissions, no Finance access
 - [Integrations](./administration/integrations-guide.md)
 
 More guides will be added here as they're written. If a guide references a screen or control that

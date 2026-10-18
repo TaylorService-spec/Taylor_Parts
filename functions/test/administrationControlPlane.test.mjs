@@ -414,7 +414,8 @@ test("no Firebase and no Role-name authorization in the control-plane modules", 
   assert.doesNotMatch(gate, /["']admin["']|["']owner["']|["']generalManager["']/, "the gate names no Role");
   const commandsSource = readFileSync("src/adminPolicy/policyCommands.ts", "utf8");
   for (const fn of ["grantObjectActionToRole", "revokeObjectActionFromRole", "setGrantCondition", "retireGrantCondition",
-    "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal", "assignRole", "revokeRole"]) {
+    "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal", "assignRole", "revokeRole",
+    "grantCompanyAuthority", "revokeCompanyAuthority"]) {
     const start = commandsSource.indexOf(`export async function ${fn}(`);
     const body = commandsSource.slice(start, commandsSource.indexOf("\n}\n", start));
     assert.match(body, /requireSecurityAdministrationCapability\(/, `${fn} is capability-gated`);

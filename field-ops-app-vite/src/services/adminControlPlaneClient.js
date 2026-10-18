@@ -21,7 +21,7 @@
 // back to a client-side interpretation.
 import { callPolicyApi } from "./adminPolicyApiClient.js";
 
-// ════════════════════ THE NINE AUTHORITY CHANGES ════════════════════
+// ════════════════════ THE ELEVEN AUTHORITY CHANGES (nine, plus the two Employee company-access commands, #249) ════════════════════
 //
 // ONE input builder per authority-changing operation. The mutation wrapper and the grant-impact preview both use it, so
 // the change an administrator previewed and the change Confirm commits can never be two different objects (the server
@@ -57,6 +57,13 @@ export const AUTHORITY_CHANGE_INPUT = Object.freeze({
     ...(scopeType && scopeType !== "global" ? { scopeType, scopeValue } : {}),
   }),
   revokeRole: ({ assignmentId, reason }) => ({ assignmentId, reason }),
+  // COMPANY ACCESS (DECISIONS #249): reach to a company for one EMPLOYEE, never a capability. Dates are sent only when chosen.
+  grantCompanyAuthority: ({ employeeId, operatingCompanyId, reason, effectiveFrom, effectiveUntil }) => ({
+    employeeId, operatingCompanyId, reason,
+    ...(effectiveFrom ? { effectiveFrom } : {}),
+    ...(effectiveUntil ? { effectiveUntil } : {}),
+  }),
+  revokeCompanyAuthority: ({ grantId, reason }) => ({ grantId, reason }),
 });
 
 export const AUTHORITY_CHANGE_OPERATIONS = Object.freeze(Object.keys(AUTHORITY_CHANGE_INPUT));
@@ -99,6 +106,8 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
     // Lane SC: the assignment scopes the runtime decides -- per scope type its label and THIS tenant's governed
     // values; per Role which scopes it may be assigned at and what each confers or leaves inert.
     listSupportedAssignmentScopes: (roleKey) => send("listSupportedAssignmentScopes", roleKey ? { roleKey } : {}),
+    // DECISIONS #249: one Employee's home company, company-access grants (history) and the companies a grant could name.
+    listEmployeeCompanyAuthority: (employeeId) => send("listEmployeeCompanyAuthority", { employeeId }),
 
     // ── mutations (gate: admin.securityPolicy.write; assignRole/revokeRole: admin.roleAssignment.write)
     // The nine AUTHORITY CHANGES build their input through AUTHORITY_CHANGE_INPUT -- the SAME builder the grant-impact
@@ -113,6 +122,8 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
     revokeObjectActionFromPrincipal: commitOf(send, "revokeObjectActionFromPrincipal"),
     assignRole: commitOf(send, "assignRole"),
     revokeRole: commitOf(send, "revokeRole"),
+    grantCompanyAuthority: commitOf(send, "grantCompanyAuthority"),
+    revokeCompanyAuthority: commitOf(send, "revokeCompanyAuthority"),
 
     // ── the GRANT-IMPACT PREVIEW (read-only; gate: the previewed command's own capability, on the server).
     // `input` is built by the commit's own builder, so what is previewed is exactly what Confirm sends.

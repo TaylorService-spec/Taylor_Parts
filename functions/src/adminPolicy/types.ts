@@ -516,6 +516,35 @@ export interface PolicyAuditEventRecord extends TenantOwned {
   readonly reason: string | null;
 }
 
+// ════════════════════ EMPLOYEE COMPANY-ACCESS GRANTS (DECISIONS #249) ════════════════════
+
+export type CompanyAuthorityGrantStatus = "active" | "revoked";
+
+/**
+ * One explicit Employee company-access grant: "this Employee may ALSO act for operating company C". Reach to a company only --
+ * no capability, no Finance reach, no Role. Keyed on the EMPLOYEE (it survives a login re-link). Timestamps are the database's
+ * clock; the resolver compares the window to the database clock at read time.
+ */
+export interface CompanyAuthorityGrantRecord extends TenantOwned {
+  readonly employeeId: string;
+  readonly operatingCompanyId: string;
+  readonly status: CompanyAuthorityGrantStatus;
+  readonly effectiveFrom: string;
+  readonly effectiveUntil: string | null;
+  readonly reason: string;
+  readonly grantedBy: string;
+  readonly grantedAt: string;
+  readonly revokedBy: string | null;
+  readonly revokedAt: string | null;
+  readonly revokeReason: string | null;
+}
+
+/** The Employee facts a grant is decided against, read in the actor's tenant only. */
+export interface CompanyGrantEmployeeFact {
+  readonly employeeId: string;
+  readonly homeOperatingCompanyId: string;
+}
+
 // ════════════════════ CANONICAL OBJECT-OWNED SECURITY ════════════════════
 //
 // Security is governed UNDER THE OBJECT. `capabilities` carries the Object and action each
