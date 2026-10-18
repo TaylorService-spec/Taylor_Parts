@@ -129,3 +129,19 @@ A few things worth knowing about what you see there:
 - **Nothing shown is truncated.** If a result would be incomplete, the page says the read
   was unavailable rather than showing you a partial total. An incomplete financial figure
   is worse than none.
+
+## Receivables, Settlements and their records (where EOS holds your Finance books)
+
+In an environment where the Financials pages read from the EOS Finance register, four pages change their words to match what the register actually records. Everywhere else the pages are unchanged.
+
+- **Receivables** (was Invoices) and **Accounts Receivable** — the register's receivables: what customers owe, with the register's own Original, Settled and Outstanding figures, a due date where one is governed, and aging from that due date. A receivable with **no governed due date** is counted as *unaged*, never as Current.
+- **Settlements** (was Payments) — the money EOS has evidence of (a customer payment, a provider funding receipt, a vendor payment), what has been applied to which receivable, and what is still unapplied. Reconciliation is stated: with no evidence from the accounting system, a settlement is simply *unreconciled*.
+- **Receivable record** and **Settlement record** — open any row. A receivable shows its amounts, customer, company, the **credited salesperson** (when the source Sales Order recorded one), the source Sales Order, every settlement applied to it (reversed ones are kept and marked), the accounting handoffs, and its **history** — the append-only facts, where a correction is its own entry that points back at the original. A settlement shows its applications, each linking to the receivable it settled.
+
+**What the register does not carry, and says so.** Three things on the old Invoice pages are *not supplied* by the Finance register. Each row says **Not supplied** and names the decision behind it, so a blank is never mistaken for a missing value: the **invoice number** (the formal invoice belongs to your accounting system, MD-B1-1), the **issue date** (EOS records when the receivable was *recorded*; the Period filter narrows by that date, MD-B1-2) and the **business unit** (receivables carry none, MD-B1-3).
+
+**What you see depends on your Finance visibility.** A company assignment is still required. Inside the companies you are assigned to:
+
+- Most Finance roles (Controller, General Manager, Accounting and Finance Managers, Owner, Administrator) see every receivable of the company.
+- A salesperson's or sales manager's Finance visibility is **limited to the receivables credited to them (or to their team)**. That reach is recorded but **not switched on yet**: until it is, a person whose only Finance visibility is "own" or "team" sees **Not available to you**, exactly as before. When it is switched on, the pages say **A part of the book** and every row and total covers only what you may see. A receivable whose Sales Order recorded no credited salesperson is visible to Finance only.
+- A restricted reader sees a settlement only if **every** application ever recorded on it is to a receivable they may see; unapplied settlements, funding receivables, payables and intercompany items are **withheld** (the page names them as withheld — it never shows them as zero) and no settlement can be recorded or changed from a restricted view.

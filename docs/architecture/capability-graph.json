@@ -1280,13 +1280,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1307,13 +1306,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1334,13 +1332,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1361,13 +1358,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1388,13 +1384,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/eosCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

@@ -49,3 +49,7 @@ Note: the **Service activity** section on the same record shows live work order 
 ## Related
 - View a customer's record
 - See a customer's work orders and activity
+
+## If your Finance visibility is limited
+
+If your Finance visibility is limited to the receivables credited to you or your team, the receivables section says **A part of this account's receivables** and everything in it — rows, balances, the Outstanding AR and Past due figures — covers only those. An account that shows no receivables then means *none within your visibility*, not that the customer owes nothing. (This reach is recorded but not switched on yet; until it is, a person whose only Finance visibility is "own" or "team" sees **Not available to you**.)
