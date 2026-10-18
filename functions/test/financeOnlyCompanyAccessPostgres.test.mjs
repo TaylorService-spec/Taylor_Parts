@@ -367,6 +367,51 @@ test("Finance-only company assignments grant Finance reach only, in PostgreSQL",
     assert.equal(await nonFinanceHeld(), 0, "no non-finance capability sits on a FINANCE_ONLY Role");
   });
 
+  await t.test("9e ISOLATION: the guards need READ COMMITTED -- under REPEATABLE READ a reclassification, a write into a FINANCE_ONLY Role and a rename to a non-finance key are refused with a stable code; an ordinary grant is unaffected", async () => {
+    const CODE = /FINANCE_ONLY_GUARD_REQUIRES_READ_COMMITTED/;
+    const insertCapRr = ({ c }, roleId) => c.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+      VALUES ('rc-race-e1',$1,$2,'cap-race-e1','f','f','f')`, [TENANT, roleId]);
+    const rr = async () => {
+      const conn = await raceOpen(); // BEGIN + bounded timeouts
+      await conn.c.query("ROLLBACK");
+      await conn.c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      await conn.c.query("SET LOCAL lock_timeout = '20s'");
+      await conn.c.query("SET LOCAL statement_timeout = '60s'");
+      assert.equal((await conn.c.query(`SHOW transaction_isolation`)).rows[0].transaction_isolation, "repeatable read");
+      return conn;
+    };
+    try {
+      const finRole = await raceRole("raceE1");
+      const setup = await raceOpen();
+      await reclassify(setup, finRole);
+      await setup.c.query("COMMIT");
+      assert.equal(await effectOf("raceE1"), "FINANCE_ONLY");
+      await q(`INSERT INTO eos_policy.capabilities (id,key,description,object_key,action_key,action_kind,display_label) VALUES
+        ('cap-race-e1','finance.race.e1','race fixture','raceFixture','cap-race-e1','READ','Race'), ('cap-race-e2','finance.race.e2','race fixture','raceFixture','cap-race-e2','READ','Race')`);
+      await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by) VALUES ('rc-race-e2',$1,$2,'cap-race-e2','f','f','f')`, [TENANT, finRole]);
+      const opRole = await raceRole("raceE2");
+
+      // (a) a reclassification (the Role is valid for it: finance.* only)
+      const a = await rr();
+      assert.match(await settle(reclassify(a, opRole)), CODE, "a reclassification at REPEATABLE READ is refused");
+      // (b) an insert into a FINANCE_ONLY Role, even of a finance key (the decision relies on READ COMMITTED)
+      const b = await rr();
+      assert.match(await settle(insertCapRr(b, finRole)), CODE, "a write into a FINANCE_ONLY Role at REPEATABLE READ is refused");
+      // (c) a finance -> non-finance rename of a key a FINANCE_ONLY Role holds
+      const c = await rr();
+      assert.match(await settle(c.c.query(`UPDATE eos_policy.capabilities SET key = 'zz.race.nonfinance.e2' WHERE id = 'cap-race-e2'`)), CODE, "a rename at REPEATABLE READ is refused");
+      // (d) an ordinary operational grant (a non-finance capability into an OPERATIONAL Role) at REPEATABLE READ is unaffected
+      const d = await rr();
+      await d.c.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+        SELECT 'rc-race-e-ok', $1, $2, c.id, 'f','f','f' FROM eos_policy.capabilities c WHERE c.key = 'workOrder.record.read'`, [TENANT, opRole]);
+      await d.c.query("COMMIT");
+    } finally { await raceDone(); }
+    assert.equal(Number((await q(`SELECT count(*)::int AS n FROM eos_policy.role_capabilities WHERE id = 'rc-race-e-ok'`)).rows[0].n), 1, "the ordinary grant committed");
+    assert.equal(await effectOf("raceE2"), "OPERATIONAL", "the refused reclassification changed nothing");
+    assert.equal((await q(`SELECT key FROM eos_policy.capabilities WHERE id = 'cap-race-e2'`)).rows[0].key, "finance.race.e2", "the refused rename changed nothing");
+    assert.equal(await nonFinanceHeld(), 0);
+  });
+
   await t.test("REVERSIBLE and per-Role: widening back is the same governed command and restores the expansion; then the classification is restored", async () => {
     assert.equal((await classify(FINANCE_COMPANY_ACCESS_ROLE, "OPERATIONAL")).ok, true);
     assert.deepEqual(await companies(fo), ["taylor", "ventana"]);

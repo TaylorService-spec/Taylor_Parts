@@ -35,7 +35,13 @@
 --      guard reads the capability FOR KEY SHARE and tests the key it then sees; a rename of a unique key holds the row
 --      exclusively. Rename first: the insert waits, re-reads the new key and refuses. Insert first: the rename waits, and its
 --      holder scan then sees the committed row and refuses.
--- Proved with real connections in every order: functions/test/financeOnlyCompanyAccessPostgres.test.mjs 9a, 9b, 9c, 9d.
+-- ISOLATION: these serialisation proofs hold at READ COMMITTED (the waiter re-reads committed state). The three functions
+-- therefore RAISE FINANCE_ONLY_GUARD_REQUIRES_READ_COMMITTED (the precedent is CONDITION_CHECK_REQUIRES_READ_COMMITTED in
+-- role_capabilities_honour_decisions) at any stricter level, and only where the decision matters: a classification change; a
+-- write into a FINANCE_ONLY Role; a rename to a non-finance key. Ordinary grants are unaffected at any level. BOUNDARY: a
+-- superuser or table owner can DISABLE these triggers (ALTER TABLE ... DISABLE TRIGGER), and nothing in the database can stop
+-- that; the guard defends against application and operator writes, not against a role that may rewrite the schema.
+-- Proved with real connections in every order: functions/test/financeOnlyCompanyAccessPostgres.test.mjs 9a, 9b, 9c, 9d, 9e.
 
 SET search_path = eos_policy, public;
 
@@ -56,6 +62,11 @@ BEGIN
     END IF;
     IF coalesce(current_setting('eos_policy.administration_command', true), '') <> 'on' THEN
         RAISE EXCEPTION 'COMPANY_AUTHORITY_EFFECT_UNGOVERNED: the company-authority classification of role % changes only through the Administration command updateRole', NEW.key;
+    END IF;
+    -- The serialisation proofs hold at READ COMMITTED only (a waiter re-reads the committed row and re-decides). At a
+    -- stricter level the capabilities read below could come from an older snapshot, so the change is refused, not guessed.
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'FINANCE_ONLY_GUARD_REQUIRES_READ_COMMITTED: the classification of role % cannot be changed at isolation level % -- retry at READ COMMITTED', NEW.key, current_setting('transaction_isolation');
     END IF;
     IF NEW.company_authority_effect = 'FINANCE_ONLY' THEN
         IF NEW.protected THEN
@@ -94,6 +105,10 @@ BEGIN
      WHERE r.id = NEW.role_id AND r.tenant_id = NEW.tenant_id
        FOR SHARE OF r;
     IF v_effect IS DISTINCT FROM 'FINANCE_ONLY' THEN RETURN NEW; END IF;
+    -- Only now does the decision matter: it relies on re-reading committed state after a lock wait (READ COMMITTED).
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'FINANCE_ONLY_GUARD_REQUIRES_READ_COMMITTED: a capability cannot be written into FINANCE_ONLY role % at isolation level % -- retry at READ COMMITTED', v_role, current_setting('transaction_isolation');
+    END IF;
     -- FOR KEY SHARE conflicts with the exclusive tuple lock of a concurrent rename of this capability's (unique) key, so the
     -- key tested below is the committed one (see pair 3 in the header).
     SELECT c.key INTO v_cap FROM eos_policy.capabilities c WHERE c.id = NEW.capability_id FOR KEY SHARE;
@@ -117,6 +132,12 @@ DECLARE
     v_effect TEXT;
 BEGIN
     IF NEW.key = OLD.key OR NEW.key LIKE 'finance.%' THEN RETURN NEW; END IF;
+    -- A rename to a non-finance key: the holder scan below must see EVERY committed holder, which only READ COMMITTED
+    -- guarantees (an older snapshot cannot see a holder committed since). Refused at a stricter level whether or not the
+    -- scan finds a FINANCE_ONLY holder, because an older snapshot cannot know there is none.
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'FINANCE_ONLY_GUARD_REQUIRES_READ_COMMITTED: capability % cannot be renamed to a non-finance key at isolation level % -- retry at READ COMMITTED', OLD.key, current_setting('transaction_isolation');
+    END IF;
     -- Every Role holding this capability is locked FOR SHARE unconditionally (ordered, so two renames cannot deadlock),
     -- THEN each is tested, for the same reason as above: a concurrent reclassification of any holder serialises with the rename.
     FOR v_role, v_effect IN
