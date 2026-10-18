@@ -33,7 +33,7 @@ vi.mock("../src/services/financeApiClient.js", async (importOriginal) => {
   const real = await importOriginal();
   return { ...real, callFinanceApi: async (operation, input) => { fb.ops.push([operation, input]); return api(operation, input); } };
 });
-vi.mock("../src/hooks/useAccountNames.js", () => ({ useAccountNames: () => new Map([["acct-t", "Harbor Grill"]]) }));
+vi.mock("../src/hooks/useAccountNames.js", () => ({ useAccountNames: () => new Map([["acct-t", "Harbor Grill"], ["acct-z", "Zeta Foods"]]) }));
 vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", () => ({
   useGovernedEmployeeDirectory: () => ({ byEmployeeId: new Map([["e-s1", { displayName: "Sam Seller" }]]), byUserId: new Map(), loading: false, error: null }),
 }));
