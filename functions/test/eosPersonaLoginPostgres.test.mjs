@@ -330,11 +330,17 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     const { join } = await import("node:path");
     const { enrollPersonaLoginsRun } = require("../scripts/enrollPersonaLogins.js");
     const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
-    const { hasAdministrationAuthority } = require("../lib/adminPolicy/administrationAuthority.js");
+    const authority = require("../lib/adminPolicy/administrationAuthority.js");
+    const principalContext = require("../lib/adminPolicy/principalContext.js");
     const links = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
     const { normalizeLoginIdentifier } = require("../lib/eosAuth/eosLoginService.js");
-    const deps = { PostgresPolicyRepository, EosLoginService, credentialCrypto: C, ensureTenantPrincipal, hasAdministrationAuthority, links, normalizeLoginIdentifier,
-      nonprodPersonaSubject: require("../lib/eosAuth/nonprodPersonas.js").nonprodPersonaSubject };
+    const deps = { PostgresPolicyRepository, EosLoginService, credentialCrypto: C, ensureTenantPrincipal, links, normalizeLoginIdentifier,
+      nonprodPersonaSubject: require("../lib/eosAuth/nonprodPersonas.js").nonprodPersonaSubject,
+      hasSecurityAdministrationCapability: authority.hasSecurityAdministrationCapability,
+      protectedRoleKeys: [authority.PROTECTED_OWNER_ROLE_KEY, authority.ADMIN_ROLE_KEY],
+      capabilityKeysFor: require("../lib/adminPolicy/administrationCapabilityGate.js").capabilityKeysFor,
+      resolvePrincipalContextById: principalContext.resolvePrincipalContextById, PrincipalContextError: principalContext.PrincipalContextError,
+      runWithRequestScope: require("../lib/eosAuth/requestTenantBinding.js").runWithRequestScope };
     const base = { tenantKey: "persona-proof", adminPrincipalId: adminPrincipalId, reason: "B2-x proof: give the nonprod employees an EOS sign-in", operator: "Proof Operator", environmentId: "platform-sandbox" };
 
     const employee = (id, status, email) => q(
@@ -392,6 +398,10 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
       "np-taylor-gone": "REFUSED:EMPLOYEE_STATUS_EXCLUDED", "synthetic-np-emp-persona-bound": "REFUSED:PRINCIPAL_HOLDS_EOS_IDENTITY", "np-taylor-nobody": "REFUSED:EMPLOYEE_NOT_FOUND",
     });
     await assert.rejects(enrollPersonaLoginsRun(pool, { ...base, adminPrincipalId: tech, employees: "all-missing", apply: false }, deps), /ADMINISTRATOR_UNAUTHORIZED/);
+    // A General Manager passes the role-NAME test but not the capability gate ensureTenantPrincipal applies: refused at PLAN time.
+    const gm = await makePrincipal("gm-proof", "generalManager", "fb-gm-proof");
+    assert.ok(authority.hasAdministrationAuthority(["generalManager"], "assignRole"), "the role-name test would have admitted it");
+    await assert.rejects(enrollPersonaLoginsRun(pool, { ...base, adminPrincipalId: gm, employees: "all-missing", apply: false }, deps), /ADMINISTRATOR_UNAUTHORIZED/);
 
     // ---- apply: credentials to a file outside the repository, nothing secret in the report.
     const dir = mkdtempSync(join(tmpdir(), "b2x-creds-"));
@@ -429,6 +439,7 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
       const audits = (await q(`SELECT action, actor_uid, after FROM eos_policy.audit_events WHERE action = 'enrollEmployeeLogin' ORDER BY occurred_at`)).rows;
       assert.equal(audits.length, 3, "one audit event per enrollment");
       assert.ok(!JSON.stringify(audits).includes(entry("np-taylor-tech-04").password), "no secret in the audit");
+      assert.ok(audits.every((a) => a.after.assertedBy === adminPrincipalId), "every enrollment audit records the asserting administrator");
       assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.login_accounts WHERE status = 'active' AND mfa_required`)).rows[0].n, 3, "three new active accounts (the persona account was disabled in P5)");
 
       // The sample Employee signs in (password, authenticator) with a HUMAN token that resolves to the Principal it always had.
@@ -476,7 +487,7 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     const enrollEmployee = (over) => service.enrollEmployeeLogin({
       tenantId, employeeId: "np-taylor-gone", principalId: gonePrincipal, loginIdentifier: "np-taylor-gone@taylor.invalid",
       password: randomBytes(24).toString("base64url"), totpSecret: C.newTotpSecret(), recoveryCodes: C.newRecoveryCodes(),
-      reason: "B2-x proof: service fence", ...over,
+      reason: "B2-x proof: service fence", assertedBy: adminPrincipalId, ...over,
     });
     await assert.rejects(enrollEmployee({}), /status does not allow a sign-in/);
     await assert.rejects(enrollEmployee({ employeeId: "emp-real-person-2" }), /not a nonprod sample or synthetic Employee/);
@@ -490,5 +501,33 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason)
              VALUES ('epl-admin-linked',$1,$2,'np-taylor-admin-linked','taylor','OPERATOR_ASSERTED','employee-fixture','B2-x proof fixture')`, [tenantId, adminPrincipalId]);
     await assert.rejects(enrollEmployee({ employeeId: "np-taylor-admin-linked", principalId: adminPrincipalId, loginIdentifier: "np-taylor-admin-linked@taylor.invalid" }), /Owner or Administrator is not enrolled/);
+    await assert.rejects(enrollEmployee({ assertedBy: " " }), /assertedBy/);
+
+    // ---- the login name IS the Employee's work_email; a separation date refuses whatever the status says.
+    await employee("np-taylor-mismatch", "ACTIVE", "np-taylor-mismatch@taylor.invalid");
+    const mismatchPrincipal = await sample("np-taylor-mismatch", "nonprod-sample.mismatch");
+    await assert.rejects(enrollEmployee({ employeeId: "np-taylor-mismatch", principalId: mismatchPrincipal, loginIdentifier: "another-name@taylor.invalid" }), /Employee's own work_email/);
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, work_email, separation_date, updated_at)
+             VALUES ('np-taylor-separated',$1,'ACTIVE','taylor','np-taylor-separated@taylor.invalid','2026-01-01','2020-01-01T00:00:00Z')`, [tenantId]);
+    const separatedPrincipal = await sample("np-taylor-separated", "nonprod-sample.separated");
+    await assert.rejects(enrollEmployee({ employeeId: "np-taylor-separated", principalId: separatedPrincipal, loginIdentifier: "np-taylor-separated@taylor.invalid" }), /separation date/);
+
+    // ---- a login somebody RETIRED is never silently re-created (service and plan); the Owner/Administrator Principal is shown up front.
+    await employee("np-taylor-retired", "ACTIVE", "np-taylor-retired@taylor.invalid");
+    const retiredPrincipal = await sample("np-taylor-retired", "nonprod-sample.retired");
+    await enrollEmployee({ employeeId: "np-taylor-retired", principalId: retiredPrincipal, loginIdentifier: "np-taylor-retired@taylor.invalid" });
+    await service.retireLoginAccount({ tenantId, uid: adminPrincipalId, heldRoleKeys: ["admin"] }, { principalId: retiredPrincipal, reason: "B2-x proof: retire the sample login on purpose" });
+    await assert.rejects(enrollEmployee({ employeeId: "np-taylor-retired", principalId: retiredPrincipal, loginIdentifier: "np-taylor-retired@taylor.invalid" }), /LOGIN_RETIRED/);
+    const named = await enrollPersonaLoginsRun(pool, { ...base, employees: ["np-taylor-retired", "np-taylor-admin-linked", "np-taylor-mismatch", "np-taylor-separated"], apply: false }, deps);
+    assert.deepEqual(outcomes(named), {
+      "np-taylor-retired": "REFUSED:LOGIN_RETIRED", "np-taylor-admin-linked": "REFUSED:PRINCIPAL_IS_OWNER_OR_ADMINISTRATOR",
+      "np-taylor-mismatch": "PLANNED", "np-taylor-separated": "REFUSED:EMPLOYEE_STATUS_EXCLUDED",
+    });
+    const sweep = await enrollPersonaLoginsRun(pool, { ...base, employees: "all-missing", apply: false }, deps);
+    const sweepOutcomes = outcomes(sweep);
+    assert.equal(sweepOutcomes["np-taylor-retired"], "SKIPPED_EXCLUDED:LOGIN_RETIRED");
+    assert.equal(sweepOutcomes["np-taylor-admin-linked"], "SKIPPED_EXCLUDED:PRINCIPAL_IS_OWNER_OR_ADMINISTRATOR");
+    assert.equal(sweepOutcomes["np-taylor-separated"], "SKIPPED_EXCLUDED:EMPLOYEE_STATUS_EXCLUDED");
+    assert.equal(sweepOutcomes["np-taylor-mismatch"], "PLANNED");
   });
 });

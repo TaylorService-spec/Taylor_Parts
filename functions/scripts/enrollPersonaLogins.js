@@ -50,13 +50,19 @@
 //                Employee is ACTIVE (the DQ-007 gate is not widened); the dry run marks it.
 //   IDENTITY     a Principal that already holds an active EOS identity (a persona binding, or a human one) is never displaced:
 //                REFUSED when named, SKIPPED_EXCLUDED under all-missing. A live login account is always SKIPPED_EXISTS.
+//                A RETIRED login (for the Principal or the login name) is never silently re-created (LOGIN_RETIRED), and an Owner
+//                or Administrator Principal is never enrolled (PRINCIPAL_IS_OWNER_OR_ADMINISTRATOR): both REFUSED when named,
+//                SKIPPED_EXCLUDED under all-missing -- the dry run shows exactly what the apply would do.
 //   NO PRINCIPAL a `synthetic-np-emp-*` Employee with no Principal gets one through the EXISTING governed path, never new SQL:
 //                `ensureTenantPrincipal` (provider `eos-synthetic-nonprod`, subject `synthetic-np-principal-<slug>`, ACTIVE
 //                membership, no Security Role, no display name -- names come only from populatePrincipalDisplayNames.js) and
 //                `establishLink` (OPERATOR_ASSERTED, asserted by --adminPrincipalId with the composed reason), exactly as the
 //                synthetic workforce seed does. The administering Principal's Roles are READ from PostgreSQL and must be able to
-//                assign Roles. An `np-taylor-*` Employee with no Principal is REFUSED (the sample seed owns those).
-//                The sign-in then rides a human EOS identity (`user.<hex>`) created in the enrollment transaction.
+//                assign Roles: it is resolved as a request would be (qualifying assignments only) and must hold
+//                `admin.roleAssignment.write`, the gate ensureTenantPrincipal applies. An `np-taylor-*` Employee with no Principal is
+//                REFUSED (the sample seed owns those). The sign-in rides a human EOS identity (`user.<hex>`) created in the
+//                enrollment transaction. The Principal, the link and the enrollment are SEPARATE commits, each idempotent, so a
+//                failure part-way leaves a state the next run resumes from (it never strands a login or a credential).
 //
 //   node scripts/enrollPersonaLogins.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL --tenantKey <key> \
 //     --employees all-missing --adminPrincipalId <administrator principal id> --reason "<at least 40 chars>" \
@@ -252,21 +258,26 @@ async function planPersonas(pool, repo, options, deps) {
   return plan;
 }
 
-/** The administering Principal for employee mode: ACTIVE, an ACTIVE member of this tenant, and its Roles (read here) may assign Roles. */
-async function resolveEmployeeAdministrator(repo, tenantId, adminPrincipalId, hasAdministrationAuthority) {
-  const admin = await repo.getPrincipal(adminPrincipalId);
-  const membership = admin ? await repo.getMembership(tenantId, admin.id) : null;
-  if (!admin || admin.status !== "active" || !membership || membership.status !== "active") {
-    refuse("ADMINISTRATOR_INVALID", "--adminPrincipalId must name an active Principal with an active membership in this tenant");
+/**
+ * The administering Principal for employee mode, resolved EXACTLY as a request would be: principal resolution (membership,
+ * tenant status, the Employee gate, and only QUALIFYING global assignments -- active, not future-dated, not stale), then the
+ * capability gate `ensureTenantPrincipal` itself applies (`admin.roleAssignment.write`). The role keys returned are the ones
+ * handed to `ensureTenantPrincipal`, so the dry run refuses everything the apply would. A role NAME alone (a General Manager)
+ * is not authority.
+ */
+async function resolveEmployeeAdministrator(repo, tenantId, adminPrincipalId, deps) {
+  let ctx;
+  try {
+    ctx = await deps.runWithRequestScope(() => deps.resolvePrincipalContextById(repo, adminPrincipalId, tenantId));
+  } catch (err) {
+    if (err instanceof deps.PrincipalContextError) refuse("ADMINISTRATOR_INVALID", `--adminPrincipalId does not resolve to an active, eligible member of this tenant (${err.refusal ?? "refused"})`);
+    throw err;
   }
-  const roles = await repo.listRoles(tenantId);
-  const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
-  const heldRoleKeys = (await repo.listAssignmentsForPrincipal(tenantId, admin.id))
-    .filter((a) => a.status === "active").map((a) => roleKeyById.get(a.roleId)).filter(Boolean);
-  if (!hasAdministrationAuthority(heldRoleKeys, "assignRole")) {
-    refuse("ADMINISTRATOR_UNAUTHORIZED", "the administering Principal holds no active Role that may assign Roles");
+  const capabilities = await deps.capabilityKeysFor(repo, tenantId, ctx.heldRoleKeys, null);
+  if (!deps.hasSecurityAdministrationCapability(capabilities, "assignRole")) {
+    refuse("ADMINISTRATOR_UNAUTHORIZED", "the administering Principal holds no qualifying Role that grants assigning Roles (admin.roleAssignment.write)");
   }
-  return { id: admin.id, heldRoleKeys };
+  return { id: ctx.uid, heldRoleKeys: [...ctx.heldRoleKeys] };
 }
 
 /**
@@ -324,13 +335,21 @@ async function planEmployees(pool, repo, tenant, options, deps) {
       item.principalId = principal.id;
       const membership = await repo.getMembership(tenant.id, principal.id);
       if (principal.status !== "active" || !membership || membership.status !== "active") { refuseItem("PRINCIPAL_NOT_ACTIVE"); continue; }
-      const live = await pool.query(
-        "SELECT status FROM eos_policy.login_accounts WHERE principal_id = $1 AND status <> 'retired'", [principal.id]);
-      if (live.rows.length > 0) {
-        Object.assign(item, { outcome: "SKIPPED_EXISTS", reason: `login account is ${live.rows[0].status}; never reset or replaced`, createPrincipal: false, linkNeeded: false });
+      const accounts = (await pool.query("SELECT status FROM eos_policy.login_accounts WHERE principal_id = $1", [principal.id])).rows;
+      const live = accounts.find((a) => a.status !== "retired");
+      if (live) {
+        Object.assign(item, { outcome: "SKIPPED_EXISTS", reason: `login account is ${live.status}; never reset or replaced`, createPrincipal: false, linkNeeded: false });
         continue;
       }
+      // A login somebody retired on purpose is not silently re-created.
+      if (accounts.length > 0) { exclude("LOGIN_RETIRED"); continue; }
       if (await repo.getActiveIdentityBinding(principal.id, "eos")) { exclude("PRINCIPAL_HOLDS_EOS_IDENTITY"); continue; }
+      // The Owner and Administrator Principals are real people's; the service refuses them, so the plan shows it up front.
+      const protectedRole = await pool.query(
+        `SELECT 1 FROM eos_policy.user_role_assignments a JOIN eos_policy.roles r ON r.id = a.role_id
+          WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND r.protected AND r.key = ANY ($3::text[]) LIMIT 1`,
+        [tenant.id, principal.id, deps.protectedRoleKeys]);
+      if (protectedRole.rows.length > 0) { exclude("PRINCIPAL_IS_OWNER_OR_ADMINISTRATOR"); continue; }
     }
 
     // ---- the login name: the Employee's own reserved address.
@@ -339,8 +358,9 @@ async function planEmployees(pool, repo, tenant, options, deps) {
     if (normalizeLoginIdentifier(email) === null) { refuseItem("EMPLOYEE_EMAIL_MALFORMED"); continue; }
     if (!email.endsWith(".invalid")) { refuseItem("EMPLOYEE_EMAIL_NOT_RESERVED_INVALID"); continue; }
     item.loginIdentifier = email;
-    const taken = await pool.query("SELECT 1 FROM eos_policy.login_accounts WHERE login_identifier = $1 AND status <> 'retired'", [email]);
-    if (taken.rows.length > 0) refuseItem("LOGIN_IDENTIFIER_IN_USE");
+    const taken = (await pool.query("SELECT status FROM eos_policy.login_accounts WHERE login_identifier = $1", [email])).rows;
+    if (taken.some((a) => a.status !== "retired")) refuseItem("LOGIN_IDENTIFIER_IN_USE");
+    else if (taken.length > 0) exclude("LOGIN_RETIRED");
   }
   // Two Employees may not share a login name: the second apply would fail halfway through the run.
   const seen = new Map();
@@ -358,7 +378,7 @@ async function enrollPersonaLoginsRun(pool, options, deps) {
   const tenant = await repo.getTenantByKey(options.tenantKey);
   if (!tenant) refuse("TENANT_NOT_FOUND", `no tenant with key '${options.tenantKey}'`);
   const employeeMode = options.employees !== null && options.employees !== undefined;
-  const admin = employeeMode ? await resolveEmployeeAdministrator(repo, tenant.id, options.adminPrincipalId, deps.hasAdministrationAuthority) : null;
+  const admin = employeeMode ? await resolveEmployeeAdministrator(repo, tenant.id, options.adminPrincipalId, deps) : null;
   const plan = employeeMode ? await planEmployees(pool, repo, tenant, options, deps) : await planPersonas(pool, repo, options, deps);
 
   const report = { tool: "enrollPersonaLogins", mode: employeeMode ? "employees" : "personas", environment: options.environmentId, tenantKey: options.tenantKey, apply: options.apply, personas: plan };
@@ -407,7 +427,7 @@ async function enrollPersonaLoginsRun(pool, options, deps) {
           }
           await service.enrollEmployeeLogin({
             tenantId: tenant.id, employeeId: item.employeeId, principalId, loginIdentifier: item.loginIdentifier,
-            password, totpSecret, recoveryCodes, reason: composedReason,
+            password, totpSecret, recoveryCodes, reason: composedReason, assertedBy: admin.id,
           });
         } else {
           await service.enrollPersonaLogin({
@@ -436,6 +456,8 @@ async function main() {
   const options = assertInvocation(parseArgs(process.argv.slice(2)), process.env);
   const pg = require("pg");
   const { resolvePolicyDatabaseConfig } = require("../lib/adminPolicy/policyDatabase.js");
+  const administrationAuthority = require("../lib/adminPolicy/administrationAuthority.js");
+  const principalContext = require("../lib/adminPolicy/principalContext.js");
   const deps = {
     PostgresPolicyRepository: require("../lib/adminPolicy/postgresPolicyRepository.js").PostgresPolicyRepository,
     EosLoginService: require("../lib/eosAuth/eosLoginService.js").EosLoginService,
@@ -443,7 +465,12 @@ async function main() {
     nonprodPersonaSubject: require("../lib/eosAuth/nonprodPersonas.js").nonprodPersonaSubject,
     // Employee mode: the governed Principal and link writers the synthetic workforce seed uses, and the login-name normalizer.
     ensureTenantPrincipal: require("../lib/adminPolicy/tenantBootstrap.js").ensureTenantPrincipal,
-    hasAdministrationAuthority: require("../lib/adminPolicy/administrationAuthority.js").hasAdministrationAuthority,
+    hasSecurityAdministrationCapability: administrationAuthority.hasSecurityAdministrationCapability,
+    protectedRoleKeys: [administrationAuthority.PROTECTED_OWNER_ROLE_KEY, administrationAuthority.ADMIN_ROLE_KEY],
+    capabilityKeysFor: require("../lib/adminPolicy/administrationCapabilityGate.js").capabilityKeysFor,
+    resolvePrincipalContextById: principalContext.resolvePrincipalContextById,
+    PrincipalContextError: principalContext.PrincipalContextError,
+    runWithRequestScope: require("../lib/eosAuth/requestTenantBinding.js").runWithRequestScope,
     links: require("../lib/employeeIdentity/employeePrincipalLinkRepository.js"),
     normalizeLoginIdentifier: require("../lib/eosAuth/eosLoginService.js").normalizeLoginIdentifier,
   };

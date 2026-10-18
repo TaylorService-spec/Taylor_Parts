@@ -1626,7 +1626,9 @@ export class EosLoginService {
    *
    * WHO. Only an Employee whose id starts `np-taylor-` (the scaled sample workforce) or `synthetic-np-emp-` (the synthetic
    * workforce), whose `.invalid` work address is the login identifier, whose status is ACTIVE, CONTRACTOR or ON_LEAVE, and who is
-   * linked to the Principal named. A real person cannot be reached: nothing else passes the prefix and the `.invalid` fences.
+   * linked to the Principal named, with no separation date; the login identifier must BE that Employee's `work_email`. A login
+   * once retired (for the Principal or the name) is never re-created here. `assertedBy` (the administering Principal) is recorded
+   * in the audit event. A real person cannot be reached: nothing else passes the prefix and the `.invalid` fences.
    *
    * WHAT IT ADDS. A human EOS identity (`user.<hex>`, the same binding Administration > Users > "Create sign-in" mints) on the
    * Principal, and a login account on it that is ACTIVE with a password, an ACTIVE authenticator and ten recovery codes. The
@@ -1640,8 +1642,11 @@ export class EosLoginService {
   async enrollEmployeeLogin(input: {
     tenantId: string; employeeId: unknown; principalId: string; loginIdentifier: unknown; password: unknown;
     totpSecret: Buffer; recoveryCodes: readonly string[]; reason: string;
+    /** The administering Principal that asserted this enrollment (the tool's --adminPrincipalId); recorded in the audit event. */
+    assertedBy: string;
   }) {
     if (this.deps.environment !== "nonprod") throw new LoginRefusal("FORBIDDEN", "employee enrollment is nonprod only");
+    if (typeof input.assertedBy !== "string" || input.assertedBy.trim() === "") throw new LoginRefusal("INVALID_INPUT", "assertedBy (the administering Principal) is required");
     const employeeId = input.employeeId;
     if (typeof employeeId !== "string" || !ENROLLABLE_EMPLOYEE_ID_PREFIXES.some((p) => employeeId.startsWith(p))) {
       throw new LoginRefusal("INVALID_INPUT", "employeeId is not a nonprod sample or synthetic Employee");
@@ -1660,9 +1665,20 @@ export class EosLoginService {
     if (!fact.employmentStatus || !ENROLLABLE_EMPLOYMENT_STATUSES.includes(fact.employmentStatus)) {
       throw new LoginRefusal("CONFLICT", "that Employee's status does not allow a sign-in");
     }
+    // The login name IS the Employee's own work address, and a separated Employee is not enrolled whatever the status says.
+    const { rows: emp } = await this.deps.pool.query(
+      `SELECT work_email, separation_date FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [input.tenantId, employeeId]);
+    if (emp.length !== 1 || emp[0].separation_date != null) throw new LoginRefusal("CONFLICT", "that Employee has a separation date");
+    if (typeof emp[0].work_email !== "string" || emp[0].work_email.trim().toLowerCase() !== identifier) {
+      throw new LoginRefusal("CONFLICT", "the login identifier must be the Employee's own work_email");
+    }
     if (await this.deps.repo.getActiveIdentityBinding(principalId, EOS_IDENTITY_PROVIDER)) {
       throw new LoginRefusal("CONFLICT", "that principal already has an active EOS identity");
     }
+    // A login someone retired on purpose is never silently re-created for the same Principal or the same login name.
+    const { rows: retired } = await this.deps.pool.query(
+      `SELECT 1 FROM ${SCHEMA}.login_accounts WHERE status = 'retired' AND (principal_id = $1 OR login_identifier = $2) LIMIT 1`, [principalId, identifier]);
+    if (retired.length > 0) throw new LoginRefusal("CONFLICT", "LOGIN_RETIRED: a login for that principal or login name was retired");
     // The administering Principals are real people's (the Owner and Administrator); nothing here enrolls them.
     if (await this.holdsProtectedAdministeringRoleIn(principalId, input.tenantId)) {
       throw new LoginRefusal("PROTECTED_TARGET", "an Owner or Administrator is not enrolled by this tool");
@@ -1702,7 +1718,7 @@ export class EosLoginService {
         [factorId, accountId, encryptFactorSecret(keyring, input.totpSecret, factorId), now]);
       await this.storeRecoveryCodes(c, keyring, accountId, codes);
       await this.audit(c, input.tenantId, principalId, "enrollEmployeeLogin", accountId, null,
-        { employeeId, loginIdentifier: identifier, bindingId: binding.id, subject, mfaRequired: true, factor: "totp", recoveryCodes: codes.length }, reason);
+        { employeeId, assertedBy: input.assertedBy.trim(), loginIdentifier: identifier, bindingId: binding.id, subject, mfaRequired: true, factor: "totp", recoveryCodes: codes.length }, reason);
       await this.event(c, { event: "enrollEmployeeLogin", outcome: "success", accountId, principalId, tenantId: input.tenantId });
       return Object.freeze({ accountId, principalId, loginIdentifier: identifier, subject });
     });
