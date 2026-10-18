@@ -16,7 +16,11 @@
 //   holds only businessUnit                                                           EMPTY    EOS receivables carry no business unit
 //
 // A mixed holder (a salesperson who also holds something else without a visibility key) resolves by the visibility keys it
-// holds: any visibility key without a full one is a RESTRICTION, never a widening (fail closed).
+// holds: any visibility key without a full one is a RESTRICTION, never a widening (fail closed). "Holds" means held ANY way:
+// flat, through an operatingCompany-scoped assignment (finance.visibility.* is not scope-evaluable, so it arrives as inertScoped),
+// conditioned, or scoped to a type the runtime does not consume (applies to every company). Only a flat / unconditioned
+// company-scoped consolidated or company key yields FULL (additive, as Firebase's scope union); a restriction key held in an
+// undecidable form restricts and reads NOTHING, even once self/team are active.
 //
 // WHAT "ATTRIBUTED" MEANS (authoritative sales source, derive-not-persist; FIN-002 "historical stays historical"):
 //   obligation.source_domain = 'BILLING_PACKAGE' -> billing_packages.id = source_record_id, source_kind = 'SALES_ORDER', the
@@ -70,16 +74,43 @@ export interface FinanceVisibilityActor extends FinanceReachActor {
   readonly financeSelfTeamActive?: boolean;
 }
 
+/** A FULL key, held the only way the runtime can decide it: flat, or an unconditioned operatingCompany-scoped holding for this company. */
 const heldAt = (actor: FinanceReachActor, key: string, company: string): boolean =>
   actor.capabilities.has(key) || admittedScopeValues(actor.scopedHeld as never, key, "operatingCompany").includes(company);
 
+const RESTRICTION_KEYS: readonly string[] = Object.freeze([FINANCE_VISIBILITY_SELF, FINANCE_VISIBILITY_TEAM, FINANCE_VISIBILITY_BUSINESS_UNIT]);
+
+/**
+ * A RESTRICTION key held in a form the runtime can DECIDE for this company: flat (global Role or direct grant), or an
+ * operatingCompany-scoped holding of THIS company. finance.visibility.* is not a scope-evaluable capability, so a scoped holding
+ * arrives as `inertScoped` (never in `capabilities`); it is read here, because ignoring it would resolve the holder FULL.
+ */
+const restrictionPlain = (actor: FinanceReachActor, key: string, company: string): boolean =>
+  actor.capabilities.has(key)
+  || (actor.scopedHeld ?? []).some((h) => h.capabilityKey === key && h.scopeType === "operatingCompany" && h.scopeValue === company && h.condition === null)
+  || (actor.inertScoped ?? []).some((h) => h.capabilityKey === key && h.scopeType === "operatingCompany" && h.scopeValue === company);
+
+/**
+ * A RESTRICTION key held ANY way that applies here, including the ways nothing can evaluate: conditioned (flat, or scoped), or scoped
+ * to a type or value the runtime does not consume (a businessUnit / location / salesChannel scope, or an unreadable one -- these
+ * apply to EVERY company, since the scope cannot be mapped to one). Presence alone restricts; it never confers reach.
+ */
+const restrictionPresent = (actor: FinanceReachActor, key: string, company: string): boolean =>
+  restrictionPlain(actor, key, company)
+  || actor.conditionallyHeld?.has(key) === true
+  || (actor.scopedHeld ?? []).some((h) => h.capabilityKey === key && (h.scopeType !== "operatingCompany" || h.scopeValue === company))
+  || (actor.inertScoped ?? []).some((h) => h.capabilityKey === key && (h.scopeType !== "operatingCompany" || h.scopeValue === company));
+
 /** PURE: the inner reach of `actor` at one operating company (which the outer company rule has already admitted). */
 export function financeVisibilityModeAt(actor: FinanceReachActor, companyId: string, selfTeamActive: boolean): FinanceVisibilityMode {
-  const has = (key: string) => heldAt(actor, key, companyId);
-  if (has(FINANCE_VISIBILITY_CONSOLIDATED) || has(FINANCE_VISIBILITY_COMPANY)) return "FULL";
-  if (!has(FINANCE_VISIBILITY_SELF) && !has(FINANCE_VISIBILITY_TEAM) && !has(FINANCE_VISIBILITY_BUSINESS_UNIT)) return "FULL";
-  if (selfTeamActive && has(FINANCE_VISIBILITY_TEAM)) return "TEAM";
-  if (selfTeamActive && has(FINANCE_VISIBILITY_SELF)) return "SELF";
+  // A full key is decided the strict way only (flat or unconditioned company-scoped): a conditioned or unevaluable one never widens.
+  if (heldAt(actor, FINANCE_VISIBILITY_CONSOLIDATED, companyId) || heldAt(actor, FINANCE_VISIBILITY_COMPANY, companyId)) return "FULL";
+  // FAIL CLOSED: a restriction key held ANY way (flat, scoped, conditioned, scoped to an unconsumed type) makes the reader restricted.
+  // FULL by "no visibility key at all" is reachable only when none of the three is held in any form.
+  if (!RESTRICTION_KEYS.some((k) => restrictionPresent(actor, k, companyId))) return "FULL";
+  // Reach (when active) only from a key held in a decidable form; a conditioned / unconsumed-scope holding restricts and reads nothing.
+  if (selfTeamActive && restrictionPlain(actor, FINANCE_VISIBILITY_TEAM, companyId)) return "TEAM";
+  if (selfTeamActive && restrictionPlain(actor, FINANCE_VISIBILITY_SELF, companyId)) return "SELF";
   return "EMPTY";
 }
 
@@ -155,11 +186,10 @@ export async function resolveFinanceVisibility(db: Db, actor: FinanceVisibilityA
       empty.push(...selfCs, ...teamCs);
       selfCs.length = 0; teamCs.length = 0;
     } else {
-      const sets = await Promise.all([
-        selfCs.length ? visibleReceivables(db, actor.tenantId, employeeId, selfCs, false) : Promise.resolve([] as string[]),
-        teamCs.length ? visibleReceivables(db, actor.tenantId, employeeId, teamCs, true) : Promise.resolve([] as string[]),
-      ]);
-      ids = [...new Set(sets.flat())].sort();
+      // Sequential: both queries run on one connection (a PoolClient serialises them anyway; Promise.all would only hide that).
+      const selfIds = selfCs.length ? await visibleReceivables(db, actor.tenantId, employeeId, selfCs, false) : [];
+      const teamIds = teamCs.length ? await visibleReceivables(db, actor.tenantId, employeeId, teamCs, true) : [];
+      ids = [...new Set([...selfIds, ...teamIds])].sort();
     }
   }
   return Object.freeze({

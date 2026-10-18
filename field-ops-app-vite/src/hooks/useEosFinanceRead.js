@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { financeReader, resolveScope } from "../services/eosFinancialsClient.js";
+import { useAuth } from "../auth/AuthContext";
 
 // One fresh, bounded read from the EOS Finance register per (key) -- Firebase exit B1 (DECISIONS #B1). NO cache and NO request
 // sharing: a filter change must issue a genuinely fresh read, and a different signed-in principal never receives another's answer
-// because nothing is kept between reads (the bearer on each request is the signed-in principal's own).
+// because nothing is kept between reads (the bearer on each request is the signed-in principal's own). The principal's uid is part of
+// the effect key (as in hooks/useAccountAr.js): when the signed-in principal changes on a mounted page, the previous principal's
+// answer is dropped and a fresh read is issued -- never shown to the next one.
 //
 // `run(reader)` returns `{ result }` or `{ errorStatus }` (services/eosFinancialsClient.js). The effect key is serialized so a page
 // can pass object literals without re-reading on every render.
 export function useEosFinanceRead(run, key, { enabled = true } = {}) {
+  const uid = (useAuth() ?? {}).user?.uid ?? null;
   const [state, setState] = useState({ loading: enabled, errorStatus: null, result: null });
   useEffect(() => {
     if (!enabled) {
@@ -23,7 +27,7 @@ export function useEosFinanceRead(run, key, { enabled = true } = {}) {
     return () => { cancelled = true; };
     // `run` closes over exactly what `key` serializes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key, enabled, uid]);
   return state;
 }
 

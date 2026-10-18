@@ -799,7 +799,7 @@ export async function executeWorkOrderOperation(
     const caller = Object.freeze({
       actor: Object.freeze({ tenantId, principalId, capabilities }),
       operational: Object.freeze({ tenantId, principalId, capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld,
-        scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }),
+        scopedHeld: ctx.scopedHeld, inertScoped: ctx.inertScoped, entitlements: ctx.entitlements }),
     });
     const result = await table[operation](
       { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState, policyReader: deps.reader,

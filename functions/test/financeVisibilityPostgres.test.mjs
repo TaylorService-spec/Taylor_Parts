@@ -300,11 +300,77 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
     }
     // The settlement application a restricted reader sees on ITS receivable names no other obligation.
     const d = ok(await on(s1, "readObligation", { obligationId: o1 }));
-    assert.deepEqual(d.applications.map((a) => a.settlementId).sort(), [stlA, stlB, stlD].sort());
+    assert.equal(d.applications.length, 3);
     assert.ok(d.applications.every((a) => a.amountMinor && a.status), "its own applications, amounts only for ITS obligation");
+    // F2 (review): a settlement readSettlement hides from this reader (stlB, stlD also settle o2) is NOT described here either --
+    // no id, kind or source reference; the application says only that the settlement is not visible, with its own date.
+    const visibleApps = d.applications.filter((a) => a.settlementVisible === true), hiddenApps = d.applications.filter((a) => a.settlementVisible === false);
+    assert.deepEqual(visibleApps.map((a) => a.settlementId), [stlA]);
+    assert.equal(hiddenApps.length, 2);
+    for (const h of hiddenApps) {
+      assert.deepEqual([h.settlementId, h.settlementKind, h.sourceReference, h.businessDate], [null, null, null, null]);
+      assert.match(h.appliedOn, /^\d{4}-\d{2}-\d{2}$/);
+      assert.ok(h.amountMinor && h.status);
+    }
+    const leaked = JSON.stringify(hiddenApps);
+    for (const hiddenId of [stlB, stlD]) assert.ok(!leaked.includes(hiddenId), "a hidden settlement's id appears nowhere in the application");
+    // Finance and the Team manager (who sees o2 too) see every settlement of these applications.
+    assert.ok(ok(await on(ctrl, "readObligation", { obligationId: o1 })).applications.every((a) => a.settlementVisible === true && a.settlementId));
+    assert.ok(ok(await on(m1, "readObligation", { obligationId: o1 })).applications.every((a) => a.settlementVisible === true));
     // The business-date window is accepted and validated.
     assert.deepEqual(ok(await on(ctrl, "listSettlements", { operatingCompanyId: "taylor", businessDateFrom: "2999-01-01" })).items, []);
     refused(await on(ctrl, "listSettlements", { operatingCompanyId: "taylor", businessDateFrom: "01/01/2026" }), 400, "BUSINESS_DATE_INVALID");
+  });
+
+  // ── F1 (independent review) ──
+  await t.test("FAIL CLOSED: a restriction key held through a company SCOPE or a CONDITION restricts -- never FULL; a global controller plus a company-scoped salesperson is restricted at that company", async () => {
+    // finance.visibility.* is not scope-evaluable, so the runtime reports a scoped holding as inert (never in the flat set); and a conditioned
+    // grant leaves the flat set. Both used to resolve FULL ("no visibility key held"). Raw rows, as an Administrator's custom Role would write them.
+    const giveRole = async (who, roleKey, capKeys, scopeValue = null) => {
+      const roleId = `rl-f1-${roleKey}`;
+      await q(`INSERT INTO eos_policy.roles (id,tenant_id,key,name,origin,created_by,updated_by) VALUES ($1,$2,$3,$3,'CUSTOM','f1','f1') ON CONFLICT DO NOTHING`, [roleId, TENANT, roleKey]);
+      for (const k of capKeys) {
+        await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+                 SELECT $1,$2,$3,c.id,'f1','f1','f1' FROM eos_policy.capabilities c WHERE c.key = $4 ON CONFLICT DO NOTHING`, [`rc-f1-${roleKey}-${k}`, TENANT, roleId, k]);
+      }
+      await q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+               VALUES ($1,$2,$3,$4,$5,$6,'active','f1',0,'f1','f1') ON CONFLICT DO NOTHING`,
+        [`ura-f1-${roleKey}-${who.principalId}`, TENANT, who.principalId, roleId, scopeValue ? "operatingCompany" : "global", scopeValue]);
+    };
+    const modes = async (call_, who) => ok(await call_(who, "readMyFinanceCompanyAccess", {})).companies.map((c) => [c.operatingCompanyId, c.visibility]);
+    const SELF = "finance.visibility.self";
+
+    // (a) a custom Role holding finance.visibility.self, assigned at operatingCompany=taylor (the financeCompanyAccess pattern).
+    const sc = await person("uid-f1-scoped", [], { id: "e-f1-scoped", name: "Scoped Seller" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [sc], ["taylor"]);
+    await giveRole(sc, "fvScopedSelf", [SELF], "taylor");
+    assert.deepEqual(await modes(off, sc), [["taylor", "RESTRICTED_EMPTY"]], "inactive: restricted-empty, never FULL");
+    assert.deepEqual(idsOf(await off(sc, "listObligations", { operatingCompanyId: "taylor" })), [], "inactive: nothing is listed");
+    refused(await off(sc, "readObligation", { obligationId: o1 }), 404, "OBLIGATION_NOT_FOUND");
+    assert.equal(ok(await off(sc, "readFinanceWorkspace", { operatingCompanyId: "taylor" })).visibility.restricted, true);
+    assert.deepEqual(await modes(on, sc), [["taylor", "RESTRICTED"]], "activated: restricted to the credited rows");
+    assert.deepEqual(idsOf(await on(sc, "listObligations", { operatingCompanyId: "taylor" })), [], "activated: only receivables credited to this Employee (none)");
+    assert.equal(ok(await on(sc, "readFinanceOverview", { operatingCompanyId: "taylor" })).visibility.restricted, true);
+
+    // (b) a CONDITIONED grant of the key (a raw condition row, as the F7/F8 reviews write them): restricts and reads nothing, even when activated.
+    const cc = await person("uid-f1-cond", [], { id: "e-f1-cond", name: "Conditioned Seller" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [cc]);
+    await giveRole(cc, "fvCondSelf", [SELF]);
+    await q(`INSERT INTO eos_policy.capability_grant_conditions (id,tenant_id,grant_scope,grantor_key,capability_key,condition,established_by,updated_by)
+             VALUES ('gc-f1',$1,'ROLE','fvCondSelf',$2,'{"paths":[[{"kind":"WORK_ELIGIBILITY","qualificationCode":"NO_SUCH_QUALIFICATION"}]]}'::jsonb,'x','x')`, [TENANT, SELF]);
+    for (const [label, c_] of [["inactive", off], ["activated", on]]) {
+      assert.deepEqual(await modes(c_, cc), [["taylor", "RESTRICTED_EMPTY"], ["ventana", "RESTRICTED_EMPTY"]], `${label}: a conditioned restriction key reads nothing`);
+      assert.deepEqual(idsOf(await c_(cc, "listObligations", { operatingCompanyId: "taylor" })), [], label);
+    }
+
+    // (c) a GLOBAL controller (no visibility key, hence FULL on its own) plus a salesperson Role scoped to Taylor: restricted at Taylor, FULL at Ventana.
+    const mx2 = await person("uid-f1-mixed", ["controller"], { id: "e-f1-mixed", name: "Mixed Scope" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [mx2]);
+    await giveRole(mx2, "fvScopedSales", [SELF], "taylor");
+    assert.deepEqual(await modes(off, mx2), [["taylor", "RESTRICTED_EMPTY"], ["ventana", "FULL"]]);
+    assert.deepEqual(idsOf(await off(mx2, "listObligations", { operatingCompanyId: "taylor" })), []);
+    assert.deepEqual(idsOf(await off(mx2, "listObligations", { operatingCompanyId: "ventana" })), [o4, o10].sort(), "the company with no restriction key stays FULL");
+    assert.deepEqual(await modes(on, mx2), [["taylor", "RESTRICTED"], ["ventana", "FULL"]]);
   });
 
   await t.test("COMMANDS: a restricted reader is refused every settlement command (the same answer as a missing record); Finance still acts", async () => {

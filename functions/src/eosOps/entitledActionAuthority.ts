@@ -33,7 +33,7 @@ import {
 // `resolveOperationalContext`, which resolved it a second time. The condition PROVIDER takes the
 // resolved tenant as an argument instead, so there is exactly one principal resolution per request.
 import type { ResolveContextInput } from "../adminPolicy/principalContext";
-import type { BusinessContext, ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
+import type { BusinessContext, InertScopedCapability, ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { postgresContextualReader, type ContextualReader } from "./contextualAuthorization";
 import {
@@ -187,6 +187,8 @@ export interface OperationalActor {
   readonly conditionallyHeld?: ReadonlySet<string>;
   /** Capabilities held only within an assignment scope; decided only with the record's business context. */
   readonly scopedHeld?: readonly ScopedHolding<GrantCondition>[];
+  /** Scoped capabilities the runtime cannot decide at that scope (they grant nothing). Finance visibility reads them to FAIL CLOSED. */
+  readonly inertScoped?: readonly InertScopedCapability[];
   /** The REQUIRED, request-scoped entitlement provider. Never an optional field, never a value. */
   readonly entitlements: EntitlementResolver;
 }

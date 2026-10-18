@@ -106,9 +106,21 @@ export default function FinancialsReceivableDetailEos() {
                     <tbody>
                       {found.applications.map((a) => (
                         <tr key={a.id}>
-                          <td className="fin-nowrap"><Link to={`/financials/payments/${a.settlementId}`}>{a.sourceReference}</Link></td>
-                          <td>{settlementKindWords(a.settlementKind)}</td>
-                          <td>{dateWords(dayMillis(a.businessDate))}</td>
+                          {a.settlementVisible === false ? (
+                            // The server withholds a settlement this reader may not read (it also settles receivables outside the reader's visibility):
+                            // only the application's own amount, status and date are shown, and the settlement is said not to be visible.
+                            <>
+                              <td className="fin-nowrap">Settlement not visible</td>
+                              <td>Not visible</td>
+                              <td>{dateWords(dayMillis(a.appliedOn))}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="fin-nowrap"><Link to={`/financials/payments/${a.settlementId}`}>{a.sourceReference}</Link></td>
+                              <td>{settlementKindWords(a.settlementKind)}</td>
+                              <td>{dateWords(dayMillis(a.businessDate))}</td>
+                            </>
+                          )}
                           <td>{a.status === "REVERSED" ? "Reversed" : "Applied"}</td>
                           <td className="ns-num">{money(a.amountMinor, found.currency)}</td>
                         </tr>

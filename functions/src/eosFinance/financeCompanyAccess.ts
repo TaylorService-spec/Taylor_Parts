@@ -26,6 +26,12 @@ export const FINANCE_COMPANY_ASSIGNMENT_KEY = "finance.payment.read";
 export interface FinanceReachActor {
   readonly capabilities: ReadonlySet<string>;
   readonly scopedHeld?: readonly ScopedHolding<unknown>[];
+  /**
+   * B1 (financeVisibility.ts only): keys held ONLY through conditioned grants, and scoped capabilities the runtime cannot decide.
+   * Neither grants reach here; they let the inner-reach rule see that a RESTRICTION key is held in a form it cannot evaluate.
+   */
+  readonly conditionallyHeld?: ReadonlySet<string>;
+  readonly inertScoped?: readonly { readonly capabilityKey: string; readonly scopeType: string; readonly scopeValue: string | null }[];
 }
 
 /** The companies `key` reaches for this actor (sorted), or null when the key is held nowhere. */

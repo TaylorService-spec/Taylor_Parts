@@ -17,7 +17,7 @@ import { resolveSharedReportingCalendar } from "../reportingPeriod/reportingCale
 import { MEASURES, measureById, type MeasureDefinition, type MeasureRow, type MeasureScope } from "./measures";
 import { scopedWarehouseIds } from "../eosOps/partsReads";
 import { queueReachKeys } from "../eosOps/reorderLifecycleCommands";
-import { financeCompanyReach } from "../eosFinance/financeCompanyAccess";
+import { financeCompanyReach, type FinanceReachActor } from "../eosFinance/financeCompanyAccess";
 import { resolveFinanceVisibility, type FinanceVisibility } from "../eosFinance/financeVisibility";
 import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
 
@@ -38,6 +38,9 @@ export interface AnalysisActor {
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
   readonly scopedHeld?: readonly ScopedHolding<unknown>[];
+  /** B1: restriction keys held in a form the runtime cannot evaluate (financeVisibility.ts fails closed on them). */
+  readonly conditionallyHeld?: ReadonlySet<string>;
+  readonly inertScoped?: FinanceReachActor["inertScoped"];
   /** D-249-0 (test injection only): Finance self/team visibility activated. Absent = INACTIVE, as in Firebase. */
   readonly financeSelfTeamActive?: boolean;
 }
@@ -163,8 +166,8 @@ async function financeInnerReach(db: Queryable, actor: AnalysisActor, m: Measure
   if (m.readCapabilities.length === 0 || !m.readCapabilities.every((k) => k.startsWith("finance."))) return null;
   let pending = visibilityByScope.get(scope);
   if (!pending) {
-    pending = resolveFinanceVisibility(db, { capabilities: actor.capabilities, scopedHeld: actor.scopedHeld, tenantId: actor.tenantId, principalId: actor.principalId,
-      financeSelfTeamActive: actor.financeSelfTeamActive }, scope.companyIds);
+    pending = resolveFinanceVisibility(db, { capabilities: actor.capabilities, scopedHeld: actor.scopedHeld, conditionallyHeld: actor.conditionallyHeld, inertScoped: actor.inertScoped,
+      tenantId: actor.tenantId, principalId: actor.principalId, financeSelfTeamActive: actor.financeSelfTeamActive }, scope.companyIds);
     visibilityByScope.set(scope, pending);
   }
   const vis = await pending;

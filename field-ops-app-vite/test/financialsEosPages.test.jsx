@@ -12,6 +12,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 const fb = vi.hoisted(() => ({ callables: [], firestore: [], ops: [] }));
+// The signed-in principal (hooks/useEosFinanceRead.js keys its read by it, as hooks/useAccountAr.js does).
+const auth = vi.hoisted(() => ({ uid: "uid-A" }));
+vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: auth.uid } }) }));
 
 // BLOCKED: the Firebase finance callable client and the Firestore directory. Any call fails the run.
 vi.mock("../src/services/financeReadCallableClient.js", () => ({
@@ -211,6 +214,27 @@ describe("Settlement record — /financials/payments/:paymentId on EOS", () => {
     expect(screen.getAllByText("Applied").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("link", { name: "AAAAAAAA" }).getAttribute("href")).toBe("/financials/invoices/obl_aaaaaaaa-1");
     expect(container.textContent).toMatch(/unreconciled/i);
+    assertBlockedFirebaseAndReadsOnly();
+  });
+});
+
+describe("principal isolation — the signed-in principal is part of the read's identity", () => {
+  test("a different principal on the same mounted page gets a FRESH read and never the previous principal's answer", async () => {
+    auth.uid = "uid-A";
+    const elementFor = () => (
+      <MemoryRouter initialEntries={["/financials/invoices"]}><Routes><Route path="/financials/invoices" element={<FinancialsReceivablesEos />} /><Route path="*" element={<div>other page</div>} /></Routes></MemoryRouter>
+    );
+    server({ listObligations: { scope: "consolidated", items: [row()] } });
+    const view = render(elementFor());
+    await settled(view.container, /Harbor Grill/);
+    const readsBefore = fb.ops.length;
+    // Principal B signs in on the same tab; the server's answer for B differs.
+    server({ listObligations: { scope: "consolidated", items: [row({ id: "obl_bbbbbbbb-2", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-z", name: "Zeta Foods" } })] } });
+    auth.uid = "uid-B";
+    view.rerender(elementFor());
+    await settled(view.container, /Zeta Foods/);
+    expect(view.container.textContent).not.toMatch(/Harbor Grill/);
+    expect(fb.ops.length, "B's page issued its own reads").toBeGreaterThan(readsBefore);
     assertBlockedFirebaseAndReadsOnly();
   });
 });

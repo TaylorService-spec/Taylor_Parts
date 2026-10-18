@@ -9,7 +9,8 @@ export const ANALYSIS_ROUTE = "/operations/analysis";
 
 type Op = (deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) => Promise<unknown>;
 const actorOf = (caller: WorkOrderCaller, financeSelfTeamActive?: boolean): AnalysisActor => ({ tenantId: caller.actor.tenantId, principalId: caller.actor.principalId,
-  capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld, financeSelfTeamActive });
+  capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld, conditionallyHeld: caller.operational?.conditionallyHeld,
+  inertScoped: caller.operational?.inertScoped, financeSelfTeamActive });
 
 export const EOS_ANALYSIS_OPERATIONS: Readonly<Record<string, Op>> = Object.freeze({
   readAnalysisCatalog: async (_deps, caller) => readAnalysisCatalog(actorOf(caller)),

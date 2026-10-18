@@ -114,7 +114,8 @@ async function activeCompanies(pool: Pool, tenantId: string): Promise<string[]> 
   const { rows } = await pool.query(`SELECT operating_company_id FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY 1`, [tenantId]);
   return rows.map((r) => String(r.operating_company_id));
 }
-const reachActor = (caller: WorkOrderCaller) => ({ capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld });
+const reachActor = (caller: WorkOrderCaller) => ({ capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld,
+  conditionallyHeld: caller.operational?.conditionallyHeld, inertScoped: caller.operational?.inertScoped });
 /**
  * The Finance view gate: finance.payment.read held FLAT or through a company-scoped assignment (a scoped holding IS the key
  * and the company assignment at once). Held nowhere: CAPABILITY_REQUIRED. Where it applies is decided per company after.
@@ -188,6 +189,9 @@ const dateText = (v: unknown): string | null => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** An open obligation past its due date on the company's own business calendar (alias `o`). */
+const OVERDUE_SQL = `o.due_on IS NOT NULL AND o.status IN ('OPEN','PARTIAL') AND o.due_on < eos_policy.operating_company_business_date(o.tenant_id, o.operating_company_id, now())`;
+
 /**
  * Obligation rows over the caller's INNER reach (`vis`): every row of a FULL company, and only the visible attributed receivables
  * of a restricted one. `build` receives `bind(value)` -> its `$n` placeholder, so a caller's own filters share one parameter list.
@@ -201,7 +205,7 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     `SELECT o.id, o.operating_company_id, o.kind, o.currency, o.status, o.source_domain, o.source_record_id, o.due_on, o.created_at,
             b.originated_minor, b.settled_minor, b.outstanding_minor, cp.kind AS counterparty_kind, cp.crm_account_id, cp.operating_company_id AS counterparty_company,
             a.name AS counterparty_name,
-            (o.due_on IS NOT NULL AND o.status IN ('OPEN','PARTIAL') AND o.due_on < eos_policy.operating_company_business_date(o.tenant_id, o.operating_company_id, now())) AS overdue
+            (${OVERDUE_SQL}) AS overdue
        FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
        JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
        LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id
@@ -225,23 +229,38 @@ const WITHHELD_SECTIONS = Object.freeze(["fundingReceivables", "payables", "inte
 /** The workspace of a caller who does not read every company in scope in full: receivables over visible rows, the rest withheld. */
 async function restrictedWorkspace(deps: WorkOrderOperationDeps, caller: WorkOrderCaller,
   scope: { consolidated: boolean; companies: string[] }, vis: FinanceVisibility) {
-  const open = await obligationRows(deps.pool, caller.actor.tenantId, vis, () => `o.status IN ('OPEN','PARTIAL') AND o.kind = 'RECEIVABLE'`, 500);
+  const t = caller.actor.tenantId;
+  // Counts and totals are computed in SQL over EVERY visible open receivable (never over a capped page); the lists below are bounded
+  // samples of the same rows and say nothing about the totals.
+  const aggParams: unknown[] = [t];
+  const visibleOpen = obligationVisibilityClause(vis, "o", aggParams);
+  const { rows: agg } = await deps.pool.query(
+    `SELECT currency, count(*)::int AS n, count(*) FILTER (WHERE overdue)::int AS overdue_n, count(*) FILTER (WHERE status = 'PARTIAL')::int AS partial_n,
+            sum(outstanding_minor)::text AS outstanding
+       FROM (SELECT o.currency, o.status, b.outstanding_minor, (${OVERDUE_SQL}) AS overdue
+               FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
+              WHERE o.tenant_id = $1 AND ${visibleOpen} AND o.kind = 'RECEIVABLE' AND o.status IN ('OPEN','PARTIAL')) x
+      GROUP BY currency ORDER BY currency`, aggParams);
   const byCurrency: Record<string, string> = {};
-  for (const o of open) byCurrency[o.currency] = (BigInt(byCurrency[o.currency] ?? "0") + BigInt(o.outstandingMinor)).toString();
+  let openCount = 0, overdueCount = 0, partialCount = 0;
+  for (const r of agg) { byCurrency[String(r.currency)] = String(r.outstanding); openCount += r.n; overdueCount += r.overdue_n; partialCount += r.partial_n; }
+  const openItems = await obligationRows(deps.pool, t, vis, () => `o.status IN ('OPEN','PARTIAL') AND o.kind = 'RECEIVABLE'`, 25);
+  const overdueItems = await obligationRows(deps.pool, t, vis, () => `o.kind = 'RECEIVABLE' AND (${OVERDUE_SQL})`, 50);
+  const partialItems = await obligationRows(deps.pool, t, vis, () => `o.kind = 'RECEIVABLE' AND o.status = 'PARTIAL'`, 50);
   return Object.freeze({
     scope: { operatingCompanyId: scope.consolidated ? "consolidated" : scope.companies[0], projection: scope.consolidated ? "CONSOLIDATED_REPORTING_PROJECTION" : "OPERATING_COMPANY",
       companies: scope.companies },
     visibility: Object.freeze({ restricted: true, fullCompanies: vis.fullCompanies, restrictedCompanies: vis.restrictedCompanies, emptyCompanies: vis.emptyCompanies }),
     withheld: Object.freeze({ reason: RESTRICTED_WITHHELD_REASON, sections: WITHHELD_SECTIONS }),
     exceptionCounts: {
-      overdueObligations: open.filter((o) => o.overdue).length, partiallyPaidObligations: open.filter((o) => o.status === "PARTIAL").length,
+      overdueObligations: overdueCount, partiallyPaidObligations: partialCount,
       unappliedSettlements: null, accountingHandoffExceptions: null, reconciliationMismatches: null, unreconciledSettlements: null,
       missingCostEvidence: null, intercompanyReliefPending: null,
     },
-    receivables: Object.freeze({ count: open.length, outstandingByCurrency: byCurrency, items: open.slice(0, 25) }),
+    receivables: Object.freeze({ count: openCount, outstandingByCurrency: byCurrency, items: openItems }),
     fundingReceivables: WITHHELD_SECTION, payables: WITHHELD_SECTION, intercompanyReceivables: WITHHELD_SECTION, intercompanyPayables: WITHHELD_SECTION,
-    overdue: open.filter((o) => o.overdue).slice(0, 50),
-    partiallyPaid: open.filter((o) => o.status === "PARTIAL").slice(0, 50),
+    overdue: overdueItems,
+    partiallyPaid: partialItems,
     unappliedSettlements: [], accountingHandoffs: [], reconciliation: [], missingCostEvidence: [], intercompanyReliefPending: [],
   });
 }
@@ -388,16 +407,24 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
     : { state: "ATTRIBUTED", creditedSalespersonEmployeeId: String(src.credited), recordedAt: new Date(src.credited_at).toISOString() };
   const { rows: facts } = await deps.pool.query(`SELECT id, fact_class, fact_type, amount_minor, effective_at, source_domain, source_record_id, reverses_fact_id, reason
     FROM eos_finance.financial_facts WHERE tenant_id = $1 AND obligation_id = $2 ORDER BY created_at, id`, [t, input.obligationId]);
-  const { rows: apps } = await deps.pool.query(`SELECT a.id, a.settlement_id, a.amount_minor, a.status, s.kind, s.source_reference, s.business_date
+  // A settlement the reader may not read (readSettlement answers "not found" for it) is not described here either: the application
+  // keeps its amount, status and date, and says only that the settlement is not visible -- no id, kind or source reference.
+  const appParams: unknown[] = [t, input.obligationId];
+  const settlementVisible = settlementVisibilityClause(vis, "s", appParams);
+  const { rows: apps } = await deps.pool.query(`SELECT a.id, a.settlement_id, a.amount_minor, a.status, a.applied_at, s.kind, s.source_reference, s.business_date,
+      ${settlementVisible} AS settlement_visible
     FROM eos_finance.settlement_applications a JOIN eos_finance.settlements s ON s.tenant_id = a.tenant_id AND s.id = a.settlement_id
-    WHERE a.tenant_id = $1 AND a.obligation_id = $2 ORDER BY a.applied_at, a.id`, [t, input.obligationId]);
+    WHERE a.tenant_id = $1 AND a.obligation_id = $2 ORDER BY a.applied_at, a.id`, appParams);
   const { rows: hs } = await deps.pool.query(`SELECT id, status, payload_kind, provider_document_reference FROM eos_finance.accounting_handoffs
     WHERE tenant_id = $1 AND obligation_id = $2 ORDER BY created_at`, [t, input.obligationId]);
   return Object.freeze({ ...o, recordedAt: src.recorded_at ? new Date(src.recorded_at).toISOString() : null, sourceSalesOrder, attribution,
     facts: facts.map((f) => ({ id: String(f.id), factClass: String(f.fact_class), factType: String(f.fact_type), amountMinor: String(f.amount_minor),
       effectiveAt: new Date(f.effective_at).toISOString(), sourceDomain: String(f.source_domain), sourceRecordId: String(f.source_record_id), reversesFactId: f.reverses_fact_id ?? null, reason: f.reason ?? null })),
-    applications: apps.map((a) => ({ id: String(a.id), settlementId: String(a.settlement_id), amountMinor: String(a.amount_minor), status: String(a.status),
-      settlementKind: String(a.kind), sourceReference: String(a.source_reference), businessDate: dateText(a.business_date) })),
+    applications: apps.map((a) => a.settlement_visible === true
+      ? { id: String(a.id), settlementVisible: true, settlementId: String(a.settlement_id), amountMinor: String(a.amount_minor), status: String(a.status),
+          settlementKind: String(a.kind), sourceReference: String(a.source_reference), businessDate: dateText(a.business_date) }
+      : { id: String(a.id), settlementVisible: false, settlementId: null, amountMinor: String(a.amount_minor), status: String(a.status),
+          settlementKind: null, sourceReference: null, businessDate: null, appliedOn: new Date(a.applied_at).toISOString().slice(0, 10) }),
     accountingHandoffs: hs.map((h) => ({ id: String(h.id), status: String(h.status), payloadKind: String(h.payload_kind), providerDocumentReference: h.provider_document_reference ?? null })),
   });
 }

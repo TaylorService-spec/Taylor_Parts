@@ -37,6 +37,29 @@ test("inner reach per company: a full key or NO key is FULL; self / team only is
   assert.equal(mode(caps("self", "businessUnit"), true), "SELF");
 });
 
+test("F1 (review): a restriction key held through a SCOPE or a CONDITION restricts -- it never resolves FULL (fail closed)", () => {
+  const mode = (actor, active, company = "taylor") => v.financeVisibilityModeAt(actor, company, active);
+  const reach = new Set(["finance.payment.read"]);
+  // finance.visibility.* is not scope-evaluable, so a Role assigned at operatingCompany=taylor arrives as `inertScoped`, never in `capabilities`.
+  const scoped = (key, company = "taylor", type = "operatingCompany") => ({ capabilities: reach, inertScoped: [{ capabilityKey: `finance.visibility.${key}`, scopeType: type, scopeValue: company }] });
+  assert.equal(mode(scoped("self"), false), "EMPTY", "inactive: the company-scoped self holder reads nothing");
+  assert.equal(mode(scoped("self"), true), "SELF", "activated: restricted to the credited rows");
+  assert.equal(mode(scoped("team"), true), "TEAM");
+  assert.equal(mode(scoped("self"), false, "ventana"), "FULL", "scoped to Taylor: no restriction key at Ventana (the other Role's reach stands)");
+  assert.equal(mode(scoped("self", "taylor", "businessUnit"), true, "ventana"), "EMPTY", "a scope the runtime does not consume applies to EVERY company and reads nothing");
+  assert.equal(mode(scoped("businessUnit"), true), "EMPTY");
+  // A CONDITIONED grant (flat or scoped) restricts and, nothing evaluating the condition, reads nothing even when activated.
+  const conditioned = { capabilities: reach, conditionallyHeld: new Set(["finance.visibility.self"]) };
+  assert.equal(mode(conditioned, false), "EMPTY");
+  assert.equal(mode(conditioned, true), "EMPTY");
+  assert.equal(mode({ capabilities: reach, scopedHeld: [{ capabilityKey: "finance.visibility.self", scopeType: "operatingCompany", scopeValue: "taylor", sourceRole: "r", assignmentId: null, condition: { paths: [] } }] }, true), "EMPTY");
+  // A conditioned or scoped FULL key never widens: only a flat (or unconditioned company-scoped) consolidated / company key is FULL.
+  assert.equal(mode({ capabilities: reach, conditionallyHeld: new Set(["finance.visibility.consolidated"]), inertScoped: scoped("self").inertScoped }, true), "SELF");
+  assert.equal(mode({ capabilities: new Set([...reach, "finance.visibility.consolidated"]), inertScoped: scoped("self").inertScoped }, false), "FULL", "an unconditioned full key is additive, as Firebase's scope union");
+  // Global controller (no visibility key) + a company-scoped salesperson: restricted at the company the salesperson Role is scoped to.
+  assert.equal(mode({ capabilities: new Set([...reach, "finance.read"]), inertScoped: scoped("self").inertScoped }, false), "EMPTY");
+});
+
 test("the activation switch defaults to INACTIVE and nothing in src reads the environment for it", () => {
   assert.equal(v.FINANCE_SELF_TEAM_ACTIVE_DEFAULT, false);
   const src = strip(readFileSync(join(SRC, "eosFinance/financeVisibility.ts"), "utf8"));
