@@ -30,6 +30,7 @@ import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
 import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
+import EmployeeCompanyAccess from "./EmployeeCompanyAccess.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
 import EmployeeExperiencePreview from "./EmployeeExperiencePreview.jsx";
 import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
@@ -330,6 +331,13 @@ export default function UserDetail({
           </p>
           <PrincipalGate linked={linked} principalLink={principalLink}>
             <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
+          </PrincipalGate>
+        </RuledSection>
+        {/* COMPANY ACCESS (DECISIONS #249): explicit, governed company reach for this EMPLOYEE (PostgreSQL grantCompanyAuthority /
+            revokeCompanyAuthority). Reach only -- no permission, no Finance access. The server is the authority. */}
+        <RuledSection id="company-access" title="Company Access" meta="Reach to another company — governed PostgreSQL grant, grants no permissions">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeCompanyAccess api={controlPlane} employeeId={employee.employeeId} employeeName={name} />
           </PrincipalGate>
         </RuledSection>
         {/* EOS LOGIN (docs/architecture/eos-native-identity.md): this Principal's EOS sign-in -- created, reset, locked,

@@ -27,6 +27,7 @@ import {
 import { actorAuthorityOf, hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, PROTECTED_ADMINISTRATOR_AUTHORITY } from "./protectedAdministrator";
 import { CRED_VERBS, FIELD_DATA_TYPES, FIELD_SENSITIVITIES } from "./types";
 import type {
+  CompanyAuthorityGrantRecord,
   CredOverride,
   CredSet,
   CredVerb,
@@ -151,7 +152,13 @@ export class AdministrationRefusal extends PolicyValidationError {
     // Role company-authority classification (DECISIONS #248): FINANCE_ONLY is Finance reach only and is guarded both ways.
     | "COMPANY_AUTHORITY_EFFECT_INVALID"
     | "FINANCE_ONLY_CLASSIFICATION_REFUSED"
-    | "FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY", message: string) {
+    | "FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY"
+    // Employee company-access grants (DECISIONS #249).
+    | "COMPANY_IS_HOME"
+    | "COMPANY_GRANT_EXISTS"
+    | "COMPANY_GRANT_NOT_ACTIVE"
+    | "COMPANY_GRANT_WINDOW_INVALID"
+    | "COMPANY_GRANT_STORE_UNAVAILABLE", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -1366,6 +1373,210 @@ export async function revokeRole(
       after: staffingAudit(staffing, updated),
     });
     return updated;
+  });
+}
+
+// ════════════════════ EMPLOYEE COMPANY-ACCESS GRANTS (DECISIONS #249) ════════════════════
+//
+// "This Employee may ALSO act for operating company C" -- governed REACH, attached to the EMPLOYEE (not a Principal, not a
+// Role). It confers NO capability and NO Finance reach: the only reader is eosOps/companyAuthority.ts (a third source beside
+// the home company and the OPERATIONAL Role expansion), and every caller still applies its own capability / measure /
+// channel / warehouse / queue rule on top. Described as company ACCESS, never as employment membership.
+//
+// WHO MAY DO IT, AND WHAT STOPS ESCALATION (each is a test):
+//   * the actor holds admin.roleAssignment.write (the `assignRole` gate), decided BEFORE anything is read; Administration
+//     authority is tenant-wide (SCOPE_AMBIGUOUS_ADMINISTRATION), so the actor's administration scope IS this tenant;
+//   * the tenant is the actor's, never an input; the Employee, the company and the grant are looked up IN that tenant only
+//     (another tenant's id reads as absent) and the table's composite foreign keys make a cross-tenant row unrepresentable;
+//   * nobody staffs themselves: a grant to the actor's OWN linked Employee is SELF_ADMINISTRATION;
+//   * the company must be an ACTIVE governed operating company of this tenant (the same source as an operatingCompany Role
+//     scope) and not the Employee's own company (COMPANY_IS_HOME);
+//   * a stated reason, one audit event with before/after per real change, the governance lock, and an identical active grant
+//     is idempotent (returned, nothing audited);
+//   * the store guard (migration 1764610000000) refuses any write outside these commands.
+// Effective dates are DATABASE time, evaluated by the resolver at read time: revocation and expiry apply on the next request.
+
+export interface GrantCompanyAuthorityInput {
+  readonly employeeId: string;
+  readonly operatingCompanyId: string;
+  readonly reason?: string | null;
+  /** Optional ISO-8601 instant WITH an offset. Absent = effective immediately (database now()). */
+  readonly effectiveFrom?: string | null;
+  /** Optional ISO-8601 instant WITH an offset, in the future. Absent = open-ended. */
+  readonly effectiveUntil?: string | null;
+}
+
+export interface RevokeCompanyAuthorityInput {
+  readonly grantId: string;
+  readonly reason?: string | null;
+}
+
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** A stated effective date as a normalized instant, or null when absent. The offset is required: a server-zone guess is not a date. */
+function companyGrantInstant(value: unknown, what: string): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const s = typeof value === "string" ? value.trim() : "";
+  const ms = ISO_INSTANT.test(s) ? Date.parse(s) : Number.NaN;
+  if (Number.isNaN(ms)) {
+    throw new AdministrationRefusal("COMPANY_GRANT_WINDOW_INVALID", `${what} must be an ISO-8601 instant with an offset (for example 2030-01-31T00:00:00Z)`);
+  }
+  return new Date(ms).toISOString();
+}
+
+function companyGrantStore(repo: PolicyReader): void {
+  if (typeof repo.readCompanyGrantEmployee !== "function" || typeof repo.readCompanyAuthorityGrant !== "function"
+      || typeof repo.listCompanyAuthorityGrants !== "function") {
+    throw new AdministrationRefusal("COMPANY_GRANT_STORE_UNAVAILABLE", "this store has no company-access grant table; nothing was changed");
+  }
+}
+
+/** Nobody staffs themselves: a company-access grant to the actor's OWN linked Employee is refused. */
+async function refuseSelfCompanyGrant(repo: PolicyReader, actor: AdminActor, employeeId: string): Promise<void> {
+  const fact = await repo.getLinkedEmployeeAccessFact(actor.tenantId, actor.uid);
+  // An ambiguous link carries every employee id joined; the actor is any of them.
+  if (fact && (fact.employeeId === employeeId || fact.employeeId.split(",").includes(employeeId))) {
+    throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not grant company access to its own Employee");
+  }
+}
+
+/**
+ * Everything that decides a grant, against the store as it stands: the Employee exists in THIS tenant, is not the actor,
+ * the company is an ACTIVE governed company of this tenant and not the Employee's own, and whether an active grant already
+ * exists. Run before the transaction (a fast refusal / the idempotent return) and again UNDER THE GOVERNANCE LOCK.
+ */
+async function decideCompanyGrant(
+  repo: PolicyReader, actor: AdminActor, employeeId: string, companyId: string, from: string | null, until: string | null,
+): Promise<CompanyAuthorityGrantRecord | null> {
+  await refuseSelfCompanyGrant(repo, actor, employeeId);
+  const employee = await repo.readCompanyGrantEmployee!(actor.tenantId, employeeId);
+  if (!employee) throw new PolicyValidationError("employee not found");
+  if (employee.homeOperatingCompanyId === companyId) {
+    throw new AdministrationRefusal("COMPANY_IS_HOME", `${companyId} is this Employee's own company; a company-access grant is for another company`);
+  }
+  const values = await governedAssignmentScopeValues(repo, actor.tenantId, "operatingCompany");
+  if (!values || !values.some((v) => v.value === companyId)) {
+    throw new AdministrationRefusal("SCOPE_VALUE_INVALID", `'${companyId}' is not an active operating company of this tenant`);
+  }
+  const existing = (await repo.listCompanyAuthorityGrants!(actor.tenantId, employeeId))
+    .find((g) => g.status === "active" && g.operatingCompanyId === companyId);
+  if (!existing) return null;
+  // A request with no stated start means "effective now": it matches an existing grant only if that one is already in effect.
+  const sameWindow = (from === null ? Date.parse(existing.effectiveFrom) <= Date.now() : Date.parse(existing.effectiveFrom) === Date.parse(from))
+    && (until === null ? existing.effectiveUntil === null : existing.effectiveUntil !== null && Date.parse(existing.effectiveUntil) === Date.parse(until));
+  if (sameWindow) return existing;
+  throw new AdministrationRefusal("COMPANY_GRANT_EXISTS",
+    "an active company-access grant for this Employee and company already exists with a different window; revoke it first, then grant again (the history keeps both)");
+}
+
+export async function grantCompanyAuthority(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: GrantCompanyAuthorityInput,
+): Promise<CompanyAuthorityGrantRecord> {
+  await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  const reason = requireReason(input.reason, "granting company access");
+  const employeeId = nonEmpty(input.employeeId, "employeeId");
+  const companyId = nonEmpty(input.operatingCompanyId, "operatingCompanyId");
+  const from = companyGrantInstant(input.effectiveFrom, "effectiveFrom");
+  const until = companyGrantInstant(input.effectiveUntil, "effectiveUntil");
+  if (until !== null && Date.parse(until) <= Date.parse(from ?? new Date().toISOString())) {
+    throw new AdministrationRefusal("COMPANY_GRANT_WINDOW_INVALID", "effectiveUntil must be after the start of the grant and in the future");
+  }
+  if (until !== null && Date.parse(until) <= Date.now()) {
+    throw new AdministrationRefusal("COMPANY_GRANT_WINDOW_INVALID", "effectiveUntil must be in the future");
+  }
+  companyGrantStore(repo);
+
+  const already = await decideCompanyGrant(repo, actor, employeeId, companyId, from, until);
+  if (already) return already;
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    await tx.beginAdministrationCommand();
+    if (typeof tx.createCompanyAuthorityGrant !== "function") {
+      throw new AdministrationRefusal("COMPANY_GRANT_STORE_UNAVAILABLE", "this store has no company-access grant table; nothing was changed");
+    }
+    // Re-decided under the governance lock: a concurrent identical grant that committed first is returned, never duplicated.
+    const now = await decideCompanyGrant(repo, actor, employeeId, companyId, from, until);
+    if (now) return now;
+    const created = await tx.createCompanyAuthorityGrant({
+      employeeId, operatingCompanyId: companyId, reason, grantedBy: actor.uid, effectiveFrom: from, effectiveUntil: until,
+    });
+    await tx.appendAudit({
+      ...auditBase(actor, "grantCompanyAuthority", "companyAuthorityGrant", created.id, reason),
+      before: null,
+      after: created,
+    });
+    return created;
+  });
+}
+
+export async function revokeCompanyAuthority(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: RevokeCompanyAuthorityInput,
+): Promise<CompanyAuthorityGrantRecord> {
+  await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  const reason = requireReason(input.reason, "revoking company access");
+  const grantId = nonEmpty(input.grantId, "grantId");
+  companyGrantStore(repo);
+  const target = await repo.readCompanyAuthorityGrant!(actor.tenantId, grantId);
+  if (!target) throw new PolicyValidationError("company-access grant not found");
+  if (target.status !== "active") {
+    throw new AdministrationRefusal("COMPANY_GRANT_NOT_ACTIVE", "that company-access grant is already revoked");
+  }
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    await tx.beginAdministrationCommand();
+    if (typeof tx.revokeCompanyAuthorityGrant !== "function") {
+      throw new AdministrationRefusal("COMPANY_GRANT_STORE_UNAVAILABLE", "this store has no company-access grant table; nothing was changed");
+    }
+    const current = await repo.readCompanyAuthorityGrant!(actor.tenantId, grantId);
+    if (!current) throw new PolicyValidationError("company-access grant not found");
+    if (current.status !== "active") throw new AdministrationRefusal("COMPANY_GRANT_NOT_ACTIVE", "that company-access grant is already revoked");
+    const updated = await tx.revokeCompanyAuthorityGrant(grantId, actor.uid, reason);
+    await tx.appendAudit({
+      ...auditBase(actor, "revokeCompanyAuthority", "companyAuthorityGrant", grantId, reason),
+      before: current,
+      after: updated,
+    });
+    return updated;
+  });
+}
+
+export interface EmployeeCompanyAuthorityView {
+  readonly employeeId: string;
+  /** The Employee's own (employment) company: not a grant, never changed here. */
+  readonly homeOperatingCompanyId: string;
+  /** Every grant, history included, oldest first. `displayState` is a label computed now; the resolver decides by the database clock. */
+  readonly grants: readonly (CompanyAuthorityGrantRecord & { readonly displayState: "ACTIVE" | "SCHEDULED" | "EXPIRED" | "REVOKED" })[];
+  /** ACTIVE governed companies of this tenant a grant could name: not the home company, none already actively granted. */
+  readonly grantableCompanies: readonly AssignmentScopeValue[];
+}
+
+/** One Employee's home company and company-access grants (read: admin.principalAccess.read, decided by the dispatcher). */
+export async function listEmployeeCompanyAuthority(
+  repo: PolicyReader, tenantId: string, input: { readonly employeeId: string },
+): Promise<EmployeeCompanyAuthorityView> {
+  companyGrantStore(repo);
+  const employeeId = nonEmpty(input.employeeId, "employeeId");
+  const employee = await repo.readCompanyGrantEmployee!(tenantId, employeeId);
+  if (!employee) throw new PolicyValidationError("employee not found");
+  const grants = await repo.listCompanyAuthorityGrants!(tenantId, employeeId);
+  const now = Date.now();
+  const stateOf = (g: CompanyAuthorityGrantRecord): "ACTIVE" | "SCHEDULED" | "EXPIRED" | "REVOKED" => {
+    if (g.status === "revoked") return "REVOKED";
+    if (Date.parse(g.effectiveFrom) > now) return "SCHEDULED";
+    if (g.effectiveUntil !== null && Date.parse(g.effectiveUntil) <= now) return "EXPIRED";
+    return "ACTIVE";
+  };
+  const held = new Set(grants.filter((g) => g.status === "active").map((g) => g.operatingCompanyId));
+  const companies = (await governedAssignmentScopeValues(repo, tenantId, "operatingCompany")) ?? [];
+  return Object.freeze({
+    employeeId,
+    homeOperatingCompanyId: employee.homeOperatingCompanyId,
+    grants: Object.freeze(grants.map((g) => Object.freeze({ ...g, displayState: stateOf(g) }))),
+    grantableCompanies: Object.freeze(companies.filter((c) => c.value !== employee.homeOperatingCompanyId && !held.has(c.value))),
   });
 }
 

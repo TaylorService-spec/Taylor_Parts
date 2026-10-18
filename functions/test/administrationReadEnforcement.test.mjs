@@ -101,6 +101,8 @@ const CANONICAL_MAP = Object.freeze({
   // Lane SC: the assignment-scope vocabulary the Employee > Security Roles picker reads -- the SAME principal-access
   // read as listPrincipalRoleAssignments. No new key.
   listSupportedAssignmentScopes: PRINCIPAL_ACCESS_READ,
+  // DECISIONS #249: the Employee > Company access section -- the SAME principal-access read as listPrincipalRoleAssignments. No new key.
+  listEmployeeCompanyAuthority: PRINCIPAL_ACCESS_READ,
   // W01 D2 (2026-10-09): the caller's OWN workflow-administration decisions, under the SAME workflow read. No new key.
   readMyWorkflowAdministration: WORKFLOW_READ,
   // W01 holder lookup: the surface read is workflowDefinition.read; the operation ALSO requires edit or version itself.
@@ -120,12 +122,13 @@ const INPUT_FOR = Object.freeze({
   getObjectActionGrantMatrix: { objectKey: "workOrder" },
   listRoleCapabilityDecisionHistory: { limit: 5 },
   explainEffectiveAccess: { principalId: "prn-none" },
+  listEmployeeCompanyAuthority: { employeeId: "e-none" },
 });
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: twenty-five reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 25, "the read list changed size without this map changing");
+test("A: twenty-six reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 26, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -249,7 +252,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // capability, no grant, no READ key (the two commands reuse finance.policy.prepare / .approve).
   // 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant).
   // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants).
-  assert.equal(migrations.length, 102,"a migration was added or removed by the read enforcement");
+  // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): eos_policy.employee_company_authority_grants + a store guard; no capability, no grant.
+  assert.equal(migrations.length, 103, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,
@@ -451,7 +455,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("C: without admin.principalAccess.read, the three principal reads are refused", async () => {
     assert.deepEqual(operationsRequiring(PRINCIPAL_ACCESS_READ),
-      ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listPrincipalRoleAssignments",
+      ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listEmployeeCompanyAuthority", "listPrincipalRoleAssignments",
         "listPrincipalWorkflowResponsibilities", "listSupportedAssignmentScopes", "listTenantPrincipals"]);
     // THE READER HOLDS admin.securityPolicy.read AND IS STILL REFUSED. One Administration read is
     // not a key to the others; if it were, the four capabilities would be one capability.
@@ -461,6 +465,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       await assertRefused(subject, "getPrincipalEffectiveAccess", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "explainEffectiveAccess", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "listSupportedAssignmentScopes", PRINCIPAL_ACCESS_READ);
+      await assertRefused(subject, "listEmployeeCompanyAuthority", PRINCIPAL_ACCESS_READ);
     }
     // Including when the principal they ask about is THEMSELVES. "It is my own access" is not an
     // authority, and a self-exemption is how a read gate acquires its first bypass.
@@ -555,7 +560,8 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       // explainEffectiveAccess needs the server-composed evaluator, absent here: the GATE admitted the
       // caller (not FORBIDDEN) and the read then refuses as uncomposed. Its answer is proved in
       // effectiveAccessExplanationPostgres.
-      if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
+      if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities" || operation === "listEmployeeCompanyAuthority") {
+        // listEmployeeCompanyAuthority: the gate admitted the caller; the fixture names no Employee, so the read answers INVALID_INPUT (proved end to end in employeeCompanyAuthorityGrantsPostgres).
         assert.notEqual(result.code, "FORBIDDEN", operation); continue;
       }
       assert.equal(result.ok, true,
@@ -642,7 +648,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
         // lookup itself runs and answers for the fixture's nonexistent action -- both gates passed, nothing invented.
         assert.equal(allowed.status, 404, `${operation} as the protected Administrator: ${allowed.body}`);
         assert.match(JSON.parse(allowed.body).message, /WORKFLOW_ACTION_NOT_FOUND/);
-      } else if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities") {
+      } else if (operation === "explainEffectiveAccess" || operation === "listPrincipalWorkflowResponsibilities" || operation === "listEmployeeCompanyAuthority") {
         // The gate admits the holder; the read then needs the server-composed evaluator, which this
         // transport fixture does not compose (proved end to end in effectiveAccessExplanationPostgres).
         assert.notEqual(allowed.status, 403, `${operation} as a holder: ${allowed.body}`);

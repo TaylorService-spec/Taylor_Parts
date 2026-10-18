@@ -26,6 +26,9 @@ export const AUTHORITY_CHANGE_OPERATIONS = Object.freeze([
   "revokeObjectActionFromPrincipal",
   "assignRole",
   "revokeRole",
+  // DECISIONS #249: explicit Employee company-access grants. Same mandatory-preview path as assignRole.
+  "grantCompanyAuthority",
+  "revokeCompanyAuthority",
 ] as const);
 
 export type AuthorityChangeOperation = (typeof AUTHORITY_CHANGE_OPERATIONS)[number];
@@ -44,6 +47,8 @@ export const AUTHORITY_CHANGE_GATE: Readonly<Record<AuthorityChangeOperation, "e
   revokeObjectActionFromPrincipal: "editSecurityPolicy",
   assignRole: "assignRole",
   revokeRole: "assignRole",
+  grantCompanyAuthority: "assignRole",
+  revokeCompanyAuthority: "assignRole",
 });
 
 /** Whose holdings the change is ABOUT -- used only to count unaffected holders. Never an authority input. */

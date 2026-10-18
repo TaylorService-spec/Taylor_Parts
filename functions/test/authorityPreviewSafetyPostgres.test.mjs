@@ -25,7 +25,7 @@ const { createAuthorityChangePreview, PreviewSafetyViolation } = require("../lib
 const commands = require("../lib/adminPolicy/policyCommands.js");
 
 const ADMIN = "gip-admin-a";
-const WRITTEN_TABLES = ["audit_events", "capability_grant_conditions", "principal_access_versions", "principal_capabilities",
+const WRITTEN_TABLES = ["audit_events", "capability_grant_conditions", "employee_company_authority_grants", "principal_access_versions", "principal_capabilities",
   "role_capabilities", "role_capability_decisions", "user_role_assignments"];
 
 test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing external", { skip: SKIP, concurrency: 1 }, async (t) => {
@@ -300,6 +300,10 @@ test("GRANT-IMPACT PREVIEW: never commits, leaves no trace, calls nothing extern
       "capability_grant_conditions|capability_grant_conditions_never_widen|capability_grant_conditions_never_widen|7a3c11a23b1b9ebb63433a04b0b0c183",
       "capability_grant_conditions|capability_grant_conditions_no_truncate|governed_history_no_truncate|52d8e374407d5698dc8781b124d2679c",
       "capability_grant_conditions|preview_never_commits|authority_preview_never_commits|13e6cee9d4d1aacbc65b8581adc83b7a",
+      // DECISIONS #249 (migration 1764610000000): the Employee company-access grants. Store guard (reads two tables, then RAISEs or passes the row through; writes nothing), the TRUNCATE guard and the never-commit fence.
+      "employee_company_authority_grants|employee_company_authority_grants_governed|employee_company_authority_grants_governed|b4c09b04da47e4f6e009bd3dbef7b4fc",
+      "employee_company_authority_grants|employee_company_authority_grants_no_truncate|governed_history_no_truncate|52d8e374407d5698dc8781b124d2679c",
+      "employee_company_authority_grants|preview_never_commits|authority_preview_never_commits|13e6cee9d4d1aacbc65b8581adc83b7a",
       "principal_access_versions|preview_never_commits|authority_preview_never_commits|13e6cee9d4d1aacbc65b8581adc83b7a",
       "principal_capabilities|preview_never_commits|authority_preview_never_commits|13e6cee9d4d1aacbc65b8581adc83b7a",
       "principal_capabilities|principal_capabilities_cell_lock|principal_capabilities_cell_lock|4dc2fab29234a6b7bef528c0ffa4e0ef",

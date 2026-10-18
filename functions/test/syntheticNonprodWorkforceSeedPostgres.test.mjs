@@ -312,7 +312,9 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
                                                  -- and labor -- the Employee IS the subject whose hours, time off and labor they are.
                                                  'eos_workforce.technician_working_schedules'::regclass,
                                                  'eos_workforce.technician_unavailability'::regclass,
-                                                 'eos_ops.work_order_labor_entries'::regclass)`)).rows[0].n;
+                                                 'eos_ops.work_order_labor_entries'::regclass,
+                                                 -- Employee company-access grants (1764610000000, DECISIONS #249): the grant IS about the Employee, keyed on it by design.
+                                                 'eos_policy.employee_company_authority_grants'::regclass)`)).rows[0].n;
     assert.equal(fks, 0);
   });
 });

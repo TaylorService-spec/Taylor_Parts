@@ -39,6 +39,8 @@ const PINNED_CLOSURE = [
   // DECISIONS #248: the pure Role company-authority vocabulary + the finance.* guard (no I/O), imported by policyCommands.
   "src/adminPolicy/roleCompanyAuthorityEffect.ts",
   "src/eosOps/administrationReach.ts", "src/eosOps/authorityChangePreview.ts", "src/eosOps/capabilityAuthority.ts",
+  // DECISIONS #249: the preview snapshot reports each member's company authority through the SAME resolver (reads only; type-only pg import).
+  "src/eosOps/companyAuthority.ts",
   "src/eosOps/conditionalEntitlement.ts", "src/eosOps/contextualAuthorization.ts", "src/eosOps/entitledActionAuthority.ts",
   "src/eosOps/experienceAuthority.ts", "src/eosOps/governedFieldGroups.ts", "src/eosOps/grantConditionPolicy.ts",
   "src/opportunity/opportunityLifecycle.ts",
@@ -148,7 +150,8 @@ test("4. the engine: ROLLBACK is its only terminal statement; it never reaches f
 test("4. the nine commands take no port beyond (repository, actor, input): there is nothing external to hand them", () => {
   const commands = readFileSync(resolve(ROOT, "src/adminPolicy/policyCommands.ts"), "utf8");
   for (const name of ["grantObjectActionToRole", "revokeObjectActionFromRole", "applyObjectWideRoleAuthority", "setGrantCondition",
-    "retireGrantCondition", "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal", "assignRole", "revokeRole"]) {
+    "retireGrantCondition", "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal", "assignRole", "revokeRole",
+    "grantCompanyAuthority", "revokeCompanyAuthority"]) {
     const m = commands.match(new RegExp(`export async function ${name}\\(([\\s\\S]*?)\\):`));
     assert.ok(m, `${name} not found`);
     const params = m[1].split(/,(?![^{]*})/).map((p) => p.trim()).filter(Boolean).map((p) => p.split(":")[0].trim());

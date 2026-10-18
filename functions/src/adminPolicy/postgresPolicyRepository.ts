@@ -46,9 +46,12 @@ import type {
   PrincipalIdentityBindingInput,
   NewPrincipalIdentityBindingInput,
   AuditEventFilter,
+  NewCompanyAuthorityGrantInput,
   TenantSalesChannelRecord,
 } from "./policyRepository";
 import type {
+  CompanyAuthorityGrantRecord,
+  CompanyGrantEmployeeFact,
   CredOverride,
   CredSet,
   CapabilityRecord,
@@ -335,6 +338,22 @@ const toAssignment = (r: Record<string, unknown>): PolicyRoleAssignmentRecord =>
   grantedAt: iso(r.granted_at),
   accessVersionAtGrant: Number(r.access_version_at_grant),
   ...provenance(r),
+});
+
+const toCompanyGrant = (r: Record<string, unknown>): CompanyAuthorityGrantRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  employeeId: String(r.employee_id),
+  operatingCompanyId: String(r.operating_company_id),
+  status: String(r.status) as CompanyAuthorityGrantRecord["status"],
+  effectiveFrom: iso(r.effective_from),
+  effectiveUntil: isoOrNull(r.effective_until),
+  reason: String(r.reason),
+  grantedBy: String(r.granted_by),
+  grantedAt: iso(r.granted_at),
+  revokedBy: (r.revoked_by as string | null) ?? null,
+  revokedAt: isoOrNull(r.revoked_at),
+  revokeReason: (r.revoke_reason as string | null) ?? null,
 });
 
 const toWorkflow = (r: Record<string, unknown>): WorkflowRecord => ({
@@ -823,6 +842,27 @@ export class PostgresPolicyRepository implements PolicyRepository {
       [tenantId, options.activeOnly !== false],
       toGrantCondition,
     );
+  }
+
+  // Employee company-access grants (DECISIONS #249). Every read is tenant-scoped in SQL: another tenant's Employee, company or
+  // grant reads as absent.
+  async readCompanyGrantEmployee(tenantId: TenantId, employeeId: string): Promise<CompanyGrantEmployeeFact | null> {
+    return this.one(
+      `SELECT id, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, employeeId],
+      (r) => ({ employeeId: String(r.id), homeOperatingCompanyId: String(r.operating_company_id) }),
+    );
+  }
+
+  readCompanyAuthorityGrant(tenantId: TenantId, grantId: string) {
+    return this.one(
+      `SELECT * FROM ${SCHEMA}.employee_company_authority_grants WHERE tenant_id = $1 AND id = $2`, [tenantId, grantId], toCompanyGrant);
+  }
+
+  listCompanyAuthorityGrants(tenantId: TenantId, employeeId: string) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.employee_company_authority_grants WHERE tenant_id = $1 AND employee_id = $2 ORDER BY granted_at, id`,
+      [tenantId, employeeId], toCompanyGrant);
   }
 
   // Lane SC: governed assignment-scope values, tenant-scoped. Read-only; each type names its one governed source.
@@ -1320,6 +1360,32 @@ export function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyT
           WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3 RETURNING *`,
         [tenantId, principalId, capabilityId]);
       return rows.length > 0 ? toPrincipalCapability(rows[0]) : null;
+    },
+
+    // Employee company-access grants (DECISIONS #249). The database clock stamps the times; the store trigger refuses any write
+    // outside an Administration command, an already-over window, a non-ACTIVE company and the Employee's own company.
+    async createCompanyAuthorityGrant(input: NewCompanyAuthorityGrantInput) {
+      try {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.employee_company_authority_grants
+             (id, tenant_id, employee_id, operating_company_id, status, effective_from, effective_until, reason, granted_by, granted_at)
+           VALUES ($1,$2,$3,$4,'active', coalesce($5::timestamptz, now()), $6::timestamptz, $7, $8, now()) RETURNING *`,
+          [newId(), tenantId, input.employeeId, input.operatingCompanyId, input.effectiveFrom, input.effectiveUntil, input.reason, input.grantedBy]);
+        return toCompanyGrant(rows[0]);
+      } catch (err) {
+        if ((err as { code?: string })?.code === "23503") throw new PolicyStoreError("that Employee or operating company is not part of this tenant");
+        return asDuplicate(err, "an active company-access grant for that Employee and company already exists");
+      }
+    },
+
+    async revokeCompanyAuthorityGrant(grantId: string, revokedBy: string, revokeReason: string) {
+      const { rows } = await q.query(
+        `UPDATE ${SCHEMA}.employee_company_authority_grants
+            SET status = 'revoked', revoked_by = $3, revoked_at = now(), revoke_reason = $4
+          WHERE tenant_id = $1 AND id = $2 AND status = 'active' RETURNING *`,
+        [tenantId, grantId, revokedBy, revokeReason]);
+      if (rows.length === 0) throw new PolicyStoreError("company-access grant not found or not active");
+      return toCompanyGrant(rows[0]);
     },
 
     async createAssignment(input: NewRecord<PolicyRoleAssignmentRecord>) {

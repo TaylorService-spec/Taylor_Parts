@@ -21,7 +21,9 @@ const {
 } = require("../lib/adminPolicy/authorityChangeCommitPort.js");
 
 const NINE = ["grantObjectActionToRole", "revokeObjectActionFromRole", "applyObjectWideRoleAuthority", "setGrantCondition",
-  "retireGrantCondition", "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal", "assignRole", "revokeRole"];
+  "retireGrantCondition", "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal", "assignRole", "revokeRole",
+  // DECISIONS #249: the Employee company-access grant commands take the same mandatory-preview path.
+  "grantCompanyAuthority", "revokeCompanyAuthority"];
 
 /** THE PIN. Path -> why it may call a command directly. */
 const DIRECT_CALLERS = Object.freeze({

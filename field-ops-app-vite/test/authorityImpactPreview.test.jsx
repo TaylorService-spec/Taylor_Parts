@@ -302,10 +302,10 @@ describe("the matrix single-click toggle (it used to commit on ONE click)", () =
 });
 
 describe("the client seam: one builder for the preview and the commit", () => {
-  it("covers exactly the nine authority changes", () => {
+  it("covers exactly the eleven authority changes", () => {
     expect([...AUTHORITY_CHANGE_OPERATIONS].sort()).toEqual([
-      "applyObjectWideRoleAuthority", "assignRole", "grantObjectActionToPrincipal", "grantObjectActionToRole",
-      "retireGrantCondition", "revokeObjectActionFromPrincipal", "revokeObjectActionFromRole", "revokeRole", "setGrantCondition"]);
+      "applyObjectWideRoleAuthority", "assignRole", "grantCompanyAuthority", "grantObjectActionToPrincipal", "grantObjectActionToRole",
+      "retireGrantCondition", "revokeCompanyAuthority", "revokeObjectActionFromPrincipal", "revokeObjectActionFromRole", "revokeRole", "setGrantCondition"]);
   });
 
   it("previewAuthorityChange sends { change: { operation, input } } with the commit's own input; the commit adds previewDigest only when given", async () => {

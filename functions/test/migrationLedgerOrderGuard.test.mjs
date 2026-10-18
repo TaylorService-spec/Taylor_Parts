@@ -212,8 +212,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 99 -> 100: 1764580000000 -- Returns intake on EOS Core (Firebase exit F7a, DECISIONS #242): eos_ops.inventory_returns + inventory.returns.intake, granted to inventoryReturnsIntakeClerk only (1 capability, 1 grant). APPENDED, an EXPLAINED pending migration.
 // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants). APPENDED, an EXPLAINED pending migration.
 // 101 -> 102: 1764600000000 -- Role company-authority classification (Finance-only company assignments grant Finance reach only, DECISIONS #248): eos_policy.roles.company_authority_effect (default OPERATIONAL) + two governing triggers; no capability, no grant. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 102;
-const TRACKED_MIGRATION_COUNT = 103; // the 102 runnable + the one deferred file
+// 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): eos_policy.employee_company_authority_grants (+ store guard, truncate guard, preview fence); no capability, no grant. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 103;
+const TRACKED_MIGRATION_COUNT = 104; // the 103 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -267,6 +268,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764580000000_inventory-returns-intake",
   "1764590000000_crm-activity",
   "1764600000000_role-company-authority-effect",
+  "1764610000000_employee-company-authority-grants",
 ]);
 
 const repoMigrations = () =>
