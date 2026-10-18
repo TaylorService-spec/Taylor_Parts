@@ -82,9 +82,10 @@ const auditCount = async (repo, tenantId) => (await repo.listAuditEvents(tenantI
 // ════════════════════ 1. invariants and precedence ════════════════════
 
 test("the system invariants: OWNER_GOVERNANCE pairs + PLATFORM_SAFETY rules, nothing else immutable", () => {
-  // Pass 8 Owner rule: only PLATFORM_SAFETY and OWNER_GOVERNANCE may be immutable. 19 ruling-A keys +
-  // reorder.request.assign; the superseded queue key and the technician PO cells are NOT immutable.
-  assert.equal(FORBIDDEN_ROLE_CAPABILITY_PAIRS.length, 20);
+  // Pass 8 Owner rule: only PLATFORM_SAFETY and OWNER_GOVERNANCE may be immutable. 20 ruling-A keys (19 + inventory.location.bin.manage,
+  // registered at Firebase exit B3, admin-only as in Firebase) + reorder.request.assign; the superseded queue key and the technician PO
+  // cells are NOT immutable.
+  assert.equal(FORBIDDEN_ROLE_CAPABILITY_PAIRS.length, 21);
   assert.ok(FORBIDDEN_ROLE_CAPABILITY_PAIRS.every((p) => p.roleKey === "owner" && p.invariantClass === "OWNER_GOVERNANCE"));
   assert.ok(forbiddenPair("owner", "salesAgreement.accept"), "ruling A: maker/checker");
   assert.ok(forbiddenPair("owner", "reorder.request.assign"), "coordination, not oversight");
