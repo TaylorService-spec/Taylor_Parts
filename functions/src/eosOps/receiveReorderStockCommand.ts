@@ -109,7 +109,7 @@ export const RECEIPT_MOVEMENT_SOURCE_KIND = "RECEIVING_ORDER";
 export const RECEIPT_STATUS = "PUTAWAY_COMPLETE";
 /** The only Reorder status a receipt may be taken against. */
 export const RECEIVABLE_REORDER_STATUS = "ORDERED";
-const RECEIVED = "RECEIVED";
+export const RECEIVED = "RECEIVED";
 
 export type ReceiveFailureCategory =
   | "INVALID_INPUT" | "FORBIDDEN" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT";
@@ -168,7 +168,7 @@ export interface ReceiveReorderStockResult {
   readonly reorderStatus: string;
 }
 
-const ID_SHAPE = (v: unknown): v is string =>
+export const ID_SHAPE = (v: unknown): v is string =>
   typeof v === "string" && v !== "" && v.trim() === v && v.length <= 200 && !v.includes("/");
 
 const ALLOWED_TOP_KEYS = ["source", "receivingLocation", "lines", "idempotencyKey", "expectedVersion"];
@@ -323,7 +323,7 @@ async function readCommittedReceipts(
 }
 
 /** The Part authority, as receiving needs it: identity, activity and tracking mode. */
-async function resolvePart(client: PoolClient, tenantId: string, partId: string): Promise<ResolvedPartAuthority> {
+export async function resolvePart(client: PoolClient, tenantId: string, partId: string): Promise<ResolvedPartAuthority> {
   const { rows } = await client.query(
     `SELECT id, status::text AS status, control_type::text AS control_type
        FROM ${SCHEMA}.parts WHERE tenant_id = $1 AND id = $2`,
@@ -356,9 +356,9 @@ async function resolvePart(client: PoolClient, tenantId: string, partId: string)
  * table name assembled from a caller-supplied discriminator is exactly the shape that guard exists
  * to refuse.
  */
-async function requireActiveLocation(
+export async function requireActiveLocation(
   client: PoolClient, tenantId: string, location: { type: string; locationId: string },
-): Promise<void> {
+): Promise<{ readonly warehouseId: string; readonly operatingCompanyKey: string }> {
   // OD-T5 (Controller 2026-10-01): a purchase order is never received into a truck. Purchased stock arrives at a WAREHOUSE or
   // BIN and reaches a truck only through a governed Transfer -- no reorder-to-truck. (The receipt table CHECKs the same.)
   if (location.type === "MOBILE") {
@@ -380,9 +380,10 @@ async function requireActiveLocation(
   if (resolved.status !== "ACTIVE") {
     refuse("DESTINATION_INVALID", "PRECONDITION_FAILED", "the destination is not an ACTIVE governed location of this tenant");
   }
+  return { warehouseId: resolved.warehouseId, operatingCompanyKey: resolved.operatingCompanyKey };
 }
 
-async function audit(
+export async function audit(
   client: PoolClient, tenantId: string, actorPrincipalId: string, targetId: string,
   after: unknown, at: Date, reason: string,
 ): Promise<void> {
@@ -394,7 +395,7 @@ async function audit(
 }
 
 /** Per-line progress, derived. Computed identically for the apply and replay paths. */
-function perLineResults(
+export function perLineResults(
   derived: DerivedPurchaseOrder,
   receivedNowByPoLineId: ReadonlyMap<string, number>,
   alreadyCounted: boolean,
@@ -417,6 +418,90 @@ function perLineResults(
       state: remainingAfter === 0 ? RECEIVED : previouslyReceived + receivedNow === 0 ? "NOT_RECEIVED" : "PARTIALLY_RECEIVED",
     };
   });
+}
+
+/**
+ * THE RECEIVED INVENTORY EFFECT AND SERIALIZED CUSTODY of ONE receipt line, inside the caller's transaction. Shared by the Reorder
+ * receipt and the supplier-PO receipt (Firebase exit B3) so there is one definition of "what a receipt does to stock".
+ *
+ * eos_ops.inventory_movements remains THE quantity-mutating authority; this stages the shape it already defines and introduces no
+ * second ledger and no new movement type. SERIAL: one movement PER UNIT, each carrying its serial and a delta of exactly 1 (what
+ * `movement_serial_matches_tracking` requires). NONE: one movement carrying the line's quantity, signed through the ONE sign
+ * authority. `serialized_custody_unique` IS the double-receive check (one serial, one physical unit, tenant-wide): a plain INSERT
+ * rather than an upsert, so receiving the same unit twice fails the whole receipt instead of quietly relocating it.
+ */
+export async function insertReceivedUnits(
+  client: PoolClient,
+  ctx: {
+    readonly tenantId: string; readonly principalId: string; readonly operatingCompanyKey: string;
+    readonly receivingId: string; readonly receivedAt: Date; readonly location: { readonly type: string; readonly locationId: string };
+  },
+  line: { readonly lineId: string; readonly partId: string; readonly trackingMode: string; readonly receivedQuantity: number; readonly serialNumbers?: readonly string[] },
+): Promise<{ readonly movementIds: string[]; readonly serializedCustodyIds: string[] }> {
+  const movementIds: string[] = [];
+  const serializedCustodyIds: string[] = [];
+  const isSerial = line.trackingMode === "SERIAL";
+  const units = isSerial
+    ? (line.serialNumbers ?? []).map((serialNo) => ({
+        serialNo,
+        delta: signedQuantity({ type: RECEIVED, quantity: 1 }),
+        idempotencyKey: receiptSerialMovementIdempotencyKey(ctx.receivingId, line.lineId, serialNo),
+      }))
+    : [{
+        serialNo: null as string | null,
+        delta: signedQuantity({ type: RECEIVED, quantity: line.receivedQuantity }),
+        idempotencyKey: receiptLineMovementIdempotencyKey(ctx.receivingId, line.lineId),
+      }];
+
+  for (const unit of units) {
+    if (unit.delta <= 0) {
+      // Unreachable through validation, which already refused a non-positive quantity. Kept because a zero or negative RECEIVED row
+      // would silently destroy stock, and the sign authority -- not this command -- is what decides the sign.
+      refuse("MOVEMENT_QUANTITY_INVALID", "PRECONDITION_FAILED", "a RECEIVED movement must increase on-hand");
+    }
+    const movementId = `mov_${randomUUID()}`;
+    await client.query(
+      `INSERT INTO ${SCHEMA}.inventory_movements
+         (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+          movement_type, quantity_delta, serial_number, source_kind, source_id, idempotency_key,
+          occurred_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'RECEIVED', $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        movementId, ctx.tenantId, ctx.operatingCompanyKey, line.partId, line.trackingMode,
+        ctx.location.type, ctx.location.locationId, unit.delta, unit.serialNo,
+        RECEIPT_MOVEMENT_SOURCE_KIND, ctx.receivingId, unit.idempotencyKey,
+        // The receipt's business time, never a write clock.
+        ctx.receivedAt, ctx.principalId,
+      ],
+    );
+    movementIds.push(movementId);
+
+    if (unit.serialNo !== null) {
+      const custodyId = `ser_${randomUUID()}`;
+      try {
+        await client.query(
+          `INSERT INTO ${SCHEMA}.serialized_custody
+             (id, tenant_id, operating_company_key, part_id, serial_number, status,
+              location_type, location_id, updated_by)
+           VALUES ($1, $2, $3, $4, $5, 'AVAILABLE', $6, $7, $8)`,
+          [
+            custodyId, ctx.tenantId, ctx.operatingCompanyKey, line.partId, unit.serialNo,
+            ctx.location.type, ctx.location.locationId, ctx.principalId,
+          ],
+        );
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") {
+          refuse(
+            "SERIAL_IDENTITY_CONFLICT", "CONFLICT",
+            "a serial number on this receipt is already held in custody: the same physical unit cannot be received twice",
+          );
+        }
+        throw err;
+      }
+      serializedCustodyIds.push(custodyId);
+    }
+  }
+  return { movementIds, serializedCustodyIds };
 }
 
 /**
@@ -686,82 +771,13 @@ export async function receiveReorderStockWithin(
     const acquisitionCostIds: string[] = [];
 
     for (const line of value.lines) {
-      // ---- 13. THE RECEIVED INVENTORY EFFECT ----
-      //
-      // eos_ops.inventory_movements remains THE quantity-mutating authority; this stages the shape it
-      // already defines and introduces no second ledger and no new movement type.
-      //
-      // SERIAL: one movement PER UNIT, each carrying its serial and a delta of exactly 1 -- not a
-      // choice made here, but what `movement_serial_matches_tracking` requires.
-      // NONE: one movement carrying the line's quantity, signed through the ONE sign authority.
-      const isSerial = line.trackingMode === "SERIAL";
-      const units = isSerial
-        ? (line.serialNumbers ?? []).map((serialNo) => ({
-            serialNo,
-            delta: signedQuantity({ type: RECEIVED, quantity: 1 }),
-            idempotencyKey: receiptSerialMovementIdempotencyKey(receivingId, line.lineId, serialNo),
-          }))
-        : [{
-            serialNo: null,
-            delta: signedQuantity({ type: RECEIVED, quantity: line.receivedQuantity }),
-            idempotencyKey: receiptLineMovementIdempotencyKey(receivingId, line.lineId),
-          }];
-
-      for (const unit of units) {
-        if (unit.delta <= 0) {
-          // Unreachable through validation, which already refused a non-positive quantity. Kept
-          // because a zero or negative RECEIVED row would silently destroy stock, and the sign
-          // authority -- not this command -- is what decides the sign.
-          refuse("MOVEMENT_QUANTITY_INVALID", "PRECONDITION_FAILED", "a RECEIVED movement must increase on-hand");
-        }
-        const movementId = `mov_${randomUUID()}`;
-        await client.query(
-          `INSERT INTO ${SCHEMA}.inventory_movements
-             (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
-              movement_type, quantity_delta, serial_number, source_kind, source_id, idempotency_key,
-              occurred_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'RECEIVED', $8, $9, $10, $11, $12, $13, $14)`,
-          [
-            movementId, actor.tenantId, poRow.operatingCompanyKey, line.partId, line.trackingMode,
-            locationRef.type, locationRef.locationId, unit.delta, unit.serialNo,
-            RECEIPT_MOVEMENT_SOURCE_KIND, receivingId, unit.idempotencyKey,
-            // The receipt's business time, never a write clock.
-            receivedAt, actor.principalId,
-          ],
-        );
-        movementIds.push(movementId);
-
-        // ---- 14. SERIALIZED CUSTODY, in the SAME transaction as the movement ----
-        //
-        // `serialized_custody_unique` IS the double-receive check: one serial identifies one physical
-        // unit of one part, tenant-wide. A plain INSERT rather than an upsert, so receiving the same
-        // physical unit twice fails the whole receipt instead of quietly relocating a unit that is
-        // already somewhere.
-        if (unit.serialNo !== null) {
-          const custodyId = `ser_${randomUUID()}`;
-          try {
-            await client.query(
-              `INSERT INTO ${SCHEMA}.serialized_custody
-                 (id, tenant_id, operating_company_key, part_id, serial_number, status,
-                  location_type, location_id, updated_by)
-               VALUES ($1, $2, $3, $4, $5, 'AVAILABLE', $6, $7, $8)`,
-              [
-                custodyId, actor.tenantId, poRow.operatingCompanyKey, line.partId, unit.serialNo,
-                locationRef.type, locationRef.locationId, actor.principalId,
-              ],
-            );
-          } catch (err) {
-            if ((err as { code?: string }).code === "23505") {
-              refuse(
-                "SERIAL_IDENTITY_CONFLICT", "CONFLICT",
-                "a serial number on this receipt is already held in custody: the same physical unit cannot be received twice",
-              );
-            }
-            throw err;
-          }
-          serializedCustodyIds.push(custodyId);
-        }
-      }
+      // ---- 13 + 14. THE RECEIVED INVENTORY EFFECT AND SERIALIZED CUSTODY (insertReceivedUnits, shared with the supplier-PO receipt) ----
+      const staged = await insertReceivedUnits(client, {
+        tenantId: actor.tenantId, principalId: actor.principalId, operatingCompanyKey: poRow.operatingCompanyKey,
+        receivingId, receivedAt, location: locationRef,
+      }, line);
+      movementIds.push(...staged.movementIds);
+      serializedCustodyIds.push(...staged.serializedCustodyIds);
 
       // ---- 15. ACQUISITION-COST EVIDENCE, when the purchase order carries a governed price ----
       const poLine = derived.lines.find((l) => l.lineId === LEGACY_LINE_ID) ?? derived.lines[0];

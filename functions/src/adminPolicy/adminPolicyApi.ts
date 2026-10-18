@@ -1161,6 +1161,12 @@ async function dispatch(
     case "createBin":
     case "relabelBin":
     case "setBinStatus":
+    case "listRackingWarehouses":
+    case "listRackingBins":
+    case "previewBinCreates":
+    case "createBins":
+    case "renameRackingBin":
+    case "setRackingBinStatus":
     case "listTrucks":
     case "readTruck":
     case "listMobileLocations":

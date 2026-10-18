@@ -25,6 +25,8 @@ import {
 } from "./warehouseBinRepository";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse";
 import { withActorAuthority } from "./administrationReach";
+import { resolveCompanyAuthority } from "./companyAuthority";
+import { MAX_BIN_PROPOSALS, classifyBin, planBinCreates, validateProposal, type BinVerdict, type StoredBinRow, type StoredClaimRow } from "./binRackingPlan";
 
 export const WAREHOUSE_ADMIN_AUDIT_TARGETS = Object.freeze({ WAREHOUSE: "warehouse", BIN: "bin" });
 export const WAREHOUSE_ADMIN_AUDIT_ACTIONS = Object.freeze({
@@ -245,8 +247,239 @@ async function setBinMasterStatus(pool: Pool, actor: ConfigurationActor, input: 
   });
 }
 
+// ════════════════════ THE WAREHOUSE RACKING PLANNER (Firebase exit B3; Owner rulings 5-7) ════════════════════
+//
+// Administration > Warehouse Racking, served on EOS in place of the Firebase bin callables (createBin, renameBin, deactivateBin,
+// reactivateBin, previewBinCreates, listBins) and the Firestore `warehouses` picker. Gated by the Firebase catalog's OWN ids, mirrored
+// (inventory.location.bin.read / .manage -- same holders, no new one), NOT by warehouse.record.manage: this is the bin administrator's
+// audience, a different one from warehouse master configuration.
+//
+//   PARTIAL SUCCESS, PER-ITEM OUTCOMES, SAFE RETRY, NO FALSE WHOLE-BATCH SUCCESS (ruling 5). createBins applies the planner's bins ONE
+//   BIN PER TRANSACTION -- a bin and its HELD code claim commit together, each with its own audit row -- and answers per item: CREATED,
+//   UNCHANGED (an exact replay: same id, same rack position, code held by it) or REFUSED with its classification and reason. A batch is
+//   never one transaction and never reports a single boolean; a retry of the same request is, per bin, UNCHANGED. Bins are never moved,
+//   overwritten or revived by a create, and a code claim is never released.
+//
+//   COMPANY ISOLATION. A bin carries no company; its warehouse does. Every racking operation reaches only the warehouses of operating
+//   companies the caller is authorized for (resolveCompanyAuthority, #235 / #237): none at all is COMPANY_AUTHORITY_REQUIRED, and a
+//   warehouse (or a bin of a warehouse) outside the caller's companies reads exactly as a nonexistent one.
+const RACKING_LIST_LIMIT = 2000;
+
+async function rackingReach(c: Pick<PoolClient, "query">, actor: ConfigurationActor): Promise<readonly string[]> {
+  const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
+  if (authority.companyKeys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "racking requires operating-company authority; this principal has none");
+  return authority.companyKeys;
+}
+
+async function reachableWarehouse(c: PoolClient | Pool, actor: ConfigurationActor, warehouseId: string, keys: readonly string[]) {
+  const w = await readWarehouse(c, actor.tenantId, warehouseId);
+  if (!w || !keys.includes(w.operatingCompanyKey)) refuse("WAREHOUSE_NOT_FOUND", "NOT_FOUND", "no such warehouse");
+  return w!;
+}
+
+function proposalsOf(input: Record<string, unknown>): readonly unknown[] {
+  const p = input.proposals;
+  if (!Array.isArray(p)) refuse("PROPOSALS_REQUIRED", "INVALID_INPUT", "proposals must be a list");
+  if ((p as unknown[]).length > MAX_BIN_PROPOSALS) refuse("TOO_MANY_PROPOSALS", "INVALID_INPUT", `at most ${MAX_BIN_PROPOSALS} bins per request; nothing is truncated`);
+  return p as unknown[];
+}
+
+async function snapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> {
+  const c = await pool.connect();
+  try {
+    await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const out = await fn(c);
+    await c.query("COMMIT");
+    return out;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    c.release();
+  }
+}
+
+async function listRackingWarehouses(pool: Pool, actor: ConfigurationActor, input: Record<string, unknown>) {
+  only(input, []);
+  const keys = await rackingReach(pool, actor);
+  const { rows } = await pool.query(
+    `SELECT ${WAREHOUSE_SELECT} FROM eos_ops.warehouses w WHERE w.tenant_id = $1 AND w.operating_company_key = ANY($2::text[]) ORDER BY w.name, w.id`,
+    [actor.tenantId, [...keys]]);
+  return { items: rows.map(warehouseOf) };
+}
+
+async function listRackingBins(pool: Pool, actor: ConfigurationActor, input: Record<string, unknown>) {
+  only(input, ["warehouseId"]);
+  const warehouseId = text(input, "warehouseId", 64);
+  const keys = await rackingReach(pool, actor);
+  await reachableWarehouse(pool, actor, warehouseId, keys);
+  const { rows } = await pool.query(
+    `SELECT id, warehouse_id, area, aisle, bay, "position", code, name, status::text AS status FROM eos_ops.bins
+      WHERE tenant_id = $1 AND warehouse_id = $2 ORDER BY code, id LIMIT ${RACKING_LIST_LIMIT + 1}`, [actor.tenantId, warehouseId]);
+  return {
+    warehouseId, truncated: rows.length > RACKING_LIST_LIMIT,
+    items: rows.slice(0, RACKING_LIST_LIMIT).map((b) => ({ binId: b.id, warehouseId: b.warehouse_id, area: b.area, aisle: b.aisle, bay: Number(b.bay),
+      position: Number(b.position), code: b.code, name: b.name, status: b.status })),
+  };
+}
+
+const verdictOut = ({ value: _value, ...v }: BinVerdict) => { void _value; return v; };
+const summarize = (verdicts: readonly { classification: string }[]) => {
+  const out: Record<string, number> = {};
+  for (const v of verdicts) out[v.classification] = (out[v.classification] ?? 0) + 1;
+  return out;
+};
+
+async function previewBinCreates(pool: Pool, actor: ConfigurationActor, input: Record<string, unknown>) {
+  only(input, ["warehouseId", "proposals"]);
+  const warehouseId = text(input, "warehouseId", 64);
+  const proposals = proposalsOf(input);
+  return snapshot(pool, async (c) => {
+    const keys = await rackingReach(c, actor);
+    const w = await reachableWarehouse(c, actor, warehouseId, keys);
+    const bins = await c.query(`SELECT id, area, aisle, bay, "position", code, status::text AS status FROM eos_ops.bins WHERE tenant_id = $1 AND warehouse_id = $2`, [actor.tenantId, warehouseId]);
+    const claims = await c.query(`SELECT code, bin_id, claim_state::text AS claim_state FROM eos_ops.bin_code_claims WHERE tenant_id = $1 AND warehouse_id = $2`, [actor.tenantId, warehouseId]);
+    const rows = planBinCreates(
+      warehouseId, proposals,
+      bins.rows.map((b): StoredBinRow => ({ id: b.id, area: b.area, aisle: b.aisle, bay: Number(b.bay), position: Number(b.position), code: b.code, status: b.status })),
+      claims.rows.map((k): StoredClaimRow => ({ code: k.code, binId: k.bin_id, claimState: k.claim_state })));
+    return { warehouseId, warehouseStatus: w.status, rows: rows.map(verdictOut), summary: summarize(rows) };
+  });
+}
+
+export type BinCreateOutcome = "CREATED" | "UNCHANGED" | "REFUSED";
+interface BinCreateItem {
+  readonly index: number; readonly idempotencyKey: string | null; readonly outcome: BinCreateOutcome;
+  readonly classification: string; readonly reason: string | null; readonly binId: string | null; readonly code: string | null;
+}
+
+/** ONE bin, ONE transaction: decide against the rows as they are NOW, then insert the bin and HOLD its code, or answer without writing. */
+async function applyOneBin(pool: Pool, actor: ConfigurationActor, verdict: BinVerdict, why: string): Promise<BinCreateItem> {
+  const value = verdict.value!;
+  const item = (outcome: BinCreateOutcome, classification: string, reason: string | null, binId: string | null): BinCreateItem =>
+    ({ index: verdict.index, idempotencyKey: verdict.idempotencyKey, outcome, classification, reason, binId, code: value.code });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      const active = await c.query(`SELECT 1 FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2 AND status::text = 'ACTIVE' FOR SHARE`, [actor.tenantId, value.warehouseId]);
+      if (active.rows.length === 0) { await c.query("ROLLBACK"); return item("REFUSED", "INVALID", "warehouse_not_active", verdict.binId); }
+      const binId = verdict.binId as string;
+      const [byId, byPos, claim] = await Promise.all([
+        c.query(`SELECT id, area, aisle, bay, "position", code, status::text AS status FROM eos_ops.bins WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, binId]),
+        c.query(`SELECT id, area, aisle, bay, "position", code, status::text AS status FROM eos_ops.bins WHERE tenant_id = $1 AND warehouse_id = $2 AND area = $3 AND aisle = $4 AND bay = $5 AND "position" = $6`,
+          [actor.tenantId, value.warehouseId, value.area, value.aisle, value.bay, value.position]),
+        c.query(`SELECT code, bin_id, claim_state::text AS claim_state FROM eos_ops.bin_code_claims WHERE tenant_id = $1 AND warehouse_id = $2 AND code = $3`, [actor.tenantId, value.warehouseId, value.code]),
+      ]);
+      const row = (r: Record<string, unknown> | undefined): StoredBinRow | null => r === undefined ? null
+        : { id: String(r.id), area: String(r.area), aisle: String(r.aisle), bay: Number(r.bay), position: Number(r.position), code: String(r.code), status: String(r.status) };
+      const decided = classifyBin(verdict.index, value, {
+        binById: row(byId.rows[0]), binByPosition: row(byPos.rows[0]),
+        claimByCode: claim.rows[0] === undefined ? null : { code: String(claim.rows[0].code), binId: String(claim.rows[0].bin_id), claimState: String(claim.rows[0].claim_state) },
+      });
+      if (decided.classification === "ALREADY_EXISTS") { await c.query("ROLLBACK"); return item("UNCHANGED", "ALREADY_EXISTS", null, binId); }
+      if (decided.classification !== "NEW") { await c.query("ROLLBACK"); return item("REFUSED", decided.classification, decided.reason, decided.binId); }
+      const b = await createBin(c, actor.tenantId, actor.principalId, { warehouseId: value.warehouseId, area: value.area, aisle: value.aisle,
+        bay: value.bay, position: value.position, name: value.name ?? null, idempotencyKey: value.idempotencyKey });
+      await audit(c, actor, WAREHOUSE_ADMIN_AUDIT_ACTIONS.BIN_CREATED, WAREHOUSE_ADMIN_AUDIT_TARGETS.BIN, b.id, null, binOf(b), why);
+      await c.query("COMMIT");
+      return item("CREATED", "NEW", null, b.id);
+    } catch (err) {
+      await c.query("ROLLBACK").catch(() => undefined);
+      // A concurrent writer took the same id, position or code between the read and the insert: re-decide ONCE against the new truth.
+      if ((err as { code?: string })?.code === "23505" && attempt === 0) continue;
+      if ((err as { code?: string })?.code === "23505") return item("REFUSED", "INTEGRITY_ERROR", "concurrent_conflict", verdict.binId);
+      if (err instanceof LocationAuthorityError) return item("REFUSED", "INVALID", err.code, verdict.binId);
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+  return item("REFUSED", "INTEGRITY_ERROR", "concurrent_conflict", verdict.binId);
+}
+
+async function createBins(pool: Pool, actor: ConfigurationActor, input: Record<string, unknown>, reason: string | null) {
+  only(input, ["warehouseId", "proposals"]);
+  const why = requiredReason(reason);
+  const warehouseId = text(input, "warehouseId", 64);
+  const proposals = proposalsOf(input);
+  // The warehouse gate, once: reach and ACTIVE. Everything after it is per bin.
+  const gate = await snapshot(pool, async (c) => {
+    const keys = await rackingReach(c, actor);
+    return reachableWarehouse(c, actor, warehouseId, keys);
+  });
+  if (gate.status !== "ACTIVE") refuse("WAREHOUSE_NOT_ACTIVE", "CONFLICT", "bins are added only to an ACTIVE warehouse");
+  const seenIds = new Set<string>(); const seenPositions = new Set<string>(); const seenCodes = new Set<string>();
+  const items: BinCreateItem[] = [];
+  for (let index = 0; index < proposals.length; index++) {
+    const checked = validateProposal(index, warehouseId, proposals[index]);
+    if (!checked.valid) { const v = checked.verdict; items.push({ index, idempotencyKey: v.idempotencyKey, outcome: "REFUSED", classification: v.classification, reason: v.reason, binId: null, code: null }); continue; }
+    const v = checked.value;
+    const verdict = classifyBin(index, v, { binById: null, binByPosition: null, claimByCode: null });
+    const pos = `${v.area}\u0000${v.aisle}\u0000${v.bay}\u0000${v.position}`;
+    if (seenIds.has(verdict.binId as string) || seenPositions.has(pos) || seenCodes.has(v.code)) {
+      items.push({ index, idempotencyKey: v.idempotencyKey, outcome: "REFUSED", classification: "INVALID", reason: "duplicate_in_request", binId: verdict.binId, code: v.code });
+      continue;
+    }
+    seenIds.add(verdict.binId as string); seenPositions.add(pos); seenCodes.add(v.code);
+    items.push(await applyOneBin(pool, actor, verdict, why));
+  }
+  const count = (o: BinCreateOutcome) => items.filter((i) => i.outcome === o).length;
+  // NEVER a single success flag: `complete` is true only when no item was refused, and the items are the answer.
+  return { warehouseId, requested: proposals.length, created: count("CREATED"), unchanged: count("UNCHANGED"), refused: count("REFUSED"),
+    complete: count("REFUSED") === 0, items };
+}
+
+/** The bin (with its warehouse's company) the caller reaches, locked; absent or outside the caller's companies is BIN_NOT_FOUND. */
+async function reachableBinForUpdate(c: PoolClient, actor: ConfigurationActor, binId: string) {
+  const keys = await rackingReach(c, actor);
+  const { rows } = await c.query(
+    `SELECT b.id, b.warehouse_id, b.area, b.aisle, b.bay, b."position", b.code, b.name, b.status::text AS status, w.operating_company_key
+       FROM eos_ops.bins b JOIN eos_ops.warehouses w ON w.tenant_id = b.tenant_id AND w.id = b.warehouse_id
+      WHERE b.tenant_id = $1 AND b.id = $2 FOR UPDATE OF b`, [actor.tenantId, binId]);
+  if (rows.length === 0 || !keys.includes(String(rows[0].operating_company_key))) refuse("BIN_NOT_FOUND", "NOT_FOUND", "no such bin");
+  return rows[0];
+}
+
+async function renameRackingBin(pool: Pool, actor: ConfigurationActor, input: Record<string, unknown>, reason: string | null) {
+  only(input, ["binId", "name"]);
+  const why = requiredReason(reason);
+  const binId = text(input, "binId");
+  const name = optionalText(input, "name");
+  if (name === undefined) refuse("NAME_REQUIRED", "INVALID_INPUT", "state the new name (or null to clear it)");
+  return tx(pool, async (c) => {
+    const before = await reachableBinForUpdate(c, actor, binId);
+    if ((name ?? null) === (before.name ?? null)) return { ...binOfRow(before), changed: false };
+    // A NAME edit keeps the rack position: the bin's own attributes are sent back unchanged, so its code and claim do not move.
+    const b = await renameBin(c, actor.tenantId, actor.principalId, binId,
+      { area: before.area, aisle: before.aisle, bay: Number(before.bay), position: Number(before.position), name: name ?? null });
+    await audit(c, actor, WAREHOUSE_ADMIN_AUDIT_ACTIONS.BIN_RELABELLED, WAREHOUSE_ADMIN_AUDIT_TARGETS.BIN, binId,
+      { code: before.code, name: before.name }, { code: b.code, name: b.name }, why);
+    return { ...binOf(b), changed: true };
+  });
+}
+
+async function setRackingBinStatus(pool: Pool, actor: ConfigurationActor, input: Record<string, unknown>, reason: string | null) {
+  only(input, ["binId", "status"]);
+  const why = requiredReason(reason);
+  const binId = text(input, "binId");
+  const next = status(input);
+  return tx(pool, async (c) => {
+    const before = await reachableBinForUpdate(c, actor, binId);
+    if (before.status === next) return { ...binOfRow(before), changed: false };
+    const b = await setBinStatus(c, actor.tenantId, actor.principalId, binId, next);
+    await audit(c, actor, WAREHOUSE_ADMIN_AUDIT_ACTIONS.BIN_STATUS, WAREHOUSE_ADMIN_AUDIT_TARGETS.BIN, binId, { status: before.status }, { status: next }, why);
+    return { ...binOf(b), changed: true };
+  });
+}
+
+const binOfRow = (r: Record<string, unknown>) => ({ binId: r.id, warehouseId: r.warehouse_id, area: r.area, aisle: r.aisle, bay: Number(r.bay),
+  position: Number(r.position), code: r.code, name: r.name, status: r.status });
+
 export const WAREHOUSE_ADMIN_OPERATIONS = Object.freeze([
   "listWarehouses", "listWarehouseBins", "createWarehouse", "updateWarehouse", "setWarehouseStatus", "createBin", "relabelBin", "setBinStatus",
+  // The Warehouse Racking planner (Firebase exit B3), gated by inventory.location.bin.read / .manage.
+  "listRackingWarehouses", "listRackingBins", "previewBinCreates", "createBins", "renameRackingBin", "setRackingBinStatus",
 ] as const);
 export const isWarehouseAdminOperation = (op: string): boolean => (WAREHOUSE_ADMIN_OPERATIONS as readonly string[]).includes(op);
 
@@ -264,6 +497,12 @@ export function createWarehouseBinAdministration(pool: Pool) {
       case "createBin": return createBinMaster(pool, actor, i, reason);
       case "relabelBin": return relabelBinMaster(pool, actor, i, reason);
       case "setBinStatus": return setBinMasterStatus(pool, actor, i, reason);
+      case "listRackingWarehouses": return listRackingWarehouses(pool, actor, i);
+      case "listRackingBins": return listRackingBins(pool, actor, i);
+      case "previewBinCreates": return previewBinCreates(pool, actor, i);
+      case "createBins": return createBins(pool, actor, i, reason);
+      case "renameRackingBin": return renameRackingBin(pool, actor, i, reason);
+      case "setRackingBinStatus": return setRackingBinStatus(pool, actor, i, reason);
       default: throw new Error(`not a warehouse administration operation: ${String(operation)}`);
     }
   };

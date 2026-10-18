@@ -32,6 +32,14 @@ export const MOBILE_LOCATION_SCOPE_BINDING_CAPABILITY = "inventory.location.scop
 export const WAREHOUSE_MASTER_CAPABILITY = "warehouse.record.manage";
 
 /**
+ * WAREHOUSE RACKING (Firebase exit B3; Owner ruling 7): the bin administrator's own read and write keys, registered in EOS under the
+ * Firebase catalog's ids and held by exactly the Roles that hold them there (migration 1764630000000). NOT warehouse.record.manage:
+ * that is warehouse master configuration, a different audience.
+ */
+export const RACKING_READ_CAPABILITY = "inventory.location.bin.read";
+export const RACKING_MANAGE_CAPABILITY = "inventory.location.bin.manage";
+
+/**
  * ADMINISTRATIVE CONFIGURATION authority for the truck / MOBILE-location registry (Controller OD-T7, 2026-10-01). Held by no
  * one by default; the ruled holder is the Operational Configuration Administrator Role. Confers no inventory movement, no
  * warehouse binding and no Employee MOBILE scope.
@@ -70,6 +78,13 @@ export const ADMIN_CONFIGURATION_OPERATIONS = Object.freeze({
   createBin: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
   relabelBin: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
   setBinStatus: Object.freeze({ capability: WAREHOUSE_MASTER_CAPABILITY, mutation: true }),
+  // The Warehouse Racking planner (eosOps/warehouseBinAdministration.ts), on the bin administrator's own keys.
+  listRackingWarehouses: Object.freeze({ capability: RACKING_READ_CAPABILITY, mutation: false }),
+  listRackingBins: Object.freeze({ capability: RACKING_READ_CAPABILITY, mutation: false }),
+  previewBinCreates: Object.freeze({ capability: RACKING_READ_CAPABILITY, mutation: false }),
+  createBins: Object.freeze({ capability: RACKING_MANAGE_CAPABILITY, mutation: true }),
+  renameRackingBin: Object.freeze({ capability: RACKING_MANAGE_CAPABILITY, mutation: true }),
+  setRackingBinStatus: Object.freeze({ capability: RACKING_MANAGE_CAPABILITY, mutation: true }),
   // Truck / MOBILE-location registry (eosOps/truckRegistryAdministration.ts).
   listTrucks: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: false }),
   readTruck: Object.freeze({ capability: TRUCK_REGISTRY_CAPABILITY, mutation: false }),

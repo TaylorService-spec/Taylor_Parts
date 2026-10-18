@@ -41,6 +41,10 @@ import {
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
 import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSupplierOptions, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
+import {
+  listReceivableSupplierPurchaseOrders, listSupplierReceivingLocationOptions, readSupplierPurchaseOrderProgress, receiveSupplierPurchaseOrder,
+} from "./supplierPurchaseOrderReceiving.js";
+import { listLegacyInventoryActionNotes } from "./legacyInventoryActionNotes.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
 import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
@@ -119,6 +123,13 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "readTruckStock",
   // RETURNS INTAKE (Firebase exit F7a, DECISIONS #242): the caller's companies and the receiving warehouses each allows.
   "listReturnIntakeOptions",
+  // THE CANONICAL SUPPLIER PURCHASE ORDER (Firebase exit B3, DECISIONS #B3): the orders awaiting receipt, one order's derived progress,
+  // and the destinations it may be received into -- inventory.stock.receive + the caller's operating companies.
+  "listReceivableSupplierPurchaseOrders",
+  "readSupplierPurchaseOrderProgress",
+  "listSupplierReceivingLocationOptions",
+  // THE FROZEN LEGACY NOTES, archived (B3, ruling 8): read only, inventory.action.read; empty until the held copy.
+  "listLegacyInventoryActionNotes",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -164,6 +175,9 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // RETURNS INTAKE (Firebase exit F7a, DECISIONS #242): inventory.returns.intake + the #237 company check. Intake only --
   // NO ledger movement (#118). Not behind the Reorder activation boundary: it is its own authority.
   "recordReturnIntake",
+  // SUPPLIER PURCHASE ORDER RECEIVING (Firebase exit B3): dispatched by source type like its Reorder sibling, with NO fallback between the
+  // two authorities. inventory.stock.receive + company authority + the WAREHOUSE scope over the destination.
+  "receiveSupplierPurchaseOrder",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -218,6 +232,11 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   setPreferredPartSupplierItem: "/operations/inventory",
   listReturnIntakeOptions: "/operations/inventory",
   recordReturnIntake: "/operations/inventory",
+  listReceivableSupplierPurchaseOrders: "/operations/inventory",
+  readSupplierPurchaseOrderProgress: "/operations/inventory",
+  listSupplierReceivingLocationOptions: "/operations/inventory",
+  listLegacyInventoryActionNotes: "/operations/inventory",
+  receiveSupplierPurchaseOrder: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -329,6 +348,9 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "listTruckRoster", "readTruckStock",
   // SUP-1: governed part-supplier terms sit behind the same boundary as the supplier administration they extend.
   "listPartSupplierItems", "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
+  // B3: supplier purchase order receiving and the archived notes sit behind the same boundary as the receiving they extend.
+  "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "receiveSupplierPurchaseOrder",
+  "listLegacyInventoryActionNotes",
 ]);
 
 export type OperationsApiFailureCode =
@@ -480,6 +502,22 @@ export async function executeOperation(
         const { actor, pool } = await reorderActor();
         return ok(await listReceivingLocationOptions({ pool }, actor, request.input ?? {}));
       }
+      case "listReceivableSupplierPurchaseOrders": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listReceivableSupplierPurchaseOrders({ pool }, actor, request.input ?? {}));
+      }
+      case "readSupplierPurchaseOrderProgress": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readSupplierPurchaseOrderProgress({ pool }, actor, request.input ?? {}));
+      }
+      case "listSupplierReceivingLocationOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listSupplierReceivingLocationOptions({ pool }, actor, request.input ?? {}));
+      }
+      case "listLegacyInventoryActionNotes": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listLegacyInventoryActionNotes({ pool }, actor, request.input ?? {}));
+      }
       case "listSuppliers": {
         const { actor, pool } = await reorderActor();
         return ok(await listSuppliers({ pool }, actor, request.input ?? {}));
@@ -554,6 +592,12 @@ export async function executeOperation(
         // Employee the purchasing work happens to be assigned to.
         const { actor, pool } = await reorderActor();
         return ok(await receiveReorderStock({ pool }, actor, request.input ?? {}));
+      }
+      case "receiveSupplierPurchaseOrder": {
+        // The SAME resolved Principal context. The receipt's actor is an EOS Principal holding inventory.stock.receive; the command
+        // decides its operating company and the WAREHOUSE scope over the destination itself.
+        const { actor, pool } = await reorderActor();
+        return ok(await receiveSupplierPurchaseOrder({ pool }, actor, request.input ?? {}));
       }
       case "listSupplierOrganizationOptions": {
         const { actor, pool } = await reorderActor();

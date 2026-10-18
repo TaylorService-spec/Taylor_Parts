@@ -254,7 +254,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants).
   // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): eos_policy.employee_company_authority_grants + a store guard; no capability, no grant.
   // 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys, 15 grants.
-  assert.equal(migrations.length, 104, "a migration was added or removed by the read enforcement");
+  // 104 -> 105: 1764630000000 -- Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive.
+  assert.equal(migrations.length, 105, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

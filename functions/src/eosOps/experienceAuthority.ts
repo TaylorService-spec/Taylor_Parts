@@ -210,6 +210,11 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
 
   // ── Inventory
   surface("inventory.catalog", "Parts Catalog", [{ capabilityKey: "inventory.catalog.read" }]),
+  // WAREHOUSE RACKING (Firebase exit B3, DECISIONS #B3). The door to Administration > Warehouse Racking: earned by the bin administrator's own read key
+  // (inventory.location.bin.read, mirrored from the Firebase catalog and held by its CURRENT holders only). The door confers nothing: every list,
+  // preview and bin change re-decides on its own key and the caller's operating companies. Deliberately NOT an `administration.*` surface -- those are
+  // the access model's own, and this is warehouse layout.
+  surface("inventory.racking", "Warehouse Racking", [{ capabilityKey: "inventory.location.bin.read" }]),
   surface("inventory.catalogAdmin", "Catalog Admin", [
     { capabilityKey: "inventory.catalog.manage" },
     { capabilityKey: "inventory.catalog.activate" },

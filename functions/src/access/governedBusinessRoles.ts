@@ -295,8 +295,9 @@ const OWNER_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter((p) =>
 // Company manifest can finally assert these as Owner `forbiddenCapabilities` -- which it could not
 // do while the compiled catalog handed Owner every one of them.
 //
-// All 19 are inside the governed PostgreSQL capability vocabulary and all 19 are admin-only in
-// live nonprod. Two further vocabulary ids the old spread also gave Owner are not listed here
+// All 20 are inside the governed PostgreSQL capability vocabulary and all 20 are admin-only in
+// live nonprod (inventory.location.bin.manage joined at Firebase exit B3, migration 1764630000000).
+// Before it was registered it was listed below only as an id OUTSIDE the vocabulary. Two further vocabulary ids the old spread also gave Owner are not listed here
 // because they are admin-only in neither sense -- see OWNER_EXCLUDED_NOT_AN_AUTHORITY below.
 export const OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES = Object.freeze([
   // Platform administration. Bulk-loading records through the import pipeline is migration
@@ -317,6 +318,9 @@ export const OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES = Object.freeze([
   "inventory.cycleCount.create",
   "inventory.cycleCount.reconcile",
   "inventory.cycleCount.submit",
+  // Warehouse layout administration -- creating, renaming and retiring racking. Registered in EOS at Firebase exit B3 (admin and the
+  // memberless inventoryBinAdministrator hold it, as in Firebase); Owner reads the racking (bin.read) but does not change it.
+  "inventory.location.bin.manage",
   // Physical stock handling -- putting it away, taking it in, moving it. Floor work.
   "inventory.placement.record",
   "inventory.stock.receive",
@@ -351,7 +355,6 @@ export const OWNER_EXCLUDED_NOT_AN_AUTHORITY = Object.freeze([
 //   admin.dataImport.stage, administration.emailIntake.{read,manage}   platform administration
 //   equipment.compatibility.{correct,import,verify}                    reference-data curation
 //   inventory.action.create                                            stock correction, floor work
-//   inventory.location.bin.manage                                      warehouse layout admin
 //   inventory.returns.intake, inventory.serializedAsset.acquire        physical intake
 //   reorder.request.{startPurchasing,postPurchasingUpdate,
 //                    recordPurchaseOrder,markReceived}                 the buyer's workflow

@@ -43,7 +43,9 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       // Truck Inventory activation (2026-10-01): the operational truck roster and one truck's stock.
       "listTruckRoster", "readTruckStock",
       // Returns intake (Firebase exit F7a, DECISIONS #242): the caller's companies and receiving warehouses.
-      "listReturnIntakeOptions"]);
+      "listReturnIntakeOptions",
+      // Supplier purchase order receiving + the archived legacy notes (Firebase exit B3, DECISIONS #B3).
+      "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "listLegacyInventoryActionNotes"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -56,6 +58,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
     // Returns intake (Firebase exit F7a, DECISIONS #242): intake only, no ledger movement (#118).
     "recordReturnIntake",
+    // Supplier purchase order receiving (Firebase exit B3): the canonical PURCHASE_ORDER source, no fallback to or from receiveReorderStock.
+    "receiveSupplierPurchaseOrder",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
