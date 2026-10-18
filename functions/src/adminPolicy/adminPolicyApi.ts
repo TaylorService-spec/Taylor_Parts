@@ -1195,6 +1195,7 @@ async function dispatch(
     case "readAuthenticationEvents":
     case "planAuthenticationEventArchive":
     case "setAuthenticationEventRetention":
+    case "readAuthVerifierDiagnostics":
       throw new Error(`${operation} is a login administration operation`);
 
     default: {

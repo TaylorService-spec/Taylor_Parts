@@ -66,10 +66,11 @@ Real people do not get passwords from this runbook. **Re-enrollment of real user
 
 ## 4. Step 1: preflight (read only)
 
-1. On `eos-api-nonprod` (Render Shell), with `EOS_FIREBASE_OPERATOR_ACCESS_TOKEN` exported for this session only: run `node scripts/roleAssignmentCensusCli.js` per its header (read-only, sandbox project named explicitly). Record `privilegedRoleRequests.pendingApproval`.
-   - **0:** continue.
-   - **Above 0:** stop. Decide each pending request in a Firebase-sign-in build (Administration, Roles and Permissions, Approval requests) or reject it, re-count, then continue. This is the "no pending approvals" proof the Owner required before the queue can be treated as retired (`privileged-approvals-inventory-b2.md`).
-2. `curl -s https://eos-api-nonprod.onrender.com/health`: `ok: true`, `migrated: true`, `auth.firebaseVerifier: "enabled"`. Record `auth.verified.firebase` and `auth.since` (the baseline).
+1. **Privileged approvals: the PA-1 gate.** The reachability proof is `privileged-approvals-inventory-b2.md` (section 4). Its result: every change that needs approval in Firebase (grant or revoke of `owner` or `admin`) is controlled on EOS by authority rules at the cited `policyCommands.ts` lines (the Owner is refused outright; Administrator staffing is Owner-or-Administrator only, never self, audited; the Owner's ruling #223), no product workflow creates a request, and the queue is preserved in every Firebase-sign-in build. **The one cutover blocker is the live count.** On `eos-api-nonprod` (Render Shell), with `EOS_FIREBASE_OPERATOR_ACCESS_TOKEN` exported for this session only: run `node scripts/roleAssignmentCensusCli.js` per its header (read-only, sandbox project named explicitly). Record `privilegedRoleRequests.pendingApproval`.
+   - **0:** the blocker is cleared; continue. (Zero is necessary, not sufficient: the sufficiency proof is the inventory document. Decided requests stay in Firestore as history; nothing is deleted.)
+   - **Above 0:** stop. Decide each pending request in a Firebase-sign-in build (Administration, Roles and Permissions, Approval requests) or reject it, re-count, then continue.
+   - Also record, from a Functions list (operator), whether `requestPrivilegedRole`, `decidePrivilegedRoleRequest` and `listPrivilegedRoleRequests` are deployed in each Firebase project. It does not block this cutover; it is item 10 of the proof.
+2. `curl -s https://eos-api-nonprod.onrender.com/health`: `ok: true`, `migrated: true`. **`/health` carries no authentication detail** (Owner ruling MET-1); the verifier mode and counters are read in step 4 with an administrator EOS session, after the front door is on (they need one).
 3. Confirm which of section 2's variables already exist (Render dashboard). Set only what is missing; never overwrite a signing key or a factor key that live sessions or factors depend on.
 
 ## 5. Step 2: generate and store the secrets (offline, operator custody)
@@ -126,12 +127,12 @@ The report lists every **unresolved** Principal (id, provider, subject, reason: 
 
 | Id | Check | Pass |
 |---|---|---|
-| V1 | `GET /health` | `ok`, `migrated`, `auth.firebaseVerifier` as set |
+| V1 | `GET /health` (public: no authentication detail) and, with an administrator EOS bearer, `POST /admin/policy` `{"operation":"readAuthVerifierDiagnostics","input":{}}` | `/health`: `ok`, `migrated`, **no `auth` key**. Diagnostics: `data.firebaseVerifier` as set. Obtain the bearer with `loginEosPersona("administrator")` (`scripts/eosPersonaSession.mjs`) once the persona is enrolled, or a Firebase administrator bearer while the Firebase verifier is still enabled. The read needs `admin.securityPolicy.read`; a principal without it gets `403` and no count. |
 | V2 | `POST /auth/login` with `Origin: https://verenwardeos.vercel.app`, `X-EOS-CSRF: 1`, a bogus identifier | `401 LOGIN_REFUSED` (a `404` means `EOS_HUMAN_LOGIN` is not on) |
 | V3 | Persona sign-in, API: `loginEosPersona("<key>")` from `scripts/eosPersonaSession.mjs`, then `POST /operations/experience` | `200`, the persona's usual Principal id |
 | V4 | Browser, EOS-only build, with `identitytoolkit.googleapis.com`, `securetoken.googleapis.com`, `firestore.googleapis.com`, `www.googleapis.com` and `*.cloudfunctions.net` **blocked at the network**: sign in as a persona (password, then authenticator), reload (cookie refresh), sign out | signed in and out; **0** requests to those hosts on the sign-in path; the already-migrated workflows load |
-| V5 | After step 9: a Firebase bearer to `/admin/policy` | `401`; `/health` `auth.refused.firebase_disabled` rises; `auth.verified.firebase` does not |
-| V6 | The verifier metric over the smoke | `auth.verified.eos_human` rises with each persona session; `auth.verified.firebase` flat since step 9 (`auth.since` shows the window) |
+| V5 | After step 9: a Firebase bearer to `/admin/policy` | `401`; the diagnostics read (administrator EOS bearer, V1) shows `refused.firebase_disabled` rising and `verified.firebase` not |
+| V6 | The verifier counters over the smoke, read as in V1 | `verified.eos_human` rises with each persona session; `verified.firebase` flat since step 9 (`since` shows the window). Take one reading before and one after; compare, do not rely on absolutes |
 | V7 | Administration, Users, one synthetic Employee: create sign-in, setup code, status disable and enable, reset code, sign out everywhere, Change History | each works and is audited; the page never says "Firebase" |
 
 **The smoke reports two separate results.** (1) Authentication passes without Firebase. (2) Business workflows still blocked, listed against their batch (section 9). The auth proof never claims the app is Firebase-independent.
@@ -155,11 +156,12 @@ The EOS-only build has **no Firebase config**, so these screens cannot reach Fir
 | B3 Warehouse and receiving | `services/receivingCallableClient.js`, `services/binCommandClient.js`, `hooks/useInventoryActions.js` (frozen `inventory_actions` notes), `fetchWarehouses` (`services/operationsQueries.ts`) |
 | B4 Records and reporting | `access/importedServiceHistorySource.js`, `access/dataImportClient.js`, `domain/reporting/reportExecutionSeam.js`, `domain/reporting/savedReportService.js`, `services/performanceGoalClient.js` |
 | Production-only (no EOS API there) | `auth/employeeSession.js`, `access/useReportCapabilities.js`, `hooks/useCurrentTechnician.js` |
-| Held, with a named decision | `services/privilegedApprovalClient.js` (PA-1), the legacy Change History callable `listRecordChangeHistory` (LT-1) |
+| Preserved (proof in `privileged-approvals-inventory-b2.md`; gated on the step 1 census) | `services/privilegedApprovalClient.js` (PA-1) |
+| Held, with a named decision | the legacy Change History callable `listRecordChangeHistory` (LT-1) |
 
 ## 10. Residual risks the operator should know
 
 - **Cross-site cookie.** Until the same-site domain plan is executed, the refresh cookie is third-party (`SameSite=None; Partitioned`). Browsers that block third-party cookies still sign in, but a reload asks again. Not a security gap; an experience gap.
 - **Persona issuer.** The machine route stays available beside the persona password login, so disabling a persona's login does not end a persona-issuer token (900 s at most). Removing the route is unsetting `EOS_PERSONA_ISSUER_CREDENTIAL_SHA256`, after the harnesses use `loginEosPersona`.
 - **The credentials file** is the only place the generated persona secrets exist. Treat it like a signing key; destroy the shell copy.
-- **Metric scope.** `/health` counters are per process since `auth.since`; a restart resets them. Compare readings, do not rely on absolute values.
+- **Counter scope.** The diagnostics counters are per process since `since`; a restart resets them. They are counts and the verifier mode only, never a token, identity or key, and they are readable only by an administrator (`admin.securityPolicy.read`), not on `/health`.

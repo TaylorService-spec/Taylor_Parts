@@ -198,6 +198,8 @@ export const ADMIN_LOGIN_OPERATIONS = Object.freeze([
   "readAuthenticationEvents",
   "planAuthenticationEventArchive",
   "setAuthenticationEventRetention",
+  // MET-1: the verifier mode and per-type counts, for an administrator (admin.securityPolicy.read). Not on /health.
+  "readAuthVerifierDiagnostics",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS, ...ADMIN_CONFIGURATION_OPERATIONS]);

@@ -284,7 +284,11 @@ export async function startEosApi(
           : isSystemConfigurationOperation(operation) ? system : isSalesDiscountAuthorityOperation(operation) ? discounts : bindings)(operation, actor, input, reason);
     })(),
     // Administration > Users: login-account security administration (EOS native identity), when the front door is composed.
-    loginAdministration: loginService ? createLoginAdministration(loginService, new EosSecurityEventGovernance(pool, repo)) : undefined,
+    loginAdministration: loginService ? createLoginAdministration(
+      loginService, new EosSecurityEventGovernance(pool, repo),
+      // MET-1: counts and mode only, read by an administrator on admin.securityPolicy.read (eosLoginService.ts).
+      () => ({ firebaseVerifier: eosAuth.firebaseVerifier ?? "enabled", ...verifierMetrics.snapshot() }),
+    ) : undefined,
     verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {
@@ -295,8 +299,8 @@ export async function startEosApi(
         migrated: health.migrated,
         latencyMs: health.latencyMs,
         migrations: health.appliedMigrations.length,
-        // Firebase exit B2: the verifier switch and the per-type counters. Counts only -- no subject, token or address.
-        auth: { firebaseVerifier: eosAuth.firebaseVerifier ?? "enabled", ...verifierMetrics.snapshot() },
+        // NO authentication detail here (Owner ruling MET-1): /health is unauthenticated. The verifier mode and the per-type
+        // counters are read through the restricted Administration operation readAuthVerifierDiagnostics instead.
       };
     },
   });
