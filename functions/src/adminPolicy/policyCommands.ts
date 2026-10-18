@@ -76,6 +76,12 @@ import {
   SCOPE_EVALUABLE_GRANTS,
   UNSUPPORTED_SCOPE_REASONS,
 } from "./assignmentScopeRuntime";
+import {
+  financeOnlyClassificationRefusal,
+  isFinanceCapabilityKey,
+  isRoleCompanyAuthorityEffect,
+  type RoleCompanyAuthorityEffect,
+} from "./roleCompanyAuthorityEffect";
 import { SALES_CHANNELS } from "../opportunity/opportunityLifecycle";
 import type { PolicyReader, AssignmentScopeValue } from "./policyRepository";
 
@@ -141,7 +147,11 @@ export class AdministrationRefusal extends PolicyValidationError {
     | "PROTECTED_OWNER_MEMBERSHIP"
     | "LAST_PROTECTED_OWNER"
     // revokeRole: the last active administering (protected Role) assignment in the tenant (finding F-2).
-    | "LAST_ADMINISTERING_ASSIGNMENT", message: string) {
+    | "LAST_ADMINISTERING_ASSIGNMENT"
+    // Role company-authority classification (DECISIONS #248): FINANCE_ONLY is Finance reach only and is guarded both ways.
+    | "COMPANY_AUTHORITY_EFFECT_INVALID"
+    | "FINANCE_ONLY_CLASSIFICATION_REFUSED"
+    | "FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -1434,6 +1444,42 @@ async function countActiveAdministeringAssignments(
 export { AdministrationDeniedError };
 export type { PolicyTransaction };
 
+// ════════════════════ ROLE COMPANY-AUTHORITY CLASSIFICATION (DECISIONS #248) ════════════════════
+//
+// Whether an operatingCompany-scoped assignment of a Role names the company in the holder's GENERAL company authority
+// (OPERATIONAL) or supplies Finance reach only (FINANCE_ONLY) is governed DATA on the Role (roleCompanyAuthorityEffect.ts),
+// changed only by updateRole. Called inside updateRole's transaction; the caller has already required editSecurityPolicy.
+//
+//   * takes the tenant governance lock, so the classification, a grant to the Role and an assignment cannot interleave;
+//   * a change needs a stated reason (it moves authority); an unchanged value is no change (returns null);
+//   * a protected Role's classification is fixed;
+//   * FINANCE_ONLY only while the Role holds at least one capability and every capability is finance.* (derive-and-VERIFY,
+//     never the source of truth: the value is the explicit data);
+//   * widening to OPERATIONAL is the self-grant rule of grantObjectActionToRole: nobody widens a Role they hold.
+export async function guardRoleCompanyAuthorityEffectChange(
+  repo: PolicyRepository, tx: PolicyTransaction, actor: AdminActor, roleKey: string, requested: unknown, reason: string | null,
+): Promise<RoleCompanyAuthorityEffect | null> {
+  if (!isRoleCompanyAuthorityEffect(requested)) {
+    throw new AdministrationRefusal("COMPANY_AUTHORITY_EFFECT_INVALID", "companyAuthorityEffect is OPERATIONAL or FINANCE_ONLY");
+  }
+  await tx.beginAdministrationCommand();
+  const role = await repo.getRoleByKey(actor.tenantId, roleKey);
+  if (!role) throw new PolicyValidationError("role not found");
+  if (role.companyAuthorityEffect === requested) return null;
+  requireReason(reason, "a company-authority classification");
+  if (role.protected) {
+    throw new AdministrationRefusal("SYSTEM_INVARIANT", `${role.key} is a protected Role; its company-authority classification is fixed`);
+  }
+  if (requested === "FINANCE_ONLY") {
+    const refusal = financeOnlyClassificationRefusal(await roleGrantCapabilityKeys(repo, actor.tenantId, role.id));
+    if (refusal) throw new AdministrationRefusal("FINANCE_ONLY_CLASSIFICATION_REFUSED", `${role.key} cannot be FINANCE_ONLY: ${refusal}`);
+  } else if ((Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : []).includes(role.key)
+      || (await repo.listAssignmentsForPrincipal(actor.tenantId, actor.uid)).some((a) => a.status === "active" && a.roleId === role.id)) {
+    throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not widen the company authority of a Role it holds (${role.key})`);
+  }
+  return requested;
+}
+
 // ════════════════════ OBJECT-OWNED SECURITY GRANTS ════════════════════
 //
 // The administrative contract is (objectKey, actionKey, grantee) -- NEVER a raw capability key.
@@ -1751,6 +1797,14 @@ export async function grantObjectActionToRole(
         throw new AdministrationRefusal("SCOPE_AMBIGUOUS_ADMINISTRATION",
           `${role.key} has ${scopedHolders} scoped assignment(s); ${capability.key} is Administration authority, decided tenant-wide, and may not be granted to a scoped Role`);
       }
+    }
+    // A FINANCE_ONLY Role holds finance.* keys only (DECISIONS #248), decided against the STORE under the governance lock
+    // that setRoleCompanyAuthorityEffect also takes: granting operational authority to a Role whose company assignment
+    // was classified Finance-reach-only would contradict the classification, so reclassify first. (The store refuses it too.)
+    if (!isFinanceCapabilityKey(capability.key)
+        && (await repo.getRoleByKey(actor.tenantId, role.key))?.companyAuthorityEffect === "FINANCE_ONLY") {
+      throw new AdministrationRefusal("FINANCE_ONLY_ROLE_NON_FINANCE_CAPABILITY",
+        `${role.key} is classified FINANCE_ONLY (its company assignments supply Finance reach only) and may not hold ${capability.key}; reclassify it with updateRole first`);
     }
     const cell = await tx.readGrantCell(role.key, capability.key);
     if (requiresCondition && condition === null && !cell.condition) {

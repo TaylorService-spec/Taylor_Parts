@@ -9,6 +9,11 @@
 //   3. EXPANSION      every company named by the Principal's ACTIVE, non-stale `operatingCompany`-scoped role
 //                     assignments in this tenant (the same qualification rule as qualifyingGlobalRoles),
 //                     when that company is ACTIVE for this tenant. An assignment confers REACH only, never a capability.
+//                     ONLY an assignment of an OPERATIONAL Role counts (roles.company_authority_effect, governed through
+//                     Administration; DECISIONS #248): an assignment of a FINANCE_ONLY Role (financeCompanyAccess,
+//                     financialPolicyPreparer, ...) supplies Finance reach alone -- eosFinance/financeCompanyAccess.ts and
+//                     financialPolicy.ts decide it from the Role's capabilities and never consult this file -- and
+//                     names no company here. A mixed Role is OPERATIONAL and still expands.
 //   4. NOTHING ELSE   a global Role, Administrator standing, a Firebase claim or a client-selected company never implies
 //                     any company. Empty = no company data.
 //
@@ -51,6 +56,9 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
     return NONE("EMPLOYEE_NOT_ACCESS_ELIGIBLE");
   }
 
+  // OPTION A SLOT (employee_company_authority_grants, approved 2026-10-17; not built here): its ACTIVE explicit Employee grants
+  // join this disjunction as a THIRD branch beside the home company and the OPERATIONAL role expansion below -- additive, no
+  // change to the Finance rule (R4: an explicit grant is not counted for Finance).
   const { rows } = await db.query<{ id: string }>(
     `SELECT c.operating_company_id AS id
        FROM eos_policy.tenant_operating_companies c
@@ -61,6 +69,7 @@ export async function resolveCompanyAuthority(db: Db, tenantId: string, principa
                           LEFT JOIN eos_policy.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
                          WHERE a.tenant_id = c.tenant_id AND a.principal_id = $2 AND a.status = 'active'
                            AND a.scope_type = 'operatingCompany' AND a.scope_value = c.operating_company_id
+                           AND r.company_authority_effect = 'OPERATIONAL'
                            AND a.access_version_at_grant <= coalesce(v.access_version, 0)))
       ORDER BY 1`, [tenantId, principalId, employee.operating_company_id]);
   const companies = rows.map((r) => String(r.id));

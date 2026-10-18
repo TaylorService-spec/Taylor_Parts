@@ -361,7 +361,7 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         if (t.roles.some((r) => r.tenantId === tenantId && r.key === input.key)) {
           throw new PolicyStoreError(`role key "${input.key}" already exists`);
         }
-        const row: PolicyRoleRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
+        const row: PolicyRoleRecord = { ...input, companyAuthorityEffect: "OPERATIONAL", id: this.nextId(), tenantId, ...this.stamp(actor) };
         t.roles.push(row);
         return row;
       },
