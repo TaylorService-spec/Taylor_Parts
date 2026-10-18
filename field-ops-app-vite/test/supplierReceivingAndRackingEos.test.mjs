@@ -294,3 +294,22 @@ test("the nav: Warehouse Racking is a governed destination (inventory.racking), 
     assert.equal(access.eosKeyForFirebaseId(id), id);
   }
 });
+
+test("R1(b): the EOS empty state says no supplier purchase orders have been LOADED here -- it never implies nothing is on order", async () => {
+  const { SUPPLIER_PO_EMPTY_COPY } = await import("../src/domain/receivingWorkspaceQueue.js");
+  for (const text of [SUPPLIER_PO_EMPTY_COPY.EOS.short, SUPPLIER_PO_EMPTY_COPY.EOS.message]) {
+    assert.match(text, /loaded/i);
+    assert.match(text, /this environment|in this environment/i);
+  }
+  assert.match(SUPPLIER_PO_EMPTY_COPY.EOS.message, /does not mean nothing is on order/);
+  assert.doesNotMatch(SUPPLIER_PO_EMPTY_COPY.EOS.title, /^nothing awaiting/i);
+  // The Firebase arm keeps its original wording (production is unchanged).
+  assert.equal(SUPPLIER_PO_EMPTY_COPY.FIREBASE.short, "No purchase orders are awaiting receipt.");
+  // All three supplier-order lists use the one constant, chosen by the build-time source -- no hard-coded "nothing awaiting" claim remains.
+  for (const rel of ["modules/inventory/Receiving.jsx", "modules/receiving/MultiScanReceiving.jsx", "modules/dashboard/MyDashboard.jsx"]) {
+    const code = strip(src(rel));
+    assert.match(code, /SUPPLIER_PO_EMPTY_COPY/, rel);
+    assert.match(code, /EOS_SESSION_SOURCE \? SUPPLIER_PO_EMPTY_COPY\.EOS : SUPPLIER_PO_EMPTY_COPY\.FIREBASE/, rel);
+    assert.doesNotMatch(code, /No purchase orders are awaiting receipt/, `${rel}: the claim lives only in the constant`);
+  }
+});

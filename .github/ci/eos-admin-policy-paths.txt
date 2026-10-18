@@ -920,4 +920,6 @@ functions/src/eosOps/migration/binCensus.ts
 functions/src/eosOps/receiveReorderStockCommand.ts
 functions/scripts/binCensus.js
 functions/scripts/exportBinSnapshot.js
+functions/scripts/loadSupplierPoFixture.js
+functions/test/supplierPoFixtureLoaderPostgres.test.mjs
 functions/migrations/1764630000000_warehouse-receiving-bins-on-eos.sql

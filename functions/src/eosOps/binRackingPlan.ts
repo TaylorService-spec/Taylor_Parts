@@ -82,6 +82,11 @@ export function validateProposal(index: number, warehouseId: string, proposal: u
     const key = p && typeof p === "object" ? (p as Record<string, unknown>).idempotencyKey : null;
     return { valid: false, verdict: verdict(index, "INVALID", checked.reason, null, null, key) };
   }
+  // The planner's identity is `binadm:v1:<warehouseId>:...` (see deriveBinId): a key scoped to another warehouse is refused here, not trusted,
+  // so one warehouse's request can never mint the bin id of another's rack position.
+  if (!checked.value.idempotencyKey.startsWith(`binadm:v1:${warehouseId}:`)) {
+    return { valid: false, verdict: verdict(index, "INVALID", "idempotency_key_wrong_scope", null, null, checked.value.idempotencyKey) };
+  }
   return { valid: true, value: checked.value };
 }
 

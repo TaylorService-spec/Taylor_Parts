@@ -114,10 +114,11 @@ async function readPurchaseOrder(
     `SELECT p.id, p.operating_company_key, p.supplier_id, p.external_po_number, p.status, p.version, s.name AS supplier_name
        FROM ${SCHEMA}.supplier_purchase_orders p
        LEFT JOIN ${SCHEMA}.suppliers s ON s.tenant_id = p.tenant_id AND s.supplier_id = p.supplier_id
-      WHERE p.tenant_id = $1 AND p.id = $2 ${lock ? "FOR UPDATE OF p" : ""}`,
-    [tenantId, id]);
-  // Outside the caller's companies reads EXACTLY as a missing order: the same code and message, so no existence oracle.
-  if (rows.length === 0 || !companyKeys.includes(String(rows[0].operating_company_key))) {
+      WHERE p.tenant_id = $1 AND p.id = $2 AND p.operating_company_key = ANY($3::text[]) ${lock ? "FOR UPDATE OF p" : ""}`,
+    [tenantId, id, [...companyKeys]]);
+  // The company filter is IN the WHERE, so the FOR UPDATE never locks (or waits on) a foreign-company row. Outside the caller's companies
+  // reads EXACTLY as a missing order: the same code and message, so no existence oracle, in the result and in the timing.
+  if (rows.length === 0) {
     refuse("PURCHASE_ORDER_NOT_FOUND", "NOT_FOUND", "purchase order not found");
   }
   const lines = await c.query(
@@ -325,7 +326,8 @@ export async function receiveSupplierPurchaseOrder(
       refuse("DESTINATION_INVALID", "INVALID_INPUT", "receivingLocation must name a type and a locationId");
     }
     const locationRef = { type: (loc as Record<string, unknown>).type as string, locationId: (loc as Record<string, unknown>).locationId as string };
-    const destination = await requireActiveLocation(client, actor.tenantId, locationRef);
+    const destination = await requireActiveLocation(client, actor.tenantId, locationRef, companyKeys);
+    // Reachable but not the order's company is the ONLY mismatch left to name; an unreachable company was already refused as nonexistent above.
     if (destination.operatingCompanyKey !== po.operatingCompanyKey) {
       refuse("DESTINATION_COMPANY_MISMATCH", "PRECONDITION_FAILED", "a purchase order is received into a warehouse of its own operating company");
     }

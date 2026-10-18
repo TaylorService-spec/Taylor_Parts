@@ -283,6 +283,7 @@
     "test/financeVisibilityPostgres.test.mjs",
     "test/workOrderCommandCompanyAuthorityPostgres.test.mjs",
     "test/supplierPurchaseOrderReceivingPostgres.test.mjs",
-    "test/rackingPlannerPostgres.test.mjs"
+    "test/rackingPlannerPostgres.test.mjs",
+    "test/supplierPoFixtureLoaderPostgres.test.mjs"
   ]
 }

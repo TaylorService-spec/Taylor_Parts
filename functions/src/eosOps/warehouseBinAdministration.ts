@@ -436,8 +436,9 @@ async function reachableBinForUpdate(c: PoolClient, actor: ConfigurationActor, b
   const { rows } = await c.query(
     `SELECT b.id, b.warehouse_id, b.area, b.aisle, b.bay, b."position", b.code, b.name, b.status::text AS status, w.operating_company_key
        FROM eos_ops.bins b JOIN eos_ops.warehouses w ON w.tenant_id = b.tenant_id AND w.id = b.warehouse_id
-      WHERE b.tenant_id = $1 AND b.id = $2 FOR UPDATE OF b`, [actor.tenantId, binId]);
-  if (rows.length === 0 || !keys.includes(String(rows[0].operating_company_key))) refuse("BIN_NOT_FOUND", "NOT_FOUND", "no such bin");
+      WHERE b.tenant_id = $1 AND b.id = $2 AND w.operating_company_key = ANY($3::text[]) FOR UPDATE OF b`, [actor.tenantId, binId, [...keys]]);
+  // The company filter is IN the WHERE: a foreign-company bin is never locked, and reads exactly as a missing one.
+  if (rows.length === 0) refuse("BIN_NOT_FOUND", "NOT_FOUND", "no such bin");
   return rows[0];
 }
 

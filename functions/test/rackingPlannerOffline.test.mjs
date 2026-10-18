@@ -50,8 +50,11 @@ test("an exact replay is ALREADY_EXISTS; the same position under another key is 
     ["NEW", null],
   ]);
   // The same rack position under ANOTHER idempotency key (the WarehouseMasters key scheme) is a different bin id: POSITION_TAKEN.
-  const [taken] = planBinCreates(WH, [{ ...proposal("A", 1, 1), idempotencyKey: "bin-wh-1-PARTS-A-1-1" }], bins, claims);
+  const [taken] = planBinCreates(WH, [{ ...proposal("A", 1, 1), idempotencyKey: `${key("A", 1, 1)}:alt` }], bins, claims);
   assert.deepEqual([taken.classification, taken.reason], ["POSITION_TAKEN", "position_taken_by_another_bin"]);
+  // A3: the key must be scoped to THIS request's warehouse (`binadm:v1:<warehouseId>:`); another warehouse's key, or an unscoped one, is refused.
+  const wrong = planBinCreates(WH, [{ ...proposal("A", 1, 1), idempotencyKey: key("A", 1, 1).replace(`:${WH}:`, ":wh-other:") }, { ...proposal("A", 1, 3), idempotencyKey: "bin-wh-1-PARTS-A-1-3" }], [], []);
+  assert.deepEqual(wrong.map((r) => [r.classification, r.reason]), [["INVALID", "idempotency_key_wrong_scope"], ["INVALID", "idempotency_key_wrong_scope"]]);
 });
 
 test("stored state that disagrees with itself or the request is INTEGRITY_ERROR, never repaired", () => {

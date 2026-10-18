@@ -13,7 +13,8 @@ import {
   fetchReceivingLocationOptions,
   submitCanonicalReceive,
 } from "../../services/receivingCallableClient.js";
-import { canonicalPoStatusWords } from "../../domain/receivingWorkspaceQueue.js";
+import { canonicalPoStatusWords, SUPPLIER_PO_EMPTY_COPY } from "../../domain/receivingWorkspaceQueue.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { titleCase } from "../../shared/display/displayLabels.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
@@ -117,7 +118,7 @@ function OrderPicker({ deps, onPick }) {
         <p className="fo-inline-error" role="alert">The list of orders could not be loaded.</p>
       )}
       {state === FIELD_STATE.READY && orders.length === 0 && (
-        <p className="fo-muted">No purchase orders are awaiting receipt.</p>
+        <p className="fo-muted">{(EOS_SESSION_SOURCE ? SUPPLIER_PO_EMPTY_COPY.EOS : SUPPLIER_PO_EMPTY_COPY.FIREBASE).short}</p>
       )}
       {state === FIELD_STATE.READY && orders.length > 0 && (
         <ul className="fo-list">

@@ -183,7 +183,7 @@ test("Warehouse Racking on PostgreSQL: partial success, per-item outcomes, safe 
     const same = await call("previewBinCreates", { warehouseId: "wh-t", proposals: [row("A", 1, 5)] }, taylorAdmin, null);
     assert.deepEqual([same.rows[0].classification, same.rows[0].reason], ["INTEGRITY_ERROR", "bin_disagrees_with_request"]);
     // A DIFFERENT key for the vacated position finds the position free but the code still claimed: reserved, forever.
-    const other = { ...row("A", 1, 5), idempotencyKey: "another-key-for-A-1-5" };
+    const other = { ...row("A", 1, 5), idempotencyKey: `${key("wh-t", "PARTS", "A", 1, 5)}:alt` };
     const out = await call("previewBinCreates", { warehouseId: "wh-t", proposals: [other] }, taylorAdmin, null);
     assert.deepEqual([out.rows[0].classification, out.rows[0].reason], ["CODE_RESERVED", "code_reserved_by_another_bin"]);
     const created = await call("createBins", { warehouseId: "wh-t", proposals: [other, row("A", 1, 5)] }); // (the second is the same rack position and code: duplicate_in_request)
@@ -231,5 +231,19 @@ test("Warehouse Racking on PostgreSQL: partial success, per-item outcomes, safe 
       assert.equal(hidden.code, "BIN_NOT_FOUND");
     }
     assert.equal((await q(`SELECT status::text AS s FROM eos_ops.bins WHERE id = $1`, [bin.binId])).rows[0].s, "ACTIVE");
+    // R2: the company filter is in the WHERE, so a foreign-company bin is never row-locked: while another session holds the Taylor bin FOR UPDATE,
+    // the Ventana admin's refusal returns at once (BIN_NOT_FOUND) instead of queueing behind it.
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM eos_ops.bins WHERE tenant_id = 't1' AND id = $1 FOR UPDATE", [bin.binId]);
+      const timer = new Promise((resolve) => setTimeout(() => resolve("BLOCKED"), 4000));
+      const out = await Promise.race([refusal(() => call("renameRackingBin", { binId: bin.binId, name: "y" }, ventanaAdmin)), timer]);
+      assert.notEqual(out, "BLOCKED", "a foreign-company caller must not wait on a bin row lock");
+      assert.equal(out.code, "BIN_NOT_FOUND");
+    } finally {
+      await holder.query("ROLLBACK").catch(() => undefined);
+      holder.release();
+    }
   });
 });

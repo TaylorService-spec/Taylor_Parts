@@ -63,6 +63,23 @@ export const QUEUE_STATE = Object.freeze({
   FAILED: "FAILED",
 });
 
+// THE EMPTY STATE OF A SUPPLIER-ORDER LIST, in words (Firebase exit B3, DECISIONS #B3, OD-B3-1). The two arms are chosen at BUILD time by the
+// components (EOS_SESSION_SOURCE; this module stays node-importable, so it holds only the words). In the EOS build nothing authors a canonical
+// supplier purchase order yet -- they exist only once an operator has loaded them -- so an empty read cannot honestly say "nothing is on order":
+// it says no supplier purchase orders have been loaded in this environment. The Firebase arm keeps its original wording.
+export const SUPPLIER_PO_EMPTY_COPY = Object.freeze({
+  FIREBASE: Object.freeze({
+    title: "Nothing awaiting receipt",
+    short: "No purchase orders are awaiting receipt.",
+    message: "Both governed sources were read and no purchase order is currently awaiting receipt.",
+  }),
+  EOS: Object.freeze({
+    title: "No supplier purchase orders loaded",
+    short: "No supplier purchase orders have been loaded in this environment.",
+    message: "The reads succeeded, but no supplier purchase orders have been loaded into EOS in this environment, so there is nothing here to receive against. This does not mean nothing is on order.",
+  }),
+});
+
 // Canonical purchase-order stored statuses, in words (RECEIVABLE_CANONICAL_STATUSES is
 // ["APPROVED","SENT"]). An unrecognized stored value passes through VERBATIM: the truthful move for
 // a value this module does not know is to show what is stored, not to guess a nicer word for it.

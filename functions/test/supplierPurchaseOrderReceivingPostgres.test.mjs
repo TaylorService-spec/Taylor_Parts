@@ -59,6 +59,7 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
   const receiver2 = await principal("uid-receiver-2");
   const ventanaReceiver = await principal("uid-ventana");
   const nobody = await principal("uid-no-employee");
+  const crossReceiver = await principal("uid-cross-company");
 
   // Two companies, two DIFFERENT keys (the key is not the company id).
   await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
@@ -76,16 +77,21 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
 
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at)
            VALUES ('e-r','t1','ACTIVE','taylor','2020-01-01T00:00:00Z'), ('e-r2','t1','ACTIVE','taylor','2020-01-01T00:00:00Z'),
-                  ('e-v','t1','ACTIVE','ventana','2020-01-01T00:00:00Z')`);
+                  ('e-v','t1','ACTIVE','ventana','2020-01-01T00:00:00Z'), ('e-x','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
   await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
            VALUES ('epl-r','t1',$1,'e-r','taylor','OPERATOR_ASSERTED','f','test','active'),
                   ('epl-r2','t1',$2,'e-r2','taylor','OPERATOR_ASSERTED','f','test','active'),
-                  ('epl-v','t1',$3,'e-v','ventana','OPERATOR_ASSERTED','f','test','active')`, [receiver, receiver2, ventanaReceiver]);
+                  ('epl-v','t1',$3,'e-v','ventana','OPERATOR_ASSERTED','f','test','active'),
+                  ('epl-x','t1',$4,'e-x','taylor','OPERATOR_ASSERTED','f','test','active')`, [receiver, receiver2, ventanaReceiver, crossReceiver]);
+  // The cross-company receiver is a Taylor Employee with an explicit, active company-access grant for Ventana: it REACHES both companies.
+  await q(`INSERT INTO eos_policy.employee_company_authority_grants (id, tenant_id, employee_id, operating_company_id, reason, granted_by)
+           VALUES ('ecag-x-v','t1','e-x','ventana','fixture: reach both companies','f')`);
   // The receiver holds the WAREHOUSE scope over wh-1 and wh-closed, NOT wh-2; receiver2 holds wh-1 and wh-2; the Ventana receiver holds wh-v.
   await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
            VALUES ('os-r-1','t1','e-r','WAREHOUSE','wh-1', now(),'fixture'), ('os-r-c','t1','e-r','WAREHOUSE','wh-closed', now(),'fixture'),
                   ('os-r2-1','t1','e-r2','WAREHOUSE','wh-1', now(),'fixture'), ('os-r2-2','t1','e-r2','WAREHOUSE','wh-2', now(),'fixture'),
-                  ('os-v-v','t1','e-v','WAREHOUSE','wh-v', now(),'fixture')`);
+                  ('os-v-v','t1','e-v','WAREHOUSE','wh-v', now(),'fixture'),
+                  ('os-x-1','t1','e-x','WAREHOUSE','wh-1', now(),'fixture'), ('os-x-v','t1','e-x','WAREHOUSE','wh-v', now(),'fixture')`);
 
   const part = (id, controlType, status = "ACTIVE") => q(
     `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
@@ -186,6 +192,22 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
     const theirs = (await cmd.listReceivableSupplierPurchaseOrders({ pool }, actor([RECEIVE], ventanaReceiver), {})).purchaseOrders.map((p) => p.purchaseOrderId);
     assert.ok(mine.includes(taylorOrder) && !mine.includes(ventanaOrder));
     assert.ok(theirs.includes(ventanaOrder) && !theirs.includes(taylorOrder));
+  });
+
+  await t.test("R2: the company filter is in the WHERE -- a foreign-company order is never locked, so a refusal cannot wait on (or reveal) another company's receipt", async () => {
+    const ventanaOrder = await order({ companyKey: "ventana-co", lines: [["L1", "PART-A", 5]] });
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM eos_ops.supplier_purchase_orders WHERE tenant_id = 't1' AND id = $1 FOR UPDATE", [ventanaOrder]);
+      const timer = new Promise((resolve) => setTimeout(() => resolve("BLOCKED"), 4000));
+      const outcome = await Promise.race([refusal(() => run(request(ventanaOrder))), timer]);
+      assert.notEqual(outcome, "BLOCKED", "a Taylor receiver must not queue behind a Ventana order's row lock");
+      assert.equal(outcome.code, "PURCHASE_ORDER_NOT_FOUND");
+    } finally {
+      await holder.query("ROLLBACK").catch(() => undefined);
+      holder.release();
+    }
   });
 
   // ════════════════════════════ THE LIST, PROGRESS AND DESTINATION READS ════════════════════════════
@@ -330,7 +352,13 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
     const noScope = await refusal(() => run(request(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-2" } })));
     assert.equal(noScope.code, "OUTSIDE_OPERATIONAL_SCOPE");
     assert.equal(noScope.category, "FORBIDDEN");
-    const wrongCompany = await refusal(() => run(request(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-v" } }), actor([RECEIVE], receiver)));
+    // R3: a destination in a company the caller does NOT reach is indistinguishable from a nonexistent one (same code, same message, same category);
+    // DESTINATION_COMPANY_MISMATCH is only for a company the caller reaches that is not the order's.
+    const unreachable = await refusal(() => run(request(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-v" } }), actor([RECEIVE], receiver)));
+    const absent = await refusal(() => run(request(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-nope" } }), actor([RECEIVE], receiver)));
+    assert.deepEqual([unreachable.code, unreachable.category, unreachable.message], [absent.code, absent.category, absent.message]);
+    assert.equal(unreachable.code, "DESTINATION_INVALID");
+    const wrongCompany = await refusal(() => run(request(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-v" } }), actor([RECEIVE], crossReceiver)));
     assert.equal(wrongCompany.code, "DESTINATION_COMPANY_MISMATCH");
     const inactive = await refusal(() => run(request(id, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-closed" } })));
     assert.equal(inactive.code, "DESTINATION_INVALID");
