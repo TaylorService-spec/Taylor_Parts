@@ -18,6 +18,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 import {
   SANDBOX_CONNECTION,
   SANDBOX_MAILBOX_CONFIGS,
@@ -170,6 +171,10 @@ test("Inbound Work on PostgreSQL through /operations/inbound-work", { skip: SKIP
   const READER = await persona("reader", ["inboundWork.request.read"]);
   const ADMIN = await persona("intake-admin", ["inboundWork.intake.manage"]);
   const NOBODY = await persona("nobody", []);
+  // D-248-1 (company authority, DECISIONS #235/#237): Accept creates a Work Order, which now requires the reviewer's own
+  // operating-company authority over the company it states. The two reviewers act for both companies named below.
+  await grantSyntheticCompanyAuthority(pool, T, principalIds[REVIEWER], ["taylor", "ventana"]);
+  await grantSyntheticCompanyAuthority(pool, T, principalIds[REVIEWER_B], ["taylor", "ventana"]);
 
   const call = async (subject, operation, input = {}, state = "ACTIVE") => {
     const res = await handleOperationsRequest({

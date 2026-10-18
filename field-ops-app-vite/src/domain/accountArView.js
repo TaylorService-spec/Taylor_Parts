@@ -101,7 +101,12 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
   const invoices = Array.isArray(result.invoices) ? result.invoices : [];
   const summary = result.summary ?? { count: 0, openCount: 0, overdueCount: 0, outstandingByCurrency: {} };
 
-  if (invoices.length === 0) return { kind: ACCOUNT_AR_STATE.EMPTY };
+  const recordNoun = typeof result.recordNoun === "string" && result.recordNoun.length > 0 ? result.recordNoun : "Invoice";
+
+  // B1: the EOS read tells a RESTRICTED reader so (Finance visibility limited to credited / team receivables): "none" then means none visible.
+  const restricted = result.restricted === true;
+
+  if (invoices.length === 0) return { kind: ACCOUNT_AR_STATE.EMPTY, recordNoun, ...(restricted ? { restricted } : {}) };
 
   const outstandingLines = Object.entries(summary.outstandingByCurrency ?? {}).map(
     ([currency, amountMinor]) => ({ currency, text: formatMinor(amountMinor, currency) })
@@ -119,6 +124,11 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
 
   return {
     kind: ACCOUNT_AR_STATE.READY,
+    // WHAT A ROW IS CALLED. The Firebase read returns issued invoices (the default). The EOS read returns the Finance register's
+    // receivables (DECISIONS #245), which are NOT accounting invoices (#197), so that envelope names its own noun and the
+    // screens say "Receivable" instead of "Invoice". A noun the read did not name is never guessed.
+    recordNoun,
+    ...(restricted ? { restricted } : {}),
     openCount: summary.openCount ?? 0,
     overdueCount: summary.overdueCount ?? 0,
     outstandingLines,

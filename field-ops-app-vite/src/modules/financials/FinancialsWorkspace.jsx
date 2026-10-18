@@ -69,6 +69,15 @@ export function toMinorUnits(text) {
 function ObligationTable({ title, section }) {
   const { sort, toggle, sorted } = useTableSort({ rows: section?.items ?? EMPTY, columns: OBLIGATION_COLUMNS });
   if (!section) return null;
+  // B1 (DECISIONS #B1): a section the server WITHHELD (it cannot be attributed to a credited salesperson, for a restricted reader) is named
+  // as withheld -- never shown as "None outstanding", which would be a zero nobody reported.
+  if (section.withheld) {
+    return (
+      <section className="fo-panel" aria-label={title}>
+        <SectionHeader title={title} description="Withheld: not shown under your Finance visibility (it cannot be attributed to a credited salesperson)." />
+      </section>
+    );
+  }
   return (
     <section className="fo-panel" aria-label={title}>
       <SectionHeader title={title} description={section.count === 0 ? "None outstanding." : `${section.count} outstanding — ${Object.entries(section.outstandingByCurrency).map(([c, m]) => money(m, c) + " " + c).join(", ")}`} />
@@ -184,6 +193,9 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
   };
 
   const counts = ws?.exceptionCounts;
+  // B1: a restricted reader's workspace is receivables only over the rows it may see; the rest is withheld (and named), never zero.
+  const restricted = ws?.visibility?.restricted === true;
+  const countOrWithheld = (n) => (n === null || n === undefined ? "Withheld" : n);
   const handoffSort = useTableSort({ rows: ws?.accountingHandoffs ?? EMPTY, columns: HANDOFF_COLUMNS });
   const costEvidenceSort = useTableSort({ rows: ws?.missingCostEvidence ?? EMPTY, columns: COST_EVIDENCE_COLUMNS });
   return (
@@ -211,23 +223,29 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
           <section className="fo-panel" aria-label="Needs attention">
             <SectionHeader title="Needs Attention" />
             <dl>
-              <dt className="fo-muted">Overdue obligations</dt><dd>{counts.overdueObligations}</dd>
-              <dt className="fo-muted">Partially paid obligations</dt><dd>{counts.partiallyPaidObligations}</dd>
-              <dt className="fo-muted">Unapplied settlements</dt><dd>{counts.unappliedSettlements}</dd>
-              <dt className="fo-muted">Accounting handoff exceptions</dt><dd>{counts.accountingHandoffExceptions}</dd>
-              <dt className="fo-muted">Reconciliation mismatches</dt><dd>{counts.reconciliationMismatches}</dd>
-              <dt className="fo-muted">Settlements not yet reconciled</dt><dd>{counts.unreconciledSettlements}</dd>
-              <dt className="fo-muted">Receipt lines missing cost evidence</dt><dd>{counts.missingCostEvidence}</dd>
-              <dt className="fo-muted">Intercompany sales awaiting seller inventory relief</dt><dd>{counts.intercompanyReliefPending}</dd>
+              <dt className="fo-muted">Overdue obligations</dt><dd>{countOrWithheld(counts.overdueObligations)}</dd>
+              <dt className="fo-muted">Partially paid obligations</dt><dd>{countOrWithheld(counts.partiallyPaidObligations)}</dd>
+              <dt className="fo-muted">Unapplied settlements</dt><dd>{countOrWithheld(counts.unappliedSettlements)}</dd>
+              <dt className="fo-muted">Accounting handoff exceptions</dt><dd>{countOrWithheld(counts.accountingHandoffExceptions)}</dd>
+              <dt className="fo-muted">Reconciliation mismatches</dt><dd>{countOrWithheld(counts.reconciliationMismatches)}</dd>
+              <dt className="fo-muted">Settlements not yet reconciled</dt><dd>{countOrWithheld(counts.unreconciledSettlements)}</dd>
+              <dt className="fo-muted">Receipt lines missing cost evidence</dt><dd>{countOrWithheld(counts.missingCostEvidence)}</dd>
+              <dt className="fo-muted">Intercompany sales awaiting seller inventory relief</dt><dd>{countOrWithheld(counts.intercompanyReliefPending)}</dd>
             </dl>
           </section>
 
+          {restricted && (
+            <StatusIndicator tone="neutral">
+              Your Finance visibility is limited to the receivables credited to you or your team. The receivables and the counts above cover only those; the other sections are withheld, not empty.
+            </StatusIndicator>
+          )}
           <ObligationTable title="Receivables" section={ws.receivables} />
           <ObligationTable title="Funding Receivables (Financing Providers)" section={ws.fundingReceivables} />
           <ObligationTable title="Payables" section={ws.payables} />
           <ObligationTable title="Intercompany Receivables" section={ws.intercompanyReceivables} />
           <ObligationTable title="Intercompany Payables" section={ws.intercompanyPayables} />
 
+          {!restricted && (<>
           <section className="fo-panel" aria-label="Unapplied settlements">
             <SectionHeader title="Unapplied Settlements" description={ws.unappliedSettlements.length === 0 ? "Every recorded settlement is fully applied." : "Received or paid, not yet applied in full."} />
             {ws.unappliedSettlements.length > 0 && (
@@ -320,7 +338,9 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
             )}
           </section>
 
-          {ws.scope.projection === "OPERATING_COMPANY" && (
+          </>)}
+
+          {ws.scope.projection === "OPERATING_COMPANY" && !restricted && (
             <section className="fo-panel" aria-label="Record a settlement">
               <SectionHeader title="Record a Settlement" description="Evidence of money received or paid — never a bank feed. It is applied to obligations separately." />
               <div className="fo-form-row">

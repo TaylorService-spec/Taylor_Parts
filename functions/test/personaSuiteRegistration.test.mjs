@@ -27,6 +27,10 @@ const REPO_ROOT = resolve(FUNCTIONS_DIR, "..");
 const WORKFLOW = join(REPO_ROOT, ".github/workflows/eos-admin-policy-tests.yml");
 
 const PACKAGE = JSON.parse(readFileSync(join(FUNCTIONS_DIR, "package.json"), "utf8"));
+// The suite lists of test:adminPolicy / test:adminPolicyPostgres live in this registry, run by scripts/runAdminPolicySuites.mjs
+// (package.json names only the runner and the group).
+const REGISTRY = JSON.parse(readFileSync(join(FUNCTIONS_DIR, "test/adminPolicySuites.json"), "utf8"));
+const GROUP_OF = { "test:adminPolicy": "offline", "test:adminPolicyPostgres": "postgres" };
 const YML = readFileSync(WORKFLOW, "utf8").replace(/\r\n/g, "\n");
 
 // The suites this guard refuses to let go dark, and the group each must execute in. Both persona
@@ -57,7 +61,8 @@ test("every guarded persona suite is NAMED by the npm script that is supposed to
   for (const [suite, script] of Object.entries(GUARDED)) {
     const command = PACKAGE.scripts[script];
     assert.ok(command, `package.json has no script ${script}`);
-    const named = command.split(/\s+/).filter((t) => t === suite);
+    assert.ok(command.endsWith(`scripts/runAdminPolicySuites.mjs ${GROUP_OF[script]}`), `${script} must run the ${GROUP_OF[script]} group of the registry`);
+    const named = (REGISTRY[GROUP_OF[script]] ?? []).filter((t) => t === suite);
     assert.equal(named.length, 1,
       `${suite} must appear exactly once in ${script}; found ${named.length}. A suite named by no npm script runs nowhere, and one named twice hides a dropped entry.`);
   }

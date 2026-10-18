@@ -17,7 +17,8 @@ import { resolveSharedReportingCalendar } from "../reportingPeriod/reportingCale
 import { MEASURES, measureById, type MeasureDefinition, type MeasureRow, type MeasureScope } from "./measures";
 import { scopedWarehouseIds } from "../eosOps/partsReads";
 import { queueReachKeys } from "../eosOps/reorderLifecycleCommands";
-import { financeCompanyReach } from "../eosFinance/financeCompanyAccess";
+import { financeCompanyReach, type FinanceReachActor } from "../eosFinance/financeCompanyAccess";
+import { resolveFinanceVisibility, type FinanceVisibility } from "../eosFinance/financeVisibility";
 import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
 
 type Queryable = Pick<PoolClient, "query">;
@@ -37,6 +38,11 @@ export interface AnalysisActor {
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
   readonly scopedHeld?: readonly ScopedHolding<unknown>[];
+  /** B1: restriction keys held in a form the runtime cannot evaluate (financeVisibility.ts fails closed on them). */
+  readonly conditionallyHeld?: ReadonlySet<string>;
+  readonly inertScoped?: FinanceReachActor["inertScoped"];
+  /** D-249-0 (test injection only): Finance self/team visibility activated. Absent = INACTIVE, as in Firebase. */
+  readonly financeSelfTeamActive?: boolean;
 }
 
 const ROW_LIMIT = 5000;
@@ -148,11 +154,36 @@ function financeCompanyRefusal(actor: AnalysisActor, m: MeasureDefinition, scope
 }
 
 /**
+ * FINANCE INNER REACH (B1, eosFinance/financeVisibility.ts -- the same resolver every Finance read uses): a measure read only
+ * through finance.* keys is computed over the rows the caller's inner reach admits. A caller who reads every company in scope in
+ * full is unaffected (null). A restricted caller gets the receivable measures over its VISIBLE receivables and is REFUSED every
+ * other finance measure (they cannot be attributed to a credited salesperson, and a total over part of the scope would read as the
+ * whole). One resolution per request scope (memoized on the scope object).
+ */
+const RESTRICTED_RECEIVABLE_MEASURES: ReadonlySet<string> = new Set(["finance.receivables.open", "finance.receivables.overdue"]);
+const visibilityByScope = new WeakMap<object, Promise<FinanceVisibility>>();
+async function financeInnerReach(db: Queryable, actor: AnalysisActor, m: MeasureDefinition, scope: Scope): Promise<{ refusal: string } | { finance: NonNullable<MeasureScope["finance"]> } | null> {
+  if (m.readCapabilities.length === 0 || !m.readCapabilities.every((k) => k.startsWith("finance."))) return null;
+  let pending = visibilityByScope.get(scope);
+  if (!pending) {
+    pending = resolveFinanceVisibility(db, { capabilities: actor.capabilities, scopedHeld: actor.scopedHeld, conditionallyHeld: actor.conditionallyHeld, inertScoped: actor.inertScoped,
+      tenantId: actor.tenantId, principalId: actor.principalId, financeSelfTeamActive: actor.financeSelfTeamActive }, scope.companyIds);
+    visibilityByScope.set(scope, pending);
+  }
+  const vis = await pending;
+  if (!vis.restricted) return null;
+  // Nothing reaches this caller in the scope at all (every company EMPTY): a refusal, not a computed zero.
+  if (vis.fullCompanies.length === 0 && vis.restrictedCompanies.length === 0) return { refusal: "no Finance visibility is active for your role in the company in view" };
+  if (!RESTRICTED_RECEIVABLE_MEASURES.has(m.id)) return { refusal: "restricted finance visibility: this measure cannot be attributed to a credited salesperson" };
+  return { finance: { fullCompanyIds: vis.fullCompanies, visibleReceivableIds: vis.visibleReceivableIds } };
+}
+
+/**
  * The measure's source rows for one window, narrowed by EXACTLY the reach its records' own reads apply. Returns null with the
  * reason when the caller's Operational Scope reaches nothing in this scope (the aggregate would otherwise exceed the reads).
  */
 async function rowsFor(db: Queryable, actor: AnalysisActor, m: MeasureDefinition, scope: Scope, channels: readonly string[] | null,
-  start: Date | null, end: Date | null, limit: number): Promise<{ rows: MeasureRow[] } | { refused: string }> {
+  start: Date | null, end: Date | null, limit: number, finance: MeasureScope["finance"] = null): Promise<{ rows: MeasureRow[] } | { refused: string }> {
   let companyKeys = scope.companyKeys, warehouses: readonly string[] | null = null;
   if (m.reach === "REORDER_QUEUE") {
     const reach = await queueReachKeys(db, actor);
@@ -164,7 +195,7 @@ async function rowsFor(db: Queryable, actor: AnalysisActor, m: MeasureDefinition
   }
   const companyIds = companyKeys.map((k) => scope.keyToId.get(k)).filter((x): x is string => !!x);
   return { rows: await m.rows!(db, { tenantId: actor.tenantId, companyKeys, companyIds: m.reach ? companyIds : scope.companyIds,
-    start, endExclusive: end, channels, warehouses, limit }) };
+    start, endExclusive: end, channels, warehouses, limit, finance }) };
 }
 
 // ════════════════════ aggregation ════════════════════
@@ -255,11 +286,14 @@ async function computeMeasure(db: Queryable, actor: AnalysisActor, m: MeasureDef
   if (!access.allowed) return Object.freeze({ ...base, status: "REFUSED" as const, reason: access.reason });
   const companyRefusal = financeCompanyRefusal(actor, m, scope);
   if (companyRefusal !== null) return Object.freeze({ ...base, status: "REFUSED" as const, reason: companyRefusal });
+  const inner = await financeInnerReach(db, actor, m, scope);
+  if (inner !== null && "refusal" in inner) return Object.freeze({ ...base, status: "REFUSED" as const, reason: inner.refusal });
+  const finance = inner !== null && "finance" in inner ? inner.finance : null;
   const isPeriod = m.timeBasis === "PERIOD";
-  const got = await rowsFor(db, actor, m, scope, access.channels, isPeriod ? period.start : null, isPeriod ? period.endExclusive : null, ROW_LIMIT);
+  const got = await rowsFor(db, actor, m, scope, access.channels, isPeriod ? period.start : null, isPeriod ? period.endExclusive : null, ROW_LIMIT, finance);
   if ("refused" in got) return Object.freeze({ ...base, status: "REFUSED" as const, reason: got.refused });
   const rows = got.rows;
-  const prevGot = isPeriod && period.comparison ? await rowsFor(db, actor, m, scope, access.channels, period.comparison.start, period.comparison.endExclusive, ROW_LIMIT) : null;
+  const prevGot = isPeriod && period.comparison ? await rowsFor(db, actor, m, scope, access.channels, period.comparison.start, period.comparison.endExclusive, ROW_LIMIT, finance) : null;
   const prevRows = prevGot && "rows" in prevGot ? prevGot.rows : null;
   const cur = aggregate(m, rows), prev = prevRows ? aggregate(m, prevRows) : null;
   // The resolved capability Set: Protected Administrator standing never supplies the cost read (#230).
@@ -326,7 +360,10 @@ async function exceptionsFor(db: Queryable, actor: AnalysisActor, scope: Scope, 
     const access = measureAccess(actor, m, null);
     if (!access.allowed) continue;   // an exception is never visible without the read of its records
     if (financeCompanyRefusal(actor, m, scope) !== null) continue;   // ...nor outside the caller's Financials companies
-    const got = await rowsFor(db, actor, m, scope, access.channels, m.timeBasis === "PERIOD" ? new Date(0) : null, m.timeBasis === "PERIOD" ? period.endExclusive : null, 200);
+    const inner = await financeInnerReach(db, actor, m, scope);      // ...nor beyond the caller's inner Finance reach (B1)
+    if (inner !== null && "refusal" in inner) continue;
+    const got = await rowsFor(db, actor, m, scope, access.channels, m.timeBasis === "PERIOD" ? new Date(0) : null, m.timeBasis === "PERIOD" ? period.endExclusive : null, 200,
+      inner !== null && "finance" in inner ? inner.finance : null);
     if ("refused" in got) continue;
     const rows = got.rows
       .filter((r) => !rule.filter || rule.filter(r));

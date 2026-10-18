@@ -769,13 +769,19 @@ test("the registered PostgreSQL script runs BOTH suites, serially", () => {
   //
   // So the registered command is the proof, and this pins its two load-bearing properties: it
   // covers both files, and it serializes them. Removing either would restore the race silently.
+  // The suite list lives in the registry (test/adminPolicySuites.json) that scripts/runAdminPolicySuites.mjs runs; the runner
+  // adds --test-concurrency=1 to the postgres group, so BOTH properties are pinned: the registry names the files, the runner
+  // serializes them.
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   const command = pkg.scripts["test:adminPolicyPostgres"];
+  const registry = JSON.parse(readFileSync("test/adminPolicySuites.json", "utf8")).postgres;
+  const runner = readFileSync("scripts/runAdminPolicySuites.mjs", "utf8");
 
   assert.ok(command, "the registered command exists");
-  assert.match(command, /--test-concurrency=1/, "it must serialize the files that share a schema");
-  assert.match(command, /adminPolicyPostgres\.test\.mjs/, "it must run the schema suite");
-  assert.match(command, /adminPolicySeed\.test\.mjs/, "it must run the seed suite");
+  assert.match(command, /scripts\/runAdminPolicySuites\.mjs postgres$/, "it runs the postgres group of the registry");
+  assert.match(runner, /postgres: \["--test-concurrency=1"\]/, "the runner must serialize the files that share a schema");
+  assert.ok(registry.includes("test/adminPolicyPostgres.test.mjs"), "it must run the schema suite");
+  assert.ok(registry.includes("test/adminPolicySeed.test.mjs"), "it must run the seed suite");
   assert.match(command, /npm run build/, "it must run against a fresh build, not a stale lib/");
 });
 
@@ -820,7 +826,7 @@ test("every suite that resets the schema is covered by that one command", () => 
   const resetters = readdirSync("test")
     .filter((f) => f.endsWith(".test.mjs"))
     .filter((f) => executesSchemaDrop(readFileSync(join("test", f), "utf8")));
-  const command = JSON.parse(readFileSync("package.json", "utf8")).scripts["test:adminPolicyPostgres"];
+  const command = JSON.parse(readFileSync("test/adminPolicySuites.json", "utf8")).postgres.join(" ");
 
   assert.ok(resetters.length >= 2, `expected the two known resetters, found ${resetters.length}`);
   for (const file of KNOWN_RESETTERS) {

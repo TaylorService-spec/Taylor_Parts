@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { HOUR, serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const require = createRequire(import.meta.url);
 const equipmentDelta = require("../lib/adminPolicy/equipmentActivationDelta.js");
@@ -302,6 +303,9 @@ test("Equipment activation over the Operations transport", { skip: SKIP, concurr
     refused(await mk({ equipmentId: "eq_nonexistent" }), 404, "EQUIPMENT_NOT_FOUND", "unknown");
     refused(await mk({ equipmentId: registered.id, customerId: "acct-n", locationId: "loc-n" }), 412, "EQUIPMENT_CUSTOMER_MISMATCH", "wrong customer");
     refused(await mk({ equipmentId: registered.id, locationId: "loc-r1" }), 412, "EQUIPMENT_SITE_MISMATCH", "wrong site");
+    // D-248-1 (DECISIONS #B1): a create in a company the caller cannot reach reads as an unknown company, so this proof of the Equipment's own company check
+    // needs the dispatcher to reach Ventana first.
+    await grantSyntheticCompanyAuthority(pool, TENANT, dispatcher.principalId, ["taylor", "ventana"]);
     refused(await mk({ equipmentId: registered.id, operatingCompanyId: "ventana" }), 412, "EQUIPMENT_COMPANY_MISMATCH", "wrong company");
     const retired = ok(await call(office, EQ, "createEquipment", { operatingCompanyId: "taylor", accountId: "acct-r", customerLocationId: "loc-r2", name: "Old Fryer", idempotencyKey: "reg-old" })).equipment;
     ok(await call(office, EQ, "updateEquipment", { equipmentId: retired.id, expectedVersion: 1, changes: { status: "RETIRED" } }), "retire");

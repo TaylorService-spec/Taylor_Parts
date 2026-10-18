@@ -262,7 +262,10 @@ test("STRUCTURAL: no runtime module composes the operator tool, and no workflow 
 // relevance list that gates both pull_request and push, so the registration is one exact line there.
 test("REGISTRATION: the suite is in test:adminPolicyPostgres and the workflow's relevance list", () => {
   const pkg = JSON.parse(readFileSync(join(FUNCTIONS_DIR, "package.json"), "utf8"));
-  assert.match(pkg.scripts["test:adminPolicyPostgres"], /test\/principalIdentityRebindPostgres\.test\.mjs/);
+  // The suite list lives in the registry that scripts/runAdminPolicySuites.mjs runs (package.json names only the runner).
+  const registry = JSON.parse(readFileSync(join(FUNCTIONS_DIR, "test", "adminPolicySuites.json"), "utf8"));
+  assert.match(pkg.scripts["test:adminPolicyPostgres"], /scripts\/runAdminPolicySuites\.mjs postgres$/);
+  assert.ok(registry.postgres.includes("test/principalIdentityRebindPostgres.test.mjs"));
   const wf = readFileSync(join(REPO_ROOT, ".github", "workflows", "eos-admin-policy-tests.yml"), "utf8");
   assert.doesNotMatch(wf, /^\s*paths(-ignore)?:/m, "a paths: trigger filter would bypass the relevance list");
   const list = readFileSync(join(REPO_ROOT, ".github", "ci", "eos-admin-policy-paths.txt"), "utf8")

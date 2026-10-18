@@ -309,6 +309,11 @@ export interface OperationsApiDeps {
   readonly workOrderPostgresState?: PostgresWorkOrderWriterState;
   /** TEST INJECTION ONLY: the Equipment register state (EQUIPMENT_WRITER_AUTHORITY.postgres otherwise). */
   readonly equipmentPostgresState?: PostgresEquipmentWriterState;
+  /**
+   * TEST INJECTION ONLY (D-249-0): Finance self/team visibility ACTIVATED. The deployed server supplies none, so self/team are
+   * INACTIVE, exactly as in Firebase (eosFinance/financeVisibility.ts FINANCE_SELF_TEAM_ACTIVE_DEFAULT).
+   */
+  readonly financeSelfTeamVisibilityActive?: boolean;
 }
 
 /** Every operation of the PostgreSQL Reorder authority: all but the two principal-context resolvers. */
@@ -794,11 +799,11 @@ export async function executeWorkOrderOperation(
     const caller = Object.freeze({
       actor: Object.freeze({ tenantId, principalId, capabilities }),
       operational: Object.freeze({ tenantId, principalId, capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld,
-        scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }),
+        scopedHeld: ctx.scopedHeld, inertScoped: ctx.inertScoped, entitlements: ctx.entitlements }),
     });
     const result = await table[operation](
       { pool: deps.pool, reader: postgresContextualReader(deps.pool), postgresState, policyReader: deps.reader,
-        equipmentPostgresState: deps.equipmentPostgresState }, caller, request.input);
+        equipmentPostgresState: deps.equipmentPostgresState, financeSelfTeamVisibilityActive: deps.financeSelfTeamVisibilityActive }, caller, request.input);
     return { status: 200, body: { ok: true, operation, result } };
   } catch (err) {
     if (err instanceof PrincipalContextError) return { status: 403, body: { ok: false, operation, code: "FORBIDDEN", message: err.refusal } };

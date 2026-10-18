@@ -8,13 +8,14 @@ import { readAnalysisCatalog, readAnalysisWorkspace, readMeasureAnalysis, type A
 export const ANALYSIS_ROUTE = "/operations/analysis";
 
 type Op = (deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) => Promise<unknown>;
-const actorOf = (caller: WorkOrderCaller): AnalysisActor => ({ tenantId: caller.actor.tenantId, principalId: caller.actor.principalId,
-  capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld });
+const actorOf = (caller: WorkOrderCaller, financeSelfTeamActive?: boolean): AnalysisActor => ({ tenantId: caller.actor.tenantId, principalId: caller.actor.principalId,
+  capabilities: caller.actor.capabilities, scopedHeld: caller.operational?.scopedHeld, conditionallyHeld: caller.operational?.conditionallyHeld,
+  inertScoped: caller.operational?.inertScoped, financeSelfTeamActive });
 
 export const EOS_ANALYSIS_OPERATIONS: Readonly<Record<string, Op>> = Object.freeze({
   readAnalysisCatalog: async (_deps, caller) => readAnalysisCatalog(actorOf(caller)),
-  readAnalysisWorkspace: async (deps, caller, input) => readAnalysisWorkspace(deps.pool, actorOf(caller), input, deps.now),
-  readMeasureAnalysis: async (deps, caller, input) => readMeasureAnalysis(deps.pool, actorOf(caller), input, deps.now),
+  readAnalysisWorkspace: async (deps, caller, input) => readAnalysisWorkspace(deps.pool, actorOf(caller, deps.financeSelfTeamVisibilityActive), input, deps.now),
+  readMeasureAnalysis: async (deps, caller, input) => readMeasureAnalysis(deps.pool, actorOf(caller, deps.financeSelfTeamVisibilityActive), input, deps.now),
 });
 export const ANALYSIS_OPERATIONS = Object.freeze(Object.keys(EOS_ANALYSIS_OPERATIONS));
 export const isAnalysisOperation = (name: unknown): name is string => typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_ANALYSIS_OPERATIONS, name);

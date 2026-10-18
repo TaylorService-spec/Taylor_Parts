@@ -231,7 +231,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // Role company-authority classification (#248): roles.company_authority_effect + two governing triggers; no capability, no grant.
     "1764600000000_role-company-authority-effect.sql",
     // Employee company-access grants (#249): eos_policy.employee_company_authority_grants + store guard; no capability, no grant.
-    "1764610000000_employee-company-authority-grants.sql"],
+    "1764610000000_employee-company-authority-grants.sql",
+    // Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, #B1): five finance.visibility.* keys, 15 grants to the current Firebase holders, a credit trigger.
+    "1764620000000_finance-visibility-and-credit-immutability.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -463,6 +465,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // Finance visibility mirror (1764620000000, B1): -5 capabilities, -15 grants; its down refuses while a decision or a direct grant names a finance.visibility.* key
+    assert.deepEqual(await counts(), { caps: 142, grants: 488, mine: 26 });
     runMigrate(url, "down", 1); // Employee company-access grants (1764610000000, #249): schema only -- nothing moves; its down refuses only while an ACTIVE grant exists
     assert.deepEqual(await counts(), { caps: 142, grants: 488, mine: 26 });
     runMigrate(url, "down", 1); // Role company-authority classification (1764600000000, #248): schema only -- nothing moves; its down refuses only while a FINANCE_ONLY Role exists
@@ -596,7 +600,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Employee company-access grants (1764610000000) first -- schema only
+    runMigrate(url, "down", 1); // peel the Finance visibility mirror (1764620000000, B1) first -- 5 capabilities, 15 grants
+    runMigrate(url, "down", 1); // then the Employee company-access grants (1764610000000) -- schema only
     runMigrate(url, "down", 1); // then the Role company-authority classification (1764600000000) -- schema only
     runMigrate(url, "down", 1); // then the CRM activity (1764590000000) -- 2 capabilities, 6 grants
     runMigrate(url, "down", 1); // then the returns intake (1764580000000) -- 1 capability, 1 grant

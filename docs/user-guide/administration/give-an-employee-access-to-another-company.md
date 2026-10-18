@@ -45,6 +45,12 @@ The message names the reason. The common ones:
 
 A person who has no sign-in linked to their Employee record, or whose employment is not active, gets nothing from company access until that is fixed. The section is only shown for an Employee with a linked sign-in.
 
+## Where company access applies
+
+Company access decides which companies a person can reach in the operations that check it: return intake, the Employee work schedule and time off, the office Work Order list, rental, Analysis and My Work, the technician pickers — and, since the Finance visibility change, **creating a Work Order and scheduling, rescheduling or dispatching one**. For those four, a Work Order of a company the person cannot reach is treated as if it does not exist, and a person with no company access at all is told so.
+
+Before that change those four commands checked only the permission, so this guide must not be read as having isolated them earlier. **Not yet covered:** un-scheduling a Work Order and the other office steps (mark ready, close, cancel, parts plan, assignment) still check the permission and the Work Order's own assignment, not company access. That is recorded as an open decision (D-B1-6 in the decisions log), with the recommendation to apply the same rule.
+
 ## Related
 
 - [Give someone Finance access to a company](give-finance-access-to-a-company.md)

@@ -874,6 +874,23 @@ functions/src/eosAuth/**
 # under a watched directory, so a change to either must trigger the gate.
 functions/src/finance/financialPolicyProfile.ts
 functions/src/workOrderConsumption/consumptionActivation.ts
+# Firebase exit B1 (DECISIONS #B1): the admin-policy suite REGISTRY and its runner. test:adminPolicy / test:adminPolicyPostgres run
+# the lists in the JSON through the runner, so package.json no longer carries (or changes with) them; an edit to either must fire
+# this lane.
+functions/test/adminPolicySuites.json
+functions/scripts/runAdminPolicySuites.mjs
+# Firebase exit B1: finance inner reach (self / team, credited-person attribution) and Work Order command company authority
+# (D-248-1). The suites AND their subjects (the visibility module, the Finance operations table, the Analysis engine, the Work
+# Order commands, the migration).
+functions/test/financeVisibility.test.mjs
+functions/test/financeVisibilityPostgres.test.mjs
+functions/test/workOrderCommandCompanyAuthorityPostgres.test.mjs
+functions/src/eosFinance/financeVisibility.ts
+functions/src/eosFinance/financeOperations.ts
+functions/src/eosAnalysis/**
+functions/src/eosOps/workOrderScheduling.ts
+functions/src/eosOps/workOrderCreateCommand.ts
+functions/migrations/1764620000000_finance-visibility-and-credit-immutability.sql
 
 # FIREBASE EXIT B2 (EOS-only sign-in, verifier switch, persona logins, principal display names): its suites and the subjects they pin.
 functions/test/eosVerifierSwitch.test.mjs

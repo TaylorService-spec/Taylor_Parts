@@ -230,7 +230,8 @@ test("the bidirectional rule is the one the serialized-asset domain already enfo
 test("the new POSTGRES suite is registered in the one serialized command", () => {
   // It resets the schema, so running it outside test:adminPolicyPostgres would race the other
   // resetters. adminPolicyPostgres.test.mjs proves this generically; this names the file.
-  const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
-  assert.match(scripts["test:adminPolicyPostgres"], /eosOpsOperatingCompanyCustodyPostgres\.test\.mjs/);
-  assert.match(scripts["test:adminPolicy"], /eosOpsOperatingCompanyCustody\.test\.mjs/);
+  // The suite lists live in the registry run by scripts/runAdminPolicySuites.mjs (package.json names only the runner).
+  const registry = JSON.parse(readFileSync("test/adminPolicySuites.json", "utf8"));
+  assert.ok(registry.postgres.includes("test/eosOpsOperatingCompanyCustodyPostgres.test.mjs"));
+  assert.ok(registry.offline.includes("test/eosOpsOperatingCompanyCustody.test.mjs"));
 });

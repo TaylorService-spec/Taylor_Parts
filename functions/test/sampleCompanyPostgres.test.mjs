@@ -281,8 +281,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants). No Sample Company data.
 // 101 -> 102: 1764600000000 -- Role company-authority classification (DECISIONS #248): roles.company_authority_effect + two governing triggers; no capability, no grant, no Sample Company data.
 // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): one table + a store guard; no capability, no grant, no Sample Company data.
-const PINNED_LAST_MIGRATION = "1764610000000_employee-company-authority-grants";
-const PINNED_MIGRATION_COUNT = 103;
+// 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys, 15 grants to the current Firebase holders, a credit trigger. No Sample Company data.
+const PINNED_LAST_MIGRATION = "1764620000000_finance-visibility-and-credit-immutability";
+const PINNED_MIGRATION_COUNT = 104;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

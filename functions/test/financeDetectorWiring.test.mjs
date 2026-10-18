@@ -87,9 +87,12 @@ function productionImportersOf(moduleRelPath) {
   return importers;
 }
 
-const SCRIPT_TEXT = Object.values(
-  JSON.parse(readFileSync(path.join(FUNCTIONS_ROOT, "package.json"), "utf8")).scripts ?? {},
-).join("\n");
+// Every place a suite can be registered: the package.json scripts AND the admin-policy suite registry (test/adminPolicySuites.json,
+// run by scripts/runAdminPolicySuites.mjs, which keeps package.json out of every new registration).
+const SCRIPT_TEXT = [
+  ...Object.values(JSON.parse(readFileSync(path.join(FUNCTIONS_ROOT, "package.json"), "utf8")).scripts ?? {}),
+  readFileSync(path.join(FUNCTIONS_ROOT, "test", "adminPolicySuites.json"), "utf8"),
+].join("\n");
 
 for (const d of DETECTORS) {
   test(`${d.module}: the registry matches the import graph`, () => {

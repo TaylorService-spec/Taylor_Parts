@@ -21,6 +21,7 @@ import { serviceBaselineTenant, HOUR } from "./support/serviceBaselineTenant.mjs
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 import { deterministicAccountingAdapter, TEST_ADAPTER_KEY } from "./support/deterministicAccountingAdapter.mjs";
 import { assignFinanceCompanies } from "./support/financeCompanyAccess.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const require = createRequire(import.meta.url);
 const fin = require("../lib/eosFinance/financeFoundation.js");
@@ -199,7 +200,11 @@ test("rental over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
       rentalAgreementId: agreement.id }), 412, "RENTAL_SITE_MISMATCH");
     refused(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL", priority: 2,
       rentalAgreementId: agreement.id, salesOrderId: "so-x" }), 400, "RENTAL_AND_SALE_EXCLUSIVE");
-    refused(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "ventana", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL", priority: 2,
+    // D-248-1: a Work Order is created only for a company the caller is authorized for, so the agreement's company-mismatch proof
+    // is made by a dispatcher with explicit authority over Ventana as well.
+    const bothCompanies = await person("uid-dispatch-both", ["dispatcher"], { id: "e-dispatch-both", name: "Bo Both" });
+    await grantSyntheticCompanyAuthority(pool, TENANT, bothCompanies.principalId, ["taylor", "ventana"]);
+    refused(await call(bothCompanies, WO, "createWorkOrder", { operatingCompanyId: "ventana", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL", priority: 2,
       rentalAgreementId: agreement.id }), 412, "RENTAL_COMPANY_MISMATCH");
     // A sale / service INSTALL Work Order can never take a fleet unit.
     const saleWo = await workOrder();

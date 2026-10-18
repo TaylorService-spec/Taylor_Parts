@@ -213,8 +213,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 100 -> 101: 1764590000000 -- CRM activity on EOS Core (Firebase exit F7b, DECISIONS #243): eos_crm.activities + crm.activity.read / .create, mirrored to admin, owner and crmActivityContributor (2 capabilities, 6 grants). APPENDED, an EXPLAINED pending migration.
 // 101 -> 102: 1764600000000 -- Role company-authority classification (Finance-only company assignments grant Finance reach only, DECISIONS #248): eos_policy.roles.company_authority_effect (default OPERATIONAL) + two governing triggers; no capability, no grant. APPENDED, an EXPLAINED pending migration.
 // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): eos_policy.employee_company_authority_grants (+ store guard, truncate guard, preview fence); no capability, no grant. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 103;
-const TRACKED_MIGRATION_COUNT = 104; // the 103 runnable + the one deferred file
+// 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys mirrored to the current Firebase holders (15 grants), and a store trigger that refuses any change of a Sales Order's credited salesperson. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 104;
+const TRACKED_MIGRATION_COUNT = 105; // the 104 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -269,6 +270,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764590000000_crm-activity",
   "1764600000000_role-company-authority-effect",
   "1764610000000_employee-company-authority-grants",
+  "1764620000000_finance-visibility-and-credit-immutability",
 ]);
 
 const repoMigrations = () =>

@@ -27,6 +27,7 @@ vi.mock("../src/hooks/useAccountAttentionWorkOrders.js", () => ({ useAccountAtte
 
 import { useAccountAr } from "../src/hooks/useAccountAr.js";
 import { useAccountAttentionWorkOrders } from "../src/hooks/useAccountAttentionWorkOrders.js";
+import { accountArFromObligations } from "../src/domain/accountReceivablesEos.js";
 import AccountAttentionSection from "../src/modules/accounts/AccountAttentionSection.jsx";
 
 afterEach(() => {
@@ -85,6 +86,27 @@ describe("AccountAttentionSection -- Account Attention projection wiring", () =>
     expect(screen.getByText(/12d overdue/)).toBeTruthy();
     const link = screen.getByRole("link", { name: /Review/ });
     expect(link.getAttribute("href")).toBe("/customers/acct-1#account-ar-section");
+  });
+
+  it("words an EOS overdue record as a Receivable, not an Invoice, and states no day count (F7c, DECISIONS #245)", () => {
+    mockReads({
+      ar: {
+        loading: false,
+        errorStatus: null,
+        result: accountArFromObligations([{
+          items: [{ id: "ob-7", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", dueOn: "2026-05-01", overdue: true,
+            originatedMinor: "50000", settledMinor: "0", outstandingMinor: "50000", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-1", name: "Harbor" } }],
+          truncated: false,
+        }]),
+      },
+      wo: HEALTHY_WO,
+    });
+    const { container } = renderSection({ accountId: "acct-1" });
+    expect(screen.getByText("ob-7")).toBeTruthy();
+    expect(container.textContent).toMatch(/Receivable\s*ob-7/);
+    expect(container.textContent).not.toMatch(/Invoice/);
+    expect(container.textContent).not.toMatch(/\d+d overdue/);
+    expect(screen.getByRole("link", { name: /Review/ }).getAttribute("href")).toBe("/customers/acct-1#account-ar-section");
   });
 
   it("renders a past-due work order under 'Past Due' with the canonical WO deep link, kept in a section distinct from AR", () => {

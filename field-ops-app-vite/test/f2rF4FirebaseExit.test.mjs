@@ -36,6 +36,17 @@ test("the files that moved to EOS import no Firebase at all", () => {
     "modules/inventory/PartsList.jsx",
     "modules/operations/Operations.jsx",
     "modules/inventoryRole/WarehouseManagerHome.jsx",
+    // Firebase exit B1 (DECISIONS #B1): the Financials pages and reads that moved to the EOS Finance register.
+    "modules/financials/FinancialsReceivablesEos.jsx",
+    "modules/financials/FinancialsAccountsReceivableEos.jsx",
+    "modules/financials/FinancialsSettlementsEos.jsx",
+    "modules/financials/FinancialsReceivableDetailEos.jsx",
+    "modules/financials/FinancialsSettlementDetailEos.jsx",
+    "modules/financials/financialsPages.js",
+    "services/eosFinancialsClient.js",
+    "domain/financialsEos.js",
+    "hooks/useEosFinanceRead.js",
+    "hooks/useFinancialsEmployeeDirectory.js", // imports the Firestore hook, not Firebase itself
   ]) {
     assert.deepEqual(importsFirebase(f), [], `${f} must not import Firebase (it is on the EOS path)`);
   }
@@ -67,12 +78,16 @@ test("domain/employees.js is gone; the Firestore employee directory is the Finan
   assert.deepEqual(
     importersOf("hooks/useEmployeeDirectory").sort(),
     [
-      "modules/financials/FinancialsAccountsReceivable.jsx",
-      "modules/financials/FinancialsEmployeePerformance.jsx",
-      "modules/financials/FinancialsInvoiceDetail.jsx",
+      // The three Financials screens that still read Firebase-backed facts reach it ONLY through this one chooser (D-247-2, closed by
+      // Firebase exit B1, DECISIONS #B1): the Firestore listener is disabled and the governed name read answers where EOS is the source.
+      "hooks/useFinancialsEmployeeDirectory.js",
       "modules/inventory/PartDetail.jsx", // only InventoryActionsPanel (the frozen notes); disabled when EOS is the source
     ],
   );
+  for (const page of ["FinancialsAccountsReceivable", "FinancialsEmployeePerformance", "FinancialsInvoiceDetail"]) {
+    assert.match(read(`modules/financials/${page}.jsx`), /useFinancialsEmployeeDirectory\(/, `${page} names people through the chooser`);
+    assert.doesNotMatch(read(`modules/financials/${page}.jsx`), /useEmployeeDirectory\(/, `${page} does not read the Firestore directory directly`);
+  }
 });
 
 test("the frozen notes stay READABLE under EOS (interim, D-246-1): labelled, read-only, from their current source", () => {

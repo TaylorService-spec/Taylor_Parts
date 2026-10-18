@@ -25,7 +25,7 @@ import { companyWords, businessUnitWords } from "./financialsDisplay.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import { statusLabel } from "../../shared/display/displayLabels.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useFinancialsEmployeeDirectory } from "../../hooks/useFinancialsEmployeeDirectory.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
@@ -49,12 +49,12 @@ export default function FinancialsInvoiceDetail() {
   const { state, result } = financialFactsState(read);
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
 
-  const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
-
   const found = useMemo(
     () => (answered ? ((result?.invoices ?? []).find((i) => i.invoiceId === invoiceId) ?? null) : null),
     [answered, result, invoiceId],
   );
+  // D-247-2: the governed name read (only the credited person on this record) where EOS is the source; the Firestore directory elsewhere.
+  const { byEmployeeId, loading: dirLoading, error: dirError } = useFinancialsEmployeeDirectory(found?.creditedSalespersonId ? [found.creditedSalespersonId] : []);
   const applications = useMemo(
     () => (answered ? (result?.applications ?? []).filter((a) => a.invoiceId === invoiceId) : []),
     [answered, result, invoiceId],

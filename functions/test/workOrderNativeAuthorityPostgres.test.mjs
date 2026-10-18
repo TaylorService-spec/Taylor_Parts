@@ -13,6 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -68,6 +69,9 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
   await authorize(COMPANY); await bindKey(COMPANY, COMPANY_KEY);
   await authorize("ventana");                      // ACTIVE company, deliberately UNKEYED
   await authorize("dormant", "INACTIVE");
+  // D-248-1 (company authority, DECISIONS #235/#237): the creator acts for both ACTIVE companies it names below -- a linked Taylor
+  // Employee (home company) and a scoped role assignment at Ventana -- so the proofs here exercise KEY BINDING, not authority.
+  await grantSyntheticCompanyAuthority(pool, TENANT, principalId, [COMPANY, "ventana"]);
 
   const deps = { pool };
   const actor = (over = {}) => ({

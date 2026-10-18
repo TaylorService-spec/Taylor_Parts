@@ -173,7 +173,8 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
   const personaKey = me.jobRole && PERSONA_LAYOUTS[me.jobRole.id] ? me.jobRole.id : "general-employee";
   const layout = PERSONA_LAYOUTS[personaKey];
   const company = input.operatingCompanyId ?? (layout.analysisArea === "executive" || layout.analysisArea === "finance" ? "consolidated" : undefined);
-  const analysisActor = { tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities, scopedHeld: caller.operational?.scopedHeld };
+  const analysisActor = { tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities, scopedHeld: caller.operational?.scopedHeld,
+    conditionallyHeld: caller.operational?.conditionallyHeld, inertScoped: caller.operational?.inertScoped, financeSelfTeamActive: deps.financeSelfTeamVisibilityActive };
   let analysis: Awaited<ReturnType<typeof readAnalysisWorkspace>> | null = null;
   let analysisRefusal: string | null = null;
   if (layout.analysisArea) {
