@@ -291,7 +291,8 @@ test("B2: persona enrollment, the persona password session, the verifier switch 
     const readAfter = await diag(adminToken);
     assert.equal(readAfter.status, 200);
     const after = { auth: readAfter.body.data };
-    assert.equal(after.auth.refused.firebase_disabled - before.auth.refused.firebase_disabled, 2);
+    // Three non-EOS bearers were refused without the Firebase verifier: the two Firebase probes and the malformed "not-a-token" above.
+    assert.equal(after.auth.refused.firebase_disabled - before.auth.refused.firebase_disabled, 3);
     assert.equal(after.auth.verified.firebase, 0);
     assert.ok(after.auth.verified.eos_persona >= 2 && after.auth.verified.eos_human >= 1, JSON.stringify(after.auth));
     assert.deepEqual(Object.keys(after.auth).sort(), ["firebaseVerifier", "refused", "since", "verified"], "counts, the mode and a start time only");
