@@ -145,6 +145,13 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "finance.invoice.issue",
   "finance.payment.apply",
   "finance.refund.record",
+  // Firebase exit B1 (DECISIONS #B1, migration 1764620000000): the five FIN-004 reach keys, registered in PostgreSQL and mirrored to owner
+  // (the contract's existing OWNER_FINANCIAL_AUTHORITY declaration, now in vocabulary). 43 -> 48. self / team stay INACTIVE.
+  "finance.visibility.businessUnit",
+  "finance.visibility.company",
+  "finance.visibility.consolidated",
+  "finance.visibility.self",
+  "finance.visibility.team",
   "fulfillment.coordinatedVisit.read",
   "inventory.action.read",
   "inventory.catalog.manage",
@@ -169,9 +176,9 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "workOrder.transition",
 ];
 
-check("Owner's governed (in-vocabulary) capabilities are exactly the 43 in the contract", () => {
+check("Owner's governed (in-vocabulary) capabilities are exactly the 48 in the contract", () => {
   assert.deepEqual(ownerInVocabulary, [...OWNER_CONTRACT_IN_VOCABULARY].sort());
-  assert.equal(ownerInVocabulary.length, 43, "43 governed capabilities -- the 41 of the contract + crm.activity.read / .create, registered by F7b");
+  assert.equal(ownerInVocabulary.length, 48, "48 governed capabilities -- the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1)");
 });
 
 check("administration READS do not separate Owner from Administrator", () => {
@@ -360,7 +367,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (Financial Policy foundation, #232, 1764560000000), granted to NO Role.
   // 139 -> 140: inventory.returns.intake (Returns intake on EOS Core, #242, 1764580000000), granted only to the memberless inventoryReturnsIntakeClerk.
   // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
-  assert.equal(VOCABULARY.size, 142);
+  // 142 -> 147: the five finance.visibility.* keys (Firebase exit B1, 1764620000000), mirrored to admin and owner (all five), salesperson (self), salesManager (team) and the three money Roles (consolidated).
+  assert.equal(VOCABULARY.size, 147);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

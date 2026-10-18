@@ -47,6 +47,12 @@ export interface MeasureScope {
   /** WAREHOUSE-reach measures: the warehouses the caller's Operational Scope covers (null = not a warehouse-scoped measure). */
   readonly warehouses: readonly string[] | null;
   readonly limit: number;
+  /**
+   * FINANCE INNER REACH (B1, eosFinance/financeVisibility.ts): set ONLY for a finance receivable measure read by a caller who does
+   * not read every company in scope in full. The rows are then the FULL companies' rows plus the visible attributed receivables
+   * of the rest -- an aggregate over this scope can never include a hidden row. Absent = unrestricted.
+   */
+  readonly finance?: { readonly fullCompanyIds: readonly string[]; readonly visibleReceivableIds: readonly string[] } | null;
 }
 
 export interface MeasureDefinition {
@@ -103,7 +109,9 @@ const FIN_OPEN = (kinds: string[], extra = "TRUE") => async (db: Queryable, s: M
      JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
      LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id
     WHERE o.tenant_id = $1 AND o.operating_company_id = ANY($2) AND o.kind = ANY($3) AND o.status IN ('OPEN', 'PARTIAL') AND ${extra}
-    ORDER BY b.outstanding_minor DESC, o.id LIMIT $4`, [s.tenantId, s.companyIds, kinds, s.limit], "obligation");
+      ${s.finance ? "AND (o.operating_company_id = ANY($5) OR o.id = ANY($6))" : ""}
+    ORDER BY b.outstanding_minor DESC, o.id LIMIT $4`,
+  [s.tenantId, s.companyIds, kinds, s.limit, ...(s.finance ? [[...s.finance.fullCompanyIds], [...s.finance.visibleReceivableIds]] : [])], "obligation");
 
 const channelClause = (alias: string, idx: number) => `($${idx}::text[] IS NULL OR ${alias}.sales_channel::text = ANY($${idx}::text[]))`;
 

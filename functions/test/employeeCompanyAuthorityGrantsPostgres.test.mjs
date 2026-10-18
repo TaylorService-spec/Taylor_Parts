@@ -419,8 +419,12 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     const migrate = (direction, count) => execFileSync(process.execPath, [
       "node_modules/node-pg-migrate/bin/node-pg-migrate.js", direction, "--migrations-dir", "migrations", "--no-check-order", ...(count === undefined ? [] : [String(count)]),
     ], { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
-    const last = (await q(`SELECT name FROM public.pgmigrations ORDER BY id DESC LIMIT 1`)).rows[0].name;
-    assert.equal(last, "1764610000000_employee-company-authority-grants", "this is the newest migration");
+    // Firebase exit B1 appended 1764620000000 (finance visibility mirror + credit trigger): its reversal is clean (nothing names it), so
+    // it is peeled first and this proof still runs against ITS OWN migration, which the final `up` below restores along with it.
+    const newest = async () => (await q(`SELECT name FROM public.pgmigrations ORDER BY id DESC LIMIT 1`)).rows[0].name;
+    if ((await newest()) === "1764620000000_finance-visibility-and-credit-immutability") migrate("down", 1);
+    const last = await newest();
+    assert.equal(last, "1764610000000_employee-company-authority-grants", "this is the newest migration (after the later finance visibility migration is peeled)");
     const active = Number((await q(`SELECT count(*)::int n FROM eos_policy.employee_company_authority_grants WHERE status = 'active'`)).rows[0].n);
     assert.ok(active > 0, "there are ACTIVE grants to refuse on");
     let failure = null;

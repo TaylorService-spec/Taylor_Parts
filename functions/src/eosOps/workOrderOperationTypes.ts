@@ -19,6 +19,8 @@ export interface WorkOrderOperationDeps {
   readonly policyReader?: PolicyReader;
   /** The Equipment register state, for the /operations/equipment table (EQUIPMENT_WRITER_AUTHORITY otherwise). */
   readonly equipmentPostgresState?: "INACTIVE" | "ACTIVE";
+  /** D-249-0 (test injection only): Finance self/team visibility activated. Absent = INACTIVE, as in Firebase. */
+  readonly financeSelfTeamVisibilityActive?: boolean;
 }
 
 /** Both views of one caller: the flat set (conditioned keys withheld) and the entitled actor for record reads. */
