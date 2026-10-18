@@ -49,6 +49,11 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "listReorderAssignmentTargets",
   // SUP-1: one Part's governed supplier terms.
   "listPartSupplierItems",
+  // Firebase exit B3: the canonical supplier purchase order (services/eosSupplierReceivingClient.js) and the archived legacy notes.
+  "listReceivableSupplierPurchaseOrders",
+  "readSupplierPurchaseOrderProgress",
+  "listSupplierReceivingLocationOptions",
+  "listLegacyInventoryActionNotes",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -75,6 +80,8 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "updatePartSupplierItem",
   "setPartSupplierItemStatus",
   "setPreferredPartSupplierItem",
+  // Firebase exit B3: the canonical PURCHASE_ORDER receipt (no fallback to or from receiveReorderStock).
+  "receiveSupplierPurchaseOrder",
 ]);
 
 /** Reads that take no input. */
@@ -91,6 +98,7 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "listReorderAssignmentTargets",
   // SUP-1: one Part's governed supplier terms.
   "listPartSupplierItems",
+  "listReceivableSupplierPurchaseOrders",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);

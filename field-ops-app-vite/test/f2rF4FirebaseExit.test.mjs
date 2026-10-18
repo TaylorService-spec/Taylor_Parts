@@ -62,13 +62,15 @@ test("operationsQueries.ts keeps only the two Firestore reads production still n
   assert.ok(!/onSnapshot\s*\(/.test(src), "stays one-shot");
 });
 
-test("only the two Firebase-only screens import operationsQueries.ts, and neither is reachable where EOS is the session source", () => {
+test("only the racking planner and the parity diagnostic import operationsQueries.ts; the planner's Firestore warehouse picker is the non-EOS arm of a build-time choice, and the diagnostic is not mounted under EOS", () => {
   assert.deepEqual(
     importersOf("services/operationsQueries").sort(),
     ["modules/administration/AdminWarehouseRacking.jsx", "modules/inventory/partsShadowParityReaders.js"],
   );
-  // The racking planner: its bin capabilities have no EOS key, so nobody holds them under EOS.
-  assert.match(read("access/eosCapabilityAccess.js"), /inventory\.location\.bin\.read/);
+  // The racking planner (Firebase exit B3): its bin capabilities are registered in EOS under their own names, so under EOS it reads and writes
+  // eos_ops.bins through the EOS client and the EOS picker; the Firestore picker is the other arm of the build-time choice.
+  assert.match(read("modules/administration/AdminWarehouseRacking.jsx"), /const DEFAULT_LOAD_WAREHOUSES = EOS_SESSION_SOURCE \? loadRackingWarehouses : fetchWarehouses;/);
+  assert.doesNotMatch(read("access/eosCapabilityAccess.js").replace(/^\s*\/\/.*$/gm, ""), /inventory\.location\.bin/, "no longer a recorded gap");
   // The diagnostic: the route is not mounted under EOS.
   assert.match(read("App.jsx"), /\{!EOS_SESSION_SOURCE && \(\s*<Route path="\/admin\/diagnostics\/inventory-parts-parity"/);
 });
@@ -90,7 +92,7 @@ test("domain/employees.js is gone; the Firestore employee directory is the Finan
   }
 });
 
-test("the frozen notes stay READABLE under EOS (interim, D-246-1): labelled, read-only, from their current source", () => {
+test("the frozen notes stay READABLE under EOS (Firebase exit B3, Owner ruling 8): labelled as ARCHIVED, read-only, from the EOS archive", () => {
   assert.deepEqual(
     importersOf("hooks/useInventoryActions").sort(),
     ["modules/inventory/PartDetail.jsx", "modules/inventoryRole/WarehouseManagerHome.jsx"],
@@ -99,7 +101,7 @@ test("the frozen notes stay READABLE under EOS (interim, D-246-1): labelled, rea
   // Rendered under BOTH sources; only the title differs, and the label is the one constant.
   assert.match(detail, /<details className="ns-parts-rail__item">\s*<summary>\{EOS_SESSION_SOURCE \? LEGACY_INVENTORY_NOTES_LABEL : "Inventory Action History"\}<\/summary>\s*<InventoryActionsPanel/);
   assert.ok(!/\{!EOS_SESSION_SOURCE && \(\s*<section/.test(detail), "the disclosure must not be hidden under EOS");
-  assert.match(read("domain/constants.js"), /LEGACY_INVENTORY_NOTES_LABEL = "Legacy notes \(frozen 2026-08-30; not stock movements\)";/);
+  assert.match(read("domain/constants.js"), /LEGACY_INVENTORY_NOTES_LABEL = "Archived legacy notes \(frozen 2026-08-30; not stock movements\)";/);
   // The Firestore employees listen is disabled under EOS; the governed actor read is disabled under Firebase.
   assert.match(detail, /useEmployeeDirectory\(\{ enabled: !EOS_SESSION_SOURCE \}\)/);
   assert.match(detail, /useGovernedEmployeeDirectory\(\{ enabled: EOS_SESSION_SOURCE, actorSubjects:/);
@@ -107,7 +109,9 @@ test("the frozen notes stay READABLE under EOS (interim, D-246-1): labelled, rea
   assert.match(warehouse, /EOS_SESSION_SOURCE\s*\?\s*\(\s*<>\s*<PartMovementPanel[^>]*\/>[\s\S]*?<summary>\{LEGACY_INVENTORY_NOTES_LABEL\}<\/summary>\s*<PartActivityPanel[^>]*legacyOnly \/>[\s\S]*?:\s*<PartActivityPanel/);
   // Read-only: the reader hook is the only export and holds no write (also pinned by inventoryActionRetirementContract).
   const hook = read("hooks/useInventoryActions.js").replace(/^\s*\/\/.*$/gm, "");
-  assert.deepEqual([...hook.matchAll(/^export\s+function\s+([A-Za-z0-9_]+)/gm)].map((m) => m[1]), ["useInventoryActionsForPart"]);
+  // ONE export: the reader, chosen at BUILD time -- the EOS archive where an EOS API is declared, the frozen Firestore collection elsewhere.
+  assert.deepEqual([...hook.matchAll(/^export\s+(?:function|const)\s+([A-Za-z0-9_]+)/gm)].map((m) => m[1]), ["useInventoryActionsForPart"]);
+  assert.match(hook, /export const useInventoryActionsForPart = EOS_SESSION_SOURCE \? useArchivedInventoryActionNotes : useInventoryActionsFromFirestore;/);
   assert.doesNotMatch(hook, /\b(addDoc|setDoc|updateDoc|deleteDoc|writeBatch)\b/);
 });
 

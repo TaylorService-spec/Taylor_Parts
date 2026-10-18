@@ -10,7 +10,7 @@ import { INVENTORY_ACTIONS_UNAVAILABLE } from "../../domain/inventoryActionsAvai
 import { usePartMovementHistory, PART_MOVEMENT_LIMIT } from "../../hooks/usePartMovementHistory.js";
 import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
-import { INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL } from "../../domain/constants";
+import { INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL, LEGACY_NOTES_ARCHIVE_NOT_LOADED, LEGACY_NOTES_NONE_FOR_PART } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
 import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
@@ -105,7 +105,7 @@ const NO_ACTIONS = Object.freeze([]);
 
 // legacyOnly: the notes shown INSIDE the EOS panel's "Legacy notes" disclosure -- no header and no Close of its own.
 function PartActivityPanel({ partId, resolveName, onClose, legacyOnly = false }) {
-  const { data: actions, loading, error: actionsError } = useInventoryActionsForPart(partId);
+  const { data: actions, loading, error: actionsError, archiveLoaded } = useInventoryActionsForPart(partId);
   const { sort, toggle, sorted } = useTableSort({ rows: actions ?? NO_ACTIONS, columns: ACTION_SORT_COLUMNS });
   const partName = resolveName(partId);
 
@@ -127,7 +127,8 @@ function PartActivityPanel({ partId, resolveName, onClose, legacyOnly = false })
         failedText={actionsError === INVENTORY_ACTIONS_UNAVAILABLE
           ? "The legacy notes are not available in this build."
           : "Unable to load part activity right now. Try again shortly."}
-        emptyText="No logged activity yet for this part."
+        emptyText={!legacyOnly ? "No logged activity yet for this part."
+          : archiveLoaded === false ? LEGACY_NOTES_ARCHIVE_NOT_LOADED : LEGACY_NOTES_NONE_FOR_PART}
       >
         <div className="fo-table-scroll">
           <table className="fo-table fo-table--stack">

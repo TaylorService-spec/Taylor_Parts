@@ -53,6 +53,52 @@ export async function applyProposals({ rows, createBin, concurrency = APPLY_CONC
   }, concurrency);
 }
 
+// ════════════════════ THE EOS BATCH APPLY (Firebase exit B3; Owner ruling 5) ════════════════════
+//
+// On EOS the server applies a chunk of bins itself (createBins): ONE BIN PER TRANSACTION, never one transaction for the chunk, and it answers
+// per item -- CREATED, UNCHANGED (an exact replay) or REFUSED with its classification and reason. The behaviour above is preserved, not redesigned:
+// partial success is normal, nothing aborts the remaining work, there is no aggregate verdict, and a retry is per bin UNCHANGED.
+//
+// A request that does NOT finish (the network drops after the server began) is reported as failed rows whose outcome is UNKNOWN -- never as
+// success, and never as "nothing happened": the screen re-reads the bins and re-previews afterwards, which is the registry's answer either way.
+export const BATCH_CHUNK = 250;
+
+const REFUSAL_WORDS = Object.freeze({
+  POSITION_TAKEN: "That rack position already belongs to another bin.",
+  CODE_RESERVED: "Another bin already holds, or once held, this code.",
+  INTEGRITY_ERROR: "The stored record is inconsistent; it was left alone.",
+  INVALID: "The registry refused this location.",
+});
+const refusalWords = (item) => `${REFUSAL_WORDS[item.classification] ?? "That bin could not be created."}${item.reason ? ` (${item.reason})` : ""}`;
+
+export async function applyProposalsBatched({ rows, createBins, warehouseId, reason, chunkSize = BATCH_CHUNK }) {
+  const results = [];
+  for (let at = 0; at < rows.length; at += chunkSize) {
+    const group = rows.slice(at, at + chunkSize);
+    const failedAll = (message) => group.map((row) => ({ idempotencyKey: row.request.idempotencyKey, outcome: "failed", code: null, binId: null, error: message }));
+    try {
+      const res = await createBins({ warehouseId, proposals: group.map((row) => row.request), reason });
+      const items = Array.isArray(res?.items) ? res.items : null;
+      if (items === null) { results.push(...failedAll("The registry's answer could not be read, so the outcome is unknown. Preview again to see what exists.")); continue; }
+      const byIndex = new Map(items.map((item) => [item.index, item]));
+      group.forEach((row, index) => {
+        const item = byIndex.get(index);
+        const base = { idempotencyKey: row.request.idempotencyKey, code: item?.code ?? null, binId: item?.binId ?? null };
+        if (!item) results.push({ ...base, outcome: "failed", error: "The registry did not answer for this bin, so its outcome is unknown." });
+        else if (item.outcome === "CREATED") results.push({ ...base, outcome: "created", error: null });
+        else if (item.outcome === "UNCHANGED") results.push({ ...base, outcome: "unchanged", error: null });
+        else results.push({ ...base, outcome: "failed", error: refusalWords(item) });
+      });
+    } catch (err) {
+      // A refusal of the whole request (no authority, no reason, a warehouse outside the caller's companies) names itself; anything else is unknown.
+      const refused = err?.code === "FORBIDDEN" || err?.code === "INVALID_INPUT" || err?.code === "NOT_FOUND" || err?.code === "CONFLICT";
+      results.push(...failedAll(refused ? (err?.message || "The request was refused.")
+        : "The request did not finish, so each bin's outcome is unknown. Preview again to see what exists."));
+    }
+  }
+  return results;
+}
+
 /** A count per outcome, for a summary line that is derived rather than asserted. */
 export function summarizeApply(results) {
   return results.reduce(

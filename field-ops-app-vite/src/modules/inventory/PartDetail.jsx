@@ -40,7 +40,7 @@ import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurc
 import { usePurchaseOrderSupplierOptions } from "../../hooks/usePurchaseOrderSupplierOptions";
 import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
-import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL } from "../../domain/constants";
+import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL, LEGACY_NOTES_ARCHIVE_NOT_LOADED, LEGACY_NOTES_NONE_FOR_PART } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import FailureState from "../../shared/ui/FailureState";
@@ -1256,7 +1256,7 @@ function InventoryActionsPanel({ partId }) {
   // (permission-denied/unavailable/etc.) distinctly from a genuinely-empty log --
   // `actionsError` is threaded to LoadingEmptyState below so a read failure no
   // longer renders as "No inventory actions logged yet."
-  const { data: recentActions, loading, error: actionsError } = useInventoryActionsForPart(partId);
+  const { data: recentActions, loading, error: actionsError, archiveLoaded } = useInventoryActionsForPart(partId);
   // WHO WROTE A NOTE. A legacy note stores the acting FIREBASE uid. Where Firebase is the source the Firestore directory names it
   // (as before). Where EOS is the source the governed resolvePrincipalDisplayNames names it, by external subject, for exactly the
   // uids on the notes (no Firestore employees listen, no Employee-name fallback); a refusal reads "Unknown user". Both hooks are
@@ -1294,7 +1294,8 @@ function InventoryActionsPanel({ partId }) {
         failedText={actionsError === INVENTORY_ACTIONS_UNAVAILABLE
           ? "The legacy notes are not available in this build."
           : "Unable to load the inventory action history right now. Try again shortly."}
-        emptyText="No inventory notes were ever recorded for this part."
+        emptyText={!EOS_SESSION_SOURCE ? "No inventory notes were ever recorded for this part."
+          : archiveLoaded === false ? LEGACY_NOTES_ARCHIVE_NOT_LOADED : LEGACY_NOTES_NONE_FOR_PART}
       >
         <table className="fo-table">
           <thead>

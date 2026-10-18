@@ -205,6 +205,18 @@ test("inventory_actions HAS NO PostgreSQL representation, and that is the answer
     "A migration or governed repository now names inventory_actions. It is a retired, unreconciled " +
       "Firestore audit trail and must never be a migration source into eos_ops:\n" + offenders.join("\n"),
   );
+
+  // FIREBASE EXIT B3 (Owner ruling 8, 2026-10-17): the frozen notes may not be shown as current facts, and the display is retired only if no unique
+  // information is lost -- so a READ-ONLY EOS ARCHIVE of the notes exists (eos_ops.legacy_inventory_action_notes). It is NOT a migration of the
+  // notes into the governed ledger, and the three properties that keep it from becoming one are pinned here: it is never a movement, nothing in the
+  // application writes it, and it is empty by construction (the migration inserts no note; the copy is Owner-gated and HELD).
+  const migration = read(path.join(REPO_ROOT, "functions", "migrations", "1764630000000_warehouse-receiving-bins-on-eos.sql"))
+    .split("-- Down Migration")[0].split("\n").map((line) => line.replace(/--.*$/, "")).join("\n");
+  assert.match(migration, /CREATE TABLE legacy_inventory_action_notes/);
+  assert.doesNotMatch(migration, /INSERT INTO\s+legacy_inventory_action_notes|INSERT INTO\s+(eos_ops\.)?inventory_movements/, "the archive is created empty and is never a movement");
+  const archiveModule = codeOnly(read(path.join(REPO_ROOT, "functions", "src", "eosOps", "legacyInventoryActionNotes.ts")));
+  assert.doesNotMatch(archiveModule, /\b(INSERT|UPDATE|DELETE)\b/, "the archive has no application writer");
+  assert.doesNotMatch(archiveModule, /inventory_movements/, "an archived note is never joined to the ledger");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -264,8 +276,9 @@ test("the read stays ONE scoped, partId-filtered, client-direct query", () => {
   // Read-only: the hook must not acquire a write.
   assert.doesNotMatch(hook, /\b(addDoc|setDoc|updateDoc|deleteDoc|writeBatch)\b/);
 
-  // Exactly one exported reader -- no second, unscoped sibling.
-  const exported = [...hook.matchAll(/^export\s+function\s+([A-Za-z0-9_]+)/gm)].map((m) => m[1]);
+  // Exactly one exported reader -- no second, unscoped sibling. (Firebase exit B3: it is a build-time choice between this Firestore reader and the
+  // READ-ONLY EOS archive; the archive is a table nothing in the application writes, and never a ledger movement.)
+  const exported = [...hook.matchAll(/^export\s+(?:function|const)\s+([A-Za-z0-9_]+)/gm)].map((m) => m[1]);
   assert.deepEqual(exported, ["useInventoryActionsForPart"]);
 });
 

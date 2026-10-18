@@ -1,3 +1,10 @@
+// ════════════════════ FIREBASE EXIT B3: WHICH SOURCE ANSWERS, DECIDED ONCE AT BUILD TIME ════════════════════
+//
+// The four public functions at the bottom of this file are EITHER the Firebase callable transport below (production, and any build that
+// declares no EOS API -- unchanged, still behind RECEIVING_TRANSPORT_READY) OR the EOS supplier-PO receiving client
+// (services/eosSupplierReceivingClient.js), chosen by the F1 compile-time flag (access/eosSessionSource.js). There is NO runtime fallback in
+// either direction: where an EOS API is declared the Firebase callables are never imported, so the build makes no Firebase request.
+//
 // ════════════════════ REORDER PURCHASE ORDER RECEIPTS DO NOT GO THROUGH THIS FILE ════════════════════
 //
 // The legacy single-line submit (`submitReceiveInventoryStock`, source REORDER_PURCHASE_ORDER) is GONE from
@@ -31,6 +38,8 @@
 // through the request VERBATIM (never regenerated), so a retry (re-invocation with the same
 // request) reuses the same key.
 import { RECEIVING_TRANSPORT_READY } from "../config/receivingReadiness.js";
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
+import { supplierReceivingClient } from "./eosSupplierReceivingClient.js";
 import { adaptReceivingLocationOptions } from "../domain/receivingLocationOptionAdapter.js";
 import {
   CALLABLE_NAMES,
@@ -79,7 +88,7 @@ async function fetchOptionsCore(invoke) {
 // constant; while readiness is false, returns a sanitized unavailable outcome and NEVER invokes.
 
 // Fetch + adapt the eligible receiving-location options.
-export async function fetchReceivingLocationOptions() {
+async function firebaseFetchReceivingLocationOptions() {
   if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] };
   return fetchOptionsCore(defaultInvoke);
 }
@@ -95,7 +104,7 @@ export async function fetchReceivingLocationOptions() {
 // client-readable but `receiving_orders` is deny-all by design.
 
 // List the canonical purchase orders that may currently be received.
-export async function fetchReceivablePurchaseOrders() {
+async function firebaseFetchReceivablePurchaseOrders() {
   if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, purchaseOrders: [] };
   try {
     const data = await defaultInvoke(CALLABLE_NAMES.listReceivable, {});
@@ -112,7 +121,7 @@ export async function fetchReceivablePurchaseOrders() {
 // One purchase order's ordered lines plus SERVER-DERIVED remaining quantities. This is what the scan
 // queue reconciles against; without it the surface could show what was ordered and never what is
 // outstanding.
-export async function fetchPurchaseOrderProgress(purchaseOrderId) {
+async function firebaseFetchPurchaseOrderProgress(purchaseOrderId) {
   if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, progress: null };
   try {
     const data = await defaultInvoke(CALLABLE_NAMES.progress, { purchaseOrderId });
@@ -127,7 +136,7 @@ export async function fetchPurchaseOrderProgress(purchaseOrderId) {
 // Submit a canonical multi-line receipt. `request` must already carry a stable idempotencyKey; it is
 // preserved verbatim and never regenerated, so a retry of the same intent replays rather than
 // applying twice.
-export async function submitCanonicalReceive(request) {
+async function firebaseSubmitCanonicalReceive(request) {
   if (!RECEIVING_TRANSPORT_READY) return { status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null };
   const built = buildCanonicalReceiveRequest(request);
   // Refused CLIENT-SIDE without invoking: a malformed request never reaches the callable.
@@ -141,3 +150,12 @@ export async function submitCanonicalReceive(request) {
     return { status: mapCallableErrorToStatus(err), receipt: null };
   }
 }
+
+// ═══════════════════════ THE PUBLIC API: ONE SOURCE, CHOSEN AT BUILD TIME (B3) ═══════════════════════
+//
+// `EOS_SESSION_SOURCE` true: EOS is the SOLE source (the Firebase functions above are dead code in that build and are never called -- not as a
+// fallback, not on failure, not on an empty answer). false: Firebase, exactly as before B3. The same names, the same result shapes.
+export const fetchReceivingLocationOptions = EOS_SESSION_SOURCE ? supplierReceivingClient.fetchReceivingLocationOptions : firebaseFetchReceivingLocationOptions;
+export const fetchReceivablePurchaseOrders = EOS_SESSION_SOURCE ? supplierReceivingClient.fetchReceivablePurchaseOrders : firebaseFetchReceivablePurchaseOrders;
+export const fetchPurchaseOrderProgress = EOS_SESSION_SOURCE ? supplierReceivingClient.fetchPurchaseOrderProgress : firebaseFetchPurchaseOrderProgress;
+export const submitCanonicalReceive = EOS_SESSION_SOURCE ? supplierReceivingClient.submitCanonicalReceive : firebaseSubmitCanonicalReceive;

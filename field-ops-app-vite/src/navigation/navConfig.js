@@ -821,6 +821,9 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   // Administration
   "administration/users": ["administration.users"],
   "administration/dataImport": ["administration.dataImport"],
+  // WAREHOUSE RACKING (Firebase exit B3, DECISIONS #B3): the planner reads and writes bins on EOS under inventory.location.bin.read / .manage,
+  // so the destination earns the `inventory.racking` door. The SAME row becomes a CUTOVER row (see the ceiling note).
+  "administration/warehouseRacking": ["inventory.racking"],
   "administration/emailCommunications": ["administration.emailCommunications"],
   "administration/auditLogs": ["administration.auditLogs"],
   // FINANCIAL POLICY (#232 Phase 2). Rendered under Administration, earned by a BUSINESS surface: `finance.policy` is
@@ -881,7 +884,6 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "purchasing/demandPlanning": "No demand-planning domain exists.",
   "administration/integrations": "No integrations domain exists.",
   "administration/duplicateRules": "No capability governs duplicate-rule administration.",
-  "administration/warehouseRacking": "Gated today by the Firebase capability feed; inventory.location.bin.* is not in eos_policy.capabilities.",
   "administration/systemConfiguration": "Server-gated through /admin/policy on admin.systemConfiguration.manage; no EOS experience surface declares it yet.",
   "administration/salesConfiguration": "Server-gated through /admin/policy on sales.discountAuthority.manage; no EOS experience surface declares it yet.",
   "administration/vehicles": "Hidden placeholder, no backend.",
@@ -1193,7 +1195,7 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "administration/regions",
   "administration/companySettings",
   "administration/duplicateRules",
-  "administration/warehouseRacking",
+  "administration/warehouseRacking", // (CUTOVER, B3) inventory.racking
   "administration/financialPolicy", // (CUTOVER, #232 Phase 2) finance.policy -- changed kind, not added; see the ceiling note
   "administration/integrations",
   "administration/auditLogs", // (CUTOVER) administration.auditLogs
@@ -1352,9 +1354,15 @@ export function effectivePlaceholderRegister(operationalContext) {
 // inventory.catalog.read, so the destination earns the existing `inventory.catalog` surface. The SAME row becomes a CUTOVER
 // row; the register stays 62 (production's legacy destination set is unchanged); ungoverned 39 -> 38; cutover 23 -> 24.
 // Owner-approved as Manufacturers R-1 Option A (lane-b manufacturers-r1-read-authority-2026-10-16).
+//
+// ════════ 2026-10-18 -- A FIFTH ROW CHANGED KIND; NO ROW WAS ADDED (WAREHOUSE RACKING ON EOS, FIREBASE EXIT B3) ════════
+//
+// `administration/warehouseRacking` was a declared gap (the planner wrote Firebase bins behind the Firebase capability feed). It now reads and
+// writes eos_ops.bins under inventory.location.bin.read / .manage, so the destination earns the new `inventory.racking` door. The SAME row
+// becomes a CUTOVER row; the register stays 62 (production's legacy destination set is unchanged); ungoverned 38 -> 37; cutover 24 -> 25.
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
-export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 38;
-export const NAV_CUTOVER_PLACEHOLDER_CEILING = 24;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 37;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 25;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.

@@ -1296,6 +1296,10 @@
     {
       "file": "test/b2EosOnlySignIn.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/supplierReceivingAndRackingEos.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

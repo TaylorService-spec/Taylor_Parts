@@ -51,9 +51,9 @@ export const FIREBASE_IDS_WITHOUT_EOS_TWIN = Object.freeze({
   "report.definition.rename": "Saved Reports (reporting/savedReports): NAV_SURFACE_GAPS; reporting moves with F7e.",
   "report.definition.duplicate": "Saved Reports (reporting/savedReports): NAV_SURFACE_GAPS; reporting moves with F7e.",
   "report.definition.delete": "Saved Reports (reporting/savedReports): NAV_SURFACE_GAPS; reporting moves with F7e.",
-  "inventory.location.bin.read": "Warehouse Racking (administration/warehouseRacking): NAV_SURFACE_GAPS; bins move with F6.",
-  "inventory.location.bin.manage": "Warehouse Racking (administration/warehouseRacking): NAV_SURFACE_GAPS; bins move with F6.",
   "inventory.balance.read": "Only My Dashboard cards and the legacy phone shell read it; neither is reachable under the EOS source.",
+  // inventory.location.bin.{read,manage} LEFT this table in Firebase exit B3 (DECISIONS #B3): migration 1764630000000 registers both in EOS under the SAME
+  // names, held by the CURRENT holders only (admin, the memberless inventoryBinAdministrator), so Warehouse Racking asks them under their own names.
   // finance.visibility.{self,team,businessUnit,company,consolidated} LEFT this table in Firebase exit B1 (DECISIONS #B1): migration
   // 1764620000000 registers all five in EOS under the SAME names, mirrored to the Firebase holders, so they are asked under their own
   // names. The EOS server applies them inside every Finance read (eosFinance/financeVisibility.ts); self and team are INACTIVE.

@@ -110,12 +110,14 @@ test("DQ-029: the configuration operations mirror the server's closed table, and
   const clientStart = SOURCE.indexOf("export const ADMIN_CONFIGURATION_OPERATIONS");
   const clientNames = [...SOURCE.slice(clientStart, SOURCE.indexOf("]", clientStart)).matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]).sort();
   assert.deepEqual(clientNames, serverNames);
-  assert.deepEqual(clientNames, ["changeTruckStatus", "configureAccountingDestination", "createBin", "createMobileLocation", "createTruck", "createWarehouse", "linkTruck",
-    "listAccountingDestinations", "listCounterpartyPaymentTerms", "listMobileLocationScopeBindings", "listMobileLocations",
-    "listSalesDiscountAuthorities", "listSystemConfiguration", "listTrucks", "listWarehouseBins", "listWarehouses",
-    "readMobileLocationScopeBinding", "readTruck", "relabelBin", "relinkTruck", "removeMobileLocationScopeBinding",
-    "setAccountingDestinationStatus", "setBinStatus", "setCounterpartyPaymentTerms",
-    "setMobileLocationScopeBinding", "setSalesDiscountAuthority", "setSystemConfigurationSetting", "setWarehouseStatus", "unlinkTruck", "updateWarehouse"]);
+  // + the Warehouse Racking planner (Firebase exit B3): listRackingWarehouses, listRackingBins, previewBinCreates, createBins, renameRackingBin, setRackingBinStatus.
+  assert.deepEqual(clientNames, [
+    "changeTruckStatus", "configureAccountingDestination", "createBin", "createBins", "createMobileLocation", "createTruck",
+    "createWarehouse", "linkTruck", "listAccountingDestinations", "listCounterpartyPaymentTerms", "listMobileLocationScopeBindings", "listMobileLocations",
+    "listRackingBins", "listRackingWarehouses", "listSalesDiscountAuthorities", "listSystemConfiguration", "listTrucks", "listWarehouseBins",
+    "listWarehouses", "previewBinCreates", "readMobileLocationScopeBinding", "readTruck", "relabelBin", "relinkTruck",
+    "removeMobileLocationScopeBinding", "renameRackingBin", "setAccountingDestinationStatus", "setBinStatus", "setCounterpartyPaymentTerms", "setMobileLocationScopeBinding",
+    "setRackingBinStatus", "setSalesDiscountAuthority", "setSystemConfigurationSetting", "setWarehouseStatus", "unlinkTruck", "updateWarehouse"]);
   // Reachable through the one endpoint, and holding no capability name: the gate is the server's.
   assert.match(SOURCE, /\.\.\.ADMIN_CONFIGURATION_OPERATIONS\]\)/);
   assert.equal(SOURCE.includes("inventory.location.scopeBinding.manage\""), false, "the client names no capability to decide on");

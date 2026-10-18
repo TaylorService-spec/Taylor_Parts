@@ -241,11 +241,13 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   useEffect(() => {
     let live = true;
     (async () => {
-      const res = await api.fetchReceivingLocationOptions();
+      // The destinations are the ORDER's (its own operating company, in the receiver's warehouse scope) -- Firebase exit B3. The Firebase
+      // transport ignores the argument; the EOS one requires it.
+      const res = await api.fetchReceivingLocationOptions(purchaseOrderId);
       if (live) setLocations({ status: res.status, options: res.options ?? [] });
     })();
     return () => { live = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [purchaseOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reconciliation = useMemo(
     () => reconcile(queue, progress?.lines ?? []),

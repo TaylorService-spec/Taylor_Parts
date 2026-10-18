@@ -305,6 +305,8 @@ const CUTOVER_ROWS = Object.freeze([
   "financials/overview",
   // 2026-10-17 (Manufacturers R-1 Option A, Firebase exit F5): an EXISTING row that changed kind -- it earned inventory.catalog.
   "inventory/manufacturers",
+  // 2026-10-18 (Warehouse Racking on EOS, Firebase exit B3): an EXISTING row that changed kind -- it earned inventory.racking.
+  "administration/warehouseRacking",
 ]);
 
 // ════════ AMENDED BY WAVE 16 / LANE BR -- THE ROWS LEAVE PER ENVIRONMENT, NOT GLOBALLY ════════
@@ -319,7 +321,7 @@ const CUTOVER_ROWS = Object.freeze([
 // the legacy source still needs. They are asserted here from BOTH sides. The register arithmetic and
 // the three partition ratchets are proved in test/navCutoverEnvironmentScoped.test.mjs, which also
 // pins the per-role destination sets against the b6a36b15 measurement.
-test("the placeholder register is 62, split into 24 cutover rows and 38 ungoverned ones", () => {
+test("the placeholder register is 62, split into 25 cutover rows and 37 ungoverned ones", () => {
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
   assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
   assert.equal(new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS).size, 62);
