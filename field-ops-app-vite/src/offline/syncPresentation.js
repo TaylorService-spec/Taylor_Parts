@@ -33,8 +33,20 @@ export const INTENT_LABEL = Object.freeze({
   [INTENT_TYPE.WORK_ORDER_COMPLETE]: "Finishing the job",
 });
 
+/** The status word for usage the server held back (the governed reason is on the card). */
+const HELD_BACK_STATUS = Object.freeze({
+  PLAN_LIMIT_REACHED: "Not recorded",
+  NOTHING_TO_REVERSE: "Not recorded",
+  USAGE_PARTLY_RECORDED: "Partly recorded",
+});
+
 /** The status word, plus whether it is allowed to imply the work is real. */
 export function statusFor(intent) {
+  // TW5: a held-back usage request has its own word. "Needs review -- changed elsewhere" would mislead.
+  const heldWord = HELD_BACK_STATUS[String(intent?.lastServerError?.details ?? "").toUpperCase()];
+  if (heldWord && intent?.state !== SYNC_STATE.SYNCED) {
+    return Object.freeze({ label: heldWord, tone: "attention", claimsComplete: false });
+  }
   const p = SYNC_PRESENTATION[intent?.state] ?? SYNC_PRESENTATION[SYNC_STATE.PENDING_SYNC];
   return Object.freeze({ label: p.label, tone: p.tone, claimsComplete: p.claimsComplete });
 }
@@ -93,6 +105,19 @@ const REASON_BY_DETAIL = Object.freeze({
   PERMISSION_DENIED: {
     happened: "You are not authorized to do this.",
     next: "Your work is saved here. Ask your manager to record it.",
+  },
+  // TW5: usage the server held back. These read as "not recorded" with the governed reason, never as sent.
+  PLAN_LIMIT_REACHED: {
+    happened: "Not recorded: the job's parts plan is already used up for that part.",
+    next: "Ask dispatch to raise the parts plan if more was used, then discard this entry.",
+  },
+  NOTHING_TO_REVERSE: {
+    happened: "Nothing was taken back: that part is not recorded on the job.",
+    next: "Check what is on the job. You can discard this entry.",
+  },
+  USAGE_PARTLY_RECORDED: {
+    happened: "Only part of this was recorded: the job's parts plan was reached.",
+    next: "What was recorded is on the job. Ask dispatch to raise the parts plan for the rest, then discard this entry.",
   },
   NO_COMMAND_BOUND: {
     happened: "This app cannot send that kind of work.",

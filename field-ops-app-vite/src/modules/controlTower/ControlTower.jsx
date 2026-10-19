@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { useWorkOrderTechnicianDirectory } from "../../hooks/useWorkOrderTechnicianDirectory.js";
+import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities.js";
+import { canReadWorkOrderRoster } from "../../access/workOrderRosterAccess.js";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
@@ -77,7 +79,7 @@ export default function ControlTower() {
   // ── The only reads on this page ────────────────────────────────────────────────────────────────
   const { data: workOrders, loading, error } = useWorkOrders();
   // Keyed by EMPLOYEE id, like the governed Work Orders' assignees (not fieldops_technicians).
-  const { data: technicians, error: techniciansError } = useWorkOrderTechnicianDirectory(workOrders);
+  const { data: technicians, error: techniciansError } = useWorkOrderTechnicianDirectory(workOrders, { enabled: canReadWorkOrderRoster(useMyWorkOrderCapabilities()) });
   const accountNames = useAccountNames(
     useMemo(
       () => Array.from(new Set(workOrders.map((wo) => wo.customerId).filter(Boolean))),

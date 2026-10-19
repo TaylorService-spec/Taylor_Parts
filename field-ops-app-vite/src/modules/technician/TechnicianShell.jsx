@@ -195,11 +195,24 @@ function HandheldJobs({ cards, loading, onOpen }) {
  * context -- the same read FieldMode uses -- and never the raw `acct_...` / `site_...` references.
  */
 function HandheldJobCard({ card: c, onOpen }) {
-  const { context, denied, loading } = useWorkOrderFieldContext(c.workOrderId);
+  // N cards make N governed field-context reads (one per job, each bounded and per-record authorised). Acceptable for a
+  // technician's own open jobs; a batched read would be a new server operation and is not part of this change.
+  const { context, denied, failure, loading } = useWorkOrderFieldContext(c.workOrderId);
   const customer = context?.customer?.state === "RESOLVED" ? context.customer.displayName : null;
   const site = context?.site?.state === "RESOLVED" ? context.site.displayLabel : null;
-  // Loading, denied and genuinely absent are three different things and are said as three different things.
-  const unresolved = (what) => (loading ? `Loading ${what}…` : denied ? `${what[0].toUpperCase()}${what.slice(1)} details unavailable to your role` : `No ${what} on record`);
+  // Before the first read answers there is no context AND no denial: that is "loading", never "none on record".
+  const waiting = loading || (!context && !denied);
+  // Waiting, offline, refused and genuinely absent are different things and are said as different things.
+  const unresolved = (what) => {
+    if (waiting) return `Loading ${what}…`;
+    const Cap = `${what[0].toUpperCase()}${what.slice(1)}`;
+    if (denied) {
+      if (failure?.code === "UNREACHABLE") return `${Cap} details unavailable offline`;
+      if (failure?.code === "NOT_ACTIVATED") return `${Cap} details not available yet`;
+      return `${Cap} details unavailable to your role`;
+    }
+    return `No ${what} on record`;
+  };
   return (
     <li className="fo-handheld__job">
       <button

@@ -69,6 +69,11 @@ on:
       - "field-ops-app-vite/src/domain/fieldTruckReadiness.js"
       - "field-ops-app-vite/src/domain/executionOutcome.js"
       - "field-ops-app-vite/src/hooks/useMyTruckStock.js"
+      - "field-ops-app-vite/src/access/workOrderRosterAccess.js"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/ControlTower.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/src/hooks/useCurrentTechnician.js"
       # WO-03 -- the offline runtime. A change to any of it must re-run this lane, because the
       # handheld surfaces above are exactly what it sits underneath.
@@ -145,6 +150,11 @@ on:
       - "field-ops-app-vite/src/domain/fieldTruckReadiness.js"
       - "field-ops-app-vite/src/domain/executionOutcome.js"
       - "field-ops-app-vite/src/hooks/useMyTruckStock.js"
+      - "field-ops-app-vite/src/access/workOrderRosterAccess.js"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/ControlTower.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/src/hooks/useCurrentTechnician.js"
       # WO-03 -- the offline runtime. A change to any of it must re-run this lane, because the
       # handheld surfaces above are exactly what it sits underneath.

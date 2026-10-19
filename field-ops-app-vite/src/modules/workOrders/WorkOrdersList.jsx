@@ -1,4 +1,5 @@
 import { useMyWorkOrderCapabilities, WORK_ORDER_CREATE_CAPABILITY } from "../../hooks/useMyWorkOrderCapabilities.js";
+import { canReadWorkOrderRoster } from "../../access/workOrderRosterAccess.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { workOrderEntity, workOrderIndexList } from "../../metadata/definitions/workOrder.js";
@@ -123,7 +124,9 @@ export default function WorkOrdersList() {
   // The assignee is an EOS EMPLOYEE (domain/workOrderAdapter.js). Names come from the governed rows
   // themselves plus, where the viewer may schedule, the governed roster -- never fieldops_technicians,
   // whose ids cannot match.
-  const { data: technicians, loading: techLoading, error: techError } = useWorkOrderTechnicianDirectory(resolvableRows);
+  // The roster read is made only by a caller who may make it (schedule/dispatch); a technician resolves names from the rows.
+  const myWorkOrderCapabilities = useMyWorkOrderCapabilities();
+  const { data: technicians, loading: techLoading, error: techError } = useWorkOrderTechnicianDirectory(resolvableRows, { enabled: canReadWorkOrderRoster(myWorkOrderCapabilities) });
 
   const resolveReference = useCallback((fieldId, id) => {
     if (fieldId !== "assignedTechId") return resolveAccount(fieldId, id);
@@ -163,7 +166,6 @@ export default function WorkOrdersList() {
   // ONE filled primary -- the likeliest next act from this workspace (Grammar R07).
   // Offered unless the governed Work Order authority positively says this caller cannot create (UI corrections integration):
   // the route itself is gated the same way, and createWorkOrder re-checks workOrder.create on the server.
-  const myWorkOrderCapabilities = useMyWorkOrderCapabilities();
   const canOfferCreate = !(myWorkOrderCapabilities.status === "ready" && !myWorkOrderCapabilities.has(WORK_ORDER_CREATE_CAPABILITY));
   const actions = canOfferCreate ? (
     <Link to="/service/work-orders/new">

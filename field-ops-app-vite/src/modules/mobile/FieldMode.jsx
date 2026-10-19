@@ -524,7 +524,7 @@ function Readiness({ readiness, inventoryState = null, truckKnown = false }) {
               {/* TW4: planned vs what is physically on the technician's own truck, only when that stock was read. */}
               {row.dimensions?.truck?.status === "KNOWN" && (
                 <span className="fo-readiness-row__truck fo-muted">
-                  Planned {row.qtyPlanned} · On your truck {row.dimensions.truck.onTruck}
+                  Planned {row.qtyPlanned}{row.qtyUsed > 0 ? ` · Used ${row.qtyUsed}` : ""} · On your truck {row.dimensions.truck.onTruck}
                   {row.dimensions.truck.onTruck < Math.max(0, row.qtyPlanned - row.qtyUsed) ? " · not enough" : ""}
                 </span>
               )}

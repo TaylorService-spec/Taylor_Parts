@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
   contexts: {},
   transition: vi.fn(async () => ({})),
   eos: vi.fn(),
+  // the technician-roster read (listWorkOrderTechnicians) and the caller's own Work Order capability keys
+  roster: vi.fn(async () => ({ items: [], operatingCompanyId: null })),
+  caps: new Set(),
 }));
 
 vi.mock("firebase/firestore", () => ({ onSnapshot: h.firestore.onSnapshot, doc: h.firestore.doc }));
@@ -38,6 +41,12 @@ vi.mock("../src/services/workOrderService", () => ({
   updateWorkOrderExecutionData: vi.fn(async () => ({ success: true, outcome: "RECORDED", usage: [] })),
   getWorkOrder: vi.fn(),
   subscribeToWorkOrders: vi.fn(() => () => {}),
+  listWorkOrderTechnicians: (...a) => h.roster(...a),
+}));
+vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: () => ({ data: [], loading: false, error: null }) }));
+vi.mock("../src/hooks/useMyWorkOrderCapabilities.js", () => ({
+  useMyWorkOrderCapabilities: () => ({ status: "ready", has: (key) => h.caps.has(key) }),
+  WORK_ORDER_CREATE_CAPABILITY: "workOrder.create",
 }));
 vi.mock("../src/hooks/useAssignedWorkOrders", () => ({
   useAssignedWorkOrders: () => ({ data: h.wos, loading: false, error: null, employeeId: "emp-1", unlinked: false, notActivated: false }),
@@ -50,6 +59,8 @@ vi.mock("../src/modules/scan/ScanWorkspace", () => ({ default: () => <div>Scan w
 
 const { default: TechnicianShell } = await import("../src/modules/technician/TechnicianShell.jsx");
 const { default: FieldMode } = await import("../src/modules/mobile/FieldMode.jsx");
+const { default: Jobs } = await import("../src/modules/jobs/Jobs.jsx");
+const { MemoryRouter } = await import("react-router-dom");
 
 const HARBOR = {
   context: {
@@ -90,6 +101,8 @@ beforeEach(() => {
   h.wos = [wo(), scheduled()];
   h.contexts = { "wo-103": HARBOR };
   h.transition.mockClear();
+  h.roster.mockClear();
+  h.caps = new Set();
   h.firestore.onSnapshot.mockClear();
   truck();
   window.localStorage.clear();
@@ -221,6 +234,80 @@ describe("TW4: parts readiness reads the technician's own truck", () => {
     await waitFor(() => expect(h.eos.mock.calls.some((c) => c[1] === "readTruckStock")).toBe(true));
     expect(screen.getByText(/Truck stock isn't available for this job/)).toBeTruthy();
     expect(screen.queryByText(/Parts ready/)).toBeNull();
+  });
+});
+
+describe("TW4 round 2: consumed truck stock does not turn the job UNKNOWN", () => {
+  it("plan 2, used 2, truck now 0 -> Parts ready (the parts were used, not missing)", async () => {
+    h.wos = [wo({ inventorySnapshot: [{ partId: "PRT-1005", sku: "PRT-1005", qtyPlanned: 2, qtyUsed: 2 }] })];
+    truck({ stock: [] });
+    render(<FieldMode />);
+    await waitFor(() => expect(screen.getByText(/Planned 2 · Used 2 · On your truck 0/)).toBeTruthy());
+    expect(screen.getByText(/Parts ready/)).toBeTruthy();
+    expect(screen.queryByText(/not enough/)).toBeNull();
+  });
+
+  it("plan 3, used 2, exactly the remainder (1) on the truck -> Parts ready; none left -> 'not enough', not ready", async () => {
+    h.wos = [wo({ inventorySnapshot: [{ partId: "PRT-1005", sku: "PRT-1005", qtyPlanned: 3, qtyUsed: 2 }] })];
+    truck({ stock: [{ partId: "PRT-1005", onHand: 1 }] });
+    const { unmount } = render(<FieldMode />);
+    await waitFor(() => expect(screen.getByText(/Planned 3 · Used 2 · On your truck 1/)).toBeTruthy());
+    expect(screen.getByText(/Parts ready/)).toBeTruthy();
+    expect(screen.queryByText(/not enough/)).toBeNull();
+    unmount();
+    truck({ stock: [] });
+    render(<FieldMode />);
+    await waitFor(() => expect(screen.getByText(/Planned 3 · Used 2 · On your truck 0 · not enough/)).toBeTruthy());
+    expect(screen.queryByText(/Parts ready/)).toBeNull();
+  });
+});
+
+describe("TW2 round 2: the unresolved-name copy tells the truth about WHY", () => {
+  it("before the first read answers it is 'Loading', never 'No customer on record'", () => {
+    // no context, not denied, not flagged loading: the state before the effect has produced anything
+    h.contexts["wo-81"] = { context: null, denied: false, loading: false };
+    render(<TechnicianShell />);
+    openJobsTab();
+    expect(screen.getAllByText("Loading customer…").length).toBeGreaterThan(0);
+    expect(screen.queryByText("No customer on record")).toBeNull();
+  });
+
+  it("an unreachable service reads 'unavailable offline'; a refusal reads 'unavailable to your role'", () => {
+    h.contexts["wo-81"] = { context: null, denied: true, loading: false, failure: { code: "UNREACHABLE", reason: null } };
+    const { unmount } = render(<TechnicianShell />);
+    openJobsTab();
+    expect(screen.getByText("Customer details unavailable offline")).toBeTruthy();
+    expect(screen.getByText("Site details unavailable offline")).toBeTruthy();
+    expect(screen.queryByText("Customer details unavailable to your role")).toBeNull();
+    unmount();
+    h.contexts["wo-81"] = { context: null, denied: true, loading: false, failure: { code: "FORBIDDEN", reason: "NOT_ASSIGNED" } };
+    render(<TechnicianShell />);
+    openJobsTab();
+    expect(screen.getByText("Customer details unavailable to your role")).toBeTruthy();
+  });
+});
+
+describe("a technician fires no listWorkOrderTechnicians 403 from the office list screens", () => {
+  const renderJobs = () => render(<MemoryRouter><Jobs /></MemoryRouter>);
+
+  it("Jobs: a technician (no schedule/dispatch) makes NO roster read", async () => {
+    renderJobs();
+    await act(async () => {});
+    expect(h.roster).not.toHaveBeenCalled();
+  });
+
+  it("Jobs: a caller holding workOrder.lifecycle.dispatch (or schedule) still reads the roster", async () => {
+    h.caps = new Set(["workOrder.lifecycle.dispatch"]);
+    renderJobs();
+    await waitFor(() => expect(h.roster).toHaveBeenCalled());
+  });
+
+  it("the other roster-resolving screens are gated by the same shared check", () => {
+    for (const file of ["src/modules/workOrders/WorkOrdersList.jsx", "src/modules/jobs/Jobs.jsx", "src/modules/controlTower/ControlTower.jsx", "src/modules/workOrders/WorkOrderDetailPage.jsx"]) {
+      const src = readFileSync(path.resolve(process.cwd(), file), "utf8");
+      expect(src, file).toMatch(/canReadWorkOrderRoster\(/);
+      expect(src, file).toMatch(/useWorkOrderTechnicianDirectory\([^)]*\{\s*enabled:/);
+    }
   });
 });
 

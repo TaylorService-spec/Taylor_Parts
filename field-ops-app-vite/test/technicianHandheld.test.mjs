@@ -11,7 +11,7 @@ import {
 } from "../src/domain/technicianHandheld.js";
 import { sortFieldWorkOrders, awaitingDispatchWorkOrders } from "../src/domain/fieldWorkOrder.js";
 import { withTruckStock, sumTruckStock } from "../src/domain/fieldTruckReadiness.js";
-import { describeExecutionOutcome } from "../src/domain/executionOutcome.js";
+import { describeExecutionOutcome, heldBack } from "../src/domain/executionOutcome.js";
 import { buildWorkOrderPartsReadiness } from "../src/domain/workOrderPartsReadiness.js";
 
 const wo = (over = {}) => ({
@@ -249,10 +249,65 @@ test("nothing capturable claims the platform accepted it", () => {
   }
 });
 
-// ── TW5: what recordWorkOrderExecution DID, in words ─────────────────────────────────────────────
-
 const ASK = { qty: 1, label: "Filter", woNumber: "WO-2026-000103", sourceLabel: "Service Truck 01" };
 const line = (over) => ({ partId: "PRT-1005", requestedDelta: 1, appliedDelta: 1, qtyUsed: 1, qtyPlanned: 1, ...over });
+
+// ── TW4 round 2: what is already USED is covered; only what is STILL NEEDED is compared with the truck ──
+
+test("readiness does not go UNKNOWN as the technician consumes truck stock (used quantity is covered)", () => {
+  const ready = (qtyPlanned, qtyUsed, onTruck) => buildWorkOrderPartsReadiness({
+    plannedParts: withTruckStock([{ partId: "P", sku: "P", qtyPlanned, qtyUsed }], { known: true, onHand: { P: onTruck } }),
+    capabilities: { truckInventory: true },
+  });
+  // fully used, truck now empty: the job HAS its parts
+  const fullyUsed = ready(2, 2, 0);
+  assert.equal(fullyUsed.jobReadiness, "READY");
+  assert.equal(fullyUsed.rows[0].knownShortfall, 0);
+  // partly used, exactly the remainder on the truck
+  assert.equal(ready(3, 2, 1).jobReadiness, "READY");
+  // partly used and the remainder is NOT on the truck: still short, and still honestly not READY
+  const short = ready(3, 2, 0);
+  assert.notEqual(short.jobReadiness, "READY");
+  assert.equal(short.rows[0].knownShortfall, 1);
+  // nothing used: unchanged from before
+  assert.equal(ready(1, 0, 1).jobReadiness, "READY");
+  assert.notEqual(ready(2, 0, 1).jobReadiness, "READY");
+});
+
+// ── TW5: what recordWorkOrderExecution DID, in words ─────────────────────────────────────────────
+
+test("heldBack: NOT_APPLIED / PARTIALLY_APPLIED, and a REPLAY that carries the original reasons; plain results are not held back", () => {
+  assert.equal(heldBack({ outcome: "RECORDED", usage: [line()] }), null);
+  assert.equal(heldBack(undefined), null);
+  assert.equal(heldBack({ outcome: "REPLAYED", usage: [line()] }), null, "a replay of an exact application is not held back");
+  assert.equal(heldBack({ outcome: "NOT_APPLIED", usage: [line({ appliedDelta: 0, reason: "PLAN_LIMIT_REACHED" })] }).kind, "NOT_APPLIED");
+  assert.equal(heldBack({ outcome: "PARTIALLY_APPLIED", usage: [line({ reason: "PLAN_LIMIT_REACHED" })] }).kind, "PARTIAL");
+  assert.equal(heldBack({ outcome: "REPLAYED", usage: [line({ requestedDelta: 1, appliedDelta: 0, reason: "PLAN_LIMIT_REACHED" })] }).kind, "NOT_APPLIED");
+  assert.equal(heldBack({ outcome: "REPLAYED", usage: [line({ requestedDelta: 5, appliedDelta: 3, reason: "PLAN_LIMIT_REACHED" })] }).kind, "PARTIAL");
+});
+
+test("REPLAYED never reads as a fresh 'Recorded' (TW5 round 2)", () => {
+  const plain = describeExecutionOutcome({ outcome: "REPLAYED", usage: [line()] }, ASK);
+  assert.equal(plain.text, "Already recorded earlier: 1 × Filter on WO-2026-000103 from Service Truck 01.");
+  assert.equal(plain.applied, true);
+  const held = describeExecutionOutcome({ outcome: "REPLAYED", usage: [line({ requestedDelta: 1, appliedDelta: 0, reason: "PLAN_LIMIT_REACHED" })] }, ASK);
+  assert.match(held.text, /^Not recorded:/);
+  assert.equal(held.applied, false);
+});
+
+test("a plan lowered BELOW the recorded usage reads sensibly -- never 'Recorded -2 of 1' (TW5 round 2)", () => {
+  const exceeds = describeExecutionOutcome(
+    { outcome: "NOT_APPLIED", usage: [line({ appliedDelta: 0, qtyUsed: 3, qtyPlanned: 1, reason: "PLAN_LIMIT_REACHED" })] }, ASK);
+  assert.match(exceeds.text, /already recorded for Filter on WO-2026-000103 exceeds its plan \(3 recorded, 1 planned\)/);
+  assert.equal(exceeds.applied, false);
+  // an older server that answered PARTIALLY_APPLIED with a NEGATIVE applied delta is shown as 0, never as -2
+  const legacy = describeExecutionOutcome(
+    { outcome: "PARTIALLY_APPLIED", usage: [line({ requestedDelta: 1, appliedDelta: -2, qtyUsed: 1, qtyPlanned: 1, reason: "PLAN_LIMIT_REACHED" })] }, ASK);
+  assert.doesNotMatch(legacy.text, /Recorded -2|of 1 ×/);
+  assert.match(legacy.text, /^Not recorded:/);
+  assert.equal(legacy.applied, false);
+});
+
 
 test("RECORDED says Recorded, with the truck it came from (TW5)", () => {
   const said = describeExecutionOutcome({ outcome: "RECORDED", usage: [line()] }, ASK);

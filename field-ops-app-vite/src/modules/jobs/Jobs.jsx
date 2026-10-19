@@ -17,6 +17,8 @@ import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActiv
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { workOrderStatusLabel, WORK_ORDER_STATUS_VALUES } from "../../domain/workOrderStatus";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
+import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities.js";
+import { canReadWorkOrderRoster } from "../../access/workOrderRosterAccess.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -51,7 +53,7 @@ export default function Jobs() {
     data: technicians,
     loading: techniciansLoading,
     error: techniciansError,
-  } = useWorkOrderTechnicianDirectory(jobs);
+  } = useWorkOrderTechnicianDirectory(jobs, { enabled: canReadWorkOrderRoster(useMyWorkOrderCapabilities()) });
   const [announcement, setAnnouncement] = useState("");
   // The new row keeps a stable tabIndex=-1 (focusRowId is not cleared) so focusing
   // it never blurs when a follow-up render runs -- removing tabIndex from the

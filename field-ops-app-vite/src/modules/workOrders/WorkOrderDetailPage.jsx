@@ -16,6 +16,7 @@ import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import CustomerSchedulingLinkPanel from "./CustomerSchedulingLinkPanel.jsx";
 import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities.js";
 import { WORK_ORDER_ACTION_CAPABILITY } from "../../access/sessionAccess.js";
+import { canReadWorkOrderRoster } from "../../access/workOrderRosterAccess.js";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
@@ -112,8 +113,7 @@ export default function WorkOrderDetailPage() {
   // drawn, unless the caller's own capability set (the same one the server re-checks) holds the key. Fail closed: while the
   // set is loading or failed, `has` is false and nothing office-side fires.
   const canSchedule = myWorkOrderCapabilities.has(WORK_ORDER_ACTION_CAPABILITY.Schedule);
-  const canDispatch = myWorkOrderCapabilities.has(WORK_ORDER_ACTION_CAPABILITY.Dispatch);
-  const canReadRoster = canSchedule || canDispatch;
+  const canReadRoster = canReadWorkOrderRoster(myWorkOrderCapabilities);
   const canUseSchedulingLink = canSchedule || myWorkOrderCapabilities.has(SELF_SCHEDULING_ISSUE_CAPABILITY);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
   const { context: readinessContext } = useWorkOrderReadinessContext(workOrderId);

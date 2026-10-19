@@ -18,7 +18,16 @@ export function withTruckStock(plannedParts, stock) {
   if (!stock?.known) return rows;
   return rows.map((p) => {
     const onTruck = Number(stock.onHand?.[p.partId ?? p.sku] ?? 0);
-    return { ...p, truck: { status: "KNOWN", onTruck: Number.isFinite(onTruck) && onTruck > 0 ? onTruck : 0 } };
+    const used = Number(p.qtyUsed);
+    return {
+      ...p,
+      // WHAT HAS ALREADY BEEN USED IS COVERED. Recording usage consumes truck stock, so `onTruck` falls as the job proceeds;
+      // the projection's shortfall is planned - (reserved + warehouse + truck) and would otherwise GROW with every part
+      // used -- plan 2, used 2, truck 0 read as short by 2. Used quantity is counted as already supplied to the job (the
+      // projection's `reservedForJob` dimension), so only what is STILL NEEDED is compared with the truck.
+      reservedForJob: (Number(p.reservedForJob) || 0) + (Number.isFinite(used) && used > 0 ? used : 0),
+      truck: { status: "KNOWN", onTruck: Number.isFinite(onTruck) && onTruck > 0 ? onTruck : 0 },
+    };
   });
 }
 

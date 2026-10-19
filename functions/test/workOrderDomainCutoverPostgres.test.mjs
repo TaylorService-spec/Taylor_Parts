@@ -427,8 +427,18 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
     const cappedReplay = await execution.recordWorkOrderExecution(deps, actor(P.techA),
       { workOrderId: journeyWo, idempotencyKey: "k2c", partUsage: [{ partId: "part-filter", qtyDelta: 1 }] });
     assert.equal(cappedReplay.outcome, "REPLAYED");
+    // a replay still says what the ORIGINAL request did (the offline queue replays with the same key)
+    assert.deepEqual([cappedReplay.usage[0].requestedDelta, cappedReplay.usage[0].appliedDelta, cappedReplay.usage[0].reason], [1, 0, "PLAN_LIMIT_REACHED"]);
+    assert.deepEqual([replay.usage[0].requestedDelta, replay.usage[0].appliedDelta, replay.usage[0].reason], [5, 3, "PLAN_LIMIT_REACHED"]);
     await execution.recordWorkOrderExecution(deps, actor(P.techA),
       { workOrderId: journeyWo, idempotencyKey: "k2d", partUsage: [{ partId: "part-filter", qtyDelta: -1 }] });
+    // a plan LOWERED below the recorded usage: a request to ADD is held back (0), never "applied" as a negative delta
+    await q(`UPDATE eos_ops.work_order_parts_plan SET qty_planned = 1 WHERE tenant_id = $1 AND work_order_id = $2 AND part_id = 'part-filter'`, [T, journeyWo]);
+    const lowered = await execution.recordWorkOrderExecution(deps, actor(P.techA),
+      { workOrderId: journeyWo, idempotencyKey: "k2e", partUsage: [{ partId: "part-filter", qtyDelta: 1 }] });
+    assert.equal(lowered.outcome, "NOT_APPLIED");
+    assert.deepEqual(lowered.usage[0], { partId: "part-filter", requestedDelta: 1, appliedDelta: 0, qtyUsed: 2, qtyPlanned: 1, reason: "PLAN_LIMIT_REACHED" });
+    await q(`UPDATE eos_ops.work_order_parts_plan SET qty_planned = 3 WHERE tenant_id = $1 AND work_order_id = $2 AND part_id = 'part-filter'`, [T, journeyWo]);
     await assert.rejects(execution.recordWorkOrderExecution(deps, actor(P.techA),
       { workOrderId: journeyWo, idempotencyKey: "k3", partUsage: [{ partId: "part-unplanned", qtyDelta: 1 }] }),
     (e) => { assert.equal(e.code, "PART_NOT_PLANNED"); return true; });
