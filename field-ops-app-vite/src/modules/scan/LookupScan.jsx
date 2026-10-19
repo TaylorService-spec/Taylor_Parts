@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
-import { fetchLocationLabels, fetchSerializedUnits } from "../../services/scanEquipmentReads.js";
+import { fetchLocationLabels, fetchSerializedUnits, fetchUnitsBySerial } from "../../services/scanEquipmentReads.js";
 import { fetchBalanceForScan } from "../../services/partsOperationsReads.js";
 import { INVENTORY_BALANCE_READ_READY } from "../../config/inventoryBalanceReadiness.js";
 import { mapLocationDisplayResultToMap } from "../../domain/locationDisplayProjection.js";
@@ -80,6 +80,8 @@ export default function LookupScan({ deps }) {
   // EOS reads (Controller EQUIPMENT ACTIVATION, 2026-10-01) -- never the Firebase serialized-asset / location callables.
   const readSerialized = deps?.fetchSerialized ?? fetchSerializedUnits;
   const readLocations = deps?.fetchLocations ?? fetchLocationLabels;
+  // B3-x: a scanned SERIAL NUMBER resolves to its unit when the code is not a Part code or a registered identifier.
+  const readUnitsBySerial = deps?.fetchUnitsBySerial ?? fetchUnitsBySerial;
 
   const [query, setQuery] = useState("");
   const [result, setResult] = useState({ state: LOOKUP_STATE.IDLE, token: "", rows: [], candidates: [], message: null, part: null });
@@ -111,7 +113,11 @@ export default function LookupScan({ deps }) {
     const identity = buildPartLookup({ catalogResult, aliasOutcome, token });
 
     if (identity.state !== LOOKUP_STATE.RESOLVED || !identity.part) {
-      setResult(identity);
+      // NOT_FOUND is a statement about PART codes and identifiers. A serialized unit's own serial number is a third thing a scan can name, so
+      // it is asked next -- only then does "no match" stand alone. A refused or failed serial read is DISCLOSED, never read as "no such unit".
+      const serialCheck = identity.state === LOOKUP_STATE.NOT_FOUND ? await checkSerial(readUnitsBySerial, token) : null;
+      if (!alive.current) return;
+      setResult(serialCheck ? { ...identity, serialCheck } : identity);
       setLoading(false);
       return;
     }
@@ -128,7 +134,7 @@ export default function LookupScan({ deps }) {
     if (!alive.current) return;
     // Recompose with the answers. Same pure function, same identity inputs — only the reads changed.
     setResult(buildPartLookup({ catalogResult, aliasOutcome, reads: detail, token }));
-  }, [lookupPart, readBalance, readSerialized, readLocations]);
+  }, [lookupPart, readBalance, readSerialized, readLocations, readUnitsBySerial]);
 
   return (
     <div className="fo-lookup">
@@ -249,8 +255,15 @@ function LookupResult({ loading, result }) {
       return <p className="fo-scan__state fo-scan__state--denied" role="alert">{result.message}</p>;
 
     case LOOKUP_STATE.INVALID:
-    case LOOKUP_STATE.NOT_FOUND:
       return <p className="fo-scan__state" role="status">{result.message}</p>;
+
+    case LOOKUP_STATE.NOT_FOUND:
+      return (
+        <>
+          <p className="fo-scan__state" role="status">{result.message}</p>
+          <SerialMatch check={result.serialCheck} />
+        </>
+      );
 
     // ── Phase G ────────────────────────────────────────────────────────────────────────────────
     //
@@ -305,6 +318,48 @@ function LookupResult({ loading, result }) {
     default:
       return null;
   }
+}
+
+/**
+ * What the scanned code was asked as a SERIAL NUMBER. { state: FOUND | NONE | DENIED | FAILED, units }. Never throws: the serial read is an
+ * extra question, and its failure must not turn a plain "no match" into an error.
+ */
+async function checkSerial(read, token) {
+  try {
+    const res = await Promise.resolve().then(() => read({ serialNumber: token }));
+    if (res?.errorStatus) return { state: res.errorStatus === "permission-denied" ? "DENIED" : "FAILED", units: [] };
+    const units = Array.isArray(res?.result?.units) ? res.result.units : [];
+    return { state: units.length > 0 ? "FOUND" : "NONE", units };
+  } catch {
+    return { state: "FAILED", units: [] };
+  }
+}
+
+const UNIT_STATE_WORDS = { AVAILABLE: "Available", RESERVED: "Reserved" };
+
+/** A scanned serial number's unit(s): every match listed (a serial is not unique across Parts), none chosen. */
+function SerialMatch({ check }) {
+  if (!check || check.state === "NONE") return null;
+  if (check.state === "DENIED") {
+    return <p className="fo-muted" role="status">Serial numbers were not checked: you do not have access to serialized units.</p>;
+  }
+  if (check.state === "FAILED") {
+    return <p className="fo-muted" role="status">Serial numbers could not be checked right now, so this code may still be a unit&rsquo;s serial number.</p>;
+  }
+  return (
+    <section className="fo-scan__result" aria-label="Serialized unit">
+      <p className="fo-scan__kind">Serialized unit</p>
+      <p>This code is the serial number of a unit in warehouse stock. Units on a truck, in transit or installed are not searched here.</p>
+      <ul className="fo-list">
+        {check.units.map((u) => (
+          <li key={`${u.partId}:${u.serialNo}`}>
+            <strong>{u.partName ?? u.partId}</strong> · {u.partId} · serial <code>{u.serialNo}</code> · {UNIT_STATE_WORDS[u.inventoryState] ?? u.inventoryState}
+            {" · "}{[u.warehouseName, u.binCode].filter(Boolean).join(" / ") || "location not named"}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 /** The parts a scan could not choose between. Never rendered as a pick. */

@@ -14,7 +14,7 @@ import { createEquipment, updateEquipment } from "../src/domain/equipmentReposit
 import { fetchPage } from "../src/metadata/equipmentListSource.js";
 import { fetchInstallableEquipmentForWorkOrder, parseUnitHandle, recordWorkOrderEquipmentInstall, unitHandle }
   from "../src/services/workOrderEquipmentInstallClient.js";
-import { fetchLocationLabels, fetchSerializedUnits } from "../src/services/scanEquipmentReads.js";
+import { fetchLocationLabels, fetchSerializedUnits, fetchUnitsBySerial } from "../src/services/scanEquipmentReads.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(resolve(here, "../../functions/src/eosOps/equipmentOperations.ts"), "utf8");
@@ -101,6 +101,25 @@ test("the install transport: the unit handle round-trips; refusals map onto the 
   }
   const off = await fetchInstallableEquipmentForWorkOrder({ workOrderId: "wo-1" }, async () => ({ ok: false, code: "NOT_ACTIVATED", message: "baseline" }));
   assert.equal(off.error.boundary, "SERIALIZED_INSTALL");
+});
+
+test("B3-x: a scanned serial number asks the SAME read with its serialNumber filter; every match comes back, a refusal is DENIED, a failure is UNAVAILABLE", async () => {
+  const sent = [];
+  const found = await fetchUnitsBySerial({ serialNumber: "SN-9" }, async (op, input) => {
+    sent.push([op, input]);
+    return { ok: true, result: { units: [
+      { partId: "P", partName: "Freezer", serialNumber: "SN-9", status: "AVAILABLE", locationId: "bin_x", warehouseName: "Main", binCode: "A1" },
+      { partId: "Q", serialNumber: "SN-9", status: "RESERVED", locationId: "wh" },
+    ] } };
+  });
+  assert.deepEqual(sent, [["listAvailableEquipmentUnits", { limit: 20, serialNumber: "SN-9" }]]);
+  assert.deepEqual(found.result.units, [
+    { serialNo: "SN-9", partId: "P", partName: "Freezer", inventoryState: "AVAILABLE", warehouseName: "Main", binCode: "A1", locationId: "bin_x" },
+    { serialNo: "SN-9", partId: "Q", partName: null, inventoryState: "RESERVED", warehouseName: null, binCode: null, locationId: "wh" },
+  ]);
+  assert.deepEqual(await fetchUnitsBySerial({ serialNumber: "S" }, async () => ({ ok: false, code: "FORBIDDEN" })), { errorStatus: "permission-denied" });
+  assert.deepEqual(await fetchUnitsBySerial({ serialNumber: "S" }, async () => ({ ok: false, code: "INTERNAL" })), { errorStatus: "unavailable" });
+  assert.deepEqual((await fetchUnitsBySerial({ serialNumber: "S" }, async () => ({ ok: true, result: { units: [] } }))).result.units, []);
 });
 
 test("the scanner reads serialized units and location labels from EOS; a refusal is DENIED, never empty", async () => {

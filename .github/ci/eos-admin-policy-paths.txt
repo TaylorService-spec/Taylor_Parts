@@ -928,3 +928,7 @@ functions/test/partBalancePostgres.test.mjs
 functions/src/eosOps/partsReads.ts
 functions/test/supplierReceiptHistoryAndCorrectionPostgres.test.mjs
 functions/src/eosOps/supplierReceiptCorrection.ts
+functions/test/offlinePrecheckReadsPostgres.test.mjs
+functions/test/purchasingHolderParityPin.test.mjs
+field-ops-app-vite/src/offline/warehousePrecheckReads.js
+field-ops-app-vite/src/offline/warehousePrechecks.js

@@ -70,6 +70,56 @@ describe("Lookup (every outcome has its own words)", () => {
     expect(screen.queryByRole("heading", { name: /compressor relay/i })).toBeNull();
   });
 
+  // ── B3-x: a scanned SERIAL NUMBER resolves to its unit ────────────────────────────────────
+  const scanForSerial = (fetchUnitsBySerial, token = "SN-4471") => {
+    render(<LookupScan deps={asLookup({ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), fetchUnitsBySerial })} />);
+    fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: token } });
+    fireEvent.click(screen.getByRole("button", { name: /look up/i }));
+  };
+  const unit = (over = {}) => ({ serialNo: "SN-4471", partId: "PRT-UNIT", partName: "Soft serve freezer", inventoryState: "AVAILABLE", warehouseName: "Main warehouse", binCode: "A-1-2", ...over });
+
+  it("a code that is no Part and no identifier but IS a unit's serial number resolves to that unit, with where it is", async () => {
+    const read = vi.fn().mockResolvedValue({ result: { units: [unit()] } });
+    scanForSerial(read);
+    const section = await screen.findByRole("region", { name: /serialized unit/i });
+    expect(read).toHaveBeenCalledWith({ serialNumber: "SN-4471" });
+    expect(within(section).getByText("Soft serve freezer")).toBeTruthy();
+    expect(section.textContent).toMatch(/serial SN-4471/);
+    expect(section.textContent).toMatch(/Available/);
+    expect(section.textContent).toMatch(/Main warehouse \/ A-1-2/);
+    // The honest scope of what was searched.
+    expect(section.textContent).toMatch(/Units on a truck, in transit or installed are not searched/);
+    // And the part half still says what it found: nothing.
+    expect(screen.getByText(/no governed record matches/i)).toBeTruthy();
+  });
+
+  it("a serial shared by two Parts lists BOTH and picks neither", async () => {
+    scanForSerial(vi.fn().mockResolvedValue({ result: { units: [unit(), unit({ partId: "PRT-OTHER", partName: "Other unit", inventoryState: "RESERVED" })] } }));
+    const section = await screen.findByRole("region", { name: /serialized unit/i });
+    expect(within(section).getAllByRole("listitem")).toHaveLength(2);
+    expect(section.textContent).toMatch(/Reserved/);
+  });
+
+  it("no unit with that serial adds nothing; a refused or failed serial read is DISCLOSED, never read as 'no such unit'", async () => {
+    scanForSerial(vi.fn().mockResolvedValue({ result: { units: [] } }));
+    await screen.findByText(/no governed record matches/i);
+    expect(screen.queryByRole("region", { name: /serialized unit/i })).toBeNull();
+    expect(screen.queryByText(/serial numbers/i)).toBeNull();
+    cleanup();
+    scanForSerial(vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }));
+    expect(await screen.findByText(/Serial numbers were not checked/)).toBeTruthy();
+    cleanup();
+    scanForSerial(vi.fn().mockRejectedValue(new Error("down")));
+    expect(await screen.findByText(/Serial numbers could not be checked right now/)).toBeTruthy();
+  });
+
+  it("a code that resolves to a Part never asks the serial question", async () => {
+    const read = vi.fn();
+    scanForSerial(read, "PRT-1001");
+    await screen.findByRole("heading", { name: /compressor relay/i });
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("says AMBIGUOUS and refuses to pick one", async () => {
     const other = { ...PART, partId: "TS-1001", internalPartNumber: "TS-2002", name: "Other part" };
     lookUp(readable(PART, other), "TS-1001");

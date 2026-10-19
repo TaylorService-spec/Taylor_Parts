@@ -21,6 +21,25 @@ export async function fetchSerializedUnits({ partId } = {}, call = callEquipment
   };
 }
 
+/**
+ * A SCANNED SERIAL NUMBER, resolved to its unit(s) (Firebase exit B3-x): the same listAvailableEquipmentUnits read with its `serialNumber` filter.
+ * The server filters to the caller's operating companies in the WHERE, so another company's unit is simply absent. It answers only for whole units
+ * in warehouse or bin custody that are AVAILABLE or RESERVED; a unit on a truck, in transit or installed is not found here, and the screen says
+ * what was searched. A serial number is not unique across Parts, so every match is returned and none is picked.
+ */
+export async function fetchUnitsBySerial({ serialNumber } = {}, call = callEquipmentApi) {
+  const res = await call("listAvailableEquipmentUnits", { limit: 20, serialNumber });
+  if (!res.ok) return { errorStatus: res.code === "FORBIDDEN" ? "permission-denied" : "unavailable" };
+  return {
+    result: {
+      units: (res.result?.units ?? []).map((u) => ({
+        serialNo: u.serialNumber, partId: u.partId, partName: u.partName ?? null, inventoryState: u.status,
+        warehouseName: u.warehouseName ?? null, binCode: u.binCode ?? null, locationId: u.locationId,
+      })),
+    },
+  };
+}
+
 // The inventory location client is loaded LAZILY: its transport initializes the browser's Firebase Auth seam at import,
 // and this module must stay importable in plain node where the contract tests run.
 const defaultLocationList = async (input) => (await import("./inventoryLocationClient.js")).listInventoryLocations(input);

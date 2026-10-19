@@ -20,6 +20,7 @@ const {
 } = await import("../src/offline/warehouseIntent.js");
 const { runSyncPass, drainQueue } = await import("../src/offline/syncExecutor.js");
 const { RECEIVING_OUTCOME } = await import("../src/domain/receivingTransport.js");
+const { createWarehousePrecheckReads } = await import("../src/offline/warehousePrecheckReads.js");
 const { enqueueIntent } = await import("../src/offline/intentQueue.js");
 
 const UID = "uid-wh-1";
@@ -148,6 +149,72 @@ describe("stale server state", () => {
     const { prechecks } = createWarehouseBindings({ readTransfer: async () => null });
     await runSyncPass(queueOf(DISPATCH()), { principalUid: UID, deps: { session: okSession, commands: allCommands(cmd), prechecks } });
     expect(cmd.calls).toHaveLength(1);
+  });
+});
+
+// ═══════════════════════════════════════════ B3-x: the REAL reads feed the prechecks
+
+describe("the precheck reads are the real, scoped EOS reads (Firebase exit B3-x)", () => {
+  // Server-shaped answers: exactly the fields listTransferOrders / listInventoryLocations / getCycleCountSheet return.
+  const serverOf = (answers) => async (route, operation, input) => {
+    const a = answers[operation];
+    if (a instanceof Error) throw a;
+    return typeof a === "function" ? a(input, route) : a;
+  };
+
+  it("readTransfer finds the transfer by its id; anything else it cannot see is null (the command then answers)", async () => {
+    const reads = createWarehousePrecheckReads(serverOf({ listTransferOrders: { items: [{ transferOrderId: "TR-1042", status: "CANCELLED" }, { transferOrderId: "TR-9", status: "REQUESTED" }] } }));
+    expect(await reads.readTransfer("TR-1042")).toEqual({ id: "TR-1042", status: "CANCELLED" });
+    expect(await reads.readTransfer("TR-missing")).toBeNull();
+    expect(await createWarehousePrecheckReads(serverOf({ listTransferOrders: new Error("down") })).readTransfer("TR-1042")).toBeNull();
+  });
+
+  it("readBin matches a BIN only (a warehouse with the same id is not a bin) and carries its status", async () => {
+    const reads = createWarehousePrecheckReads(serverOf({ listInventoryLocations: { items: [
+      { type: "WAREHOUSE", locationId: "BIN-A1", status: "ACTIVE" }, { type: "BIN", locationId: "BIN-A1", status: "INACTIVE" }] } }));
+    expect(await reads.readBin("BIN-A1")).toEqual({ id: "BIN-A1", status: "INACTIVE" });
+    expect(await reads.readBin("BIN-Z")).toBeNull();
+  });
+
+  it("readCycleCount reads the LINE's status by part; a closed or cancelled sheet outranks its lines", async () => {
+    const lines = [{ partId: "P", status: "COUNTED" }, { partId: "Q", status: "RECONCILED" }];
+    const open = createWarehousePrecheckReads(serverOf({ getCycleCountSheet: (input) => ({ sheet: { sheetId: input.sheetId, status: "OPEN" }, lines }) }));
+    expect(await open.readCycleCount({ sheetId: "ccs_9", partId: "Q" })).toEqual({ status: "RECONCILED" });
+    expect(await open.readCycleCount({ sheetId: "ccs_9", partId: "none" })).toBeNull();
+    const closed = createWarehousePrecheckReads(serverOf({ getCycleCountSheet: { sheet: { status: "CLOSED" }, lines } }));
+    expect(await closed.readCycleCount({ sheetId: "ccs_9", partId: "P" })).toEqual({ status: "CLOSED" });
+    expect(await createWarehousePrecheckReads(serverOf({ getCycleCountSheet: new Error("refused") })).readCycleCount({ sheetId: "x", partId: "P" })).toBeNull();
+  });
+
+  it("the stale-state decisions now run on those reads: a cancelled transfer is spared, a receive before its dispatch WAITS, a retired bin conflicts", async () => {
+    const run = async (answers, intent) => {
+      const reads = createWarehousePrecheckReads(serverOf(answers));
+      const cmd = recorder();
+      const { prechecks } = createWarehouseBindings({ readTransfer: reads.readTransfer, readCycleCount: reads.readCycleCount, readBin: reads.readBin });
+      const r = await runSyncPass(queueOf(intent), { principalUid: UID, deps: { session: okSession, commands: allCommands(cmd), prechecks } });
+      return { r, cmd };
+    };
+    let out = await run({ listTransferOrders: { items: [{ transferOrderId: "TR-1042", status: "CANCELLED" }] } }, DISPATCH());
+    expect(out.cmd.calls).toHaveLength(0);
+    expect(out.r.queue[0].lastServerError.details).toBe("TRANSFER_CANCELLED");
+    out = await run({ listTransferOrders: { items: [{ transferOrderId: "TR-1042", status: "REQUESTED" }] } }, RECEIVE_T());
+    expect(out.cmd.calls).toHaveLength(0);
+    expect(out.r.queue[0].state).toBe("PENDING_SYNC");
+    expect(out.r.queue[0].lastServerError.details).toBe("AWAITING_DISPATCH");
+    out = await run({ listInventoryLocations: { items: [{ type: "BIN", locationId: "BIN-A1", status: "INACTIVE" }] } }, PUTAWAY());
+    expect(out.cmd.calls).toHaveLength(0);
+    expect(out.r.queue[0].lastServerError.details).toBe("BIN_NOT_ACTIVE");
+    out = await run({ getCycleCountSheet: { sheet: { status: "OPEN" }, lines: [{ partId: "P", status: "RECONCILED" }] } }, COUNT());
+    expect(out.cmd.calls).toHaveLength(0);
+    expect(out.r.queue[0].lastServerError.details).toBe("CYCLE_COUNT_ALREADY_RECONCILED");
+  });
+
+  it("the app's bindings no longer default the reads to 'cannot read'", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(process.cwd(), "src/offline/warehouseCommandBindings.js"), "utf8");
+    expect(src).not.toMatch(/\?\? \(async \(\) => null\)/);
+    expect(src).toMatch(/createWarehousePrecheckReads\(\)/);
   });
 });
 
