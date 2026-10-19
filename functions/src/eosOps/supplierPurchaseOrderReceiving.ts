@@ -102,6 +102,8 @@ interface PurchaseOrderRow {
   readonly supplierId: string | null;
   readonly supplierName: string | null;
   readonly externalPoNumber: string | null;
+  /** P-1: the warehouse an order authored here names for its goods. NULL for a fixture / migrated order, which keeps the company-wide destination rule. */
+  readonly receivingWarehouseId: string | null;
   readonly status: string;
   readonly version: number;
   readonly lines: ReadonlyArray<{ readonly lineId: string; readonly partId: string; readonly quantity: number }>;
@@ -112,7 +114,7 @@ async function readPurchaseOrder(
   c: PoolClient, tenantId: string, id: string, companyKeys: readonly string[], lock: boolean,
 ): Promise<PurchaseOrderRow> {
   const { rows } = await c.query(
-    `SELECT p.id, p.operating_company_key, p.supplier_id, p.external_po_number, p.status, p.version, s.name AS supplier_name
+    `SELECT p.id, p.operating_company_key, p.supplier_id, p.external_po_number, p.status, p.version, p.receiving_warehouse_id, s.name AS supplier_name
        FROM ${SCHEMA}.supplier_purchase_orders p
        LEFT JOIN ${SCHEMA}.suppliers s ON s.tenant_id = p.tenant_id AND s.supplier_id = p.supplier_id
       WHERE p.tenant_id = $1 AND p.id = $2 AND p.operating_company_key = ANY($3::text[]) ${lock ? "FOR UPDATE OF p" : ""}`,
@@ -129,7 +131,8 @@ async function readPurchaseOrder(
   return {
     id: String(r.id), operatingCompanyKey: String(r.operating_company_key),
     supplierId: (r.supplier_id as string | null) ?? null, supplierName: (r.supplier_name as string | null) ?? null,
-    externalPoNumber: (r.external_po_number as string | null) ?? null, status: String(r.status), version: Number(r.version),
+    externalPoNumber: (r.external_po_number as string | null) ?? null, receivingWarehouseId: (r.receiving_warehouse_id as string | null) ?? null,
+    status: String(r.status), version: Number(r.version),
     lines: lines.rows.map((l) => ({ lineId: String(l.line_id), partId: String(l.part_id), quantity: Number(l.ordered_quantity) })),
   };
 }
@@ -237,8 +240,9 @@ export async function listSupplierReceivingLocationOptions(deps: { readonly pool
     const scope = await scopedWarehouseIds(c, actor, { administrationReach: false, companyKeys: keys });
     const { rows } = scope.length === 0 ? { rows: [] as Array<Record<string, unknown>> } : await c.query(
       `SELECT id, name, site_label FROM ${SCHEMA}.warehouses
-        WHERE tenant_id = $1 AND status::text = 'ACTIVE' AND operating_company_key = $2 AND id = ANY($3::text[]) ORDER BY name, id`,
-      [actor.tenantId, po.operatingCompanyKey, scope]);
+        WHERE tenant_id = $1 AND status::text = 'ACTIVE' AND operating_company_key = $2 AND id = ANY($3::text[])
+          AND ($4::text IS NULL OR id = $4) ORDER BY name, id`,
+      [actor.tenantId, po.operatingCompanyKey, scope, po.receivingWarehouseId]);
     return {
       purchaseOrderId: po.id,
       receivable: (RECEIVABLE_SUPPLIER_PO_STATUSES as readonly string[]).includes(po.status),
@@ -338,6 +342,12 @@ export async function receiveSupplierPurchaseOrder(
     } catch (err) {
       if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse (${err.code})`);
       throw err;
+    }
+    // P-1 (Owner, 2026-10-19): an order authored here lands in ITS receiving warehouse (the warehouse its requests are demand for). The governing warehouse of
+    // the chosen location -- the warehouse itself, or a bin's / mobile location's warehouse -- must be that one. A fixture / migrated order names none and keeps
+    // the company-wide rule above. Decided before any write; a replay of an applied receipt passed the same rule when it was applied.
+    if (po.receivingWarehouseId !== null && scopeWarehouseId !== po.receivingWarehouseId) {
+      refuse("DESTINATION_NOT_ORDER_WAREHOUSE", "PRECONDITION_FAILED", "this purchase order is received into the warehouse it names");
     }
     const scoped = await authorizeObjectAction(postgresContextualReader(client), {
       actor, capabilityKey: RECEIVE_STOCK_CAPABILITY,

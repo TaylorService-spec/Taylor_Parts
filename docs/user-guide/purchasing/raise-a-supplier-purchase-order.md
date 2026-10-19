@@ -34,7 +34,7 @@ If you cannot do a step, you will not see its button at all.
 3. Choose **Mark as sent** once the order has gone to the supplier. The order becomes **Sent**.
 
 ## Receive it
-Approved and sent orders appear in **Inventory > Receiving** (see [Receive a multi-line purchase order](../inventory/receive-a-multi-line-purchase-order.md)). You can receive part of a line now and the rest later. When a line has been received in full, the request behind it is closed automatically. When every line is received, the order is **Received**. If a receipt is later voided so a line is no longer complete, its request goes back to **Ordered**.
+Approved and sent orders appear in **Inventory > Receiving** (see [Receive a multi-line purchase order](../inventory/receive-a-multi-line-purchase-order.md)). An order raised here is received into the warehouse it names; choosing another warehouse is refused. You can receive part of a line now and the rest later. When a line has been received in full, the request behind it is closed automatically. When every line is received, the order is **Received**. If a receipt is later voided so a line is no longer complete, its request goes back to **Ordered**.
 
 ## Cancel
 Choose **Cancel order**, say why, and confirm. You can cancel until something has been received. The requests go back to **in progress** so they can be put on another order. If goods were already received, correct the receipt first.

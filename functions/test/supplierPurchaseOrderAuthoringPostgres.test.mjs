@@ -502,6 +502,33 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     assert.equal((await poOf(po)).status, "SENT", "a completing receipt that is gone returns the order to a receivable status");
   });
 
+  await t.test("DESTINATION: an order authored here is received into ITS receiving warehouse; anything else is refused before any write; a fixture order (no warehouse) keeps the company-wide rule", async () => {
+    const r = await request({ partId: "PART-A", quantity: 5 });
+    const po = (await create([{ reorderRequestId: r }])).purchaseOrderId; // receiving warehouse wh-1
+    await transition(po, "APPROVE");
+    const to = (locationId, poId, k = key()) => spo.receiveSupplierPurchaseOrder({ pool, now: () => FIXED }, actor([RECEIVE], buyer), {
+      source: { type: "PURCHASE_ORDER", purchaseOrderId: poId }, receivingLocation: { type: "WAREHOUSE", locationId },
+      lines: [{ lineId: "L1", partId: "PART-A", receivedQuantity: 5 }], idempotencyKey: k });
+    const before = await counts();
+    // wh-2 is an ACTIVE warehouse of the same company inside the buyer's scope -- valid for a fixture order, NOT for this one.
+    const err = await refusal(() => to("wh-2", po));
+    assert.deepEqual([err.code, err.category], ["DESTINATION_NOT_ORDER_WAREHOUSE", "PRECONDITION_FAILED"]);
+    assert.deepEqual(await counts(), before, "the refusal left no trace");
+    assert.equal(await status(r), "ORDERED");
+    // The picker offers only the order's warehouse.
+    const opts = await spo.listSupplierReceivingLocationOptions({ pool }, actor([RECEIVE], buyer), { purchaseOrderId: po });
+    assert.deepEqual(opts.options.map((o) => o.value), ["wh-1"]);
+    // Its own warehouse is accepted, and (the same key, the same request) replays.
+    const k = key();
+    assert.equal((await to("wh-1", po, k)).outcome, "applied");
+    assert.equal((await to("wh-1", po, k)).outcome, "replayed");
+    // A fixture / migrated order names no warehouse: today's behaviour, any warehouse of its company in the receiver's scope.
+    const fixture = await q(`INSERT INTO eos_ops.supplier_purchase_orders (tenant_id, id, operating_company_key, status, created_by, updated_by)
+                             VALUES ('t1','fx-dest','sample-co','SENT','x','x') RETURNING id`);
+    await q(`INSERT INTO eos_ops.supplier_purchase_order_lines (tenant_id, purchase_order_id, line_id, part_id, ordered_quantity) VALUES ('t1','fx-dest','L1','PART-A',5)`);
+    assert.equal((await to("wh-2", fixture.rows[0].id)).outcome, "applied");
+  });
+
   // ════════════════════════════ CANCEL ════════════════════════════
 
   await t.test("CANCEL releases the lines and returns the requests to purchasing; they can go on a NEW order; a receipt blocks the cancel", async () => {
