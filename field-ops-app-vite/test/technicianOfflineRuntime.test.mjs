@@ -909,3 +909,31 @@ describe("the device clock", () => {
     assert.equal(l.value.payload.endedAtMillis, undefined);
   });
 });
+
+// TW5 -- usage the server HELD BACK is a stopped item a person can read, never "Saved".
+describe("held-back parts usage in the sync queue", async () => {
+  const { statusFor, conflictCard } = await import("../src/offline/syncPresentation.js");
+  const stopped = (details) => {
+    const parts = intent(INTENT_TYPE.PARTS_USAGE, { captureKey: `held-${details}` });
+    const q = runSyncPass(queueOf(parts), {
+      principalUid: UID, deps: { session: okSession, commands: allCommands(async () => ({ ok: false, code: "failed-precondition", details })) },
+    });
+    return q.then((r) => r.queue[0]);
+  };
+
+  for (const [details, word] of [["PLAN_LIMIT_REACHED", "Not recorded"], ["NOTHING_TO_REVERSE", "Not recorded"], ["USAGE_PARTLY_RECORDED", "Partly recorded"]]) {
+    test(`${details}: stops as a conflict, is never SYNCED, reads '${word}' with the governed reason, and does not retry blind`, async () => {
+      assert.equal(classifyFailure({ code: "failed-precondition", details }), FAILURE_CLASS.CONFLICT);
+      const stoppedIntent = await stopped(details);
+      assert.notEqual(stoppedIntent.state, "SYNCED");
+      assert.equal(stoppedIntent.state, "CONFLICT");
+      assert.equal(stoppedIntent.nextEligibleAt, Infinity, "stopped for a person: never retried on a timer");
+      assert.equal(statusFor(stoppedIntent).label, word);
+      assert.equal(statusFor(stoppedIntent).claimsComplete, false);
+      const card = conflictCard(stoppedIntent);
+      assert.notEqual(card.happened, "The platform did not accept this, and did not say why.");
+      assert.match(card.happened, /recorded|taken back/i);
+      assert.equal(summarizeQueue([stoppedIntent]).attentionCount, 1, "it needs a person; it is not 'everything is saved'");
+    });
+  }
+});

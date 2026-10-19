@@ -19,6 +19,7 @@
 // after a precheck passed; that race is normal and the command's answer is the one that counts.
 import { INTENT_TYPE } from "./technicianIntent.js";
 import { workOrderSyncError } from "./workOrderSyncError.js";
+import { heldBack } from "../domain/executionOutcome.js";
 import { updateWorkOrderExecutionData, transitionWorkOrder, getWorkOrder } from "../services/workOrderService";
 import { recordWorkOrderLabor } from "../services/workOrderLaborCallableClient";
 import { fetchInstallableEquipmentForWorkOrder, recordWorkOrderEquipmentInstall } from "../services/workOrderEquipmentInstallClient.js";
@@ -102,6 +103,13 @@ export function createTechnicianBindings(deps = {}) {
           qtyUsedUpdates: intent.payload.qtyUsedUpdates, idempotencyKey: intent.intentId,
           ...(intent.payload.consumeFrom ? { consumeFrom: intent.payload.consumeFrom } : {}),
         });
+        // TW5: a request the server HELD BACK (plan cap) is not "synced". It stops as an item a person can read -- "not
+        // recorded" with the governed reason -- and is never retried blind. A replay of the same key carries the original
+        // per-line reasons, so a "Try Again" cannot launder it into a success either.
+        const held = heldBack(result);
+        if (held) {
+          return { ok: false, code: "failed-precondition", details: held.kind === "PARTIAL" ? "USAGE_PARTLY_RECORDED" : held.reason };
+        }
         return { ok: true, serverIds: { workOrderId: result?.workOrderId ?? intent.workOrderId } };
       } catch (err) { return failureFrom(err); }
     },

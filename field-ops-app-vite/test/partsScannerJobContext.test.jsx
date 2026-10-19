@@ -22,7 +22,7 @@
 // A supplied id is still matched against the technician's OWN assigned work, so the prop can widen
 // nothing: an id that is not theirs resolves to null rather than being trusted.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, cleanup, screen, fireEvent } from "@testing-library/react";
+import { render, cleanup, screen, fireEvent, act } from "@testing-library/react";
 
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ role: "technician" }) }));
 
@@ -44,6 +44,8 @@ vi.mock("../src/hooks/useAssignedWorkOrders", () => ({
 vi.mock("../src/services/workOrderService", () => ({ updateWorkOrderExecutionData: vi.fn() }));
 
 const { default: PartsScanner } = await import("../src/modules/mobile/PartsScanner.jsx");
+const { updateWorkOrderExecutionData } = await import("../src/services/workOrderService");
+const { OfflineRuntimeProvider } = await import("../src/offline/OfflineRuntimeContext.jsx");
 
 afterEach(cleanup);
 
@@ -103,5 +105,59 @@ describe("the prop widens nothing", () => {
     render(<PartsScanner technicianId="TECH-1" workOrderId="wo-belonging-to-someone-else" />);
     scan();
     expect(shownJob(), "no other technician's job may appear").toEqual([]);
+  });
+});
+
+// TW5 -- recordWorkOrderExecution answers RECORDED / PARTIALLY_APPLIED / NOT_APPLIED. A request the plan cap held back used
+// to come back "RECORDED" with appliedDelta 0 and the screen said "Recorded 1 x ..." for something that was NOT recorded.
+describe("TW5: the screen reports what the server APPLIED", () => {
+  const press = async () => {
+    scan();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Record use on this job" })); });
+  };
+  const usage = (over) => ({ partId: "PRT-1001", requestedDelta: 1, appliedDelta: 1, qtyUsed: 1, qtyPlanned: 4, ...over });
+
+  it("RECORDED: says Recorded and clears the form", async () => {
+    updateWorkOrderExecutionData.mockResolvedValueOnce({ success: true, outcome: "RECORDED", usage: [usage()] });
+    render(<PartsScanner workOrderId="wo-1" />);
+    await press();
+    expect(screen.getByRole("status").textContent).toMatch(/Recorded 1 × Fan Motor on WO-AAA-111/);
+  });
+
+  it("NOT_APPLIED (plan cap): does NOT say Recorded; says it was not recorded, why, and who can change it", async () => {
+    updateWorkOrderExecutionData.mockResolvedValueOnce({
+      success: true, outcome: "NOT_APPLIED", usage: [usage({ appliedDelta: 0, qtyUsed: 4, reason: "PLAN_LIMIT_REACHED" })],
+    });
+    render(<PartsScanner workOrderId="wo-1" />);
+    await press();
+    expect(screen.getByRole("status").textContent).not.toMatch(/Recorded/);
+    const said = screen.getByRole("status");
+    expect(said.textContent).toMatch(/planned quantity of Fan Motor \(4 planned, 4 already recorded\)/);
+    expect(said.textContent).toMatch(/Ask dispatch to raise the parts plan/);
+    // the form is NOT cleared: the technician can see what they asked for
+    expect(screen.getByLabelText("Part or work order code").value).toBe("PRT-1001");
+  });
+
+  it("PARTIALLY_APPLIED: says how much was recorded of how much was asked", async () => {
+    updateWorkOrderExecutionData.mockResolvedValueOnce({
+      success: true, outcome: "PARTIALLY_APPLIED", usage: [usage({ requestedDelta: 1, appliedDelta: 1, reason: "PLAN_LIMIT_REACHED" })],
+    });
+    render(<PartsScanner workOrderId="wo-1" />);
+    await press();
+    expect(screen.getByRole("status").textContent).toMatch(/Recorded 1 of 1 × Fan Motor on WO-AAA-111 .*plan limit reached/);
+  });
+
+  it("the same honesty on the offline-runtime path (a SENT result carries the server's answer)", async () => {
+    updateWorkOrderExecutionData.mockResolvedValueOnce({
+      success: true, outcome: "NOT_APPLIED", usage: [usage({ appliedDelta: 0, qtyUsed: 4, reason: "PLAN_LIMIT_REACHED" })],
+    });
+    render(
+      <OfflineRuntimeProvider value={{ enqueue: vi.fn(), principalUid: "uid-1", queue: [] }}>
+        <PartsScanner workOrderId="wo-1" />
+      </OfflineRuntimeProvider>,
+    );
+    await press();
+    expect(screen.getByRole("status").textContent).not.toMatch(/Recorded/);
+    expect(screen.getByRole("status").textContent).toMatch(/Not recorded:/);
   });
 });

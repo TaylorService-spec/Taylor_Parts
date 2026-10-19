@@ -63,6 +63,18 @@ on:
       - "field-ops-app-vite/test/jobLaborOfflineIdempotency.test.jsx"
       - "field-ops-app-vite/src/offline/technicianIntentCapture.js"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
+      # Technician field workflow fixes (TW1-TW5, Firebase-exit item 6): phone job cards open the job, names not ids,
+      # scheduled-not-dispatched, truck-stock readiness, held-back usage, and the EOS technician identity.
+      - "field-ops-app-vite/test/technicianFieldWorkflow.test.jsx"
+      - "field-ops-app-vite/src/domain/fieldTruckReadiness.js"
+      - "field-ops-app-vite/src/domain/executionOutcome.js"
+      - "field-ops-app-vite/src/hooks/useMyTruckStock.js"
+      - "field-ops-app-vite/src/access/workOrderRosterAccess.js"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/ControlTower.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
+      - "field-ops-app-vite/src/hooks/useCurrentTechnician.js"
       # WO-03 -- the offline runtime. A change to any of it must re-run this lane, because the
       # handheld surfaces above are exactly what it sits underneath.
       - "field-ops-app-vite/src/offline/**"
@@ -132,6 +144,18 @@ on:
       - "field-ops-app-vite/test/jobLaborOfflineIdempotency.test.jsx"
       - "field-ops-app-vite/src/offline/technicianIntentCapture.js"
       - "field-ops-app-vite/test/technicianHandheldMobile.test.jsx"
+      # Technician field workflow fixes (TW1-TW5, Firebase-exit item 6): phone job cards open the job, names not ids,
+      # scheduled-not-dispatched, truck-stock readiness, held-back usage, and the EOS technician identity.
+      - "field-ops-app-vite/test/technicianFieldWorkflow.test.jsx"
+      - "field-ops-app-vite/src/domain/fieldTruckReadiness.js"
+      - "field-ops-app-vite/src/domain/executionOutcome.js"
+      - "field-ops-app-vite/src/hooks/useMyTruckStock.js"
+      - "field-ops-app-vite/src/access/workOrderRosterAccess.js"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/ControlTower.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
+      - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
+      - "field-ops-app-vite/src/hooks/useCurrentTechnician.js"
       # WO-03 -- the offline runtime. A change to any of it must re-run this lane, because the
       # handheld surfaces above are exactly what it sits underneath.
       - "field-ops-app-vite/src/offline/**"
@@ -214,7 +238,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
-        run: npx vitest run test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx test/jobLaborOfflineIdempotency.test.jsx
+        run: npx vitest run test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/technicianFieldWorkflow.test.jsx test/jobLabor.test.jsx test/jobLaborOfflineIdempotency.test.jsx
         working-directory: field-ops-app-vite
 
       # ND-33 acquisition, at the render. The pure suite above proves what the request may

@@ -399,8 +399,9 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
     const before = await counts();
     const r = await execution.recordWorkOrderExecution(deps, actor(P.techA),
       { workOrderId: journeyWo, idempotencyKey: "k1", partUsage: [{ partId: "part-filter", qtyDelta: 5 }], note: "replaced filter" });
-    assert.equal(r.outcome, "RECORDED");
-    assert.deepEqual(r.usage[0], { partId: "part-filter", requestedDelta: 5, appliedDelta: 3, qtyUsed: 3, qtyPlanned: 3 });
+    // TW5: asked 5 against a plan of 3 -> 3 applied, and the held-back remainder is SAID with its governed reason.
+    assert.equal(r.outcome, "PARTIALLY_APPLIED");
+    assert.deepEqual(r.usage[0], { partId: "part-filter", requestedDelta: 5, appliedDelta: 3, qtyUsed: 3, qtyPlanned: 3, reason: "PLAN_LIMIT_REACHED" });
     assert.equal(r.inventoryBoundary, "NO_STOCK_MOVEMENT");
     assert.equal((await counts()).inv, before.inv);
     const replay = await execution.recordWorkOrderExecution(deps, actor(P.techA),
@@ -413,6 +414,31 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
     const down = await execution.recordWorkOrderExecution(deps, actor(P.techA),
       { workOrderId: journeyWo, idempotencyKey: "k2", partUsage: [{ partId: "part-filter", qtyDelta: -1 }] });
     assert.equal(down.usage[0].qtyUsed, 2, "a correction is a negative delta, never an edit");
+    // TW5: usage that applies NOTHING is not "RECORDED". Firebase parity: qtyUsed was always capped at qtyPlanned.
+    const up = await execution.recordWorkOrderExecution(deps, actor(P.techA),
+      { workOrderId: journeyWo, idempotencyKey: "k2b", partUsage: [{ partId: "part-filter", qtyDelta: 1 }] });
+    assert.equal(up.outcome, "RECORDED");
+    assert.equal(up.usage[0].reason, undefined, "an exact application carries no reason");
+    const capped = await execution.recordWorkOrderExecution(deps, actor(P.techA),
+      { workOrderId: journeyWo, idempotencyKey: "k2c", partUsage: [{ partId: "part-filter", qtyDelta: 1 }] });
+    assert.equal(capped.outcome, "NOT_APPLIED");
+    assert.deepEqual(capped.usage[0], { partId: "part-filter", requestedDelta: 1, appliedDelta: 0, qtyUsed: 3, qtyPlanned: 3, reason: "PLAN_LIMIT_REACHED" });
+    assert.equal((await counts()).inv, before.inv, "a non-applied request moves no stock");
+    const cappedReplay = await execution.recordWorkOrderExecution(deps, actor(P.techA),
+      { workOrderId: journeyWo, idempotencyKey: "k2c", partUsage: [{ partId: "part-filter", qtyDelta: 1 }] });
+    assert.equal(cappedReplay.outcome, "REPLAYED");
+    // a replay still says what the ORIGINAL request did (the offline queue replays with the same key)
+    assert.deepEqual([cappedReplay.usage[0].requestedDelta, cappedReplay.usage[0].appliedDelta, cappedReplay.usage[0].reason], [1, 0, "PLAN_LIMIT_REACHED"]);
+    assert.deepEqual([replay.usage[0].requestedDelta, replay.usage[0].appliedDelta, replay.usage[0].reason], [5, 3, "PLAN_LIMIT_REACHED"]);
+    await execution.recordWorkOrderExecution(deps, actor(P.techA),
+      { workOrderId: journeyWo, idempotencyKey: "k2d", partUsage: [{ partId: "part-filter", qtyDelta: -1 }] });
+    // a plan LOWERED below the recorded usage: a request to ADD is held back (0), never "applied" as a negative delta
+    await q(`UPDATE eos_ops.work_order_parts_plan SET qty_planned = 1 WHERE tenant_id = $1 AND work_order_id = $2 AND part_id = 'part-filter'`, [T, journeyWo]);
+    const lowered = await execution.recordWorkOrderExecution(deps, actor(P.techA),
+      { workOrderId: journeyWo, idempotencyKey: "k2e", partUsage: [{ partId: "part-filter", qtyDelta: 1 }] });
+    assert.equal(lowered.outcome, "NOT_APPLIED");
+    assert.deepEqual(lowered.usage[0], { partId: "part-filter", requestedDelta: 1, appliedDelta: 0, qtyUsed: 2, qtyPlanned: 1, reason: "PLAN_LIMIT_REACHED" });
+    await q(`UPDATE eos_ops.work_order_parts_plan SET qty_planned = 3 WHERE tenant_id = $1 AND work_order_id = $2 AND part_id = 'part-filter'`, [T, journeyWo]);
     await assert.rejects(execution.recordWorkOrderExecution(deps, actor(P.techA),
       { workOrderId: journeyWo, idempotencyKey: "k3", partUsage: [{ partId: "part-unplanned", qtyDelta: 1 }] }),
     (e) => { assert.equal(e.code, "PART_NOT_PLANNED"); return true; });

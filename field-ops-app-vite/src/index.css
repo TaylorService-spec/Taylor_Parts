@@ -2201,6 +2201,8 @@ button:hover {
   background: var(--color-surface-sunken);
 }
 .fo-readiness-row__part { font-weight: 600; }
+/* TW4: planned vs on-truck, between the part and its state; it wraps rather than pushing the row wider than a phone. */
+.fo-readiness-row__truck { flex: 1 1 auto; min-width: 0; text-align: right; overflow-wrap: anywhere; }
 .fo-readiness-row--ready     .fo-readiness-row__state { color: var(--color-success); }
 .fo-readiness-row--attention .fo-readiness-row__state { color: var(--color-warning); }
 .fo-readiness-row--unknown   .fo-readiness-row__state { color: var(--color-text-muted); }
@@ -4970,6 +4972,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   /* A card, not a table row: a desktop grid on a phone is a horizontal scrollbar with extra steps. */
   min-height: 44px; overflow-wrap: anywhere;
 }
+/* TW1: the whole card is the control. A real button (keyboard + screen reader), never a div with an onClick. */
+.fo-handheld__job-open {
+  display: block; width: 100%; min-height: 44px; margin: 0; padding: 0; border: 0; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.fo-handheld__job-open > span { display: block; }
+.fo-handheld__job-open:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 4px; }
+.fo-handheld__back { margin: 0 0 12px; }
 .fo-handheld__job-ref { margin: 0; font-size: 13px; color: var(--color-text-muted); }
 .fo-handheld__job-customer { margin: 2px 0; font-weight: 600; overflow-wrap: anywhere; }
 

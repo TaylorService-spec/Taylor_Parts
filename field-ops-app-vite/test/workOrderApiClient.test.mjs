@@ -315,6 +315,17 @@ describe("the service routes every legacy call through the governed operations",
     assert.match(call.calls[1][1].idempotencyKey, /^woexec_/);
   });
 
+  it("TW5: a held-back request keeps its outcome and its per-line governed reason -- it is never flattened to RECORDED", async () => {
+    const usage = [{ partId: "part_a", requestedDelta: 1, appliedDelta: 0, qtyUsed: 1, qtyPlanned: 1, reason: "PLAN_LIMIT_REACHED" }];
+    __setWorkOrderTransportForTests(spy(async () => ({ ok: true, operation: "recordWorkOrderExecution", result: { outcome: "NOT_APPLIED", inventoryBoundary: "TRUCK_CONSUMPTION", usage } })));
+    const out = await updateWorkOrderExecutionData("w1", { qtyUsedUpdates: [{ sku: "part_a", delta: 1 }], idempotencyKey: "k2" });
+    assert.equal(out.outcome, "NOT_APPLIED");
+    assert.deepEqual(out.usage, usage);
+    // an older server answer with no usage still yields a list, never undefined
+    __setWorkOrderTransportForTests(spy(async () => ({ ok: true, operation: "recordWorkOrderExecution", result: { outcome: "RECORDED" } })));
+    assert.deepEqual((await updateWorkOrderExecutionData("w1", { executionNote: "x" })).usage, []);
+  });
+
   it("the technician's own work comes from listMyAssignedWorkOrders only -- no technician id is sent", async () => {
     const call = spy(async (op) => (op === "listMyAssignedWorkOrders"
       ? { ok: true, operation: op, result: { employeeId: "emp_9", items: [{ workOrderId: "wo_1", status: "DISPATCHED", createdAt: "2026-09-30T00:00:00Z", updatedAt: "2026-09-30T00:00:00Z" }] } }

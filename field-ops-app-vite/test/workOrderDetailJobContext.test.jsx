@@ -18,6 +18,8 @@ import { render, cleanup } from "@testing-library/react";
 
 const state = {};
 const crm = vi.hoisted(() => ({ callCrmApi: vi.fn(), useAccount: vi.fn(), useLocation: vi.fn() }));
+// ITEM 7: what the page asks of the server, and which capabilities the caller holds (a technician holds none of these).
+const office = vi.hoisted(() => ({ held: new Set(), call: vi.fn(async () => ({ ok: true, result: { sessions: [] } })), directory: vi.fn() }));
 
 vi.mock("react-router-dom", () => ({
   useParams: () => ({ workOrderId: "wodocidaaaaaaaaaaaaa" }),
@@ -34,13 +36,17 @@ vi.mock("../src/hooks/useLocation", () => ({ useLocation: crm.useLocation }));
 vi.mock("../src/services/crmApiClient.js", async (orig) => ({ ...(await orig()), callCrmApi: crm.callCrmApi }));
 vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentDoc: () => ({ equipment: null, loading: false, error: null }) }));
 vi.mock("../src/hooks/useWorkOrderTechnicianDirectory.js", () => ({
-  useWorkOrderTechnicianDirectory: () => ({ data: [{ id: "techdocidaaaaaaaaaaa", name: "J. Barela" }], loading: false, error: null }),
+  useWorkOrderTechnicianDirectory: (rows, opts) => {
+    office.directory(rows, opts);
+    return { data: [{ id: "techdocidaaaaaaaaaaa", name: "J. Barela" }], loading: false, error: null };
+  },
 }));
+vi.mock("../src/services/workOrderApiClient.js", async (orig) => ({ ...(await orig()), callWorkOrderApi: office.call }));
 vi.mock("../src/hooks/useWorkOrderTechnicians", () => ({
   useWorkOrderTechnicians: () => ({ data: [], loading: false, error: null, retry: () => {} }),
 }));
 vi.mock("../src/hooks/useMyWorkOrderCapabilities.js", () => ({
-  useMyWorkOrderCapabilities: () => ({ status: "ready", has: () => false }),
+  useMyWorkOrderCapabilities: () => ({ status: "ready", has: (key) => office.held.has(key) }),
 }));
 vi.mock("../src/hooks/useWorkOrderReadinessContext.js", () => ({ useWorkOrderReadinessContext: () => ({ context: null }) }));
 vi.mock("../src/modules/workOrders/WorkOrderPartsPlanEditor", () => ({ default: () => null }));
@@ -79,6 +85,7 @@ function visibleText(root) {
 
 beforeEach(() => {
   state.workOrder = projectedWo();
+  office.held = new Set();
 });
 afterEach(() => {
   cleanup();
@@ -139,5 +146,55 @@ describe("a name the projection could not resolve", () => {
     const { container } = render(<WorkOrderDetailPage />);
     expect(container.querySelector(".ns-rail__meta")).toBeNull();
     expect(container.textContent).not.toContain("Gate code");
+  });
+});
+
+// ITEM 7 -- the OFFICE parts of this page are for office authority. A technician reaches the page; they must not be drawn
+// controls that can never light up for them, nor trigger reads the server refuses (403 in the proof run).
+describe("item 7: office controls and reads are gated by the caller's own capabilities", () => {
+  const reads = () => office.call.mock.calls.map((c) => c[0]);
+
+  it("a TECHNICIAN (no schedule/dispatch/issue capability) is offered neither Reschedule nor Message Technician", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    expect(container.textContent).not.toContain("Reschedule");
+    expect(container.textContent).not.toContain("Message Technician");
+  });
+
+  it("a TECHNICIAN's page fires NO technician-roster read and NO scheduling-link read", () => {
+    render(<WorkOrderDetailPage />);
+    expect(reads()).not.toContain("readSelfSchedulingSessions");
+    // the roster hook is mounted DISABLED -- it makes no listWorkOrderTechnicians call
+    expect(office.directory.mock.calls.length).toBeGreaterThan(0);
+    for (const [, opts] of office.directory.mock.calls) expect(opts).toEqual({ enabled: false });
+  });
+
+  it("the technician still sees the job: names, address, and the assignee name from the row", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    const text = visibleText(container);
+    expect(text).toContain("Harbor Grill (SAMPLE)");
+    expect(text).toContain("J. Barela");
+  });
+
+  it("an OFFICE caller holding workOrder.lifecycle.schedule keeps the placeholders, the roster, and the scheduling-link read", async () => {
+    office.held = new Set(["workOrder.lifecycle.schedule"]);
+    const { container } = render(<WorkOrderDetailPage />);
+    expect(container.textContent).toContain("Reschedule");
+    expect(container.textContent).toContain("Message Technician");
+    for (const [, opts] of office.directory.mock.calls) expect(opts).toEqual({ enabled: true });
+    await vi.waitFor(() => expect(reads()).toContain("readSelfSchedulingSessions"));
+  });
+
+  it("dispatch alone enables the roster (the server accepts schedule OR dispatch) but not the scheduling link", () => {
+    office.held = new Set(["workOrder.lifecycle.dispatch"]);
+    render(<WorkOrderDetailPage />);
+    for (const [, opts] of office.directory.mock.calls) expect(opts).toEqual({ enabled: true });
+    expect(reads()).not.toContain("readSelfSchedulingSessions");
+  });
+
+  it("the self-scheduling issue capability alone enables the scheduling-link read, not the roster", async () => {
+    office.held = new Set(["workOrder.selfScheduling.issue"]);
+    render(<WorkOrderDetailPage />);
+    for (const [, opts] of office.directory.mock.calls) expect(opts).toEqual({ enabled: false });
+    await vi.waitFor(() => expect(reads()).toContain("readSelfSchedulingSessions"));
   });
 });

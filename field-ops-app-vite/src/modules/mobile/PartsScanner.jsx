@@ -14,6 +14,7 @@ import { buildScanCandidates, notFoundReason } from "../../domain/scanCandidates
 import { deriveScanActions, SCAN_ACTIONS } from "../../domain/scanActions";
 import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { describeExecutionOutcome } from "../../domain/executionOutcome.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { titleCase } from "../../shared/display/displayLabels.js";
 
@@ -234,9 +235,11 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
     // the scanner is also mounted outside the technician shell.
     if (!offline?.enqueue) {
       try {
-        await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }], consumeFrom });
-        setNotice({ tone: "ok", text: `Recorded ${qty} × ${label} on ${woNumber}${sourceTruck ? ` from ${sourceTruck.label}` : ""}.` });
-        clear();
+        const result = await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }], consumeFrom });
+        // TW5: what the server APPLIED, not what was asked -- a capped request is never reported as "Recorded".
+        const said = describeExecutionOutcome(result, { qty, label, woNumber, sourceLabel: sourceTruck?.label ?? null });
+        setNotice({ tone: said.tone, text: said.text });
+        if (said.applied) clear();
       } catch (err) {
         // The server is the authority and may still refuse. Say so plainly --
         // never silently, and never as "not found" -- and never with a raw
@@ -251,8 +254,8 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
     const outcome = await submitOrQueue({
       send: async () => {
         try {
-          await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }], consumeFrom });
-          return { ok: true };
+          const result = await updateWorkOrderExecutionData(workOrderId, { qtyUsedUpdates: [{ sku, delta: qty }], consumeFrom });
+          return { ok: true, detail: result };
         } catch (err) {
           return { ok: false, error: workOrderSyncError(err) };
         }
@@ -272,8 +275,9 @@ export default function PartsScanner({ workOrderId = null, offline: offlineProp 
     });
 
     if (outcome.result === SUBMIT_RESULT.SENT) {
-      setNotice({ tone: "ok", text: `Recorded ${qty} × ${label} on ${woNumber}.` });
-      clear();
+      const said = describeExecutionOutcome(outcome.detail, { qty, label, woNumber, sourceLabel: sourceTruck?.label ?? null });
+      setNotice({ tone: said.tone, text: said.text });
+      if (said.applied) clear();
     } else if (outcome.result === SUBMIT_RESULT.QUEUED) {
       // "Pending sync", NEVER "Recorded". Inventory has not moved and the work order has not been
       // touched -- claiming either would be a statement about stock nobody has made.

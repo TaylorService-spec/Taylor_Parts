@@ -60,6 +60,11 @@ export const CONFLICT_DETAILS = Object.freeze([
   "OVERLAPPING_ENTRY",
   "ENTRY_ALREADY_REVERSED",
   "INVALID_TRANSITION",
+  // TW5: the server HELD BACK a parts-usage request (the plan cap, or nothing to take back). Retrying the same act cannot
+  // change it; the plan or the record has to.
+  "PLAN_LIMIT_REACHED",
+  "NOTHING_TO_REVERSE",
+  "USAGE_PARTLY_RECORDED",
 ]);
 
 /**

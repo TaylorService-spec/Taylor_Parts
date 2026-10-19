@@ -77,7 +77,9 @@ beforeEach(() => {
   state.equipment = { id: "eq1", name: "Soft Serve Freezer 2", manufacturer: "Taylor", model: "C712", serialNumber: "K1122873" };
   state.technicians = [{ id: "techdocidaaaaaaaaaaa", name: "J. Barela" }];
   state.techniciansError = null;
-  state.capability = { status: "ready", has: () => false };
+  // An OFFICE viewer (this suite renders as admin): the Reschedule / Message Technician placeholders belong to schedule or
+  // dispatch authority (item 7), so the default viewer holds schedule. A technician (none) is proved in workOrderDetailJobContext.
+  state.capability = { status: "ready", has: (key) => key === "workOrder.lifecycle.schedule" };
   // Readiness evidence is off by default: the environment where the projection is NOT active is
   // the one every honest-state assertion below is written against.
   state.readinessContext = null;

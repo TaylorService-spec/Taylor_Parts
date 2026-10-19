@@ -453,5 +453,49 @@ describe("Equipment install defaults to the governed EOS Work Order route", () =
     expect(classifyFailure({ code: sent.code, details: sent.details })).not.toBe(FAILURE_CLASS.RETRYABLE);
     expect(installTransport.recordWorkOrderEquipmentInstall).not.toHaveBeenCalled();
   });
+
+  // TW5 round 2 -- the REPLAY path. A queued usage that the server later HELD BACK must not sync as "Saved".
+  describe("a queued parts-usage intent answered NOT_APPLIED / PARTIALLY_APPLIED on replay", () => {
+    const line = (over = {}) => ({ partId: "PRT-1005", requestedDelta: 1, appliedDelta: 0, qtyUsed: 1, qtyPlanned: 1, reason: "PLAN_LIMIT_REACHED", ...over });
+    async function replayWith(answer) {
+      const { runSyncPass } = await import("../src/offline/syncExecutor.js");
+      const { capturePartsUsage } = await import("../src/offline/technicianIntentCapture.js");
+      const { enqueueIntent } = await import("../src/offline/intentQueue.js");
+      const { statusFor, conflictCard } = await import("../src/offline/syncPresentation.js");
+      const bindings = createTechnicianBindings({ updateWorkOrderExecutionData: vi.fn(async () => answer) });
+      const parts = capturePartsUsage({ workOrderId: "WO-1", principalUid: "uid-tech-1", sku: "PRT-1005", delta: 1, captureKey: "p", at: 1 }).value;
+      const r = await runSyncPass(enqueueIntent([], parts), {
+        principalUid: "uid-tech-1", deps: { session: () => ({ uid: "uid-tech-1" }), commands: bindings.commands, prechecks: bindings.prechecks },
+      });
+      return { item: r.queue[0], statusFor, conflictCard, sent: r.sent };
+    }
+
+    it("NOT_APPLIED: not synced; reads 'Not recorded' with the plan-limit reason", async () => {
+      const { item, statusFor, conflictCard, sent } = await replayWith({ success: true, outcome: "NOT_APPLIED", usage: [line()] });
+      expect(sent).toBe(0);
+      expect(item.state).not.toBe("SYNCED");
+      expect(statusFor(item).label).toBe("Not recorded");
+      expect(conflictCard(item).happened).toMatch(/Not recorded: the job's parts plan is already used up/);
+    });
+
+    it("REPLAYED carrying the original reason (a 'Try Again' on a held-back item) is STILL not synced", async () => {
+      const { item, statusFor } = await replayWith({ success: true, outcome: "REPLAYED", usage: [line()] });
+      expect(item.state).not.toBe("SYNCED");
+      expect(statusFor(item).label).toBe("Not recorded");
+    });
+
+    it("PARTIALLY_APPLIED: reads 'Partly recorded', not synced", async () => {
+      const { item, statusFor } = await replayWith({ success: true, outcome: "PARTIALLY_APPLIED", usage: [line({ requestedDelta: 5, appliedDelta: 3, qtyUsed: 3, qtyPlanned: 3 })] });
+      expect(item.state).not.toBe("SYNCED");
+      expect(statusFor(item).label).toBe("Partly recorded");
+    });
+
+    it("an exactly-applied answer (RECORDED, or a plain REPLAYED) still syncs", async () => {
+      const ok = await replayWith({ success: true, outcome: "RECORDED", usage: [line({ appliedDelta: 1, reason: undefined })] });
+      expect(ok.item.state).toBe("SYNCED");
+      const plain = await replayWith({ success: true, outcome: "REPLAYED", usage: [line({ appliedDelta: 1, reason: undefined })] });
+      expect(plain.item.state).toBe("SYNCED");
+    });
+  });
 });
 

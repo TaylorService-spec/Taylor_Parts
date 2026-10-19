@@ -2,7 +2,10 @@
 //
 // Firebase: the execution-capture callable wrote `inventorySnapshot[].qtyUsed` as a DELTA per Part, clamped to
 // [0, qtyPlanned], and appended `executionNote`, for the technician on their OWN assignment on a non-terminal
-// Work Order, keyed by an idempotencyKey. Every one of those rules is kept. Two things are deliberately not:
+// Work Order, keyed by an idempotencyKey. Every one of those rules is kept (TW5, 2026-10-19: Firebase parity CONFIRMED --
+// mergeQtyUsed capped qtyUsed at qtyPlanned since #925, so usage beyond plan was never recorded; what changed is that a
+// held-back request now says so: outcome NOT_APPLIED / PARTIALLY_APPLIED with a per-line reason, never "RECORDED").
+// Two things are deliberately not:
 //
 //   * NO STOCK MOVES. Recording an actual is not consuming stock; the ruling makes stock movement an explicit
 //     boundary. The actuals recorded here are what an activated Inventory authority would consume from.
@@ -120,15 +123,34 @@ export interface AppliedUsage {
   readonly qtyPlanned: number;
   /** OD-T4: the ledger row this line posted at the truck, when it consumed. */
   readonly movementId?: string;
+  /**
+   * Why this line applied less than was asked (TW5), or absent when it applied exactly the request.
+   *   PLAN_LIMIT_REACHED  a positive request ran into the Work Order's planned quantity (the Firebase cap, kept).
+   *   NOTHING_TO_REVERSE  a correction asked to take back more than was recorded.
+   */
+  readonly reason?: "PLAN_LIMIT_REACHED" | "NOTHING_TO_REVERSE";
 }
+/**
+ * RECORDED          everything asked was applied (or a note was written).
+ * PARTIALLY_APPLIED some usage was applied and some was held back; the lines carry the governed `reason`.
+ * NOT_APPLIED       usage was asked and NONE of it was applied (and no note was written); the lines carry the reason.
+ *                   Stock did not move. A SUCCESSFUL, idempotent answer -- not a failure, and not "Recorded".
+ * REPLAYED          the same key was already answered.
+ */
 export interface ExecutionResult {
-  readonly outcome: "RECORDED" | "REPLAYED";
+  readonly outcome: "RECORDED" | "REPLAYED" | "PARTIALLY_APPLIED" | "NOT_APPLIED";
   readonly workOrderId: string;
   readonly usage: readonly AppliedUsage[];
   readonly noteRecorded: boolean;
   /** Stated on every result: NO_STOCK_MOVEMENT, or TRUCK_CONSUMPTION when consumeFrom moved stock out of a truck. */
   readonly inventoryBoundary: "NO_STOCK_MOVEMENT" | "TRUCK_CONSUMPTION";
   readonly consumedFrom?: { readonly type: "MOBILE"; readonly locationId: string };
+}
+
+/** Why a line applied less than was asked, or null when it applied exactly the request. */
+function heldBackReason(requestedDelta: number, appliedDelta: number): "PLAN_LIMIT_REACHED" | "NOTHING_TO_REVERSE" | null {
+  if (appliedDelta === requestedDelta) return null;
+  return requestedDelta > 0 ? "PLAN_LIMIT_REACHED" : "NOTHING_TO_REVERSE";
 }
 
 /** Record actuals and/or a note on the caller's OWN, non-terminal Work Order. Idempotent by key. */
@@ -184,10 +206,25 @@ export async function recordWorkOrderExecution(
     if (prior.rows.length > 0) {
       const same = prior.rows.length === keys.length && prior.rows.every((r) => r.request_fingerprint === fingerprint);
       if (!same) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "this idempotencyKey already recorded a different request");
+      // The replay says what the ORIGINAL request did per Part (requested / applied / reason), so a held-back request that is
+      // answered again is still visibly held back (the offline queue replays with the same key).
+      const originals = await client.query(
+        `SELECT part_id, requested_delta, applied_delta FROM ${SCHEMA}.work_order_execution_records
+          WHERE tenant_id = $1 AND work_order_id = $2 AND kind = 'PART_USAGE' AND idempotency_key = ANY($3::text[])`,
+        [actor.tenantId, request.workOrderId, keys]);
+      const originalOf = new Map(originals.rows.map((r) => [String(r.part_id), r]));
+      const replayedUsage = (await currentUsage(client, actor.tenantId, request.workOrderId, request.partUsage.map((l) => l.partId))).map((u) => {
+        const o = originalOf.get(u.partId);
+        if (!o) return u;
+        const requestedDelta = Number(o.requested_delta);
+        const appliedDelta = Number(o.applied_delta);
+        const reason = heldBackReason(requestedDelta, appliedDelta);
+        return Object.freeze({ ...u, requestedDelta, appliedDelta, ...(reason ? { reason } : {}) });
+      });
       await client.query("COMMIT");
       return Object.freeze({
         outcome: "REPLAYED" as const, workOrderId: request.workOrderId,
-        usage: await currentUsage(client, actor.tenantId, request.workOrderId, request.partUsage.map((l) => l.partId)),
+        usage: Object.freeze(replayedUsage),
         noteRecorded: request.note !== null, inventoryBoundary: boundary, ...consumedFrom,
       });
     }
@@ -213,7 +250,10 @@ export async function recordWorkOrderExecution(
         `SELECT COALESCE(SUM(applied_delta), 0)::int AS used FROM ${SCHEMA}.work_order_execution_records
           WHERE tenant_id = $1 AND work_order_id = $2 AND kind = 'PART_USAGE' AND part_id = $3`,
         [actor.tenantId, request.workOrderId, line.partId])).rows[0].used);
-      const next = Math.min(planned, Math.max(0, used + line.qtyDelta));
+      // Capped at the plan -- but a request to ADD never lowers what is recorded. If the plan was lowered below the recorded
+      // usage, a +1 must be held back (appliedDelta 0), not "applied" as a negative delta; a correction honors what was asked.
+      const raw = Math.max(0, used + line.qtyDelta);
+      const next = line.qtyDelta > 0 ? Math.max(used, Math.min(planned, raw)) : raw;
       const appliedDelta = next - used;
       // Usage may never fall below what has already been physically consumed for this Part on this Work Order.
       if (appliedDelta < 0) {
@@ -234,8 +274,10 @@ export async function recordWorkOrderExecution(
          VALUES ($1,$2,$3,'PART_USAGE',$4,$5,$6,NULL,$7,$8,$9,$10)`,
         [`woe_${randomUUID()}`, actor.tenantId, request.workOrderId, line.partId, line.qtyDelta, appliedDelta,
          `${request.idempotencyKey}#part:${line.partId}`, fingerprint, actor.principalId, now]);
+      // TW5: an applied delta short of the request is SAID, with the governed reason, never left for the screen to guess.
+      const reason = heldBackReason(line.qtyDelta, appliedDelta);
       applied.push(Object.freeze({ partId: line.partId, requestedDelta: line.qtyDelta, appliedDelta, qtyUsed: next, qtyPlanned: planned,
-        ...(movementId ? { movementId } : {}) }));
+        ...(movementId ? { movementId } : {}), ...(reason ? { reason } : {}) }));
     }
     if (request.note !== null) {
       await client.query(
@@ -247,8 +289,10 @@ export async function recordWorkOrderExecution(
          fingerprint, actor.principalId, now]);
     }
     await client.query("COMMIT");
+    const outcome = applied.length > 0 && request.note === null && applied.every((u) => u.appliedDelta === 0) ? ("NOT_APPLIED" as const)
+      : applied.some((u) => u.reason !== undefined) ? ("PARTIALLY_APPLIED" as const) : ("RECORDED" as const);
     return Object.freeze({
-      outcome: "RECORDED" as const, workOrderId: request.workOrderId, usage: Object.freeze(applied),
+      outcome, workOrderId: request.workOrderId, usage: Object.freeze(applied),
       noteRecorded: request.note !== null, inventoryBoundary: boundary, ...consumedFrom,
     });
   } catch (err) {

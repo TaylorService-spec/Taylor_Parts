@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { Button } from "../../shared/ui/primitives/index.js";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
@@ -191,10 +190,12 @@ function ScanWorkspaceBody({ deps }) {
   const [pendingWork, setPendingWork] = useState(0);
   const leave = useCallback(() => { setPendingWork(0); setActive(null); }, [setActive]);
 
-  const liveTechnician = useCurrentTechnician();
-  const technicianId = deps?.technicianId !== undefined ? deps.technicianId : liveTechnician.technicianId;
   // The caller's own work comes ONLY from the governed listMyAssignedWorkOrders read; no id is passed.
   const liveWorkOrders = useAssignedWorkOrders({ withDetail: false });
+  // The technician identity is the governed Employee id that same read RESOLVED on the server (null when this login links
+  // to no Employee) -- not the Firestore-derived users.technicianId (hooks/useCurrentTechnician.js), which this screen no
+  // longer reads at all.
+  const technicianId = deps?.technicianId !== undefined ? deps.technicianId : (liveWorkOrders.employeeId ?? null);
   const assignedWorkOrderCount = deps?.assignedWorkOrderCount !== undefined
     ? deps.assignedWorkOrderCount
     : (liveWorkOrders.data?.length ?? 0);
@@ -242,7 +243,7 @@ function ScanWorkspaceBody({ deps }) {
           deps={{
             hasCapability: deps?.hasCapability,
             technicianId,
-            technicianLoading: deps?.technicianId !== undefined ? false : liveTechnician.loading,
+            technicianLoading: deps?.technicianId !== undefined ? false : Boolean(liveWorkOrders.loading),
             ...deps?.transferDeps,
             onPendingWorkChange: setPendingWork,
           }}

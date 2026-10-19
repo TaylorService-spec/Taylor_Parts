@@ -477,10 +477,18 @@ interface QtyUsedDelta {
   delta: number;
 }
 
+/** One Part's answer from recordWorkOrderExecution; `reason` (TW5) is set whenever less was applied than was asked. */
+export interface ExecutionUsageLine {
+  partId: string; requestedDelta: number; appliedDelta: number; qtyUsed: number; qtyPlanned: number;
+  reason?: "PLAN_LIMIT_REACHED" | "NOTHING_TO_REVERSE";
+}
+
 export interface UpdateWorkOrderExecutionDataResult {
   success: true;
   workOrderId: string;
+  // RECORDED | REPLAYED | PARTIALLY_APPLIED | NOT_APPLIED (TW5: the last two are NOT "Recorded").
   outcome: string;
+  usage: ExecutionUsageLine[];
   // NO_STOCK_MOVEMENT unless the usage was recorded FROM the technician's truck (consumeFrom), in which case it is
   // TRUCK_CONSUMPTION: the governed route posted WORK_ORDER_CONSUMPTION at that truck in the same transaction (OD-T4).
   inventoryBoundary: string;
@@ -514,8 +522,11 @@ export async function updateWorkOrderExecutionData(
   if (updates.consumeFrom && typeof updates.consumeFrom.locationId === "string" && usage.length > 0) {
     input.consumeFrom = { type: "MOBILE", locationId: updates.consumeFrom.locationId };
   }
-  const result = await run<{ outcome: string; inventoryBoundary: string }>("recordWorkOrderExecution", input);
-  return { success: true, workOrderId, outcome: result?.outcome ?? "RECORDED", inventoryBoundary: result?.inventoryBoundary ?? "NO_STOCK_MOVEMENT" };
+  const result = await run<{ outcome: string; inventoryBoundary: string; usage?: ExecutionUsageLine[] }>("recordWorkOrderExecution", input);
+  return {
+    success: true, workOrderId, outcome: result?.outcome ?? "RECORDED", inventoryBoundary: result?.inventoryBoundary ?? "NO_STOCK_MOVEMENT",
+    usage: Array.isArray(result?.usage) ? result.usage : [],
+  };
 }
 
 // ─────────────────────────────────────── parts plan ───────────────────────────────────────
