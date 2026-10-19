@@ -202,6 +202,11 @@ export default function AdminDataImport({ hasCapability }) {
   const [jobs, setJobs] = useState([]);
   // Tracked, not inferred from an empty list -- see History for why.
   const [historyStatus, setHistoryStatus] = useState("loading");
+  // EOS (Firebase exit B4): a file's records belong to ONE operating company, chosen from the companies this person may act for. The list comes from the
+  // history read (the server's answer, never a client guess); Firebase answers none, and then nothing is asked. One company is implied by the server.
+  const [companies, setCompanies] = useState([]);
+  const [companyKey, setCompanyKey] = useState("");
+  const needsCompany = companies.length > 1;
 
   // `isCurrent` is how the CALLER says whether its own run is still the live one. The mount effect
   // below passes a per-effect flag; callers with no cleanup hook (the approve handler) pass nothing
@@ -236,6 +241,7 @@ export default function AdminDataImport({ hasCapability }) {
     if (!isCurrent()) return;
     if (res.ok && Array.isArray(res.data?.jobs)) {
       setJobs(res.data.jobs);
+      setCompanies(Array.isArray(res.data?.companies) ? res.data.companies : []);
       setHistoryStatus("ready");
       return;
     }
@@ -265,9 +271,10 @@ export default function AdminDataImport({ hasCapability }) {
     try {
       // A workbook is binary and a CSV is text; reading either one the other way
       // corrupts it in the browser, before anything that could report it honestly.
+      const operatingCompanyKey = companyKey || null;
       const res = isWorkbookFile(file.name)
-        ? await stageDataImport({ fileName: file.name, fileBase64: await readFileBase64(file) })
-        : await stageDataImport({ fileName: file.name, fileText: await readFileText(file) });
+        ? await stageDataImport({ fileName: file.name, fileBase64: await readFileBase64(file), operatingCompanyKey })
+        : await stageDataImport({ fileName: file.name, fileText: await readFileText(file), operatingCompanyKey });
       if (res.ok) setStaged(res.data);
       else setError(res);
     } catch (err) {
@@ -275,7 +282,7 @@ export default function AdminDataImport({ hasCapability }) {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [companyKey]);
 
   const onApprove = useCallback(async () => {
     const jobId = staged?.job?.jobId;
@@ -320,11 +327,20 @@ export default function AdminDataImport({ hasCapability }) {
           <div className="fo-panel">
             <SectionHeader title="1. Choose a File" />
             <p className="fo-wizard-hint">{view.stage === IMPORT_STAGE.IDLE ? view.detail : "Choosing another file discards the current preview."}</p>
+            {needsCompany ? (
+              <div className="fo-wizard-hint">
+                <label htmlFor="data-import-company">Operating company for these records</label>{" "}
+                <select id="data-import-company" value={companyKey} onChange={(e) => setCompanyKey(e.target.value)} disabled={busy}>
+                  <option value="">Choose a company</option>
+                  {companies.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+                </select>
+              </div>
+            ) : null}
             <input
               type="file"
               accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={onFile}
-              disabled={busy}
+              disabled={busy || (needsCompany && !companyKey)}
               aria-label="Import file"
             />
           </div>

@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 51,
+    "objects": 53,
     "objectsWithFields": 28,
     "fields": 400
   },
@@ -6615,7 +6615,7 @@
       "key": "reportDefinition",
       "label": "Report Definition",
       "labelPlural": "Report Definitions",
-      "description": "A saved report definition: what it selects and how it is shaped. Registered by migration 1762300800000 as Reporting Slice 1, mirroring workflowDefinition -- a security subject with no data shape of its own. It carries NO field dimension: eos_policy.capabilities has object_key NOT NULL, UNIQUE (object_key, action_key) and no field column, so the 34 field-level report ids are NOT capability rows. Which fields a definition may show belongs to eos_policy.role_field_permission_overrides.",
+      "description": "A saved report definition: what it selects and how it is shaped. Registered by migration 1762300800000 as Reporting Slice 1, mirroring workflowDefinition -- a security subject with no data shape of its own. It carries NO field dimension: eos_policy.capabilities has object_key NOT NULL, UNIQUE (object_key, action_key) and no field column, so a field-level report id cannot be a capability row of this Object. Firebase exit B4 (DECISIONS #B4, migration 1764640000000) registers the report object and field reads under the separate `report` Object, and the saved-definition mutations here.",
       "domain": "Administration",
       "source": "CAPABILITY_AUTHORITY",
       "supportsDelete": false,
@@ -6819,6 +6819,38 @@
       "labelPlural": "CRM Activities",
       "description": "An interaction logged on a customer Account (DECISIONS #243, Firebase exit F7b): a call, meeting, sales note, relationship touch or general note, when it happened and who recorded it, with optional links to the Account's own Contact, Opportunity or Sales Order. Reading it also requires reading the Account. No CRED verb is derived here: its two capabilities are projected under this Object by Administration.",
       "domain": "Customers",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "labelPlural": "Reports",
+      "description": "The data a report may read (Firebase exit B4, DECISIONS #B4): one object-level read per reportable record type (Customer, Contact, Location, Equipment) and one read per field group, registered under the Firebase catalog's own ids report.<object>.read and report.<object>.field.<group>.read. A security subject, not a data shape: it carries no field of its own and no CRED verb is derived, because a run re-decides the object, every field and the caller's operating companies.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "performanceGoal",
+      "label": "Performance Goal",
+      "labelPlural": "Performance Goals",
+      "description": "A governed performance goal: a versioned, effective-dated, approved TARGET (never an actual), read by scope (Firebase exit B4, DECISIONS #B4). Its one capability is performance.goal.read; the Firebase authoring verbs (create, approve, supersede, retire) have no EOS consumer yet and are not registered. A security subject with no field and no CRED verb.",
+      "domain": "Administration",
       "source": "CAPABILITY_AUTHORITY",
       "supportsDelete": false,
       "capabilitiesByVerb": {

@@ -58,7 +58,7 @@ test("the registered-key census is a real one: it sees the keys the gates depend
     assert.ok(eosKeys.has(k), k);
   }
   // Firebase-only ids are mentioned in migration prose and absent from every INSERT.
-  for (const k of ["admin.dataImport.stage", "report.definition.create", "inventory.balance.read"]) assert.ok(!eosKeys.has(k), k);
+  for (const k of ["admin.dataImport.stage", "report.definition.read", "inventory.balance.read"]) assert.ok(!eosKeys.has(k), k);
 });
 
 test("every Firebase id the shell asks about is an EOS key, a same-meaning translation, or a recorded gap -- nothing is inferred", () => {

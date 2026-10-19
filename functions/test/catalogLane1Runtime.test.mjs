@@ -198,8 +198,12 @@ test("DATA_IMPORT: it does NOT bypass the Part authority, and has no Render runt
     "Data Import must never write the parts collection directly");
 
   // And there is no Render Data Import runtime: no transport operation names it.
+  // eosOpsHttp.ts is deliberately NOT in this list any more: Firebase exit B4 (DECISIONS #B4) wires SERVICE_HISTORY Data Import onto EOS. That runtime never touches Parts --
+  // it is pinned below to wire exactly one entity and to never create a Part.
+  const dataImportOps = code("functions/src/eosOps/dataImportOperations.ts");
+  assert.equal(/createPart|PARTS_COLLECTION|eos_catalog/.test(dataImportOps), false, "the EOS Data Import runtime must never reach the Part authority");
+  assert.ok(/ENTITY_NOT_WIRED/.test(dataImportOps), "every entity other than SERVICE_HISTORY is refused, not silently accepted");
   for (const transport of [
-    "functions/src/eosOps/eosOpsHttp.ts",
     "functions/src/eosCommercial/commercialHttp.ts",
     "functions/src/catalogMaster/catalogHttp.ts",
   ]) {

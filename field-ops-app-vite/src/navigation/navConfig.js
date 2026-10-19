@@ -824,6 +824,11 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   // WAREHOUSE RACKING (Firebase exit B3, DECISIONS #B3): the planner reads and writes bins on EOS under inventory.location.bin.read / .manage,
   // so the destination earns the `inventory.racking` door. The SAME row becomes a CUTOVER row (see the ceiling note).
   "administration/warehouseRacking": ["inventory.racking"],
+  // REPORTING (Firebase exit B4, DECISIONS #B4): Report Builder and Saved Reports run on EOS (the report engine over the existing EOS reads, and the saved definitions in
+  // eos_ops.report_definitions). Their doors are earned by the mirrored report.<object>.read keys and reportDefinition.read. The eight domain report destinations stay
+  // navHidden placeholders (the `reporting/*` gap below).
+  "reporting/builder": ["reporting.builder"],
+  "reporting/savedReports": ["reporting.savedReports"],
   "administration/emailCommunications": ["administration.emailCommunications"],
   "administration/auditLogs": ["administration.auditLogs"],
   // FINANCIAL POLICY (#232 Phase 2). Rendered under Administration, earned by a BUSINESS surface: `finance.policy` is
@@ -895,10 +900,8 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   // and by surface key, as EXPERIENCE_SURFACE_GAPS["crm.contacts"] -- which is where a gap with no
   // destination belongs.
   "dashboard/notifications": "Hidden placeholder; the bell is the live surface.",
-  "reporting/builder": "Report Builder is already governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
-  "reporting/savedReports": "See reporting/builder.",
   "financials/*": "Every Financials destination OTHER than the Overview (the Finance workspace), Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
-  "reporting/*": "The eight domain report destinations are navHidden placeholders, and Report Builder / Saved Reports are governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
+  "reporting/*": "The eight domain report destinations (Executive, Service, Inventory, Purchasing, Warehouse, Employees, Customers, Financial) are navHidden placeholders with no report definitions behind them. Report Builder and Saved Reports are mapped (Firebase exit B4).",
 });
 
 // ════════ THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS ════════

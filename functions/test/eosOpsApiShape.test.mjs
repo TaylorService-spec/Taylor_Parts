@@ -47,7 +47,10 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       // Supplier purchase order receiving + the archived legacy notes (Firebase exit B3, DECISIONS #B3).
       "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "listLegacyInventoryActionNotes",
       // The Part balance (Firebase exit B3-x): on-hand / reserved / available / on-order of one Part, three-valued.
-      "readPartBalance"]);
+      "readPartBalance",
+      // Records and reporting (Firebase exit B4, DECISIONS #B4): imported service history, Data Import history, saved report definitions, a report run, performance goals.
+      "listImportedServiceHistory", "listDataImportJobs", "listSavedReportDefinitions", "readSavedReportDefinition", "runReportDefinition",
+      "listCurrentPerformanceGoals", "listPerformanceGoalVersions", "listGoalSubjects"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -62,6 +65,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "recordReturnIntake",
     // Supplier purchase order receiving (Firebase exit B3): the canonical PURCHASE_ORDER source, no fallback to or from receiveReorderStock.
     "receiveSupplierPurchaseOrder",
+    // Records and reporting (Firebase exit B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
+    "stageDataImport", "executeDataImport", "createSavedReportDefinition", "renameSavedReportDefinition", "duplicateSavedReportDefinition", "deleteSavedReportDefinition",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
@@ -216,7 +221,12 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   assert.equal(REORDER_POSTGRES_ACTIVE, true, "the activation package opens the PostgreSQL Reorder authority");
   const untouchable = new Proxy({}, { get: () => { throw new Error("DEPS_TOUCHED"); } });
   // Returns intake is its OWN authority (F7a, #242), deliberately not behind the Reorder activation boundary.
-  const RETURNS = ["listReturnIntakeOptions", "recordReturnIntake"];
+  // Records and reporting (Firebase exit B4) is ALSO its own authority per operation -- never behind the Reorder boundary: the 14 operations decide their own capability, then the
+  // caller's operating companies (tests/recordsReportingOffline.test.mjs proves they pass this gate).
+  const RECORDS = ["listImportedServiceHistory", "listDataImportJobs", "listSavedReportDefinitions", "readSavedReportDefinition", "runReportDefinition",
+    "listCurrentPerformanceGoals", "listPerformanceGoalVersions", "listGoalSubjects", "stageDataImport", "executeDataImport", "createSavedReportDefinition",
+    "renameSavedReportDefinition", "duplicateSavedReportDefinition", "deleteSavedReportDefinition"];
+  const RETURNS = ["listReturnIntakeOptions", "recordReturnIntake", ...RECORDS];
   const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o) && !RETURNS.includes(o));
   for (const operation of RETURNS) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },

@@ -255,7 +255,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): eos_policy.employee_company_authority_grants + a store guard; no capability, no grant.
   // 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys, 15 grants.
   // 104 -> 105: 1764630000000 -- Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive.
-  assert.equal(migrations.length, 105, "a migration was added or removed by the read enforcement");
+  // 105 -> 106: 1764640000000 -- Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): the 38 report.* ids and performance.goal.read REGISTERED (39 capabilities, granted to nobody -- the mirrored grants are a separate change), plus eos_ops.imported_service_history, data_import_jobs, report_definitions and performance_goals.
+  // 106 -> 107: 1764650000000 -- B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored role-capability grants for the 39 registered B4 keys; no capability, no schema.
+  assert.equal(migrations.length, 107, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

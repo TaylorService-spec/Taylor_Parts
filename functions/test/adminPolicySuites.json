@@ -116,7 +116,10 @@
     "test/employeeCompanyAuthorityGrants.test.mjs",
     "test/eosVerifierSwitch.test.mjs",
     "test/financeVisibility.test.mjs",
-    "test/rackingPlannerOffline.test.mjs"
+    "test/rackingPlannerOffline.test.mjs",
+    "test/reportPipeline.test.mjs",
+    "test/recordsReportingOffline.test.mjs",
+    "test/b4ReportGoalGrantParity.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -285,6 +288,8 @@
     "test/supplierPurchaseOrderReceivingPostgres.test.mjs",
     "test/rackingPlannerPostgres.test.mjs",
     "test/supplierPoFixtureLoaderPostgres.test.mjs",
-    "test/partBalancePostgres.test.mjs"
+    "test/partBalancePostgres.test.mjs",
+    "test/recordsReportingPostgres.test.mjs",
+    "test/b4ReportGoalGrantParityPostgres.test.mjs"
   ]
 }
