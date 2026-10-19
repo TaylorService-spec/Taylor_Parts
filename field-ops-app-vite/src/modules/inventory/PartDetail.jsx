@@ -1400,12 +1400,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
     data: reorderRequest,
     loading: reorderRequestLoading,
     error: reorderRequestError,
-    // refreshReorderRequest is an intentional NO-OP retained only for call-site
-    // compatibility -- useReorderRequestForPart() is realtime (onSnapshot), so
-    // its `refresh` is an empty callback (verified useReorderRequests.js:204,
-    // 2026-08-05, W0). The onReviewed/onAssigned/etc. handlers below pass it so
-    // child components have a callback to call; the live subscription, not this
-    // call, is what actually re-renders the request.
+    // refreshReorderRequest RE-READS the request (an EOS fetch, not a live subscription), so each
+    // action card below calls it after its command succeeds and the page shows the new status.
     refresh: refreshReorderRequest,
   } = useReorderRequestForPart(partId, requestId);
   // Firebase exit F4 (DECISIONS #247): the Reorder Request is an EOS row, and the only person it names is its assignee, by

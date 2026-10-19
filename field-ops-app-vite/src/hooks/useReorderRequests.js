@@ -88,14 +88,24 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
   // Inputs are compared by VALUE: callers build `{ statuses: [...] }` inline, so comparing by
   // identity would re-read forever.
   const inputKey = JSON.stringify(input ?? null);
+  // REFRESH IS REAL. The onSnapshot listener these reads replaced re-rendered a screen after its own
+  // write, so callers (PartDetail's review/assign/start/record actions) call refresh() after a
+  // successful command. A missing refresh threw after the write had already succeeded, and the
+  // screen reported "Nothing was changed" over a change the server had just made. The re-read is
+  // QUIET: the current data stays on screen until the new answer arrives.
+  const [reloadKey, setReloadKey] = useState(0);
+  const quietRef = useRef(false);
+  const refresh = useCallback(() => { quietRef.current = true; setReloadKey((k) => k + 1); }, []);
 
   useEffect(() => {
+    const quiet = quietRef.current;
+    quietRef.current = false;
     if (!enabled) {
       setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: null });
       return undefined;
     }
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    if (!quiet) setState((prev) => ({ ...prev, loading: true, error: null }));
     clientRef.current.call(operation, input ?? undefined)
       .then((res) => {
         if (cancelled) return;
@@ -113,9 +123,9 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- input is compared by value via inputKey
-  }, [operation, inputKey, enabled]);
+  }, [operation, inputKey, enabled, reloadKey]);
 
-  return state;
+  return { ...state, refresh };
 }
 
 export function useReorderRequestsByStatus(status, enabled = true, deps = {}) {
@@ -181,11 +191,9 @@ export function useMyAssignedReorderRequests(status, enabled = true, deps = {}) 
 //
 // Bug fix -- now realtime: the review/assignment/purchasing-start
 // cards on PartDetail.jsx update live as the request's status changes,
-// without needing a page reload. `refresh` is kept, as a no-op, purely
-// for call-site compatibility (PartDetail.jsx destructures and calls
-// it after each write) -- it's no longer necessary now that this
-// subscribes live, but removing it would mean touching every call site
-// for no behavioral gain.
+// without needing a page reload. Since the EOS cutover this is a fetch,
+// not a subscription: `refresh` re-reads it, and PartDetail.jsx calls it
+// after each successful write.
 //
 // Notification identity fix (docs/specifications/notification-identity.md,
 // Issue #145) -- `requestId` is a new, optional second parameter. Every
@@ -222,9 +230,10 @@ export function useReorderRequestForPart(partId, requestId, deps = {}) {
     !requestId && !!partId, deps, (rows) => rows[0] ?? null);
 
   if (requestId) {
-    if (byId.loading || byId.error) return { data: null, loading: byId.loading, error: byId.error };
-    if (!byId.data) return { data: null, loading: false, error: "not_found" };
-    if (byId.data.partId !== partId) return { data: null, loading: false, error: "mismatch" };
+    const { refresh } = byId;
+    if (byId.loading || byId.error) return { data: null, loading: byId.loading, error: byId.error, refresh };
+    if (!byId.data) return { data: null, loading: false, error: "not_found", refresh };
+    if (byId.data.partId !== partId) return { data: null, loading: false, error: "mismatch", refresh };
     return byId;
   }
   return byPart;
