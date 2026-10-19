@@ -15,6 +15,14 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../../firebase/firebase";
 import { mapServiceOutcome, mapCallableError } from "./reportRunOutcome.js";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
+import { createReportRunClient } from "../../services/eosRecordsClients.js";
+
+// FIREBASE EXIT B4 (DECISIONS #B4; F7e): WHICH SOURCE RUNS THE REPORT is decided once at BUILD time by the F1 flag. Where an EOS API is declared the run goes to the
+// Operations transport (runReportDefinition: report.<object>.read + each field + the caller's operating companies, over the existing EOS reads) and the Firebase
+// callable below is never invoked -- not as a fallback, not on failure. The EOS client throws a Firebase-style coded error for a refusal, so the SAME pure mappers
+// (mapServiceOutcome / mapCallableError) decide every user-facing state under both sources.
+const eosRun = EOS_SESSION_SOURCE ? createReportRunClient() : null;
 
 // Re-export the pure helpers so existing importers keep working.
 export {
@@ -37,6 +45,7 @@ const RUN_REPORT_CALLABLE = "runReportDefinitionCallable";
 // Promise of a mapped client outcome; resolves (never rejects) for every path.
 export async function runReport(definition, options) {
   try {
+    if (eosRun) return mapServiceOutcome(await eosRun(definition, options));
     const callable = httpsCallable(functions, RUN_REPORT_CALLABLE);
     const result = await callable({ definition, ...(options?.definitionId ? { definitionId: options.definitionId } : {}) });
     return mapServiceOutcome(result?.data);

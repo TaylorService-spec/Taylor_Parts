@@ -10,7 +10,13 @@
 // accessVersion (those are server-derived from request.auth.uid).
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../../firebase/firebase";
+import { EOS_SESSION_SOURCE } from "../../access/eosSessionSource.js";
+import { createSavedReportClient } from "../../services/eosRecordsClients.js";
 
+// FIREBASE EXIT B4 (DECISIONS #B4; F7e): WHICH SOURCE ANSWERS is decided once at BUILD time by the F1 flag. Where an EOS API is declared the six methods call the
+// Operations transport (the *SavedReportDefinition(s) operations over eos_ops.report_definitions: the caller's OWN definitions, reportDefinition.read /
+// report.definition.*) and the Firebase callables are never invoked; everywhere else they are the sole source, exactly as before. Both throw a Firebase-style coded
+// error, which savedReportServiceOutcome.js maps unchanged.
 const CALLABLES = Object.freeze({
   create: "createSavedDefinitionCallable",
   get: "getSavedDefinitionCallable",
@@ -24,7 +30,7 @@ function call(name, payload) {
   return httpsCallable(functions, name)(payload).then((res) => res?.data);
 }
 
-export const savedReportService = Object.freeze({
+const firebaseSavedReportService = Object.freeze({
   create: ({ name, definition }) => call(CALLABLES.create, { name, definition }),
   get: (definitionId) => call(CALLABLES.get, { definitionId }),
   list: () => call(CALLABLES.list, {}),
@@ -32,3 +38,5 @@ export const savedReportService = Object.freeze({
   duplicate: (definitionId, name) => call(CALLABLES.duplicate, name === undefined ? { definitionId } : { definitionId, name }),
   remove: (definitionId) => call(CALLABLES.del, { definitionId }),
 });
+
+export const savedReportService = EOS_SESSION_SOURCE ? createSavedReportClient() : firebaseSavedReportService;

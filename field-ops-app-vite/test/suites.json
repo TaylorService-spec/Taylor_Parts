@@ -1300,6 +1300,10 @@
     {
       "file": "test/supplierReceivingAndRackingEos.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/recordsReportingEos.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

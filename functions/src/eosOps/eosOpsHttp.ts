@@ -45,6 +45,13 @@ import {
   listReceivableSupplierPurchaseOrders, listSupplierReceivingLocationOptions, readSupplierPurchaseOrderProgress, receiveSupplierPurchaseOrder,
 } from "./supplierPurchaseOrderReceiving.js";
 import { listLegacyInventoryActionNotes } from "./legacyInventoryActionNotes.js";
+import { listImportedServiceHistory } from "./importedServiceHistory.js";
+import { executeDataImport, listDataImportJobs, stageDataImport } from "./dataImportOperations.js";
+import {
+  createSavedReportDefinition, deleteSavedReportDefinition, duplicateSavedReportDefinition, listSavedReportDefinitions, readSavedReportDefinition,
+  renameSavedReportDefinition, runReportDefinition,
+} from "./reportOperations.js";
+import { listCurrentPerformanceGoals, listGoalSubjects, listPerformanceGoalVersions } from "./performanceGoalReads.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
 import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
@@ -130,6 +137,17 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "listSupplierReceivingLocationOptions",
   // THE FROZEN LEGACY NOTES, archived (B3, ruling 8): read only, inventory.action.read; empty until the held copy.
   "listLegacyInventoryActionNotes",
+  // RECORDS AND REPORTING (Firebase exit B4, DECISIONS #B4). Each is its OWN authority -- not behind the Reorder activation boundary: the Account's imported
+  // service history (customer.record.read + the caller's companies), the Data Import job history (admin.dataImport.execute), the saved report definitions
+  // (reportDefinition.read, the caller's own), a report run (report.<object>.read + fields + the caller's companies) and the three performance-goal reads.
+  "listImportedServiceHistory",
+  "listDataImportJobs",
+  "listSavedReportDefinitions",
+  "readSavedReportDefinition",
+  "runReportDefinition",
+  "listCurrentPerformanceGoals",
+  "listPerformanceGoalVersions",
+  "listGoalSubjects",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -178,6 +196,13 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // SUPPLIER PURCHASE ORDER RECEIVING (Firebase exit B3): dispatched by source type like its Reorder sibling, with NO fallback between the
   // two authorities. inventory.stock.receive + company authority + the WAREHOUSE scope over the destination.
   "receiveSupplierPurchaseOrder",
+  // RECORDS AND REPORTING (B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
+  "stageDataImport",
+  "executeDataImport",
+  "createSavedReportDefinition",
+  "renameSavedReportDefinition",
+  "duplicateSavedReportDefinition",
+  "deleteSavedReportDefinition",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -237,6 +262,20 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   listSupplierReceivingLocationOptions: "/operations/inventory",
   listLegacyInventoryActionNotes: "/operations/inventory",
   receiveSupplierPurchaseOrder: "/operations/inventory",
+  listImportedServiceHistory: "/operations/inventory",
+  listDataImportJobs: "/operations/inventory",
+  listSavedReportDefinitions: "/operations/inventory",
+  readSavedReportDefinition: "/operations/inventory",
+  runReportDefinition: "/operations/inventory",
+  listCurrentPerformanceGoals: "/operations/inventory",
+  listPerformanceGoalVersions: "/operations/inventory",
+  listGoalSubjects: "/operations/inventory",
+  stageDataImport: "/operations/inventory",
+  executeDataImport: "/operations/inventory",
+  createSavedReportDefinition: "/operations/inventory",
+  renameSavedReportDefinition: "/operations/inventory",
+  duplicateSavedReportDefinition: "/operations/inventory",
+  deleteSavedReportDefinition: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -644,6 +683,64 @@ export async function executeOperation(
       case "recordReturnIntake": {
         const { actor, pool } = await supplierTermsActor();
         return ok(await recordReturnIntake({ pool }, actor, request.input ?? {}));
+      }
+      // RECORDS AND REPORTING (Firebase exit B4, DECISIONS #B4). ONE resolution, conditioned grants withheld (a key reached only through a grant condition is
+      // not held here -- the same rule the supplier-terms and returns routes apply). Each operation decides capability, then company, itself.
+      case "listImportedServiceHistory": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listImportedServiceHistory({ pool }, actor, request.input ?? {}));
+      }
+      case "listDataImportJobs": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listDataImportJobs({ pool }, actor, request.input ?? {}));
+      }
+      case "listSavedReportDefinitions": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listSavedReportDefinitions({ pool }, actor, request.input ?? {}));
+      }
+      case "readSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await readSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
+      case "runReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await runReportDefinition({ pool }, actor, request.input ?? {}));
+      }
+      case "listCurrentPerformanceGoals": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listCurrentPerformanceGoals({ pool }, actor, request.input ?? {}));
+      }
+      case "listPerformanceGoalVersions": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listPerformanceGoalVersions({ pool }, actor, request.input ?? {}));
+      }
+      case "listGoalSubjects": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listGoalSubjects({ pool }, actor, request.input ?? {}));
+      }
+      case "stageDataImport": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await stageDataImport({ pool }, actor, request.input ?? {}));
+      }
+      case "executeDataImport": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await executeDataImport({ pool }, actor, request.input ?? {}));
+      }
+      case "createSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await createSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
+      case "renameSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await renameSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
+      case "duplicateSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await duplicateSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
+      case "deleteSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await deleteSavedReportDefinition({ pool }, actor, request.input ?? {}));
       }
       case "correctReorderReceipt": {
         const { actor, pool } = await reorderActor();

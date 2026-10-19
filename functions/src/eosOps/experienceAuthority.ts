@@ -286,6 +286,16 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
     { capabilityKey: "reportDefinition.read" },
   ]),
 
+  // ── Reporting (Firebase exit B4, DECISIONS #B4): the two doors Report Builder and Saved Reports were missing on EOS. Report Builder is earned by any of the
+  // four object reads the report engine decides on (report.<object>.read, mirrored from the Firebase catalog); Saved Reports by reportDefinition.read (the EOS twin
+  // of report.definition.read). A door confers NOTHING: every run re-decides the object, each field and the caller's operating companies, and every saved-definition
+  // command re-decides its own capability and ownership.
+  surface("reporting.builder", "Report Builder", [
+    { capabilityKey: "report.customer.read" }, { capabilityKey: "report.contact.read" },
+    { capabilityKey: "report.location.read" }, { capabilityKey: "report.equipment.read" },
+  ]),
+  surface("reporting.savedReports", "Saved Reports", [{ capabilityKey: "reportDefinition.read" }]),
+
   // ── Financials
   surface("financials.invoices", "Invoices", [{ capabilityKey: "finance.invoice.read" }]),
   surface("financials.payments", "Payments", [{ capabilityKey: "finance.payment.read" }]),

@@ -216,7 +216,10 @@ check("the SUPERSEDED reorder queue key is not declared on Owner", () => {
 
 check("Owner's legacy declaration of Administration-grant-only keys cannot become a grant by reconcile", () => {
   const declaredAdminOnly = [...OWNER].filter((id) => ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id)).sort();
-  assert.deepEqual(declaredAdminOnly, [
+  // Firebase exit B4: Owner's compiled catalog also declares the 38 report.* ids and performance.goal.read, which are fenced the same way until the mirrored grants are authorized.
+  const b4 = declaredAdminOnly.filter((id) => id.startsWith("report.") || id === "performance.goal.read");
+  assert.equal(b4.length, 39);
+  assert.deepEqual(declaredAdminOnly.filter((id) => !b4.includes(id)), [
     "reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.cancel", "reorder.request.reject",
   ]);
   for (const id of declaredAdminOnly) {
@@ -373,7 +376,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
   // 142 -> 147: the five finance.visibility.* keys (Firebase exit B1, 1764620000000), mirrored to admin and owner (all five), salesperson (self), salesManager (team) and the three money Roles (consolidated).
   // 147 -> 149: inventory.location.bin.read / .manage (Firebase exit B3, 1764630000000), mirrored to admin, inventoryBinAdministrator (both), owner and the two bin-reading operator Roles (read).
-  assert.equal(VOCABULARY.size, 149);
+  // 149 -> 188: the 38 report.* ids and performance.goal.read (Firebase exit B4, 1764640000000), REGISTERED, granted to nobody, and fenced as Administration-grant-only until the mirrored grants are authorized.
+  assert.equal(VOCABULARY.size, 188);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

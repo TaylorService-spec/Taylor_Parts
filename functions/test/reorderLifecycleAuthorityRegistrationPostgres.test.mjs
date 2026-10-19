@@ -59,8 +59,11 @@ test("the eight fence constants are the eight the runtime requires and the migra
   // and granted only through Administration -- and TRUCK INVENTORY OD-T6: inventory.catalog.alias.read (migration
   // 1764410000000), whose holders are the inventoryLookupReader composition. An unexpected member fails here.
   for (const k of KEYS) assert.ok(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(k), `${k} must be fenced`);
+  // Firebase exit B4 (migration 1764640000000) fenced the 38 report.* ids and performance.goal.read the same way: registered, no default grant, until the Owner-authorized grant change.
+  const b4 = [...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].filter((k) => k.startsWith("report.") || k === "performance.goal.read");
+  assert.equal(b4.length, 39);
   assert.deepEqual([...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].sort(),
-    [...KEYS, "workOrder.parts.plan", "inventory.serializedAsset.acquire", "inventory.catalog.alias.read"].sort());
+    [...KEYS, "workOrder.parts.plan", "inventory.serializedAsset.acquire", "inventory.catalog.alias.read", ...b4].sort());
   assert.deepEqual([
     life.REORDER_APPROVE, life.REORDER_REJECT, life.REORDER_START_PURCHASING, life.REORDER_POST_UPDATE,
     life.REORDER_MARK_RECEIVED, life.REORDER_CANCEL, life.REORDER_RECORD_PO,
