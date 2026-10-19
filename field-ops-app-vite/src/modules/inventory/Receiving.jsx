@@ -151,7 +151,7 @@ export default function Receiving({ deps }) {
       context={
         <p className="fo-receiving-purpose">
           Receive purchased inventory and record company-owned units entering managed custody.
-          <span className="fo-receiving-purpose__gov"> Governed transaction · limited to Admin, Dispatcher, Owner.</span>
+          <span className="fo-receiving-purpose__gov"> Governed transaction · limited to people who hold the receiving permission.</span>
         </p>
       }
     >
