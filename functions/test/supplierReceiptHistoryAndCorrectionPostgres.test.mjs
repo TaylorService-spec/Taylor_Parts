@@ -217,6 +217,61 @@ test("Supplier receipt history and VOID correction on PostgreSQL", { skip: SKIP,
     assert.deepEqual(await snap(), before);
   });
 
+  await t.test("two lines of the SAME part into one location: the stock check is against the SUM received -- a partly consumed receipt is refused, never driven negative; the whole receipt voids when the stock is all there", async () => {
+    await part("PART-B", "STANDARD");
+    const lines = [{ lineId: "L1", partId: "PART-B", receivedQuantity: 4 }, { lineId: "L2", partId: "PART-B", receivedQuantity: 4 }];
+    const po = await order({ lines: [["L1", "PART-B", 5], ["L2", "PART-B", 5]] });
+    const rcv = await receive(po, lines);
+    assert.equal(await onHand("PART-B", "wh-1"), 8);
+    await q(`INSERT INTO eos_ops.inventory_movements (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+               movement_type, quantity_delta, source_kind, source_id, created_by)
+             VALUES ($1,'t1','sample-co','PART-B','NONE','WAREHOUSE','wh-1','WORK_ORDER_CONSUMPTION',-3,'FIXTURE','fixture','fixture')`, [`mov-take-${seq++}`]);
+    // 5 remain: each line (4) passes on its own, the two together (8) do not.
+    const before = await snap();
+    const err = await refusal(() => correct(rcv.receivingId));
+    assert.deepEqual([err.code, err.category], ["RECEIPT_STOCK_ALREADY_MOVED", "PRECONDITION_FAILED"]);
+    assert.match(err.message, /only 5 of the 8 received remain/);
+    assert.deepEqual(await snap(), before, "zero trace");
+    assert.equal(await onHand("PART-B", "wh-1"), 5, "never negative");
+
+    // Happy path: another receipt of the same shape, nothing consumed from it -> the whole receipt is reversed, both lines.
+    const po2 = await order({ lines: [["L1", "PART-B", 5], ["L2", "PART-B", 5]] });
+    const rcv2 = await receive(po2, lines);
+    assert.equal(await onHand("PART-B", "wh-1"), 13);
+    const done = await correct(rcv2.receivingId);
+    assert.equal(done.compensatingMovementIds.length, 2);
+    assert.equal(await onHand("PART-B", "wh-1"), 5);
+    assert.equal((await q(`SELECT status FROM eos_ops.receiving_orders WHERE id = $1`, [rcv2.receivingId])).rows[0].status, "CANCELLED");
+  });
+
+  await t.test("a RESEND of a receipt that a correction has since VOIDED is refused (RECEIPT_CANCELLED), never answered 'replayed'", async () => {
+    const po = await order({ lines: [["L1", "PART-A", 3]] });
+    const req = {
+      source: { type: "PURCHASE_ORDER", purchaseOrderId: po }, receivingLocation: { type: "WAREHOUSE", locationId: "wh-1" },
+      lines: [{ lineId: "L1", partId: "PART-A", receivedQuantity: 3 }], idempotencyKey: "k-resend-after-void",
+    };
+    const first = await spo.receiveSupplierPurchaseOrder({ pool, now: () => FIXED }, actor([RECEIVE]), req);
+    assert.equal((await spo.receiveSupplierPurchaseOrder({ pool, now: () => FIXED }, actor([RECEIVE]), req)).outcome, "replayed", "before the void, a retry is a replay");
+    await correct(first.receivingId);
+    const before = await snap();
+    const err = await refusal(() => spo.receiveSupplierPurchaseOrder({ pool, now: () => FIXED }, actor([RECEIVE]), req));
+    assert.deepEqual([err.code, err.category], ["RECEIPT_CANCELLED", "PRECONDITION_FAILED"]);
+    assert.deepEqual(await snap(), before, "nothing is received again");
+  });
+
+  await t.test("an idempotency key already recorded for ANOTHER company's correction is a clean IDEMPOTENCY_CONFLICT, not a database error; the correction's own replay still works", async () => {
+    const po = await order({ lines: [["L1", "PART-A", 3]] });
+    const r1 = await receive(po, [{ lineId: "L1", partId: "PART-A", receivedQuantity: 3 }]);
+    const poV = await order({ companyKey: "ventana-co", lines: [["L1", "PART-A", 3]] });
+    const rV = await receive(poV, [{ lineId: "L1", partId: "PART-A", receivedQuantity: 3 }], "wh-v", ventana);
+    const first = await correct(r1.receivingId, { idempotencyKey: "shared-correction-key" });
+    const before = await snap();
+    const err = await refusal(() => correct(rV.receivingId, { idempotencyKey: "shared-correction-key" }, actor([CORRECT], ventana)));
+    assert.deepEqual([err.code, err.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"]);
+    assert.deepEqual(await snap(), before, "the Ventana receipt is untouched");
+    assert.equal((await correct(r1.receivingId, { idempotencyKey: "shared-correction-key" })).correctionId, first.correctionId, "the owner's own retry replays");
+  });
+
   await t.test("a serialized receipt cannot be corrected here (custody has no never-arrived state)", async () => {
     const po = await order({ lines: [["L1", "PART-S", 1]] });
     const rcv = await receive(po, [{ lineId: "L1", partId: "PART-S", receivedQuantity: 1, serialNumbers: ["SN-100"] }]);

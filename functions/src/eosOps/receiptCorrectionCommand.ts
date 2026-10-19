@@ -178,7 +178,7 @@ async function correctWithin(
   try {
     scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where)).scopeWarehouseId;
   } catch (err) {
-    if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse: ${err.message}`);
+    if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse (${err.code})`);
     throw err;
   }
   const scoped = await authorizeObjectAction(postgresContextualReader(client), {
@@ -252,7 +252,7 @@ async function correctWithin(
     // The corrected receipt's intercompany correlation (#202) is retired with it (an established pair voided on both sides).
     await retireIntercompanyCorrelationForReceiptOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason });
   } catch (err) {
-    if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's Finance consequence could not be reversed: ${err.message}`);
+    if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's Finance consequence could not be reversed (${err.code})`);
     throw err;
   }
 

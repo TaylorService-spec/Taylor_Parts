@@ -329,3 +329,20 @@ describe("the crumb's right side is a read time, not a freshness claim", () => {
     }
   });
 });
+
+// ── Request Reorder from the queue pages does not depend on the EOS balance read (Firebase exit B3-x) ─────
+//
+// PartsList and WarehouseManagerHome raise a request from the stock-health queue through requestReorderForRecommendation -> the EOS trusted
+// createReorderRequest (reorderApiClient). The queue is derived from movements and usage, never from the per-location balance read, so switching
+// INVENTORY_BALANCE_READ_READY on or off cannot hide the action there. Part Detail is the entry for a Part the queue does not hold.
+describe("B3-x: Request Reorder on the queue pages is independent of the balance read", () => {
+  const HOME_SRC = fs.readFileSync(path.resolve("src/modules/inventoryRole/WarehouseManagerHome.jsx"), "utf8");
+  const DOMAIN_SRC = fs.readFileSync(path.resolve("src/domain/inventoryReorderRequests.js"), "utf8");
+  it("both pages raise the request through the shared EOS-backed writer and never read the balance readiness flag", () => {
+    for (const src of [LIST_SRC, HOME_SRC]) {
+      expect(src).toContain("requestReorderForRecommendation(");
+      expect(src.includes("INVENTORY_BALANCE_READ_READY")).toBe(false);
+    }
+    expect(DOMAIN_SRC).toContain('from "../services/reorderApiClient.js"');
+  });
+});

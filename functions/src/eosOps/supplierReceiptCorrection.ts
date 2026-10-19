@@ -119,20 +119,6 @@ async function voidWithin(
   actor: ReceivingPrincipalActor,
   c: { receivingId: string; reason: string; idempotencyKey: string; fingerprint: string; companyKeys: readonly string[] },
 ): Promise<SupplierReceiptCorrectionResult> {
-  // ---- 1. REPLAY: the same key + the same request returns the recorded correction and writes nothing. A key recorded for a company the
-  // caller does not reach is not visible here: the flow falls through to the receipt lookup, which reads that receipt as nonexistent. ----
-  const prior = await client.query(
-    `SELECT k.*, r.source_purchase_order_id FROM ${SCHEMA}.receiving_corrections k
-       JOIN ${SCHEMA}.receiving_orders r ON r.tenant_id = k.tenant_id AND r.id = k.receiving_order_id
-      WHERE k.tenant_id = $1 AND k.idempotency_key = $2 AND k.operating_company_key = ANY($3::text[]) AND r.source_kind::text = $4`,
-    [actor.tenantId, c.idempotencyKey, [...c.companyKeys], SUPPLIER_PO_SOURCE_KIND]);
-  if (prior.rows[0]) {
-    if (prior.rows[0].request_fingerprint !== c.fingerprint) {
-      refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
-    }
-    return resultOf(prior.rows[0], String(prior.rows[0].source_purchase_order_id), "replayed");
-  }
-
   // ---- 2. THE RECEIPT (company filter IN the WHERE: another company's receipt is nonexistent) and the SERIALIZATION ANCHOR the receipt itself
   // takes (its purchase order), locked first, then the receipt ----
   const peek = await client.query(
@@ -151,10 +137,6 @@ async function voidWithin(
     `SELECT id, operating_company_key, receiving_location_type::text AS location_type, receiving_location_id, status::text AS status
        FROM ${SCHEMA}.receiving_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, c.receivingId]);
   const receipt = rcv[0];
-  if (receipt.status === "CANCELLED") {
-    const { rows: done } = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND receiving_order_id = $2`, [actor.tenantId, c.receivingId]);
-    refuse(done[0] ? "RECEIPT_ALREADY_CORRECTED" : "RECEIPT_CANCELLED", "PRECONDITION_FAILED", "this receipt is already cancelled; nothing to correct");
-  }
 
   // ---- 3. AUTHORITY: inventory.receipt.correct + WAREHOUSE scope over the receipt location (a destination act) ----
   const where = { type: String(receipt.location_type), locationId: String(receipt.receiving_location_id) };
@@ -162,7 +144,7 @@ async function voidWithin(
   try {
     scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where)).scopeWarehouseId;
   } catch (err) {
-    if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse: ${err.message}`);
+    if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse (${err.code})`);
     throw err;
   }
   const scoped = await authorizeObjectAction(postgresContextualReader(client), {
@@ -176,6 +158,26 @@ async function voidWithin(
       : scoped.reason === "EMPLOYEE_LINK_REQUIRED" ? "only an Employee can correct a receipt" : "not authorized to correct this receipt");
   }
 
+  // ---- 3b. REPLAY: the same key + the same request returns the recorded correction and writes nothing. Decided AFTER the purchase-order lock and the
+  // scope check (a replay is neither a lock-free read nor a way past authority) and BEFORE the already-cancelled refusal (the replay of a correction
+  // finds its own receipt cancelled). A key recorded for a company the caller does not reach is not visible here; the INSERT's unique key then
+  // refuses it cleanly below. ----
+  const prior = await client.query(
+    `SELECT k.*, r.source_purchase_order_id FROM ${SCHEMA}.receiving_corrections k
+       JOIN ${SCHEMA}.receiving_orders r ON r.tenant_id = k.tenant_id AND r.id = k.receiving_order_id
+      WHERE k.tenant_id = $1 AND k.idempotency_key = $2 AND k.operating_company_key = ANY($3::text[]) AND r.source_kind::text = $4`,
+    [actor.tenantId, c.idempotencyKey, [...c.companyKeys], SUPPLIER_PO_SOURCE_KIND]);
+  if (prior.rows[0]) {
+    if (prior.rows[0].request_fingerprint !== c.fingerprint) {
+      refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
+    }
+    return resultOf(prior.rows[0], String(prior.rows[0].source_purchase_order_id), "replayed");
+  }
+  if (receipt.status === "CANCELLED") {
+    const { rows: done } = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND receiving_order_id = $2`, [actor.tenantId, c.receivingId]);
+    refuse(done[0] ? "RECEIPT_ALREADY_CORRECTED" : "RECEIPT_CANCELLED", "PRECONDITION_FAILED", "this receipt is already cancelled; nothing to correct");
+  }
+
   // ---- 4. THE LINES, and the INVENTORY INVARIANT: the received stock must still be where the receipt put it ----
   const { rows: lines } = await client.query(
     `SELECT line_id, part_id, tracking_mode::text AS tracking_mode, received_quantity FROM ${SCHEMA}.receiving_order_lines
@@ -184,16 +186,21 @@ async function voidWithin(
     refuse("RECEIPT_CORRECTION_SERIAL_UNSUPPORTED", "PRECONDITION_FAILED",
       "a serialized receipt cannot be corrected here yet: serialized custody has no governed never-arrived state");
   }
-  for (const l of lines) {
-    await lockStockLocation(client, actor.tenantId, l.part_id, where.type, where.locationId);
+  // The receipt location is one place, so two lines of the SAME part land in the same on-hand figure: the comparison is against the SUM received per
+  // part, never per line (two lines checked one by one against the same on-hand could each pass and together drive it negative). Parts are locked in
+  // a fixed order.
+  const receivedByPart = new Map<string, number>();
+  for (const l of lines) receivedByPart.set(String(l.part_id), (receivedByPart.get(String(l.part_id)) ?? 0) + Number(l.received_quantity));
+  for (const [partId, received] of [...receivedByPart.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) {
+    await lockStockLocation(client, actor.tenantId, partId, where.type, where.locationId);
     const { rows } = await client.query<{ total: string | null }>(
       `SELECT COALESCE(SUM(quantity_delta), 0)::bigint AS total FROM ${SCHEMA}.inventory_movements
         WHERE tenant_id = $1 AND part_id = $2 AND tracking_mode = 'NONE' AND location_type = $3 AND location_id = $4`,
-      [actor.tenantId, l.part_id, where.type, where.locationId]);
+      [actor.tenantId, partId, where.type, where.locationId]);
     const onHand = Number(rows[0]?.total ?? 0);
-    if (onHand < Number(l.received_quantity)) {
+    if (onHand < received) {
       refuse("RECEIPT_STOCK_ALREADY_MOVED", "PRECONDITION_FAILED",
-        `only ${onHand} of the ${l.received_quantity} received remain at the receipt location: the stock was consumed, transferred or moved -- correct that downstream event first`);
+        `only ${onHand} of the ${received} received remain at the receipt location: the stock was consumed, transferred or moved -- correct that downstream event first`);
     }
   }
 
@@ -227,7 +234,7 @@ async function voidWithin(
     reversed = (await reverseReceiptFinancialConsequenceOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason })).reversed;
     await retireIntercompanyCorrelationForReceiptOn(client, financeActor, { receivingId: c.receivingId, correctionId, reason: c.reason });
   } catch (err) {
-    if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's Finance consequence could not be reversed: ${err.message}`);
+    if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's Finance consequence could not be reversed (${err.code})`);
     throw err;
   }
 
@@ -240,13 +247,21 @@ async function voidWithin(
 
   // ---- 9. MISSING-COST EXCEPTIONS RESOLVED (append-only rows), then the CORRECTION RECORD ----
   const resolved = await resolveReceiptCostExceptionsOn(client, financeActor, { receivingId: c.receivingId, correctionId, resolution: "RECEIPT_VOIDED", reason: c.reason });
-  const { rows: inserted } = await client.query(
-    `INSERT INTO ${SCHEMA}.receiving_corrections (id, tenant_id, receiving_order_id, correction_kind, replacement_receiving_order_id,
-        operating_company_key, reason, idempotency_key, request_fingerprint, compensating_movement_ids, reversed_fact_ids,
-        resolved_exception_ids, corrected_by, corrected_at)
-     VALUES ($1,$2,$3,'VOID',NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [correctionId, actor.tenantId, c.receivingId, receipt.operating_company_key, c.reason, c.idempotencyKey,
-      c.fingerprint, movementIds, reversed.map((r) => r.reversalFactId), resolved, actor.principalId, at]);
+  let inserted: Array<Record<string, unknown>>;
+  try {
+    inserted = (await client.query(
+      `INSERT INTO ${SCHEMA}.receiving_corrections (id, tenant_id, receiving_order_id, correction_kind, replacement_receiving_order_id,
+          operating_company_key, reason, idempotency_key, request_fingerprint, compensating_movement_ids, reversed_fact_ids,
+          resolved_exception_ids, corrected_by, corrected_at)
+       VALUES ($1,$2,$3,'VOID',NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [correctionId, actor.tenantId, c.receivingId, receipt.operating_company_key, c.reason, c.idempotencyKey,
+        c.fingerprint, movementIds, reversed.map((r) => r.reversalFactId), resolved, actor.principalId, at])).rows;
+  } catch (err) {
+    // The idempotency key is unique per tenant: a key already recorded for a company this caller does not reach is invisible to the replay probe
+    // (it reads as nonexistent) and arrives here. A clean refusal -- the whole transaction rolls back -- not a database error.
+    if ((err as { code?: string }).code === "23505") refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a different receipt correction");
+    throw err;
+  }
 
   // ---- 10. AUDIT: who, when, why, the original, the correction, and every affected record ----
   await client.query(

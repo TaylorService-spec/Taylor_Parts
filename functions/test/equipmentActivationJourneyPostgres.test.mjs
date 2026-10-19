@@ -437,6 +437,15 @@ test("Equipment activation over the Operations transport", { skip: SKIP, concurr
       workOrderType: "SERVICE_CALL", priority: 2, equipmentId: installed.equipment.id }), "service call on the installed machine");
     const detail = ok(await call(dispatcher, WO, "readWorkOrder", { workOrderId: svc.workOrderId }), "read");
     assert.equal(JSON.stringify(detail).includes(installed.equipment.id), true, "the Work Order carries the Equipment");
+    // B3-x WAREHOUSE SCOPE: company authority is not enough -- the read lists only units in a warehouse (or bin of one) the caller is scoped over.
+    // Logan and Vera hold their own warehouse; a third Taylor Parts Associate holds none.
+    const paNoScope = await person("uid-pa-noscope", ["partsAssociate"], { id: "e-pa-noscope", name: "Nia PA" });
+    for (const [emp, wh] of [["e-pa", WH], ["e-pa-v", "ventana-wh"]]) {
+      await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+               VALUES ($1,$2,$3,'WAREHOUSE',$4, now(),'fixture')`, [`os-${emp}`, TENANT, emp, wh]);
+    }
+    assert.deepEqual(ok(await call(paNoScope, EQ, "listAvailableEquipmentUnits", {}), "no warehouse scope").units, [], "same company, no scope: nothing listed");
+    assert.deepEqual(ok(await call(paNoScope, EQ, "listAvailableEquipmentUnits", { serialNumber: "SN-5" }), "no scope serial").units, [], "...and a serial lookup finds nothing");
     const avail = ok(await call(pa, EQ, "listAvailableEquipmentUnits", {}), "available units");
     // B3-x COMPANY ISOLATION: the read was tenant-wide for any holder of the key (a Taylor Parts Associate saw Ventana's SN-4). It is now filtered in
     // the WHERE to the caller's operating companies, so each reader sees only its own company's units.

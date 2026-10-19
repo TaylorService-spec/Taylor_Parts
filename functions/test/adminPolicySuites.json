@@ -117,7 +117,6 @@
     "test/eosVerifierSwitch.test.mjs",
     "test/financeVisibility.test.mjs",
     "test/rackingPlannerOffline.test.mjs",
-    "test/purchasingHolderParityPin.test.mjs",
     "test/reportPipeline.test.mjs",
     "test/recordsReportingOffline.test.mjs",
     "test/b4ReportGoalGrantParity.test.mjs"

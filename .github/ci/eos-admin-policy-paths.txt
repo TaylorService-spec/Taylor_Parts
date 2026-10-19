@@ -929,8 +929,6 @@ functions/src/eosOps/partsReads.ts
 functions/test/supplierReceiptHistoryAndCorrectionPostgres.test.mjs
 functions/src/eosOps/supplierReceiptCorrection.ts
 functions/test/offlinePrecheckReadsPostgres.test.mjs
-functions/test/purchasingHolderParityPin.test.mjs
-docs/architecture/b3x-purchasing-alias-grant-parity.json
 field-ops-app-vite/src/offline/warehousePrecheckReads.js
 field-ops-app-vite/src/offline/warehousePrechecks.js
 # Firebase exit B4 (DECISIONS #B4): records and reporting off Firebase -- imported service history, Data Import of SERVICE_HISTORY, Report Builder / Saved Reports,
