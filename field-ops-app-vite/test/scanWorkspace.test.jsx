@@ -466,3 +466,69 @@ describe("Scan workspace (Transfer uses the governed EOS list; no truck read)", 
     expect(screen.queryByText(/your truck/i)).toBeNull();
   });
 });
+
+// ────────────────────────────────────────────── P1: Put Away is reachable from a lookup, only for someone who may put away
+
+describe("Scan workspace (P1: Put Away starts from a lookup)", () => {
+  const PART = {
+    invalid: false, partId: "PRT-1001", internalPartNumber: "TS-1001", name: "Compressor relay", description: "Start relay", category: "Electrical",
+    status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", version: 1,
+  };
+  const lookupDeps = {
+    lookupPart: async () => ({ catalogResult: { ok: true, parts: [PART], invalid: [] }, aliasOutcome: { result: { result: "NOT_FOUND" } } }),
+  };
+  const lookUp = async () => {
+    fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: /look up/i }));
+    await screen.findByRole("heading", { name: /compressor relay/i });
+  };
+
+  it("a caller who may put away gets a Put Away action on the lookup result, and it opens the Put Away workflow", async () => {
+    render(<ScanWorkspace deps={warehouseUser({ hasCapability: () => true, initialWorkflow: "LOOKUP", lookupDeps })} />);
+    await lookUp();
+    fireEvent.click(screen.getByRole("button", { name: /^put away$/i }));
+    expect(await screen.findByText(/scan · put away/i)).toBeTruthy();
+  });
+
+  it("a caller who may NOT put away gets no Put Away action on the lookup result", async () => {
+    render(<ScanWorkspace deps={warehouseUser({ hasCapability: (id) => id === RECEIVE_CAPABILITY, initialWorkflow: "LOOKUP", lookupDeps })} />);
+    await lookUp();
+    expect(screen.queryByRole("button", { name: /put away/i })).toBeNull();
+  });
+});
+
+describe("Scan workspace (P1: Put Away is offered on the receipt confirmation)", () => {
+  const receiveOnce = async (deps) => {
+    const rd = deps.receivingDeps;
+    render(<ScanWorkspace deps={{ ...deps, initialWorkflow: "SUPPLIER_RECEIVING" }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "PO-1" }));
+    await screen.findByLabelText(/^part$/i);
+    fireEvent.change(screen.getByLabelText(/^part$/i), { target: { value: "P1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    fireEvent.change(screen.getByLabelText(/receiving location/i), { target: { value: "WH-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    await waitFor(() => expect(rd.submitCanonicalReceive).toHaveBeenCalledTimes(1));
+    await screen.findByRole("status", { name: /^receipt$/i });
+  };
+  const applied = () => receivingDeps({
+    submitCanonicalReceive: vi.fn().mockResolvedValue({
+      status: RECEIVING_OUTCOME.APPLIED,
+      receipt: {
+        outcome: "applied", receivingId: "rcvc_1", purchaseOrderId: "PO-1", ledgerEventId: "l1",
+        derivedState: "PARTIALLY_RECEIVED", storedStatus: "SENT",
+        lines: [{ lineId: "L1", partId: "P1", orderedQuantity: 5, previouslyReceived: 0, receivedNow: 1, remainingQuantity: 4, state: "PARTIALLY_RECEIVED" }],
+      },
+    }),
+  });
+
+  it("a caller who may put away gets Put Away on the confirmation; it opens the Put Away workflow", async () => {
+    await receiveOnce(warehouseUser({ hasCapability: () => true, receivingDeps: applied() }));
+    fireEvent.click(screen.getByRole("button", { name: /^put away$/i }));
+    expect(await screen.findByText(/scan · put away/i)).toBeTruthy();
+  });
+
+  it("a receiver who may NOT put away gets no Put Away on the confirmation", async () => {
+    await receiveOnce(warehouseUser({ hasCapability: (id) => id === RECEIVE_CAPABILITY, receivingDeps: applied() }));
+    expect(screen.queryByRole("button", { name: /put away/i })).toBeNull();
+  });
+});

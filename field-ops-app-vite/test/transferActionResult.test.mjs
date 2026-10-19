@@ -1,6 +1,7 @@
 // Enterprise Inventory Phase 4 -- OFFLINE tests for the pure transfer-action error/outcome mapping.
 import assert from "node:assert/strict";
-import { mapTransferActionError, describeOutcome } from "../src/domain/transferActionResult.js";
+import { readFileSync } from "node:fs";
+import { mapTransferActionError, describeOutcome, TRANSFER_REFUSAL_CODES } from "../src/domain/transferActionResult.js";
 
 let passed = 0;
 function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
@@ -33,6 +34,15 @@ check("describeOutcome distinguishes applied vs replayed per action", () => {
   assert.equal(describeOutcome("dispatch", "applied"), "Transfer dispatched.");
   assert.equal(describeOutcome("receive", "replayed"), "Already received (no change made).");
   assert.equal(describeOutcome("cancel", "applied"), "Transfer cancelled.");
+});
+
+// ISO inventory: every governed refusal code transferOperations.ts sends has its own words (a code the screen does not word is flattened into one sentence).
+check("every governed refusal code the server sends is worded", () => {
+  const src = readFileSync(new URL("../../functions/src/eosOps/transferOperations.ts", import.meta.url), "utf8");
+  const sent = new Set([...src.matchAll(/refuse\(\s*"([A-Z][A-Z_]+)"/g)].map((m) => m[1]));
+  assert.ok(sent.has("COMPANY_AUTHORITY_REQUIRED") && sent.has("TRANSFER_NOT_FOUND") && sent.size >= 12, [...sent].join());
+  assert.deepEqual([...sent].filter((c) => !TRANSFER_REFUSAL_CODES.includes(c)), [], "a server refusal with no wording of its own");
+  assert.match(mapTransferActionError({ code: "functions/permission-denied", details: { code: "COMPANY_AUTHORITY_REQUIRED" } }), /company/i);
 });
 
 console.log(`${passed} passed`);

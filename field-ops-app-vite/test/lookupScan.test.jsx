@@ -307,3 +307,27 @@ describe("Lookup (reads only)", () => {
     expect(aliasImport?.[1].trim()).toBe("lookupScannedPart");
   });
 });
+
+// ────────────────────────────────────────────── P1: Put Away starts from a lookup
+
+describe("Lookup offers Put Away (P1) -- only when the workspace says the caller may", () => {
+  const lookUpWith = (extra) => {
+    render(<LookupScan deps={{ ...asLookup({ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch() }), ...extra }} />);
+    fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: /look up/i }));
+  };
+
+  it("a resolved part carries a Put Away action that opens the Put Away workflow", async () => {
+    const onPutAway = vi.fn();
+    lookUpWith({ onPutAway });
+    await screen.findByRole("heading", { name: /compressor relay/i });
+    fireEvent.click(screen.getByRole("button", { name: /^put away$/i }));
+    expect(onPutAway).toHaveBeenCalledTimes(1);
+  });
+
+  it("without the action (the caller may not put away) there is no Put Away control, and the lookup still works", async () => {
+    lookUpWith({});
+    await screen.findByRole("heading", { name: /compressor relay/i });
+    expect(screen.queryByRole("button", { name: /put away/i })).toBeNull();
+  });
+});

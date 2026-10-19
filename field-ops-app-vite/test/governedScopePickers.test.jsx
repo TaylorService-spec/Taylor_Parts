@@ -57,7 +57,7 @@ describe("Employee > Operational Scope: governed targets only", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Scope type to assign" }), { target: { value: "WAREHOUSE" } });
     const target = screen.getByRole("combobox", { name: "Scope target" });
     expect(within(target).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose…", "Phoenix DC", "Tucson"]);
-    expect(workforce.call).toHaveBeenCalledWith("listOperationalScopeTargets", {});
+    expect(workforce.call).toHaveBeenCalledWith("listOperationalScopeTargets", { employeeId: "emp-1" }); // ISO inventory: the picker offers only what the server would accept FOR THIS EMPLOYEE
   });
 
   it("submits exactly the chosen governed value; a value the server did not offer cannot be submitted", async () => {

@@ -26,9 +26,11 @@ const READ_FAILED = Object.freeze({ ok: false, code: "INTERNAL", reason: null, m
  * @param user            the signed-in user (or null). Its uid is used ONLY to re-read on a principal change; it is
  *                        never sent -- the server resolves the caller from the bearer token.
  * @param options.client  the Operations client seam ({ call })
+ * @param options.keys    the capability ids to keep (a STABLE Set; default: the scan keys) -- the Transfers and Cycle Counts screens ask for their own
+ *                        (access/inventoryScreenCapabilities.js)
  * @returns { status, error, hasCapability(id), reload }
  */
-export function useInventoryScanCapabilities(user, { client = operationsApiClient } = {}) {
+export function useInventoryScanCapabilities(user, { client = operationsApiClient, keys } = {}) {
   const principalKey = user?.uid ?? null;
   const signedOut = principalKey === null || principalKey === "";
   const [state, setState] = useState(() => ({ key: principalKey, status: INVENTORY_SCAN_CAPABILITY_STATE.LOADING, held: null, error: null }));
@@ -49,7 +51,7 @@ export function useInventoryScanCapabilities(user, { client = operationsApiClien
           setState({ key: principalKey, status: INVENTORY_SCAN_CAPABILITY_STATE.FAILED, held: null, error: outcome ?? MALFORMED });
           return;
         }
-        const held = inventoryScanCapabilitiesFrom(outcome.result);
+        const held = inventoryScanCapabilitiesFrom(outcome.result, keys);
         setState(held
           ? { key: principalKey, status: INVENTORY_SCAN_CAPABILITY_STATE.READY, held, error: null }
           : { key: principalKey, status: INVENTORY_SCAN_CAPABILITY_STATE.FAILED, held: null, error: MALFORMED });
@@ -60,7 +62,7 @@ export function useInventoryScanCapabilities(user, { client = operationsApiClien
     return () => {
       cancelled = true;
     };
-  }, [client, principalKey, signedOut, nonce]);
+  }, [client, principalKey, signedOut, nonce, keys]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   // Each answer is stamped with the principal it was asked for: a previous principal's grant never renders.

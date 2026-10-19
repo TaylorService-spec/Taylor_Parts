@@ -313,7 +313,7 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     assert.ok(big.status === 409 || big.status === 412, `insufficient ${JSON.stringify(big.body)}`);
     const unknownPart = await call(wa, REL, "relocateStock", { partId: "PRT-NOWHERE", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("x") });
     assert.ok(unknownPart.status >= 400 && unknownPart.status < 500, `unknown part ${JSON.stringify(unknownPart.body)}`);
-    refused(await call(wa, REL, "relocateStock", { partId: "PRT-FAN", source: { type: "BIN", locationId: BIN_V }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("x") }), 412, "CROSS_WAREHOUSE", "another company's bin (a different custody warehouse)");
+    refused(await call(wa, REL, "relocateStock", { partId: "PRT-FAN", source: { type: "BIN", locationId: BIN_V }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, idempotencyKey: key("x") }), 404, "NOT_FOUND", "another company's bin reads as nonexistent (ISO inventory: company authority before the custody check)");
     refused(await call(wa, REL, "relocateStock", { partId: "PRT-FAN", source: { type: "WAREHOUSE", locationId: WH }, destination: { type: "BIN", locationId: BIN_A }, quantity: 1, operatingCompanyKey: "ventana", idempotencyKey: key("x") }), 400, "INVALID", "caller-supplied company");
     // placement negatives
     refused(await call(wa, PLC, "recordPutAway", { warehouseId: WH, partId: "PRT-FAN", binId: BIN_W2, quantity: 1, idempotencyKey: key("x") }), 412, "BIN_WRONG_WAREHOUSE", "placement: bin of another warehouse");
@@ -403,7 +403,7 @@ test("Inventory / Warehouse over the Operations transport (writers injected ACTI
     ok(await call(wa, CC, "submitCycleCountLine", { sheetId: s2id, partId: "PRT-COMP", countedSerialNumbers: [] }), "count serial short");
     const sv = await call(wm, CC, "reconcileCycleCountLine", { sheetId: s2id, partId: "PRT-COMP", decision: "APPROVE", reason: "missing" });
     assert.ok(sv.status >= 400 && sv.status < 500, `serial variance is not reconcilable ${JSON.stringify(sv.body)}`);
-    refused(await call(wa, CC, "createCycleCountSheet", { location: { type: "WAREHOUSE", locationId: "ventana-wh" }, idempotencyKey: key("x") }), 403, "OUTSIDE_OPERATIONAL_SCOPE", "outside scope");
+    refused(await call(wa, CC, "createCycleCountSheet", { location: { type: "WAREHOUSE", locationId: "ventana-wh" }, idempotencyKey: key("x") }), 404, "LOCATION_NOT_FOUND", "another company's warehouse reads as nonexistent (ISO inventory)");
   });
 
   await t.test("F. SERIALIZED ACQUIRE (DQ-036b): a unit entering stock outside a PO; receipt units are not re-acquired", async () => {

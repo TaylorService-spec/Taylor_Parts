@@ -12,6 +12,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const require = createRequire(import.meta.url);
 const fin = require("../lib/eosFinance/financeFoundation.js");
@@ -56,6 +57,9 @@ test("Finance Activation 1 over the governed purchasing / receiving path", { ski
 
   const pa = await person("uid-pa", ["partsAssociate", "inventoryReceivingClerk"], { id: "e-pa", name: "Pat Parts" });
   const pm = await person("uid-pm", ["partsManager", "purchasingManager"], { id: "e-pm", name: "Morgan Parts-Manager" });
+  // ISO inventory (#235/#237): Reorder receiving and correction now decide COMPANY AUTHORITY before the warehouse scope, so the receivers who work in both
+  // companies' warehouses (Taylor's and Ventana's) are given explicit synthetic reach to both -- the same helper the other company-scoped suites use.
+  for (const p of [pa, pm]) await grantSyntheticCompanyAuthority(pool, TENANT, p.principalId, ["taylor", "ventana"]);
   // SHARED PHYSICAL FACILITY, DISTINCT OWNERSHIP (#190 §5): two governed warehouses, one building, two companies.
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-shared-t',$1,'taylor','Shared Building -- Taylor stock','Shared Building','ACTIVE','NATIVE','fixture','fixture'),

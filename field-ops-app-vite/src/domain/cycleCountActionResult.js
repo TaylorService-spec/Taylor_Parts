@@ -27,6 +27,21 @@ const DETAIL_MESSAGE = Object.freeze({
   SERIAL_VARIANCE_NOT_RECONCILABLE: "A serialized difference cannot be adjusted. Reject this line and recount it.",
   COUNT_ALREADY_SUBMITTED: "This line was already counted with a different result. Nothing was changed.",
   LEDGER_INTEGRITY: "The stock records at this location are inconsistent and must be investigated before counting.",
+  // Every other governed refusal the server's cycle count commands send (cycleCountOperations.ts / cycleCountRepository.ts), in the
+  // server's own meaning -- so a refusal is never flattened into one generic sentence. cycleCountActionResult.test.mjs pins that none is missing.
+  // The stock moved after the count opened: this is the server's governed reason, stated in full (U3).
+  COUNT_STALE: "Stock moved at this location after the count opened. Cancel this line and count it again.",
+  COMPANY_AUTHORITY_REQUIRED: "Cycle counting needs access to the company that owns this location, and your account has none.",
+  LOCATION_NOT_FOUND: "That location could not be found.",
+  MOBILE_SCOPE_BINDING_MISSING: "That truck has no warehouse it is governed from, so it cannot be counted yet.",
+  LOCATION_INACTIVE: "That location is no longer active, so it cannot be counted.",
+  PART_NOT_FOUND: "That part is not in the catalog.",
+  PART_INACTIVE: "An inactive part cannot be counted.",
+  TRACKING_MODE_UNSUPPORTED: "Lot-tracked parts are not counted yet.",
+  LINE_NOT_FOUND: "That part has no line on this sheet yet.",
+  INVALID_INPUT: "The request was invalid. Check the figures and try again.",
+  UNKNOWN_FIELD: "The request was invalid.",
+  VARIANCE_NOT_POSTABLE: "This difference cannot be posted as an adjustment. Reject this line and recount it.",
 });
 
 const HTTPS_MESSAGE = Object.freeze({
@@ -40,6 +55,9 @@ const HTTPS_MESSAGE = Object.freeze({
   "deadline-exceeded": "The server did not answer in time. It is safe to try again.",
   "internal": "The cycle count action could not be completed.",
 });
+
+/** The governed refusal codes this screen words itself (pinned against the server by cycleCountActionResult.test.mjs). */
+export const CYCLE_COUNT_REFUSAL_CODES = Object.freeze(Object.keys(DETAIL_MESSAGE));
 
 export function cycleCountErrorCode(err) {
   const raw = err && typeof err.code === "string" ? err.code : "";

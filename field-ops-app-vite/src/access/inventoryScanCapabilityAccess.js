@@ -30,13 +30,13 @@ const SCAN_KEYS = new Set(INVENTORY_SCAN_CAPABILITY_REQUEST);
 /**
  * The scan capability ids the caller holds, from a successful resolveMyCapabilities answer -- or null when the
  * answer is not the governed shape (not an object, `capabilities` not an array, or a non-string entry). Keys outside
- * the scan set are dropped: resolveMyCapabilities answers the caller's whole set, and the Scan workspace needs only
+ * the set asked for (the scan set unless `keys` is given) are dropped: resolveMyCapabilities answers the caller's whole set, and the Scan workspace needs only
  * INVENTORY_SCAN_CAPABILITY_REQUEST.
  */
-export function inventoryScanCapabilitiesFrom(result) {
+export function inventoryScanCapabilitiesFrom(result, keys = SCAN_KEYS) {
   if (!result || typeof result !== "object" || Array.isArray(result)) return null;
   const { capabilities } = result;
   if (!Array.isArray(capabilities)) return null;
   if (!capabilities.every((id) => typeof id === "string" && id.length > 0)) return null;
-  return new Set(capabilities.filter((id) => SCAN_KEYS.has(id)));
+  return new Set(capabilities.filter((id) => keys.has(id)));
 }

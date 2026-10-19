@@ -26,6 +26,13 @@
 // only per surface. A counter scoped to warehouse A cannot open, count, reconcile, read or even see a
 // sheet in warehouse B: the list query carries the scope in its WHERE clause.
 //
+// ════════════════════ COMPANY ISOLATION (#235 / #237; ISO inventory, 2026-10-19) ════════════════════
+//
+// A WAREHOUSE scope is not company authority. Every operation here decides, in this order: the CAPABILITY, then the caller's
+// operating-company AUTHORITY (resolveCompanyAuthority -- none at all is COMPANY_AUTHORITY_REQUIRED, before any row is read), then
+// the WAREHOUSE scope. A sheet -- or a location named on create -- of a company outside the caller's reads EXACTLY as a nonexistent
+// one (the company filter is in the WHERE, so the row is never locked, read or counted), and the list never carries one.
+//
 // ════════════════════ WHAT IS REFUSED, NOT GUESSED ════════════════════
 //
 //   * MOBILE (truck) counts are scoped ONLY through the truck location's explicit governed warehouse
@@ -72,6 +79,7 @@ import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAutho
 import type { PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveCompanyAuthority } from "./companyAuthority.js";
 
 // ════════════════════ vocabulary ════════════════════
 
@@ -186,6 +194,23 @@ async function requireActive(deps: CycleCountOperationDeps, tenantId: string): P
   if (!(await isInventoryBaselineCertified(deps.pool, tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
 }
 
+/**
+ * CAPABILITY FIRST, THEN COMPANY (#235 / #237): the operating-company KEYS the caller reaches. None at all is refused here, before any
+ * row is read -- a refusal, not an empty answer. `capabilityKey` null = any Cycle Count capability (the reads).
+ */
+async function requireCompanyKeys(db: Queryable, actor: CycleCountActor, capabilityKey: string | null): Promise<readonly string[]> {
+  if (capabilityKey === null) {
+    if (!ANY_CYCLE_COUNT_CAPABILITY.some((c) => actor.capabilities.has(c))) refuse("CAPABILITY_MISSING", "FORBIDDEN", "you hold no Cycle Count capability");
+  } else if (!actor.capabilities.has(capabilityKey)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${capabilityKey}`);
+  }
+  const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+  if (authority.companyKeys.length === 0) {
+    refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "cycle counting requires operating-company authority; this principal has none");
+  }
+  return authority.companyKeys;
+}
+
 async function authorizeAtWarehouse(db: Queryable, actor: CycleCountActor, capabilityKey: string, warehouseId: string): Promise<void> {
   const decision = await authorizeObjectAction(postgresContextualReader(db), {
     actor, capabilityKey, predicates: warehousePredicates(warehouseId),
@@ -216,9 +241,9 @@ interface CountLocation {
 }
 
 /** WHERE the location rolls up to, read from eos_ops through the one scope resolver -- never from the request. */
-async function resolveCountLocation(db: Queryable, tenantId: string, type: unknown, id: string): Promise<CountLocation> {
+async function resolveCountLocation(db: Queryable, tenantId: string, type: unknown, id: string, companyKeys?: readonly string[]): Promise<CountLocation> {
   try {
-    const r = await resolveScopeLocation(db, tenantId, { type, locationId: id });
+    const r = await resolveScopeLocation(db, tenantId, { type, locationId: id }, companyKeys);
     return { type: r.type, id: r.locationId, warehouseId: r.scopeWarehouseId, operatingCompanyKey: r.operatingCompanyKey, active: r.active };
   } catch (err) {
     if (err instanceof InventoryScopeError) {
@@ -230,8 +255,9 @@ async function resolveCountLocation(db: Queryable, tenantId: string, type: unkno
   }
 }
 
-async function sheetOrRefuse(db: Queryable, actor: CycleCountActor, sheetId: string, forUpdate: boolean): Promise<{ sheet: CycleCountSheetFull; where: CountLocation }> {
-  const sheet = await readSheet(db, actor.tenantId, sheetId, forUpdate);
+async function sheetOrRefuse(db: Queryable, actor: CycleCountActor, sheetId: string, forUpdate: boolean, companyKeys: readonly string[]): Promise<{ sheet: CycleCountSheetFull; where: CountLocation }> {
+  // The company filter is IN the WHERE: a sheet of another company is never locked or read, and answers exactly as a missing one.
+  const sheet = await readSheet(db, actor.tenantId, sheetId, forUpdate, companyKeys);
   if (!sheet) refuse("SHEET_NOT_FOUND", "NOT_FOUND", "that count sheet could not be found");
   const where = await resolveCountLocation(db, actor.tenantId, (sheet as CycleCountSheetFull).location.type, (sheet as CycleCountSheetFull).location.id);
   return { sheet: sheet as CycleCountSheetFull, where };
@@ -317,7 +343,8 @@ export async function createEosCycleCountSheet(deps: CycleCountOperationDeps, ac
   const sheetId = cycleCountSheetIdFor(actor.tenantId, idempotencyKey);
 
   return inTransaction(deps.pool, async (db) => {
-    const where = await resolveCountLocation(db, actor.tenantId, location.type, locationId);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.create);
+    const where = await resolveCountLocation(db, actor.tenantId, location.type, locationId, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.create, where.warehouseId);
     // REPLAY FIRST: the same key is the same sheet; the same key for a different location is a conflict.
     const existing = await readSheet(db, actor.tenantId, sheetId, true);
@@ -344,7 +371,8 @@ export async function openEosCycleCountLine(deps: CycleCountOperationDeps, actor
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
   return inTransaction(deps.pool, async (db) => {
-    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.create);
+    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.create, where.warehouseId);
     const [policy] = await createPostgresPartPolicyAuthority().readPartPolicies(db, actor.tenantId, [partId]);
     if (!policy.found) refuse("PART_NOT_FOUND", "NOT_FOUND", "that part is not in the catalog");
@@ -372,7 +400,8 @@ export async function submitEosCycleCountLine(deps: CycleCountOperationDeps, act
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
   return inTransaction(deps.pool, async (db) => {
-    const { where } = await sheetOrRefuse(db, actor, sheetId, true);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.submit);
+    const { where } = await sheetOrRefuse(db, actor, sheetId, true, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.submit, where.warehouseId);
     const line = await findLineForPart(db, actor.tenantId, sheetId, partId);
     if (!line) return refuse("LINE_NOT_FOUND", "NOT_FOUND", "that part has no line on this sheet -- open it first");
@@ -412,7 +441,8 @@ export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, 
   if (decision !== "APPROVE" && decision !== "REJECT") return refuse("INVALID_INPUT", "INVALID_INPUT", "decision must be APPROVE or REJECT");
   const reason = optionalReason(input.reason);
   return inTransaction(deps.pool, async (db) => {
-    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.reconcile);
+    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.reconcile, where.warehouseId);
     const line = await findLineForPart(db, actor.tenantId, sheetId, partId);
     if (!line) return refuse("LINE_NOT_FOUND", "NOT_FOUND", "that part has no line on this sheet");
@@ -460,7 +490,8 @@ export async function cancelEosCycleCountLine(deps: CycleCountOperationDeps, act
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
   return inTransaction(deps.pool, async (db) => {
-    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.cancel);
+    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.cancel, where.warehouseId);
     const line = await findLineForPart(db, actor.tenantId, sheetId, partId);
     if (!line) return refuse("LINE_NOT_FOUND", "NOT_FOUND", "that part has no line on this sheet");
@@ -477,7 +508,8 @@ export async function closeEosCycleCountSheet(deps: CycleCountOperationDeps, act
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   return inTransaction(deps.pool, async (db) => {
-    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.close);
+    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.close, where.warehouseId);
     if (sheet.status === "CLOSED") return { outcome: "replayed" as const, sheet: projectSheet(sheet, where) };
     requireSheetOpen(sheet, "close it");
@@ -492,7 +524,8 @@ export async function cancelEosCycleCountSheet(deps: CycleCountOperationDeps, ac
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   return inTransaction(deps.pool, async (db) => {
-    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true);
+    const keys = await requireCompanyKeys(db, actor, EOS_CYCLE_COUNT_CAPABILITY.cancel);
+    const { sheet, where } = await sheetOrRefuse(db, actor, sheetId, true, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.cancel, where.warehouseId);
     if (sheet.status === "CANCELLED") return { outcome: "replayed" as const, sheet: projectSheet(sheet, where) };
     requireSheetOpen(sheet, "cancel it");
@@ -510,7 +543,8 @@ export async function getEosCycleCountSheet(deps: CycleCountOperationDeps, actor
   const sheetId = requireId(input.sheetId, "sheetId");
   const client = await deps.pool.connect();
   try {
-    const { sheet, where } = await sheetOrRefuse(client, actor, sheetId, false);
+    const keys = await requireCompanyKeys(client, actor, null);
+    const { sheet, where } = await sheetOrRefuse(client, actor, sheetId, false, keys);
     await authorizeReadAtWarehouse(client, actor, where.warehouseId);
     const lines = await listLinesForSheet(client, actor.tenantId, sheetId);
     return { sheet: projectSheet(sheet, where), lines: lines.map(projectLine) };
@@ -532,17 +566,21 @@ export async function listEosCycleCountSheets(deps: CycleCountOperationDeps, act
   onlyKeys(input ?? {}, ["status"]);
   const status = (input ?? {}).status ?? null;
   if (status !== null && !SHEET_STATUSES.includes(status as CycleCountSheetStatus)) refuse("INVALID_INPUT", "INVALID_INPUT", "status must be OPEN, CLOSED or CANCELLED");
-  if (!ANY_CYCLE_COUNT_CAPABILITY.some((c) => actor.capabilities.has(c))) refuse("CAPABILITY_MISSING", "FORBIDDEN", "you hold no Cycle Count capability");
   const client = await deps.pool.connect();
   try {
+    const keys = await requireCompanyKeys(client, actor, null);
     const dims = postgresPrincipalDimensionReader(client);
     const employeeId = await dims.linkedEmployeeId(actor.tenantId, actor.principalId);
     if (!employeeId) return refuse("EMPLOYEE_LINK_REQUIRED", "FORBIDDEN", "only an Employee can count inventory");
     const eligibility = await dims.listWorkEligibility(actor.tenantId, employeeId);
     if (!eligibility.includes(WAREHOUSE_WORK_ELIGIBILITY)) refuse("WORK_ELIGIBILITY_MISSING", "FORBIDDEN", "cycle counting requires the Warehouse Operations work eligibility");
-    const warehouseIds = (await dims.listOperationalScopes(actor.tenantId, employeeId))
+    const scoped = (await dims.listOperationalScopes(actor.tenantId, employeeId))
       .filter((s) => s.scopeType === "WAREHOUSE").map((s) => s.scopeId);
-    const sheets = await listSheetsInWarehouses(client, actor.tenantId, warehouseIds, status as CycleCountSheetStatus | null, LIST_LIMIT + 1);
+    // A warehouse scope never reaches into another company's warehouse: only the scoped warehouses OF the caller's companies are listed (and named).
+    const warehouseIds = scoped.length === 0 ? [] : (await client.query<{ id: string }>(
+      `SELECT id FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = ANY($2::text[]) AND operating_company_key = ANY($3::text[])`,
+      [actor.tenantId, scoped, [...keys]])).rows.map((r) => r.id);
+    const sheets = await listSheetsInWarehouses(client, actor.tenantId, warehouseIds, status as CycleCountSheetStatus | null, LIST_LIMIT + 1, keys);
     const page = sheets.slice(0, LIST_LIMIT);
     const out = [];
     for (const s of page) out.push(projectSheet(s, await resolveCountLocation(client, actor.tenantId, s.location.type, s.location.id)));

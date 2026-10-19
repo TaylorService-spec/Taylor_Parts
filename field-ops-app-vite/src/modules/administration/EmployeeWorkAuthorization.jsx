@@ -123,7 +123,7 @@ export function WorkEligibilitySection({ employeeId, workforce, canWrite, onChan
 
 export function OperationalScopeSection({ employeeId, workforce, canWrite, onChanged }) {
   const read = useWorkforceRead("listEmployeeOperationalScopes", employeeId ? { employeeId } : null, { client: workforce });
-  const targetsRead = useWorkforceRead("listOperationalScopeTargets", employeeId && canWrite ? {} : null, { client: workforce });
+  const targetsRead = useWorkforceRead("listOperationalScopeTargets", employeeId && canWrite ? { employeeId } : null, { client: workforce });
   const [scopeType, setScopeType] = useState("");
   const [scopeId, setScopeId] = useState("");
   const [ending, setEnding] = useState(null);

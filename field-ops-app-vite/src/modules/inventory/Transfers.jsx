@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchTruckDestinations } from "../../services/inventoryLocationClient.js";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
+import { useInventoryScreenCapabilities, TRANSFER_CAPABILITY } from "../../access/inventoryScreenCapabilities.js";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
 import { useTransferActions } from "../../hooks/useTransferActions";
 import { buildTransferOrdersView } from "../operations/transferOrdersViewModel";
@@ -28,10 +30,10 @@ import { statusLabel } from "../../shared/display/displayLabels.js";
 import { useTableSort } from "../../shared/ui/sorting/useTableSort.js";
 import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 
-// Client-side sort over the loaded (capped, most-recent) transfer rows. The Part column is not
-// sortable: every row shows the same unresolved-reference label, so there is no displayed value
-// to order by (the part id lives only in the href).
+// Client-side sort over the loaded (capped, most-recent) transfer rows. The Part column is sortable by its governed NAME;
+// a row whose name could not be read has no displayed value and sorts last (the part id lives only in the href).
 const TRANSFER_SORT_COLUMNS = Object.freeze({
+  part: { value: (row) => row.partName ?? null },
   from: { value: (row) => row.origin?.label ?? null },
   to: { value: (row) => row.destination?.label ?? null },
   status: { value: (row) => transferStatusLabel(row.status) },
@@ -66,15 +68,23 @@ function Endpoint({ end }) {
   );
 }
 
-export default function Transfers({ accessVersion }) {
+export default function Transfers({ accessVersion, deps }) {
+  // UI PERMISSION PARITY (ISO inventory): a control is OFFERED only to a holder of the capability its server command enforces
+  // (inventory.transfer.create / dispatch / receive / cancel). The server stays authoritative and re-checks every act.
+  const live = useInventoryScreenCapabilities(useAuth()?.user ?? null);
+  const hasCapability = deps?.hasCapability ?? live.hasCapability;
+  const can = {
+    create: hasCapability(TRANSFER_CAPABILITY.create), dispatch: hasCapability(TRANSFER_CAPABILITY.dispatch),
+    receive: hasCapability(TRANSFER_CAPABILITY.receive), cancel: hasCapability(TRANSFER_CAPABILITY.cancel),
+  };
   const [refreshKey, setRefreshKey] = useState(0);
   const bumpRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
   const read = useTransferOrders(accessVersion, refreshKey);
   const { status, clearStatus, busyId, createTransfer, dispatchTransfer, receiveTransfer, cancelTransfer } = useTransferActions({ onSettled: bumpRefresh });
 
   const { rows, hiddenInvalidCount } = useMemo(
-    () => buildTransferOrdersView(read.transferOrderDocs, read.warehouses),
-    [read.transferOrderDocs, read.warehouses]
+    () => buildTransferOrdersView(read.transferOrderDocs, read.warehouses, { partNames: read.partNames, truckNames: read.truckNames }),
+    [read.transferOrderDocs, read.warehouses, read.partNames, read.truckNames]
   );
   const summary = useMemo(() => summarizeTransfers(rows), [rows]);
   const [filterKey, setFilterKey] = useState(DEFAULT_TRANSFER_FILTER);
@@ -82,8 +92,18 @@ export default function Transfers({ accessVersion }) {
   const visibleRows = useMemo(() => filterTransfers(rows, filterKey), [rows, filterKey]);
   const { sort, toggle, sorted: sortedRows } = useTableSort({ rows: visibleRows, columns: TRANSFER_SORT_COLUMNS });
 
+  // ORIGIN: where the caller works (their warehouse scope -- the server requires it for create / dispatch / cancel).
+  // DESTINATION: the way createTransfer accepts one -- any ACTIVE warehouse of a company the caller reaches, whether or not the caller works there
+  // (the company-wide read marks `inScope`; a row without the mark is treated as in scope). The server re-decides both.
+  const warehouseList = Array.isArray(read.warehouses) ? read.warehouses : [];
   const warehouseOptions = useMemo(
-    () => (Array.isArray(read.warehouses) ? read.warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
+    () => warehouseList.filter((w) => w.inScope !== false).map((w) => ({ id: w.id, label: w.name || w.id })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [read.warehouses],
+  );
+  const destinationWarehouseOptions = useMemo(
+    () => warehouseList.filter((w) => w.status === "ACTIVE").map((w) => ({ id: w.id, label: w.name || w.id })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [read.warehouses],
   );
   // Trucks bound to the caller's warehouses (Truck Inventory activation, 2026-10-01). A failed read offers no truck --
@@ -103,7 +123,8 @@ export default function Transfers({ accessVersion }) {
   // was told about their permissions before there was anything to act on, and two role="status"
   // regions existed at once during loading. Telling somebody what they may not do is only useful
   // next to the thing they were about to try.
-  const authorityNotice = (
+  const canAct = can.create || can.dispatch || can.receive || can.cancel;
+  const authorityNotice = canAct ? null : (
     <>
       {/* SAY WHAT THE BACKEND WILL DO, BEFORE THE BUTTON IS PRESSED.
           Every inventory.transfer.* capability is registered active:false and granted to no default
@@ -114,9 +135,8 @@ export default function Transfers({ accessVersion }) {
           same. It changes no authority and hides no control -- a holder of the transfer Role still
           uses them exactly as before; it just stops the screen implying an action it cannot honour. */}
       <p className="fo-scan__notice fo-scan__notice--warn" role="status">
-        Transfer actions need the inventory transfer authority, which is not switched on for most
-        accounts here. You can review transfers below; creating, dispatching, receiving or cancelling
-        one will be refused unless that authority has been granted to you.
+        You can review transfers below. Creating, dispatching, receiving or cancelling one needs the
+        inventory transfer authority, which your account does not hold.
       </p>
     </>
   );
@@ -152,7 +172,7 @@ export default function Transfers({ accessVersion }) {
       // In transit is the operational fact this page exists to answer. Omitted entirely when there
       // is none — never rendered as a zero, which reads as a reassurance rather than an absence.
       summaryItems={summary?.byStatus?.IN_TRANSIT > 0 ? [{ key: "transit", label: `${summary.byStatus.IN_TRANSIT} in transit` }] : []}
-      action={!showForm ? (
+      action={!showForm && can.create ? (
         <Button variant="primary" onClick={() => setShowForm(true)}>
           New Transfer
         </Button>
@@ -166,9 +186,10 @@ export default function Transfers({ accessVersion }) {
           <button type="button" className="fo-transfer-dismiss" onClick={clearStatus}>Dismiss</button>
         </p>
       )}
-      {showForm && (
+      {showForm && can.create && (
         <TransferOrderForm
           warehouseOptions={warehouseOptions}
+          destinationWarehouseOptions={destinationWarehouseOptions}
           truckOptions={truckOptions}
           submitting={busyId === "create"}
           onCancel={() => setShowForm(false)}
@@ -224,7 +245,7 @@ export default function Transfers({ accessVersion }) {
           <table className="fo-table fo-table--stack ns-table" aria-label="Transfers">
             <thead>
               <tr>
-                <th scope="col">Part</th>
+                <SortableHeader columnKey="part" label="Part" sort={sort} onSort={toggle} />
                 <SortableHeader columnKey="from" label="From" sort={sort} onSort={toggle} />
                 <th scope="col" aria-hidden="true"></th>
                 <SortableHeader columnKey="to" label="To" sort={sort} onSort={toggle} />
@@ -261,7 +282,7 @@ export default function Transfers({ accessVersion }) {
                     <td>
                       {row.partId ? (
                         <Link to={buildRowHref(partIndexList.rowNavigationTo, row.partId)} className="ns-state--na">
-                          {UNRESOLVED_REFERENCE_LABEL}
+                          {row.partName ?? UNRESOLVED_REFERENCE_LABEL}
                         </Link>
                       ) : (
                         <span className="fo-muted">—</span>
@@ -276,22 +297,22 @@ export default function Transfers({ accessVersion }) {
                       </span>
                     </td>
                     <td className="fo-transfer-actions">
-                      {row.status === "REQUESTED" && (
-                        <>
-                          <button type="button" className="fo-transfer-action-btn" disabled={rowBusy} onClick={() => dispatchTransfer(row.transferOrderId)}>
-                            {rowBusy ? "Working…" : "Dispatch"}
-                          </button>
-                          <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={rowBusy} onClick={() => cancelTransfer(row.transferOrderId)}>
-                            Cancel
-                          </button>
-                        </>
+                      {row.status === "REQUESTED" && can.dispatch && (
+                        <button type="button" className="fo-transfer-action-btn" disabled={rowBusy} onClick={() => dispatchTransfer(row.transferOrderId)}>
+                          {rowBusy ? "Working…" : "Dispatch"}
+                        </button>
                       )}
-                      {row.status === "IN_TRANSIT" && (
+                      {row.status === "REQUESTED" && can.cancel && (
+                        <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={rowBusy} onClick={() => cancelTransfer(row.transferOrderId)}>
+                          Cancel
+                        </button>
+                      )}
+                      {row.status === "IN_TRANSIT" && can.receive && (
                         <button type="button" className="fo-transfer-action-btn" disabled={rowBusy} onClick={() => receiveTransfer(row.transferOrderId)}>
                           {rowBusy ? "Working…" : "Receive"}
                         </button>
                       )}
-                      {row.status !== "REQUESTED" && row.status !== "IN_TRANSIT" && <span className="fo-muted">—</span>}
+                      {!((row.status === "REQUESTED" && (can.dispatch || can.cancel)) || (row.status === "IN_TRANSIT" && can.receive)) && <span className="fo-muted">—</span>}
                     </td>
                   </tr>
                 );

@@ -92,6 +92,7 @@ import { authorizeObjectAction, postgresContextualReader } from "./contextualAut
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { OpsLocationType } from "./operatingCompanyCustody.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveCompanyAuthority } from "./companyAuthority.js";
 
 // Named SCHEMA, matching every other eos_ops repository -- and matching the form the Reorder
 // runtime census recognizes as a SCHEMA-QUALIFIED PostgreSQL name. An unrecognized qualifier
@@ -233,11 +234,13 @@ interface LockedReorder {
   readonly warehouseId: string;
 }
 
-async function lockReorder(client: PoolClient, tenantId: string, id: string): Promise<LockedReorder> {
+async function lockReorder(client: PoolClient, tenantId: string, id: string, companyKeys: readonly string[]): Promise<LockedReorder> {
+  // COMPANY ISOLATION (#235 / #237): the filter is IN the WHERE, so a Reorder of a company outside the caller's is never locked and reads
+  // EXACTLY as a missing one (same code, same message).
   const { rows } = await client.query(
     `SELECT id, status::text AS status, operating_company_key, warehouse_id
-       FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-    [tenantId, id],
+       FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 AND operating_company_key = ANY($3::text[]) FOR UPDATE`,
+    [tenantId, id, [...companyKeys]],
   );
   if (rows.length === 0) refuse("REORDER_NOT_FOUND", "NOT_FOUND", `no Reorder Request ${id} in this tenant`);
   return { id: rows[0].id, status: rows[0].status, operatingCompanyKey: rows[0].operating_company_key, warehouseId: rows[0].warehouse_id };
@@ -255,12 +258,12 @@ interface LegacyPurchaseOrderRow {
   readonly operatingCompanyKey: string;
 }
 
-async function readPurchaseOrder(client: PoolClient, tenantId: string, id: string): Promise<LegacyPurchaseOrderRow> {
+async function readPurchaseOrder(client: PoolClient, tenantId: string, id: string, companyKeys: readonly string[]): Promise<LegacyPurchaseOrderRow> {
   const { rows } = await client.query(
     `SELECT part_id, ordered_quantity, supplier_name, supplier_id, unit_price_minor, currency,
             price_authority_version, operating_company_key
-       FROM ${SCHEMA}.purchase_orders WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, id],
+       FROM ${SCHEMA}.purchase_orders WHERE tenant_id = $1 AND id = $2 AND operating_company_key = ANY($3::text[])`,
+    [tenantId, id, [...companyKeys]],
   );
   if (rows.length === 0) {
     refuse("PURCHASE_ORDER_NOT_FOUND", "NOT_FOUND", `no Reorder Purchase Order ${id} in this tenant`);
@@ -557,11 +560,18 @@ export async function receiveReorderStockWithin(
   const source = requireOwnedSource(input);
   {
 
-    // ---- 1. THE SERIALIZATION ANCHOR. Locked first, held to COMMIT, asserted later. ----
-    const reorder = await lockReorder(client, actor.tenantId, source.reorderRequestId);
+    // ---- 0. CAPABILITY FIRST (requireActor), THEN COMPANY (#235 / #237): none at all is refused before any row is read ----
+    const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "receiving stock requires operating-company authority; this principal has none");
+    }
+    const companyKeys = authority.companyKeys;
+
+    // ---- 1. THE SERIALIZATION ANCHOR. Locked first, held to COMMIT, asserted later. Out-of-company == nonexistent. ----
+    const reorder = await lockReorder(client, actor.tenantId, source.reorderRequestId, companyKeys);
 
     // ---- 2. THE SOURCE AUTHORITY ----
-    const poRow = await readPurchaseOrder(client, actor.tenantId, source.purchaseOrderId);
+    const poRow = await readPurchaseOrder(client, actor.tenantId, source.purchaseOrderId, companyKeys);
 
     let canonical: CanonicalPurchaseOrder;
     try {
@@ -630,7 +640,7 @@ export async function receiveReorderStockWithin(
       refuse("DESTINATION_INVALID", "INVALID_INPUT", "receivingLocation must name a type and a locationId");
     }
     const locationRef = { type: (loc as Record<string, unknown>).type as string, locationId: (loc as Record<string, unknown>).locationId as string };
-    await requireActiveLocation(client, actor.tenantId, locationRef);
+    await requireActiveLocation(client, actor.tenantId, locationRef, companyKeys);
     // WAREHOUSE SCOPE IS DECIDED BY EOS, SERVER-SIDE (Controller DQ-017: "no launch limitation, no interim Firebase/legacy
     // check"). A receipt is a DESTINATION act (DQ-024: receive / put-away decide against the destination), so the receiver's
     // Employee must hold the WAREHOUSE Operational Scope over the receiving location's governing warehouse -- a WAREHOUSE

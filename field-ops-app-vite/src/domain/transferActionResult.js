@@ -30,7 +30,17 @@ const DETAIL_MESSAGE = Object.freeze({
   WORK_ELIGIBILITY_MISSING: "Transfers require the Warehouse Operations work eligibility.",
   CAPABILITY_MISSING: "You are not authorized to perform this transfer action.",
   EMPLOYEE_LINK_REQUIRED: "Only an Employee can perform transfer actions.",
+  // Every other governed refusal transferOperations.ts sends, in its own meaning (transferActionResult.test.mjs pins that none is missing).
+  COMPANY_AUTHORITY_REQUIRED: "Transfers need access to the company that owns the location, and your account has none.",
+  LOCATION_NOT_FOUND: "That location could not be found.",
+  TRANSFER_NOT_FOUND: "That transfer could not be found.",
+  TRANSFER_INTEGRITY: "This transfer's stock records are inconsistent and must be investigated. Nothing was changed.",
+  MOBILE_SCOPE_BINDING_MISSING: "That truck has no warehouse it is governed from, so no one's warehouse access reaches it yet.",
+  INVALID_INPUT: "The request was invalid. Check the figures and try again.",
 });
+
+/** The governed refusal codes this screen words itself (pinned against the server by transferActionResult.test.mjs). */
+export const TRANSFER_REFUSAL_CODES = Object.freeze(Object.keys(DETAIL_MESSAGE));
 
 export function mapTransferActionError(err) {
   const detail = err && err.details && typeof err.details === "object" && typeof err.details.code === "string" ? err.details.code : "";

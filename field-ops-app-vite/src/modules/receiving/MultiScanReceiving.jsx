@@ -432,6 +432,8 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
             Order is now <strong>{receipt.derivedState.replace(/_/g, " ").toLowerCase()}</strong>
             {receipt.storedStatus ? <> · status {canonicalPoStatusWords(receipt.storedStatus) ?? titleCase(receipt.storedStatus)}</> : null}.
           </p>
+          {/* P1: the next step for received stock. Offered only to a caller who may put away (the workspace passes the action only then). */}
+          {deps?.onPutAway && <Button type="button" variant="primary" onClick={deps.onPutAway}>Put Away</Button>}
           <Button type="button" variant="secondary" onClick={onDone}>Receive Another Order</Button>
         </section>
       )}

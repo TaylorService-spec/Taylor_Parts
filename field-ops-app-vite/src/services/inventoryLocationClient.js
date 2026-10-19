@@ -25,8 +25,8 @@ export function normalizeBinCodeText(raw) {
   return code === "" ? null : code;
 }
 
-export async function listInventoryWarehouses(call = eosOperationOrThrow) {
-  const res = await call(INVENTORY, "listInventoryWarehouses", {}, OPTS);
+export async function listInventoryWarehouses(call = eosOperationOrThrow, input = {}) {
+  const res = await call(INVENTORY, "listInventoryWarehouses", input, OPTS);
   return Array.isArray(res?.items) ? res.items : [];
 }
 
@@ -43,6 +43,24 @@ export async function listInventoryLocations(input = {}, call = eosOperationOrTh
 export async function fetchTruckDestinations(call = eosOperationOrThrow) {
   return (await listInventoryLocations({}, call))
     .filter((l) => l.type === "MOBILE" && l.status === "ACTIVE")
+    .map((l) => Object.freeze({ locationId: l.locationId, label: l.code ? `${l.name} (${l.code})` : (l.name || l.locationId) }));
+}
+
+/**
+ * EVERY warehouse of the caller's operating companies -- in the caller's warehouse scope or not (`inScope`) -- for the Transfers workspace (ISO inventory):
+ * a destination is offered the way createTransfer accepts one (any ACTIVE warehouse of a company the caller reaches), and every transfer endpoint
+ * is NAMED from one company-wide read. Names only; the server holds it to a transfer capability. `{ id, name, status, inScope }`.
+ */
+export async function fetchCompanyWarehouseOptions(call = eosOperationOrThrow) {
+  return (await listInventoryWarehouses(call, { companyWide: true })).map((w) => Object.freeze({
+    id: w.warehouseId, name: w.name || w.warehouseId, status: w.status ?? null, inScope: w.inScope === true,
+    operatingCompanyId: w.operatingCompanyId ?? null,
+  }));
+}
+
+/** Every truck the caller's locations read names (ACTIVE or not): `{ locationId, label }`, the governed name -- never the raw location id. */
+export async function fetchTruckLabels(call = eosOperationOrThrow) {
+  return (await listInventoryLocations({}, call)).filter((l) => l.type === "MOBILE")
     .map((l) => Object.freeze({ locationId: l.locationId, label: l.code ? `${l.name} (${l.code})` : (l.name || l.locationId) }));
 }
 

@@ -22,6 +22,17 @@
 // of the END IT WORKS ON (inventoryScopeAuthority.requiredTransferScope): create / cancel / dispatch -> ORIGIN,
 // receive -> DESTINATION. A truck end is scoped ONLY through its explicit governed binding; no binding -> refused.
 //
+// ════════════════════ COMPANY ISOLATION (#235 / #237; ISO inventory, 2026-10-19) ════════════════════
+//
+// A WAREHOUSE scope is not company authority. Each act decides, in this order: the CAPABILITY, then the caller's operating-company
+// AUTHORITY (resolveCompanyAuthority -- none at all is COMPANY_AUTHORITY_REQUIRED, before any row is read), then the WAREHOUSE scope.
+//   * create: BOTH endpoints must be of a company the caller reaches; one that is not reads EXACTLY as a nonexistent location.
+//     (A transfer between two companies therefore needs authority over both -- widening that is an Owner decision.)
+//   * dispatch / receive / cancel: a transfer whose companies the caller reaches NEITHER of reads EXACTLY as a nonexistent one (the
+//     filter is in the WHERE, so the row is never locked or read). The company of the END the act works on must also be the caller's:
+//     a cross-company transfer's far-end person cannot act at the near end.
+//   * the list carries only transfers with a reachable company, and only reachable warehouses.
+//
 // ════════════════════ COMPANY PER LEG ════════════════════
 //
 // The directional company pair is each endpoint's own authored key (a BIN: its Warehouse's). The OUT row carries the
@@ -43,6 +54,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveCompanyAuthority } from "./companyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -121,6 +133,15 @@ function requireCapability(actor: TransferOperationActor, act: keyof typeof EOS_
   if (!actor.capabilities.has(key)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${key}`);
 }
 
+/** CAPABILITY FIRST, THEN COMPANY (#235 / #237): the operating-company KEYS the caller reaches; none at all is refused before any row is read. */
+async function requireCompanyKeys(db: Queryable, actor: TransferOperationActor): Promise<readonly string[]> {
+  const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+  if (authority.companyKeys.length === 0) {
+    refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "transfers require operating-company authority; this principal has none");
+  }
+  return authority.companyKeys;
+}
+
 /**
  * DQ-024: the scope of the END this act works on, then eligibility + that warehouse's operational scope.
  *
@@ -130,11 +151,18 @@ function requireCapability(actor: TransferOperationActor, act: keyof typeof EOS_
  * never receives into another Employee's truck. The warehouse path is tried first and is unchanged.
  */
 async function authorizeAct(db: Queryable, actor: TransferOperationActor, act: TransferAct & keyof typeof EOS_TRANSFER_CAPABILITY,
-  transfer: { readonly origin: TransferLocationRef; readonly destination: TransferLocationRef }): Promise<void> {
+  transfer: { readonly origin: TransferLocationRef; readonly destination: TransferLocationRef }, keys: readonly string[],
+  /** An existing transfer (dispatch / receive / cancel): its far end may be another company's; the act's own end may not. */
+  onRecord: boolean): Promise<void> {
   const truckReceipt = act === "receive" && transfer.destination.type === "MOBILE";
   let scope;
   try {
-    scope = await requiredTransferScope(db, actor.tenantId, act, transfer);
+    // CREATE names the end itself, so an end of an unreachable company reads as nonexistent. On a RECORD the transfer was already
+    // visible to the caller, so the act's end of another company is refused below as outside the caller's reach instead.
+    scope = await requiredTransferScope(db, actor.tenantId, act, transfer, onRecord ? undefined : keys);
+    if (onRecord && !keys.includes(scope.operatingCompanyKey)) {
+      return refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "the warehouse this act works at is outside your operational scope");
+    }
   } catch (err) {
     // An unbound truck has no warehouse path; the Technician path does not depend on the binding.
     if (!(truckReceipt && err instanceof InventoryScopeError && err.code === "MOBILE_SCOPE_BINDING_MISSING")) {
@@ -186,7 +214,16 @@ interface EndpointFacts {
 }
 
 /** An endpoint's governed facts. Unlike the scope resolver, a truck here needs no binding: only the act's end does. */
-async function endpointFacts(db: Queryable, tenantId: string, ref: TransferLocationRef): Promise<EndpointFacts> {
+async function endpointFacts(db: Queryable, tenantId: string, ref: TransferLocationRef, reachableKeys?: readonly string[]): Promise<EndpointFacts> {
+  const facts = await endpointFactsOf(db, tenantId, ref);
+  // An endpoint of a company outside the caller's reads EXACTLY as one that does not exist.
+  if (reachableKeys !== undefined && facts.exists && (facts.operatingCompanyKey === null || !reachableKeys.includes(facts.operatingCompanyKey))) {
+    return { exists: false, active: false, custodyWarehouseId: null, operatingCompanyKey: null };
+  }
+  return facts;
+}
+
+async function endpointFactsOf(db: Queryable, tenantId: string, ref: TransferLocationRef): Promise<EndpointFacts> {
   if (ref.type === "WAREHOUSE") {
     const { rows } = await db.query<{ status: string; operating_company_key: string }>(
       `SELECT status::text AS status, operating_company_key FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`, [tenantId, ref.locationId]);
@@ -220,15 +257,19 @@ async function audit(db: Queryable, actor: TransferOperationActor, action: strin
         serialCount: t.serialNumbers.length, transferOrderNumber: t.transferOrderNumber }))]);
 }
 
-async function lockTransfer(db: Queryable, actor: TransferOperationActor, input: Record<string, unknown>): Promise<TransferOrderRecord> {
+async function lockTransfer(db: Queryable, actor: TransferOperationActor, input: Record<string, unknown>, keys: readonly string[]): Promise<TransferOrderRecord> {
   const allowed = ["transferOrderId"];
   if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((k) => !allowed.includes(k))) {
     refuse("INVALID_INPUT", "INVALID_INPUT", "only transferOrderId is accepted");
   }
   const id = input.transferOrderId;
   if (typeof id !== "string" || id.trim() === "") refuse("TRANSFER_NOT_FOUND", "NOT_FOUND", "transferOrderId missing");
-  await db.query(`SELECT 1 FROM eos_ops.transfer_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, id]);
-  const t = await readTransferOrder(db as unknown as Pool, actor.tenantId, id as string);
+  // The company filter is IN the WHERE: a transfer whose companies the caller reaches neither of is never locked, and reads as a missing one.
+  const locked = await db.query(
+    `SELECT 1 FROM eos_ops.transfer_orders WHERE tenant_id = $1 AND id = $2
+        AND (source_operating_company_key = ANY($3::text[]) OR destination_operating_company_key = ANY($3::text[])) FOR UPDATE`,
+    [actor.tenantId, id, [...keys]]);
+  const t = locked.rows.length === 0 ? null : await readTransferOrder(db as unknown as Pool, actor.tenantId, id as string);
   if (!t) return refuse("TRANSFER_NOT_FOUND", "NOT_FOUND", "that transfer order could not be found");
   return t;
 }
@@ -315,6 +356,7 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
   await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "create");
+    const keys = await requireCompanyKeys(db, actor);
     if (!input || typeof input !== "object" || typeof input.partId !== "string" || input.partId.trim() === "") refuse("PART_INVALID", "INVALID_INPUT", "partId missing");
     const [part] = await createPostgresPartPolicyAuthority().readPartPolicies(db, actor.tenantId, [input.partId as string]);
     if (!part.found) refuse("PART_INVALID", "INVALID_INPUT", "part not found");
@@ -332,7 +374,7 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
     const serials = value.serialNumbers ?? [];
 
     // DQ-024: create needs the ORIGIN's scope.
-    await authorizeAct(db, actor, "create", value);
+    await authorizeAct(db, actor, "create", value, keys, false);
 
     // Idempotency: the key is the transfer's identity. Same request -> replayed; different -> conflict.
     await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-transfer-create:${actor.tenantId}:${value.idempotencyKey}`]);
@@ -350,8 +392,8 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
     }
     if (part.status !== "ACTIVE") refuse("PART_INVALID", "INVALID_INPUT", "part is not active");
 
-    const origin = await endpointFacts(db, actor.tenantId, value.origin);
-    const destination = await endpointFacts(db, actor.tenantId, value.destination);
+    const origin = await endpointFacts(db, actor.tenantId, value.origin, keys);
+    const destination = await endpointFacts(db, actor.tenantId, value.destination, keys);
     if (!origin.exists || !origin.active) refuse("ORIGIN_INVALID", "INVALID_INPUT", "origin is not an active governed location");
     if (!destination.exists || !destination.active) refuse("DESTINATION_INVALID", "INVALID_INPUT", "destination is not an active governed location");
     // A movement that never leaves its Warehouse is a RELOCATION, refused here by name.
@@ -403,8 +445,9 @@ export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: Tr
   await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "dispatch");
-    const t = await lockTransfer(db, actor, input);
-    await authorizeAct(db, actor, "dispatch", { origin: toRef(t.origin), destination: toRef(t.destination) });
+    const keys = await requireCompanyKeys(db, actor);
+    const t = await lockTransfer(db, actor, input, keys);
+    await authorizeAct(db, actor, "dispatch", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true);
     if (t.status === "IN_TRANSIT") return { outcome: "replayed" as const, transferOrderId: t.id, ledgerEventIds: await replayLeg(db, t, "out") };
     if (t.status !== "REQUESTED") refuse("STATUS_INVALID", "PRECONDITION_FAILED", `transfer order is ${t.status}, cannot dispatch`);
     if (t.trackingMode === "SERIAL") {
@@ -432,8 +475,9 @@ export async function receiveEosTransfer(deps: TransferOperationDeps, actor: Tra
   await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "receive");
-    const t = await lockTransfer(db, actor, input);
-    await authorizeAct(db, actor, "receive", { origin: toRef(t.origin), destination: toRef(t.destination) });
+    const keys = await requireCompanyKeys(db, actor);
+    const t = await lockTransfer(db, actor, input, keys);
+    await authorizeAct(db, actor, "receive", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true);
     if (t.status === "COMPLETED") return { outcome: "replayed" as const, transferOrderId: t.id, ledgerEventIds: await replayLeg(db, t, "in") };
     if (t.status !== "IN_TRANSIT") refuse("STATUS_INVALID", "PRECONDITION_FAILED", `transfer order is ${t.status}, cannot receive`);
     // The dispatch evidence must be there before anything is received against it (DQ-019: never inferred).
@@ -456,8 +500,9 @@ export async function cancelEosTransfer(deps: TransferOperationDeps, actor: Tran
   await requireActive(deps, actor.tenantId);
   return inTransaction(deps.pool, async (db) => {
     requireCapability(actor, "cancel");
-    const t = await lockTransfer(db, actor, input);
-    await authorizeAct(db, actor, "cancel", { origin: toRef(t.origin), destination: toRef(t.destination) });
+    const keys = await requireCompanyKeys(db, actor);
+    const t = await lockTransfer(db, actor, input, keys);
+    await authorizeAct(db, actor, "cancel", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true);
     if (t.status === "CANCELLED") return { outcome: "replayed" as const, transferOrderId: t.id };
     if (t.status !== "REQUESTED") refuse("STATUS_INVALID", "PRECONDITION_FAILED", `transfer order is ${t.status}, cancellation is only domain-safe before dispatch`);
     await setStatus(db, actor, t, "REQUESTED", "CANCELLED");

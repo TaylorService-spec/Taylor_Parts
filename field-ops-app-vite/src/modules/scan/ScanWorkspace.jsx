@@ -214,13 +214,18 @@ function ScanWorkspaceBody({ deps }) {
     assignedWorkOrderStatus,
   });
 
+  // P1: Put Away is reachable from a lookup result and from the receipt confirmation -- but only for a caller whose AVAILABLE workflows include it
+  // (inventory.placement.record). Absent otherwise; the server still authorizes the put-away itself.
+  const canPutAway = workflows.available.some(({ workflow }) => workflow === SCAN_WORKFLOW.PUT_AWAY);
+  const startPutAway = canPutAway ? () => setActive(SCAN_WORKFLOW.PUT_AWAY) : undefined;
+
   if (active === SCAN_WORKFLOW.LOOKUP) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Scan · Look Up" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Read-only. It has no command and cannot move anything. */}
-        <LookupScan deps={deps?.lookupDeps} />
+        <LookupScan deps={{ ...deps?.lookupDeps, onPutAway: startPutAway }} />
       </div>
     );
   }
@@ -309,7 +314,7 @@ function ScanWorkspaceBody({ deps }) {
         <WorkspaceHeader title="Scan · Receive" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* The Phase D journey, unchanged. */}
-        <MultiScanReceiving deps={deps?.receivingDeps} />
+        <MultiScanReceiving deps={{ ...deps?.receivingDeps, onPutAway: startPutAway }} />
       </div>
     );
   }

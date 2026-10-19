@@ -51,6 +51,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { EOS_PLACEMENT_RECORD_CAPABILITY, insertPlacements, planPlacements, readPlacements } from "./binPlacementOperations.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveCompanyAuthority } from "./companyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -209,9 +210,10 @@ function planRows(req: EosRelocationRequest): PlannedRow[] {
   ]);
 }
 
-async function resolveEndpoint(db: Queryable, tenantId: string, ref: LocationRef) {
+async function resolveEndpoint(db: Queryable, tenantId: string, ref: LocationRef, companyKeys: readonly string[]) {
   try {
-    return await resolveScopeLocation(db, tenantId, ref);
+    // COMPANY ISOLATION (#235 / #237): an endpoint of a company outside the caller's reads EXACTLY as a nonexistent one.
+    return await resolveScopeLocation(db, tenantId, ref, companyKeys);
   } catch (err) {
     if (err instanceof InventoryScopeError) {
       return refuse("NOT_FOUND", "NOT_FOUND", ref.type === "BIN" ? "bin_not_found" : "warehouse_not_found");
@@ -243,6 +245,13 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
       refuse("CAPABILITY_MISSING", "FORBIDDEN", "placement_not_authorized");
     }
 
+    // ---- 2b. COMPANY AUTHORITY (#235 / #237): capability first, then company -- none at all is refused before any row is read ----
+    const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "relocating stock requires operating-company authority; this principal has none");
+    }
+    const companyKeys = authority.companyKeys;
+
     // ---- 3. part authority: tracking mode from eos_ops.parts, never the request ----
     const [part] = await createPostgresPartPolicyAuthority().readPartPolicies(db, actor.tenantId, [req.partId]);
     if (!part.found) refuse("NOT_FOUND", "NOT_FOUND", "part_not_found");
@@ -251,8 +260,8 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     if (isSerial !== serials.length > 0) refuse("INVALID", "INVALID_INPUT", isSerial ? "serial_numbers_required" : "serial_numbers_not_allowed");
 
     // ---- 4. endpoints: governed, same custody warehouse; the actor's scope over THAT warehouse ----
-    const source = await resolveEndpoint(db, actor.tenantId, req.source);
-    const destination = await resolveEndpoint(db, actor.tenantId, req.destination);
+    const source = await resolveEndpoint(db, actor.tenantId, req.source, companyKeys);
+    const destination = await resolveEndpoint(db, actor.tenantId, req.destination, companyKeys);
     if (source.scopeWarehouseId !== destination.scopeWarehouseId) {
       refuse("CROSS_WAREHOUSE", "PRECONDITION_FAILED", "different_custody_parents_use_transfer");
     }

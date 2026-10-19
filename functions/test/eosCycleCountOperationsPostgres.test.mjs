@@ -184,7 +184,8 @@ test("DQ-017: capability, Warehouse Operations eligibility, and the SHEET'S ware
   refused(await call(COUNTER, "createCycleCountSheet", at(WH_B)), 403, "OUTSIDE_OPERATIONAL_SCOPE");
   refused(await call(COUNTER, "createCycleCountSheet", { location: { type: "BIN", locationId: BIN_B }, idempotencyKey: "k-bin-b" }), 403, "OUTSIDE_OPERATIONAL_SCOPE");
   refused(await call(COUNTER_NO_ELIG, "createCycleCountSheet", at(WH_A)), 403, "WORK_ELIGIBILITY_MISSING");
-  refused(await call(NO_EMPLOYEE, "createCycleCountSheet", at(WH_A)), 403, "EMPLOYEE_LINK_REQUIRED");
+  // ISO inventory (#235/#237): capability, then company authority, then scope. No Employee link means no company authority.
+  refused(await call(NO_EMPLOYEE, "createCycleCountSheet", at(WH_A)), 403, "COMPANY_AUTHORITY_REQUIRED");
   refused(await call(NO_CAPS, "createCycleCountSheet", at(WH_A)), 403, "CAPABILITY_MISSING");
   refused(await call(UNSCOPED, "createCycleCountSheet", at(WH_A)), 403, "OUTSIDE_OPERATIONAL_SCOPE");
   refused(await call("nobody-at-all", "createCycleCountSheet", at(WH_A)), 403, "FORBIDDEN");
@@ -285,7 +286,7 @@ test("list carries the scope IN THE QUERY: each caller sees only sheets in their
   assert.deepEqual(bView.sheets.map((s) => s.sheetId), [bSheetId]);
   assert.deepEqual(ok(await call(UNSCOPED, "listCycleCountSheets", {})).sheets, [], "no scope: nothing -- truthfully empty");
   refused(await call(COUNTER_NO_ELIG, "listCycleCountSheets", {}), 403, "WORK_ELIGIBILITY_MISSING");
-  refused(await call(NO_EMPLOYEE, "listCycleCountSheets", {}), 403, "EMPLOYEE_LINK_REQUIRED");
+  refused(await call(NO_EMPLOYEE, "listCycleCountSheets", {}), 403, "COMPANY_AUTHORITY_REQUIRED");
   refused(await call(COUNTER, "listCycleCountSheets", { status: "WHATEVER" }), 400, "INVALID_INPUT");
   const open = ok(await call(COUNTER, "listCycleCountSheets", { status: "CLOSED" }));
   assert.deepEqual(open.sheets.map((s) => s.sheetId), [SHEET]);

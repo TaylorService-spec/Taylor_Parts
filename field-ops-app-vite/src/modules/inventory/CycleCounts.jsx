@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchInventoryWarehouseOptions } from "../../services/inventoryLocationClient.js";
 import { cycleCountCommandClient } from "../../services/cycleCountCommandClient";
 import { useAuth } from "../../auth/AuthContext";
+import { useInventoryScreenCapabilities, CYCLE_COUNT_CAPABILITY } from "../../access/inventoryScreenCapabilities.js";
 import {
   buildCreateSheetRequest, buildSubmitLineRequest, buildReconcileLineRequest,
 } from "../../domain/cycleCountCommandRequest";
@@ -66,6 +67,16 @@ const SHEET_STATUS_TEXT = Object.freeze(Object.fromEntries(FILTERS.filter((f) =>
 
 export default function CycleCounts({ deps }) {
   const client = deps?.cycleCountClient ?? cycleCountCommandClient;
+  // UI PERMISSION PARITY (ISO inventory): a control is OFFERED only to a holder of the capability its server command enforces -- New Count /
+  // Add Part: create; Record Count: submit; Approve / Reject: reconcile; Remove Part / Cancel This Count: cancel; Close This Count: close. The server
+  // stays authoritative and re-checks every act (capability, company authority, warehouse scope, separation of duties).
+  const live = useInventoryScreenCapabilities(useAuth()?.user ?? null);
+  const hasCapability = deps?.hasCapability ?? live.hasCapability;
+  const can = {
+    create: hasCapability(CYCLE_COUNT_CAPABILITY.create), submit: hasCapability(CYCLE_COUNT_CAPABILITY.submit),
+    reconcile: hasCapability(CYCLE_COUNT_CAPABILITY.reconcile), cancel: hasCapability(CYCLE_COUNT_CAPABILITY.cancel),
+    close: hasCapability(CYCLE_COUNT_CAPABILITY.close),
+  };
   const [filter, setFilter] = useState("OPEN");
   const [sheets, setSheets] = useState({ loading: true, rows: [], nextCursor: null, error: null });
   const [selected, setSelected] = useState(null);
@@ -101,7 +112,7 @@ export default function CycleCounts({ deps }) {
   return (
     <div className="fo-panel">
       <WorkspaceHeader title="Cycle Counts">
-        {!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>New Count</Button>}
+        {!showCreate && can.create && <Button variant="primary" onClick={() => setShowCreate(true)}>New Count</Button>}
       </WorkspaceHeader>
       <p className="fo-muted">
         Verify what is physically present without showing the expected answer first. Counts are kept on
@@ -120,7 +131,7 @@ export default function CycleCounts({ deps }) {
         </p>
       )}
 
-      {showCreate && (
+      {showCreate && can.create && (
         <CreateSheetForm client={client} onCancel={() => setShowCreate(false)} onCreated={(sheet) => {
           setShowCreate(false); setStatus({ kind: "ok", message: describeCycleCountOutcome("createSheet", "applied") });
           setSelected(sheet.sheetId); load();
@@ -128,7 +139,7 @@ export default function CycleCounts({ deps }) {
       )}
 
       {selected ? (
-        <SheetDetail client={client} sheetId={selected} onBack={() => { setSelected(null); load(); }} onStatus={setStatus} />
+        <SheetDetail client={client} sheetId={selected} can={can} onBack={() => { setSelected(null); load(); }} onStatus={setStatus} />
       ) : (
         <>
           <label className="fo-inline-form">
@@ -221,7 +232,7 @@ function CreateSheetForm({ client, onCancel, onCreated }) {
   );
 }
 
-function SheetDetail({ client, sheetId, onBack, onStatus }) {
+function SheetDetail({ client, sheetId, can, onBack, onStatus }) {
   const currentUserId = useAuth()?.user?.uid ?? null;
   const [state, setState] = useState({ loading: true, sheet: null, lines: [], error: null });
   const [busy, setBusy] = useState(null); // partId | "sheet"
@@ -268,14 +279,17 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
       <strong>{l.partId}</strong> <span className="fo-muted">· {statusLabel(l.status, STATUS_TEXT)}</span>
       <LineFigures line={l} />
       {l.reconciliationReason && <p className="fo-muted">Reason: {l.reconciliationReason}</p>}
-      {open && l.status === "OPEN" && (
-        <CountEntry line={l} busy={busy === l.partId} onSubmit={(draft) => {
+      {open && l.status === "OPEN" && (can.submit || can.cancel) && (
+        <CountEntry line={l} busy={busy === l.partId} canRecord={can.submit} canRemove={can.cancel} onSubmit={(draft) => {
           const built = buildSubmitLineRequest(sheetId, l.partId, l.trackingMode, draft);
           if (!built.ok) { setLineErrors((e) => ({ ...e, [l.partId]: Object.values(built.errors)[0] })); return; }
           act(l.partId, () => client.submitCycleCountLine(built.value), "submit");
         }} onRemove={() => act(l.partId, () => client.cancelCycleCountLine({ sheetId, partId: l.partId }), "cancelLine")} />
       )}
-      {open && l.status === "COUNTED" && (
+      {open && l.status === "COUNTED" && !can.reconcile && (
+        <p className="fo-muted">Waiting for a reviewer who can approve or reject counts.</p>
+      )}
+      {open && l.status === "COUNTED" && can.reconcile && (
         <ReviewLine
           line={l}
           busy={busy === l.partId}
@@ -295,7 +309,7 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
       <Button variant="tertiary" onClick={onBack}>← All Counts</Button>
       <h3>{TYPE_LABEL[sheet.location?.type] ?? "Location"} {sheet.locationLabel ?? sheet.location?.locationId} <span className="fo-muted">· {statusLabel(sheet.status, SHEET_STATUS_TEXT)}</span></h3>
 
-      {open && sheet.location?.type !== "BIN" && <AddPartLine onAdd={(partId) => act("add", () => client.openCycleCountLine({ sheetId, partId }), "openLine")} busy={busy !== null} />}
+      {open && can.create && sheet.location?.type !== "BIN" && <AddPartLine onAdd={(partId) => act("add", () => client.openCycleCountLine({ sheetId, partId }), "openLine")} busy={busy !== null} />}
       {lineErrors.add && <p className="fo-warning" role="alert">{lineErrors.add}</p>}
 
       {lines.length === 0 ? <p className="fo-muted">No parts counted yet.</p> : (
@@ -316,9 +330,9 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
       )}
 
       <div className="fo-form-actions">
-        {canClose && <Button variant="primary" disabled={busy !== null} onClick={() => act("sheet", () => client.closeCycleCountSheet({ sheetId }), "closeSheet")}>Close This Count</Button>}
-        {!canClose && open && lines.length > 0 && <span className="fo-cc-disabled-reason">{closeReason}</span>}
-        {canCancel && <button type="button" className="fo-btn-secondary" disabled={busy !== null} onClick={() => act("sheet", () => client.cancelCycleCountSheet({ sheetId }), "cancelSheet")}>Cancel This Count</button>}
+        {canClose && can.close && <Button variant="primary" disabled={busy !== null} onClick={() => act("sheet", () => client.closeCycleCountSheet({ sheetId }), "closeSheet")}>Close This Count</Button>}
+        {!canClose && can.close && open && lines.length > 0 && <span className="fo-cc-disabled-reason">{closeReason}</span>}
+        {canCancel && can.cancel && <button type="button" className="fo-btn-secondary" disabled={busy !== null} onClick={() => act("sheet", () => client.cancelCycleCountSheet({ sheetId }), "cancelSheet")}>Cancel This Count</button>}
       </div>
       {lineErrors.sheet && <p className="fo-warning" role="alert">{lineErrors.sheet}</p>}
     </section>
@@ -356,7 +370,7 @@ function AddPartLine({ onAdd, busy }) {
   );
 }
 
-function CountEntry({ line, busy, onSubmit, onRemove }) {
+function CountEntry({ line, busy, canRecord = true, canRemove = true, onSubmit, onRemove }) {
   const [value, setValue] = useState("");
   const serial = line.trackingMode === "SERIAL";
   return (
@@ -365,11 +379,11 @@ function CountEntry({ line, busy, onSubmit, onRemove }) {
       onSubmit(serial ? { countedSerialNumbers: value.split(/[\s,]+/).filter(Boolean) } : { countedQuantity: Number(value) });
     }}>
       {/* Blind: no expected figure here, and the server never sent one for this open line. */}
-      {serial
+      {canRecord && (serial
         ? <textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Serial numbers found (one per line)" aria-label="Serial numbers counted" />
-        : <input type="number" min="0" step="1" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Counted quantity" aria-label="Counted quantity" />}
-      <button type="submit" className="fo-transfer-action-btn" disabled={busy || (!serial && value === "")}>{busy ? "Recording…" : "Record Count"}</button>
-      <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy} onClick={onRemove}>Remove Part</button>
+        : <input type="number" min="0" step="1" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Counted quantity" aria-label="Counted quantity" />)}
+      {canRecord && <button type="submit" className="fo-transfer-action-btn" disabled={busy || (!serial && value === "")}>{busy ? "Recording…" : "Record Count"}</button>}
+      {canRemove && <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy} onClick={onRemove}>Remove Part</button>}
     </form>
   );
 }

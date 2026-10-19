@@ -405,7 +405,8 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
     assert.equal((await refusal(() => run(receipt(unscoped, { receivingLocation: { type: "WAREHOUSE", locationId: "wh-unscoped" } })))).code, "OUTSIDE_OPERATIONAL_SCOPE");
     assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], assignee)))).code, "OUTSIDE_OPERATIONAL_SCOPE", "a linked Employee with no scope");
     const stranger = await principal("uid-stranger");
-    assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], stranger)))).code, "EMPLOYEE_LINK_REQUIRED", "no Employee, no receipt");
+    // ISO inventory (#235/#237): capability first, then company authority -- a principal with no Employee has none, so it is refused there, before any row is read.
+    assert.equal((await refusal(() => run(receipt(id), actor([RECEIVE], stranger)))).code, "COMPANY_AUTHORITY_REQUIRED", "no Employee, no company authority, no receipt");
     assert.deepEqual(await counts(), before, "no receipt, no movement, no number, no closeout");
     assert.equal((await run(receipt(id))).outcome, "applied", "the scoped receiver receives into its warehouse");
   });
