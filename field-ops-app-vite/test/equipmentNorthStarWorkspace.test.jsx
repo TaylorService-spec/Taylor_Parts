@@ -97,7 +97,7 @@ function installedList(rows) {
 describe("the Equipment workspace keeps its three populations", () => {
   it("renders exactly three tabs, and Customer Equipment is the default", () => {
     mockEquipmentList = installedList([]);
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual([
       "Customer Equipment", "Available Equipment", "Add Equipment",
@@ -107,7 +107,7 @@ describe("the Equipment workspace keeps its three populations", () => {
 
   it("the header describes the set and carries NO count", () => {
     mockEquipmentList = installedList([]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     expect(screen.getByText(/Every serialized unit the business owns or services/i)).toBeTruthy();
     // One number beside one title would have to mean one of three tabs, and a reader cannot tell
     // which. The Customer Equipment tab carries its own aggregate, where it is unambiguous.
@@ -116,7 +116,7 @@ describe("the Equipment workspace keeps its three populations", () => {
 
   it("neither panel repeats the name of the tab that selects it", () => {
     mockEquipmentList = installedList([]);
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // "Customer Equipment" is the tab. It must not also be a heading inside the panel.
     expect(screen.queryByRole("heading", { name: /^Customer Equipment$/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: /^Available Equipment$/ })).toBeNull();
@@ -127,7 +127,7 @@ describe("the Equipment workspace keeps its three populations", () => {
 
   it("each tab rail control is a real touch target and says which is current", () => {
     mockEquipmentList = installedList([]);
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     const [customer, available] = screen.getAllByRole("tab");
     expect(customer.className).toMatch(/ns-tabrail__tab--on/);
     expect(available.className).not.toMatch(/--on/);
@@ -141,7 +141,7 @@ describe("the Equipment workspace keeps its three populations", () => {
 describe("Customer Equipment rows", () => {
   it("renders the display name and the disambiguating attributes as SEPARATE columns", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // ND-30: the artifact draws a muted "Taylor C712 · S/N K1122873" summary inside the identity
     // cell. The repository gives each attribute its own sortable, scannable column instead, and
     // the anti-concatenation rule is the reason. Both facts are still on the row.
@@ -153,7 +153,7 @@ describe("Customer Equipment rows", () => {
 
   it("resolves the customer to a NAME and never renders a document id", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // getAllByText: the customer is also an option in the Customer filter picker.
     expect(screen.getAllByText("Desert Sun").length).toBeGreaterThan(0);
     expect(container.textContent).not.toContain("eq_8Xy2QrT");
@@ -163,7 +163,7 @@ describe("Customer Equipment rows", () => {
 
   it("an unresolvable location renders a stated reference state, never the raw key (ND-29)", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // The design's illustrative cell reads "Location unavailable". The repository is AHEAD here:
     // the list runtime knows WHY a reference failed and says so — NOT_FOUND, DENIED, LOADING and
     // ERROR are four different facts with four different remedies, and collapsing them would tell
@@ -175,7 +175,7 @@ describe("Customer Equipment rows", () => {
 
   it("the row is keyboard-reachable and routes by id without rendering it", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     const row = screen.getByText("Soft Serve Freezer 2").closest("tr");
     expect(row.getAttribute("tabindex")).toBe("0");
   });
@@ -251,7 +251,7 @@ describe("Available Equipment renders the locked 1b table", () => {
 describe("the workspace is composed as a page, not a card", () => {
   it("the tab rail and every panel live INSIDE the ns-workspace container", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     const workspace = container.querySelector(".ns-workspace");
     expect(workspace, "the page must compose .ns-workspace").toBeTruthy();
 
@@ -271,7 +271,7 @@ describe("the workspace is composed as a page, not a card", () => {
 
   it("no retired card treatment wraps the workspace or its tab bodies", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // `.fo-panel` is the card this family left behind. The record page's own rail sections still use
     // it legitimately — this assertion is scoped to the COLLECTION, which must read as a page.
     const cards = container.querySelectorAll(".fo-panel");
@@ -283,7 +283,7 @@ describe("the workspace is composed as a page, not a card", () => {
 
   it("the header and the rows share one measure — the container is not applied twice", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // Exactly ONE .ns-workspace. Two nested containers would double the 32px inset and put the rows
     // out of line with the title again, which is the symptom this fix removes.
     expect(container.querySelectorAll(".ns-workspace")).toHaveLength(1);
@@ -317,7 +317,7 @@ describe("one visible page identity, whichever tab is selected", () => {
   ]) {
     it(`${tabName} selected — exactly one visible Equipment identity`, () => {
       mockEquipmentList = installedList([INSTALLED_ROW]);
-      const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+      const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
       fireEvent.click(screen.getByRole("tab", { name: tabName, exact: true }));
       expect(container.querySelector(`#eq-panel-${panelId}`).hasAttribute("hidden")).toBe(false);
 
@@ -332,7 +332,7 @@ describe("one visible page identity, whichever tab is selected", () => {
 
   it("the Add Equipment panel hosts no page shell of its own", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     fireEvent.click(screen.getByRole("tab", { name: "Add Equipment", exact: true }));
     const panel = container.querySelector("#eq-panel-add");
     // `.fo-workspace` is WorkspaceShell's root. Its presence inside a tab is the defect itself.
@@ -342,7 +342,7 @@ describe("one visible page identity, whichever tab is selected", () => {
 
   it("the tab still works — its controls and account-scoped prompt survive the shell removal", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     fireEvent.click(screen.getByRole("tab", { name: "Add Equipment", exact: true }));
     const panel = container.querySelector("#eq-panel-add");
     // The customer picker was the shell's `actions` region and is now the tab's control row.
@@ -353,7 +353,7 @@ describe("one visible page identity, whichever tab is selected", () => {
 
   it("a heading inside a HIDDEN panel is not a second identity", () => {
     mockEquipmentList = installedList([INSTALLED_ROW]);
-    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     // Default tab: the other two panels are mounted and hidden. Whatever they contain, the page
     // still states its identity exactly once.
     expect(container.querySelector("#eq-panel-available").hasAttribute("hidden")).toBe(true);

@@ -47,7 +47,7 @@ const readyList = (rows = []) => ({
   emptyMessage: "No customers yet.",
 });
 
-const renderPage = () => render(<MemoryRouter><AccountsList /></MemoryRouter>);
+const renderPage = () => render(<MemoryRouter><AccountsList hasCapability={() => true} /></MemoryRouter>);
 
 beforeEach(() => {
   summaryRetry.mockClear();
@@ -173,5 +173,22 @@ describe("Customers surface", () => {
     fireEvent.change(screen.getByPlaceholderText(/search customers/i), { target: { value: "acme" } });
     expect(screen.getByText(/don't have access to search/i)).toBeTruthy();
     expect(screen.queryByText(/no customer/i)).toBeNull();
+  });
+});
+
+// UI PERMISSION PARITY (PERM-UI, 2026-10-19): New Customer is offered only to a holder of customer.record.create.
+describe("PERM-UI: New Customer is offered only to a customer.record.create holder", () => {
+  it("a non-holder sees the list and no New Customer; a holder sees it", () => {
+    const view = render(<MemoryRouter><AccountsList hasCapability={(c) => c !== "customer.record.create"} /></MemoryRouter>);
+    expect(screen.getByText("Northside Foods")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New Customer" })).toBeNull();
+    view.unmount();
+    render(<MemoryRouter><AccountsList hasCapability={(c) => c === "customer.record.create"} /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "New Customer" })).toBeTruthy();
+  });
+
+  it("with no capability answer at all the control is absent (fail closed)", () => {
+    render(<MemoryRouter><AccountsList /></MemoryRouter>);
+    expect(screen.queryByRole("button", { name: "New Customer" })).toBeNull();
   });
 });

@@ -287,4 +287,71 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
     assert.equal(other.status, 200, JSON.stringify(other.body));
     assert.deepEqual([other.body.result.alias?.result, ids(other)], ["NOT_FOUND", []]);
   });
+
+  // ── PERM-UI (2026-10-19): Equipment MODEL authoring through the Catalog API. The writer (postgresEquipmentModelWriter.ts)
+  // existed and was tested directly (catalogCutoverPostgres) but was not routed, so `equipment.model.manage` was enforced by
+  // nothing a caller could reach. Appended LAST: it adds a model to t1, and the DQ-030 listing above counts t1's models.
+  await t.test("PERM-UI: createEquipmentModel / updateEquipmentModel -- holder writes, non-holder refused, one audit row each, replay is silent", async () => {
+    const audits = async (id) => (await q(
+      `SELECT action, target_kind, target_id, actor_uid FROM eos_policy.audit_events WHERE tenant_id = 't1' AND target_id = $1 ORDER BY occurred_at`, [id])).rows;
+    const MODEL = { manufacturerId: "kold", manufacturerName: "Kold Draft", modelNumber: "ks 9", displayName: "Kold KS-9", status: "DRAFT", sourceAuthority: "MANUFACTURER_CATALOG" };
+    const ID = "KOLD--KS-9";
+
+    // The operations are on the transport's closed mutation list.
+    assert.ok(http.CATALOG_MUTATION_OPERATIONS.includes("createEquipmentModel") && http.CATALOG_MUTATION_OPERATIONS.includes("updateEquipmentModel"));
+
+    // REFUSED: catalog.read alone, and the catalog.manage/.activate holder who lacks equipment.model.manage (a separate capability).
+    for (const actor of [readerT1, mfrAdmin, memberOnly]) {
+      const r = await call(actor, "createEquipmentModel", { model: MODEL });
+      assert.deepEqual([r.status, r.body.code], [403, "FORBIDDEN"], JSON.stringify(r.body));
+    }
+    assert.deepEqual(await audits(ID), [], "a refused create wrote nothing");
+    assert.equal((await call(null, "createEquipmentModel", { model: MODEL })).status, 401);
+
+    // ALLOWED: the equipment.model.manage holder creates -- canonical id, version 1, one audit row naming the Principal.
+    const created = await call(writer, "createEquipmentModel", { model: MODEL });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    assert.deepEqual(created.body.result, { equipmentModelId: ID, version: 1, replayed: false });
+    assert.deepEqual(await audits(ID), [{ action: "catalog.equipmentModel.create", target_kind: "equipment_model", target_id: ID, actor_uid: writer.principalId }]);
+
+    // REPLAY: the same create again is answered as replayed and writes no second audit row; a DIFFERENT one is a conflict.
+    const again = await call(writer, "createEquipmentModel", { model: MODEL });
+    assert.deepEqual([again.status, again.body.result.replayed, again.body.result.version], [200, true, 1]);
+    assert.equal((await audits(ID)).length, 1, "a replay is not audited again");
+    const clash = await call(writer, "createEquipmentModel", { model: { ...MODEL, displayName: "Somebody else" } });
+    assert.deepEqual([clash.status, clash.body.code], [409, "CONFLICT"]);
+    const bad = await call(writer, "createEquipmentModel", { model: { ...MODEL, status: "NOPE", modelNumber: "ks 10" } });
+    assert.deepEqual([bad.status, bad.body.code], [400, "INVALID_INPUT"]);
+    const unwritable = await call(writer, "createEquipmentModel", { model: { ...MODEL, modelNumber: "ks 11", version: 9 } });
+    assert.deepEqual([unwritable.status, unwritable.body.code], [400, "INVALID_INPUT"], "version is repository authority, never a payload field");
+
+    // UPDATE under the row's version. A non-holder is refused and nothing changes.
+    const change = { equipmentModelId: ID, expectedVersion: 1, changes: { displayName: "Kold KS-9 Ice" } };
+    const refused = await call(mfrAdmin, "updateEquipmentModel", change);
+    assert.deepEqual([refused.status, refused.body.code], [403, "FORBIDDEN"]);
+    assert.equal((await audits(ID)).length, 1);
+    const updated = await call(writer, "updateEquipmentModel", change);
+    assert.equal(updated.status, 200, JSON.stringify(updated.body));
+    assert.deepEqual(updated.body.result, { equipmentModelId: ID, version: 2, replayed: false });
+    assert.deepEqual((await audits(ID)).map((a) => a.action), ["catalog.equipmentModel.create", "catalog.equipmentModel.update"]);
+
+    // REPLAY of the committed update (lost reply): replayed, still version 2, not audited again.
+    const replay = await call(writer, "updateEquipmentModel", change);
+    assert.deepEqual([replay.status, replay.body.result.replayed, replay.body.result.version], [200, true, 2]);
+    assert.equal((await audits(ID)).length, 2);
+    // A STALE writer changing something else is a conflict; an empty change set and an identity change are refused.
+    const stale = await call(writer, "updateEquipmentModel", { ...change, changes: { revision: "C" } });
+    assert.deepEqual([stale.status, stale.body.code], [409, "CONFLICT"]);
+    const empty = await call(writer, "updateEquipmentModel", { equipmentModelId: ID, expectedVersion: 2, changes: {} });
+    assert.deepEqual([empty.status, empty.body.code], [412, "PRECONDITION_FAILED"]);
+    const identity = await call(writer, "updateEquipmentModel", { equipmentModelId: ID, expectedVersion: 2, changes: { modelNumber: "ks 99" } });
+    assert.deepEqual([identity.status, identity.body.code], [400, "INVALID_INPUT"]);
+
+    // TENANT ISOLATION: t1's model is invisible to t2's holder (not found), and the read sees the corrected record.
+    const otherTenant = await call(writerT2, "updateEquipmentModel", { ...change, expectedVersion: 2, changes: { revision: "Z" } });
+    assert.deepEqual([otherTenant.status, otherTenant.body.code], [404, "NOT_FOUND"]);
+    const listed = await call(readerT1, "listEquipmentModels");
+    const mine = listed.body.result.models.find((m) => m.id === ID);
+    assert.deepEqual([mine.displayName, mine.version, mine.status], ["Kold KS-9 Ice", 2, "DRAFT"]);
+  });
 });

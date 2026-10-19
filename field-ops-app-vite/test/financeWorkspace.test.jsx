@@ -1,7 +1,7 @@
 // Finance Closure (#206): the Finance workspace decides nothing -- the server's figures, the server's refusals; company-scoped,
 // with Consolidated a reporting view that records nothing.
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import FinancialsWorkspace, { toMinorUnits } from "../src/modules/financials/FinancialsWorkspace.jsx";
 
 const section = (items = []) => ({ count: items.length, outstandingByCurrency: items.length ? { USD: "15000" } : {}, items });
@@ -79,5 +79,42 @@ describe("FinancialsWorkspace", () => {
   it("an out-of-scope refusal is shown in words", async () => {
     render(<FinancialsWorkspace callApi={server(() => ({ ok: false, code: "FORBIDDEN", reason: "OUTSIDE_OPERATING_COMPANY_SCOPE" }))} />);
     await screen.findByText(/does not cover this operating company/);
+  });
+});
+
+// UI PERMISSION PARITY (PERM-UI, 2026-10-19): Record / Apply / Reconcile are offered only where the server's own per-company
+// advice (readMyFinanceCompanyAccess.actions) says finance.settlement.record / .apply / finance.reconciliation.record is reached.
+describe("PERM-UI: Finance controls follow the server's per-company actions", () => {
+  const only = (actions) => ({ ok: true, result: { principalId: "p", consolidated: false,
+    companies: [{ operatingCompanyId: "taylor", name: "Taylor Freezer of Arizona", actions: { view: true, record: false, apply: false, correct: false, reconcile: false, ...actions } }] } });
+  const open = async (actions) => {
+    const callApi = server(() => ({ ok: true, result: WS() }), only(actions));
+    render(<FinancialsWorkspace callApi={callApi} />);
+    await screen.findByText("Harbor Grill");
+  };
+
+  it("a viewer with none of the three actions sees the workspace and no Record, Apply or Reconcile control", async () => {
+    await open({});
+    expect(screen.queryByRole("button", { name: "Record Settlement" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Apply CHK-9" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
+    expect(screen.getByText(/needs finance.settlement.apply/)).toBeTruthy();
+    expect(screen.getByText(/needs finance.reconciliation.record/)).toBeTruthy();
+  });
+
+  it("each control is offered on its own capability", async () => {
+    await open({ record: true });
+    expect(screen.getByRole("button", { name: "Record Settlement" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Apply CHK-9" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
+    cleanup();
+    await open({ apply: true });
+    expect(screen.getByRole("button", { name: "Apply CHK-9" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Record Settlement" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
+    cleanup();
+    await open({ reconcile: true });
+    expect(screen.getByRole("button", { name: "Reconcile" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Apply CHK-9" })).toBeNull();
   });
 });

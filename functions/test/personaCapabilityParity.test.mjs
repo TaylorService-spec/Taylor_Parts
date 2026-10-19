@@ -17,9 +17,9 @@ test("classify: same-named keys are EQUAL / WIDEN / NARROW; no same-named EOS ke
   assert.equal(classify(false, false, false), "UNMAPPED_DENY");
 });
 
-test("the 55 ids come from the shell itself, and the EOS key census sees real migration keys", async () => {
+test("the 58 ids come from the shell itself, and the EOS key census sees real migration keys", async () => {
   const ids = await shellIds();
-  assert.equal(ids.length, 55);
+  assert.equal(ids.length, 58);
   const keys = eosKeysFromMigrations();
   assert.ok(keys.has("workOrder.create") && keys.has("reorder.request.read.queue"));
   for (const g of GATES) for (const k of g.candidate ?? []) assert.ok(keys.has(k), `${g.id} candidate ${k} is a real EOS key`);

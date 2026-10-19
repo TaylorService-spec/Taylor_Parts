@@ -56,6 +56,9 @@ export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
   "createManufacturer",
   "updateManufacturer",
   "changeManufacturerStatus",
+  // PERM-UI: Equipment Model authoring (equipment.model.manage), postgresEquipmentModelWriter.ts.
+  "createEquipmentModel",
+  "updateEquipmentModel",
 ]);
 
 const ALL = new Set([...CATALOG_READ_OPERATIONS, ...CATALOG_MUTATION_OPERATIONS]);

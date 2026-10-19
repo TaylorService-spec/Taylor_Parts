@@ -468,7 +468,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // new screen, not a re-homed one), so it needs an explicit case
   // rather than the generic legacyKey/PlaceholderPage branches below.
   if (domain.key === "customers" && item.key === "customers") {
-    return <AccountsList />;
+    return <AccountsList hasCapability={operationalContext?.hasCapability} />;
   }
   // Sales -- the Opportunity COLLECTION (North Star P1v4). Was the master-detail operating
   // workspace; it is now a list whose only job is finding one opportunity, because the record it
@@ -539,7 +539,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
     return <RentalWorkspace />;
   }
   if (domain.key === "equipment" && item.key === "equipment") {
-    return <EquipmentWorkspace accessVersion={operationalContext?.accessVersion} />;
+    return <EquipmentWorkspace accessVersion={operationalContext?.accessVersion} hasCapability={operationalContext?.hasCapability} />;
   }
   // Sprint 2.0.3 -- Work Order Experience. "Work Orders" now renders
   // the real workspace; the legacy Jobs.jsx screen it used to render
@@ -624,7 +624,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
     // accessVersion threaded so the canonical part-name read re-runs and its name map is
     // invalidated on any access change (governs the catalog, reorder/history tables, and the
     // embedded Inventory Health panel) -- same convention as PartDetail / Operations.
-    return <PartsList accessVersion={operationalContext?.accessVersion} />;
+    return <PartsList accessVersion={operationalContext?.accessVersion} hasCapability={operationalContext?.hasCapability} />;
   }
   // ADR-009 G2 -- governed Part Master administration workspace (read + FAIL-CLOSED write; see
   // PartMasterList.jsx header for the full invariant list). Same brand-new-screen pattern as
@@ -633,7 +633,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // ROLE_NAV_ACCESS lookup. Catalog WRITE authority (inventory.catalog.manage/.activate) is enforced
   // server-side inside the trusted command; the UI gate is never the sole enforcement.
   if (domain.key === "inventory" && item.key === "partMaster") {
-    return <PartMasterList />;
+    return <PartMasterList hasCapability={operationalContext?.hasCapability} />;
   }
   // Manufacturer administration workspace (catalog reference object Parts link to). Same posture as Part
   // Master: no legacyKey -> admin/dispatcher via navConfig's PLACEHOLDER_DEFAULT_ROLES default on the legacy
@@ -1160,7 +1160,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               permission-denied they cannot act on. Rules remain the boundary; this
               keeps the route from disagreeing with them. */}
           {domain.key === "equipment" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
-            <Route path=":equipmentId" element={<EquipmentDetail />} />
+            <Route path=":equipmentId" element={<EquipmentDetail hasCapability={operationalContext?.hasCapability} />} />
           )}
           {/* ADMINISTRATION USERS CONSOLIDATION.
               ═══════════════════════════════════════════════════════════════════════════════════

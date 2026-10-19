@@ -87,7 +87,7 @@ const PART_ROWS = [
 /** A Render searchParts answer: the rows, and a next cursor only when the server read one more. */
 const pageOf = (parts, nextCursor = null) => ({ ok: true, result: { parts, nextCursor, limit: 50 } });
 
-function setup({ page, count, search = "" } = {}) {
+function setup({ page, count, search = "", hasCapability } = {}) {
   h.page = page ?? pageOf(PART_ROWS);
   h.count = count ?? { ok: true, result: PART_ROWS.length };
   h.params = new URLSearchParams(search);
@@ -101,7 +101,7 @@ function setup({ page, count, search = "" } = {}) {
   // being kept navigation-free to suit the harness.
   return render(
     <MemoryRouter>
-      <PartMasterList />
+      <PartMasterList hasCapability={hasCapability} />
     </MemoryRouter>,
   );
 }
@@ -499,5 +499,33 @@ describe("the Part list on a 320px phone", () => {
   it("the controls wrap rather than overflow", () => {
     expect(css).toMatch(/\.fo-listctl \{ display: flex; flex-wrap: wrap/);
     expect(css).toMatch(/\.fo-listctl__active \{ display: flex; flex-wrap: wrap/);
+  });
+});
+
+// UI PERMISSION PARITY (PERM-UI, 2026-10-19): New Part / Edit need inventory.catalog.manage; Status needs
+// inventory.catalog.activate. A non-holder sees no control; the server still decides on every call.
+describe("PERM-UI: Part Master controls are offered only to their capability holders", () => {
+  it("a non-holder sees the list and no New Part, Edit or Status", async () => {
+    setup({ hasCapability: () => false });
+    await screen.findByText("PRT-1001");
+    expect(screen.queryByRole("button", { name: "New Part" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
+  });
+
+  it("a manage holder sees New Part and Edit, but not Status", async () => {
+    setup({ hasCapability: (c) => c === "inventory.catalog.manage" });
+    await screen.findByText("PRT-1001");
+    expect(screen.getByRole("button", { name: "New Part" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Edit" }).length).toBe(PART_ROWS.length);
+    expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
+  });
+
+  it("an activate holder sees Status, but not New Part or Edit", async () => {
+    setup({ hasCapability: (c) => c === "inventory.catalog.activate" });
+    await screen.findByText("PRT-1001");
+    expect(screen.getAllByRole("button", { name: "Status" }).length).toBe(PART_ROWS.length);
+    expect(screen.queryByRole("button", { name: "New Part" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 });

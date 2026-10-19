@@ -25,6 +25,7 @@ import { buildRowHref } from "../../metadata/listPresentation.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import Modal from "../../shared/ui/Modal";
 import AccountForm from "./AccountForm";
+import { CUSTOMER_RECORD_GATE } from "../../access/shellCapabilityGates.js";
 
 // Customers — the first surface on the metadata list runtime.
 //
@@ -61,7 +62,7 @@ const STATUS_CARDS = [
   { key: "ARCHIVED", label: accountStatusLabel(ACCOUNT_STATUS.ARCHIVED), status: ACCOUNT_STATUS.ARCHIVED },
 ];
 
-export default function AccountsList() {
+export default function AccountsList({ hasCapability } = {}) {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -186,9 +187,10 @@ export default function AccountsList() {
   // title; ActionRail exists to arrange a CLUSTER, and a cluster of one is chrome around nothing.
   // The label drops its "+" for the reason the record pages dropped theirs — the button already
   // reads as an action, and the glyph was the last thing on this page speaking the old vocabulary.
-  const actions = (
-    <Button variant="primary" onClick={() => setShowCreate(true)}>New Customer</Button>
-  );
+  // UI PERMISSION PARITY (PERM-UI): offered only to a holder of customer.record.create, which createAccount enforces.
+  const actions = hasCapability?.(CUSTOMER_RECORD_GATE.create) === true
+    ? <Button variant="primary" onClick={() => setShowCreate(true)}>New Customer</Button>
+    : null;
 
   // OWNER NAMES ARE A SECONDARY FACT, and the directory subscription can fail on its own while
   // every customer loads. Each affected cell already says so where the name would have been; this

@@ -42,6 +42,7 @@ import {
   readPart, readPartsByIds, searchParts, countParts, listEquipmentModels, type PartSearchFilters,
 } from "./postgresCatalogReads.js";
 import { createManufacturer, updateManufacturer, changeManufacturerStatus } from "./postgresManufacturerWriter.js";
+import { createEquipmentModel, updateEquipmentModel } from "./postgresEquipmentModelWriter.js";
 import {
   MANUFACTURER_READ, ManufacturerReadError, getManufacturer, listManufacturersPage, searchManufacturers,
 } from "../eosOps/manufacturerAuthority.js";
@@ -125,6 +126,10 @@ export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
   "createManufacturer",
   "updateManufacturer",
   "changeManufacturerStatus",
+  // PERM-UI: postgresEquipmentModelWriter.ts (equipment.model.manage). Version-guarded, content-addressed idempotency, audited
+  // as catalog.equipmentModel.create / .update. No status-only operation: a status change is an update.
+  "createEquipmentModel",
+  "updateEquipmentModel",
 ] as const);
 export type CatalogMutationOperation = (typeof CATALOG_MUTATION_OPERATIONS)[number];
 
@@ -348,6 +353,13 @@ export async function executeCatalogOperation(
       case "changeManufacturerStatus":
         return ok(await changeManufacturerStatus(commandDeps, actor, {
           manufacturerId: input.manufacturerId, expectedUpdatedAt: input.expectedUpdatedAt, newStatus: input.newStatus,
+        }));
+
+      case "createEquipmentModel":
+        return ok(await createEquipmentModel(commandDeps, actor, { model: input.model }));
+      case "updateEquipmentModel":
+        return ok(await updateEquipmentModel(commandDeps, actor, {
+          equipmentModelId: input.equipmentModelId, expectedVersion: input.expectedVersion, changes: input.changes,
         }));
 
       default:

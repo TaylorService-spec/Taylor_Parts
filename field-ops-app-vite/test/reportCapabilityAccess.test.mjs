@@ -77,7 +77,12 @@ ok("requests the report ids PLUS the governed surface ids -- a closed, declared 
   for (const id of ["reorder.request.approve", "reorder.request.reject", "reorder.request.assign", "reorder.request.cancel"]) {
     assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `the Reorder workflow gate ${id} is not requested`);
   }
-  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 10);
+  // PERM-UI (2026-10-19) adds the create/edit gates: inventory.catalog.manage/.activate, customer.record.create,
+  // equipment.record.manage, equipment.model.manage (five ids; the two inventory.catalog ids were already asked for by the governed surfaces, so +3 net).
+  for (const id of ["inventory.catalog.manage", "inventory.catalog.activate", "customer.record.create", "equipment.record.manage", "equipment.model.manage"]) {
+    assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `the PERM-UI gate ${id} is not requested`);
+  }
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 13);
   // No duplicates: a repeated id would be a silent sign two concerns had drifted into one list.
   assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length);
 });

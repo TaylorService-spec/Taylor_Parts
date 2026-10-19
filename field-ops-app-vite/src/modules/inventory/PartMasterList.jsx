@@ -39,6 +39,7 @@ import { Field, FormActions, FormStatus } from "../../shared/ui/form";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import CatalogMutationPausedNotice from "../../shared/partMaster/CatalogMutationPausedNotice.jsx";
 import { CATALOG_MUTATION_PAUSED_REASON } from "../../config/catalogMutationHold.js";
+import { PART_CATALOG_GATE } from "../../access/shellCapabilityGates.js";
 import { Link, useNavigate } from "react-router-dom";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
@@ -289,7 +290,11 @@ export default function PartMasterList(props) {
   };
   const loadedParts = state.parts ?? NO_PARTS;
   const parts = useMemo(() => sortRows(loadedParts, localSort, CLIENT_SORT_COLUMNS), [loadedParts, localSort]);
-  const actions = (
+  // UI PERMISSION PARITY (PERM-UI): create / edit are offered only to holders of inventory.catalog.manage, and a status change
+  // only to holders of inventory.catalog.activate -- the capabilities the governed Part commands enforce. The server still decides.
+  const canManage = props?.hasCapability?.(PART_CATALOG_GATE.manage) === true;
+  const canActivate = props?.hasCapability?.(PART_CATALOG_GATE.activate) === true;
+  const actions = !canManage ? null : (
     // DQ-034: while the Catalog mutation hold is on, no create is OFFERED -- the control stays, locked, and says why.
     mutationHeld
       ? <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="part-master-new-part">New Part</Button>
@@ -519,8 +524,8 @@ export default function PartMasterList(props) {
                     </span>
                   </td>
                   <td className="fo-pml__actions" data-label="Actions">
-                    <button type="button" onClick={() => openEdit(part)} disabled={busy || mutationHeld} title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined} className="fo-btn-secondary">Edit</button>{" "}
-                    <button type="button" onClick={() => openStatus(part)} disabled={busy || mutationHeld} title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined} className="fo-btn-secondary">Status</button>
+                    {canManage && <button type="button" onClick={() => openEdit(part)} disabled={busy || mutationHeld} title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined} className="fo-btn-secondary">Edit</button>}{" "}
+                    {canActivate && <button type="button" onClick={() => openStatus(part)} disabled={busy || mutationHeld} title={mutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined} className="fo-btn-secondary">Status</button>}
                   </td>
                 </tr>
               ))}

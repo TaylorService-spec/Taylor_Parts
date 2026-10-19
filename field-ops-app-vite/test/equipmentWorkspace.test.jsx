@@ -97,7 +97,7 @@ afterEach(cleanup);
 describe("EquipmentWorkspace tabs", () => {
   it("renders three ARIA tabs with Customer Equipment selected by default", () => {
     mockPageState = pageState({ loading: true });
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     expect(screen.getByRole("tablist", { name: /equipment views/i })).toBeTruthy();
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(3);
@@ -112,9 +112,23 @@ describe("EquipmentWorkspace tabs", () => {
     expect(add.getAttribute("tabindex")).toBe("-1");
   });
 
+  // UI PERMISSION PARITY (PERM-UI, 2026-10-19): the authoring tabs exist only for their capability holders.
+  it("PERM-UI: a non-holder sees only the two read tabs; Add Equipment needs equipment.record.manage, Equipment Models needs equipment.model.manage", () => {
+    mockPageState = pageState({ loading: true });
+    const view = withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={() => false} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Customer Equipment", "Available Equipment"]);
+    expect(document.getElementById("eq-panel-add")).toBeNull();
+    view.unmount();
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.model.manage"} />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Customer Equipment", "Available Equipment", "Equipment Models"]);
+    cleanup();
+    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+  });
+
   it("selecting the Available tab makes it the selected tab (click)", () => {
     mockPageState = pageState({ loading: true });
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     fireEvent.click(screen.getByRole("tab", { name: "Available Equipment" }));
     expect(screen.getByRole("tab", { name: "Available Equipment" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tab", { name: "Customer Equipment" }).getAttribute("aria-selected")).toBe("false");
@@ -122,7 +136,7 @@ describe("EquipmentWorkspace tabs", () => {
 
   it("ArrowRight/ArrowLeft/Home/End move tab selection across all three tabs", () => {
     mockPageState = pageState({ loading: true });
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     const tablist = screen.getByRole("tablist", { name: /equipment views/i });
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "Available Equipment" }).getAttribute("aria-selected")).toBe("true");
@@ -143,7 +157,7 @@ describe("EquipmentWorkspace tabs", () => {
   // equipment TO otherwise) is reachable through the tab, not just importable.
   it("the Add Equipment tab mounts the real EquipmentRegister (account-first create flow)", () => {
     mockPageState = pageState({ loading: true });
-    withRouter(<EquipmentWorkspace accessVersion={1} />);
+    withRouter(<EquipmentWorkspace accessVersion={1} hasCapability={(c) => c === "equipment.record.manage"} />);
     fireEvent.click(screen.getByRole("tab", { name: "Add Equipment" }));
     expect(screen.getByRole("tab", { name: "Add Equipment" }).getAttribute("aria-selected")).toBe("true");
     // EquipmentRegister's own account-first prompt (no account chosen yet) --
