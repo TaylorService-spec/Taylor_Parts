@@ -31,7 +31,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "../src");
 const MIGRATION = resolve(HERE, "../migrations/1764430000000_purchasing-supplier-identity-and-receipt-correction.sql");
 
-test("26 / 27. static: the correction authority is PostgreSQL-native, granted to nobody; no Firebase; one correction operation", () => {
+test("26 / 27. static: the correction authority is PostgreSQL-native, granted to nobody; no Firebase; one correction operation per receipt source type", () => {
   assert.equal(PERMISSION_CATALOG.some((p) => p.id === "inventory.receipt.correct"), false, "absent from PERMISSION_CATALOG: no catalog reconcile grants it");
   const up = readFileSync(MIGRATION, "utf8").split("-- Down Migration")[0];
   assert.equal(/role_capabilities|principal_capabilities|role_capability_decisions/.test(up.replace(/^\s*--.*$/gm, "")), false, "the migration grants nothing");
@@ -39,7 +39,7 @@ test("26 / 27. static: the correction authority is PostgreSQL-native, granted to
     assert.equal(/from ["'][^"']*firebase/i.test(readFileSync(join(SRC, f), "utf8")), false, `${f} imports no Firebase`);
   }
   const ops = [...http.OPERATIONS_READ_OPERATIONS, ...http.OPERATIONS_MUTATION_OPERATIONS];
-  assert.equal(ops.filter((o) => /correct/i.test(o)).join(), "correctReorderReceipt");
+  assert.equal(ops.filter((o) => /correct/i.test(o)).join(), "correctReorderReceipt,correctSupplierPurchaseOrderReceipt"); // one per receipt source type (B3-x), no fallback between them
   assert.equal(ops.some((o) => /financ|fact|obligation|counterpart|acquisitionCost/i.test(o)), false, "no operation manufactures Finance truth");
 });
 

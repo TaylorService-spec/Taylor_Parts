@@ -141,7 +141,7 @@ function normalized(po: PurchaseOrderRow) {
       items: po.lines.map((l) => ({ lineId: l.lineId, partId: l.partId, quantity: l.quantity })),
     });
   } catch (err) {
-    if (err instanceof PurchaseOrderNormalizationError) refuse(err.code, "PRECONDITION_FAILED", `the purchase order cannot be received: ${err.message}`);
+    if (err instanceof PurchaseOrderNormalizationError) refuse(err.code, "PRECONDITION_FAILED", `the purchase order cannot be received (${err.code})`);
     throw err;
   }
 }
@@ -335,7 +335,7 @@ export async function receiveSupplierPurchaseOrder(
     try {
       scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef)).scopeWarehouseId;
     } catch (err) {
-      if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse: ${err.message}`);
+      if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse (${err.code})`);
       throw err;
     }
     const scoped = await authorizeObjectAction(postgresContextualReader(client), {
@@ -348,7 +348,13 @@ export async function receiveSupplierPurchaseOrder(
     }
 
     // ---- 5. VALIDATE THE WHOLE BATCH, before any write (the shared validator) ----
-    const validated = validateReceivingBatch(input, { resolved, partsByPartId });
+    // A same-key RETRY of a receipt that already committed is a REPLAY (decided in step 6, writing nothing). The `expectedVersion` it carries is the
+    // order's version BEFORE that receipt; the receipt itself moved the version, so checking it here would answer a lost-response retry (the offline
+    // queue's normal case) with a false 412 although nothing is received twice. The replay is decided before the version check: the concurrency token
+    // guards a NEW apply only. (Firebase exit B3-x, Logan's receiving proof.)
+    const priorReceipt = (await client.query(
+      `SELECT 1 FROM ${SCHEMA}.receiving_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, receivingId])).rows.length > 0;
+    const validated = validateReceivingBatch(priorReceipt ? { ...input, expectedVersion: undefined } : input, { resolved, partsByPartId });
     if (!validated.valid) {
       const category: ReceiveFailureCategory =
         validated.reason === "over_receipt" || validated.reason === "line_already_satisfied" || validated.reason === "part_inactive"
@@ -363,7 +369,7 @@ export async function receiveSupplierPurchaseOrder(
     // The receipts table is unique per (tenant, idempotency key) too: the same raw key under another actor or order would collide
     // at INSERT, so it is refused here, legibly, as a different receipt under a used key.
     const existing = await client.query(
-      `SELECT id, receiving_order_number, received_at, request_fingerprint FROM ${SCHEMA}.receiving_orders
+      `SELECT id, receiving_order_number, received_at, request_fingerprint, status::text AS status FROM ${SCHEMA}.receiving_orders
         WHERE tenant_id = $1 AND (id = $2 OR idempotency_key = $3)`, [actor.tenantId, receivingId, value.idempotencyKey]);
     const receivedNowByLine = new Map<string, number>(value.lines.map((l) => [l.lineId, l.receivedQuantity]));
     if (existing.rows.length > 0) {
@@ -376,6 +382,11 @@ export async function receiveSupplierPurchaseOrder(
       }
       if ((row as Record<string, unknown>).request_fingerprint !== fingerprint) {
         refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a DIFFERENT receipt");
+      }
+      // A receipt that a correction has since VOIDED is no longer received: answering "replayed" would tell a retrying client its goods are in stock
+      // when the correction took them out. Refused, distinctly, so the caller re-records with a NEW key if the goods really arrived.
+      if ((row as Record<string, unknown>).status === "CANCELLED") {
+        refuse("RECEIPT_CANCELLED", "PRECONDITION_FAILED", "this receipt was voided by a correction and is no longer received; record a new receipt (with a new idempotency key) if the goods did arrive");
       }
       const lines = perLineResults(derived, receivedNowByLine, false);
       const moved = await client.query(
@@ -426,7 +437,7 @@ export async function receiveSupplierPurchaseOrder(
     try {
       await projectReceiptAcquisitionCostOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, { receivingId });
     } catch (err) {
-      if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded: ${err.message}`);
+      if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded (${err.code})`);
       throw err;
     }
 

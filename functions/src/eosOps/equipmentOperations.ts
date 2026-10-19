@@ -29,6 +29,8 @@ import { authorizeWorkOrderRecordRead } from "./workOrderRecordRead";
 import { EQUIPMENT_COLUMNS, equipmentColumns, equipmentRow, readInstalledUnit, type EquipmentRecord, OPS_EQUIPMENT_STATUSES } from "./equipmentCustody";
 import { EQUIPMENT_WRITER_AUTHORITY, type PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding";
+import { resolveCompanyAuthority } from "./companyAuthority";
+import { scopedWarehouseIds } from "./partsReads";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "./workOrderOperationTypes";
 
@@ -245,6 +247,15 @@ async function listAvailableEquipmentUnits(deps: Deps, caller: WorkOrderCaller, 
   const limit = input.limit === undefined ? EQUIPMENT_LIST_DEFAULT_LIMIT : Number(input.limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > EQUIPMENT_LIST_MAX_LIMIT) refuse("LIMIT_INVALID", "INVALID_INPUT", `limit is 1-${EQUIPMENT_LIST_MAX_LIMIT}`);
   const tenantId = caller.actor.tenantId;
+  // COMPANY ISOLATION (#235 / #237; Firebase exit B3-x). Capability first, then company: a caller with no operating-company authority is
+  // refused before any row is read, and and the WAREHOUSE operational scope (an Administrator's reach counts, as for every read): a unit held by another company, or in a warehouse outside the caller's scope, is absent from the list AND from a serial-number lookup -- the filter is
+  // in the WHERE, so it is never fetched, counted or disclosed. (Before B3-x this read was tenant-wide for any holder of the key.)
+  const authority = await resolveCompanyAuthority(deps.pool, tenantId, caller.actor.principalId);
+  if (authority.companyKeys.length === 0) {
+    refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "listing available units requires operating-company authority; this principal has none");
+  }
+  const scope = await scopedWarehouseIds(deps.pool, caller.actor);
+  if (scope.length === 0) return Object.freeze({ units: Object.freeze([]), truncated: false }); // no WAREHOUSE operational scope: nothing is listed, and nothing is disclosed
   const { rows } = await deps.pool.query(
     `SELECT c.part_id, c.serial_number, c.status::text AS status, c.location_type::text AS location_type, c.location_id,
             c.operating_company_key,
@@ -257,8 +268,9 @@ async function listAvailableEquipmentUnits(deps: Deps, caller: WorkOrderCaller, 
        LEFT JOIN eos_ops.warehouses bw ON bw.tenant_id = b.tenant_id AND bw.id = b.warehouse_id
       WHERE c.tenant_id = $1 AND c.status::text IN ('AVAILABLE', 'RESERVED') AND c.location_type::text IN ('WAREHOUSE', 'BIN')
         AND ($2::text IS NULL OR c.part_id = $2) AND ($3::text IS NULL OR c.serial_number = $3)
+        AND c.operating_company_key = ANY($5::text[]) AND COALESCE(w.id, b.warehouse_id) = ANY($6::text[])
       ORDER BY c.part_id, c.serial_number LIMIT $4`,
-    [tenantId, input.partId ?? null, input.serialNumber ?? null, limit + 1]);
+    [tenantId, input.partId ?? null, input.serialNumber ?? null, limit + 1, [...authority.companyKeys], scope]);
   return Object.freeze({
     units: Object.freeze(rows.slice(0, limit).map((r) => Object.freeze({
       partId: String(r.part_id), partName: r.part_name ?? null, serialNumber: String(r.serial_number), status: String(r.status),

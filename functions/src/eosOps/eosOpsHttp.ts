@@ -53,6 +53,7 @@ import {
 } from "./reportOperations.js";
 import { listCurrentPerformanceGoals, listGoalSubjects, listPerformanceGoalVersions } from "./performanceGoalReads.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
+import { correctSupplierPurchaseOrderReceipt } from "./supplierReceiptCorrection.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
 import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
 import { listReturnIntakeOptions, recordReturnIntake } from "./returnIntake.js";
@@ -199,6 +200,8 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // SUPPLIER PURCHASE ORDER RECEIVING (Firebase exit B3): dispatched by source type like its Reorder sibling, with NO fallback between the
   // two authorities. inventory.stock.receive + company authority + the WAREHOUSE scope over the destination.
   "receiveSupplierPurchaseOrder",
+  // B3-x: the supplier-PO receipt correction (VOID): inventory.receipt.correct + company authority + the WAREHOUSE scope. No fallback to or from correctReorderReceipt.
+  "correctSupplierPurchaseOrderReceipt",
   // RECORDS AND REPORTING (B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
   "stageDataImport",
   "executeDataImport",
@@ -266,6 +269,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   listLegacyInventoryActionNotes: "/operations/inventory",
   readPartBalance: "/operations/inventory",
   receiveSupplierPurchaseOrder: "/operations/inventory",
+  correctSupplierPurchaseOrderReceipt: "/operations/inventory",
   listImportedServiceHistory: "/operations/inventory",
   listDataImportJobs: "/operations/inventory",
   listSavedReportDefinitions: "/operations/inventory",
@@ -393,7 +397,7 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "listPartSupplierItems", "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
   // B3: supplier purchase order receiving and the archived notes sit behind the same boundary as the receiving they extend.
   "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "receiveSupplierPurchaseOrder",
-  "listLegacyInventoryActionNotes", "readPartBalance",
+  "listLegacyInventoryActionNotes", "readPartBalance", "correctSupplierPurchaseOrderReceipt",
 ]);
 
 export type OperationsApiFailureCode =
@@ -691,6 +695,10 @@ export async function executeOperation(
       case "recordReturnIntake": {
         const { actor, pool } = await supplierTermsActor();
         return ok(await recordReturnIntake({ pool }, actor, request.input ?? {}));
+      }
+      case "correctSupplierPurchaseOrderReceipt": {
+        const { actor, pool } = await reorderActor();
+        return ok(await correctSupplierPurchaseOrderReceipt({ pool }, actor, request.input ?? {}));
       }
       // RECORDS AND REPORTING (Firebase exit B4, DECISIONS #B4). ONE resolution, conditioned grants withheld (a key reached only through a grant condition is
       // not held here -- the same rule the supplier-terms and returns routes apply). Each operation decides capability, then company, itself.

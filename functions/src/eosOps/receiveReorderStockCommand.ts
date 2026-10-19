@@ -581,7 +581,7 @@ export async function receiveReorderStockWithin(
       });
     } catch (err) {
       if (err instanceof PurchaseOrderNormalizationError) {
-        refuse(err.code, "PRECONDITION_FAILED", `the purchase order cannot be received: ${err.message}`);
+        refuse(err.code, "PRECONDITION_FAILED", `the purchase order cannot be received (${err.code})`);
       }
       throw err;
     }
@@ -640,7 +640,7 @@ export async function receiveReorderStockWithin(
     try {
       scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef)).scopeWarehouseId;
     } catch (err) {
-      if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse: ${err.message}`);
+      if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse (${err.code})`);
       throw err;
     }
     // DQ-C (Controller 2026-10-01): A REORDER PO IS RECEIVED INTO ITS GOVERNED DESTINATION WAREHOUSE. Receiving fulfils
@@ -661,6 +661,8 @@ export async function receiveReorderStockWithin(
     }
 
     // ---- 6. VALIDATE THE WHOLE BATCH, before any write ----
+    // (Checked for the same false-412 as the supplier receive, Firebase exit B3-x: a Reorder PO's `resolved.version` is the constant 0 -- the legacy
+    // chain has no revisions and a receipt never moves it -- so a retry carrying expectedVersion 0 still matches. No change needed here.)
     const validated = validateReceivingBatch(input, { resolved, partsByPartId });
     if (!validated.valid) {
       const category: ReceiveFailureCategory =
@@ -832,7 +834,7 @@ export async function receiveReorderStockWithin(
       // (received-not-invoiced) and hands it to the company's accounting destination. Incomplete evidence opens nothing.
       await establishReceiptPayableOn(client, { tenantId: actor.tenantId, principalId: actor.principalId }, receivingId);
     } catch (err) {
-      if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded: ${err.message}`);
+      if (err instanceof FinanceFoundationError) refuse(err.code, "PRECONDITION_FAILED", `the receipt's financial consequence could not be recorded (${err.code})`);
       throw err;
     }
 
