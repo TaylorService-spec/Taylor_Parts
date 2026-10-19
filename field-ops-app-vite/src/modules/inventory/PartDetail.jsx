@@ -33,7 +33,6 @@ import {
   startPurchasing,
   updatePurchasingProgress,
   requestReorderForRecommendation,
-  receiveReorderRequest,
   cancelReorderRequest,
   getDisplayQty,
 } from "../../domain/inventoryReorderRequests";
@@ -869,19 +868,6 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapabi
   return (
     <div className="fo-card">
       <h3>Reorder Request -- Ordered</h3>
-      <table className="fo-table">
-        <tbody>
-          <tr>
-            <td>Ordered By</td>
-            <td>{resolveActorDisplayName(request.orderedBy, employeeDirectory)}</td>
-          </tr>
-          <tr>
-            <td>Ordered</td>
-            <td>{formatTimestamp(request.orderedAt)}</td>
-          </tr>
-        </tbody>
-      </table>
-
       {loading ? (
         <p className="fo-muted">Loading Purchase Order...</p>
       ) : purchaseOrder ? (
@@ -902,6 +888,10 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapabi
             <tr>
               <td>Ordered Date</td>
               <td>{purchaseOrder.orderedDate}</td>
+            </tr>
+            <tr>
+              <td>Recorded</td>
+              <td>{formatTimestamp(purchaseOrder.createdAt)}</td>
             </tr>
             {purchaseOrder.expectedArrivalDate && (
               <tr>
@@ -925,54 +915,24 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapabi
   );
 }
 
-// Sprint 2.1.11 -- Receiving (Reorder Request closeout). Shown
-// alongside ReorderRequestOrdered whenever a request is ORDERED --
-// same assignee-only restriction as every write on this object since
-// Sprint 2.1.7 (firestore.rules enforces request.auth.uid ==
-// assignedToUserId). This is a status-closeout note only -- it does
-// NOT change any real stock count, and does not touch
-// inventory_transactions. The Inventory Action Log it used to point at
-// for company no longer accepts writes at all (Owner ruling,
-// 2026-08-30) -- so this note is now the only thing of its kind on the
-// page, and it is still not a stock movement. Reconciling it against
-// real stock remains a separate backlog item.
-function ReorderRequestMarkReceived({ request, onReceived }) {
-  const { user } = useAuth();
-  // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
-  // read resolves the caller to an Employee through an active employee_principal_link and compares
-  // Employee to Employee; a screen that recomputed it would be a second, weaker authority.
-  const isAssignee = request.isAssignee === true;
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-
-  if (!isAssignee) return null;
-
-  async function handleReceive() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await receiveReorderRequest(request.id);
-      onReceived();
-    } catch (err) {
-      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
-      setError(workflowActionErrorMessage(err));
-      setSubmitting(false);
-    }
-  }
-
+// An ORDERED request is closed by RECEIVING its stock. Sprint 2.1.11's "Mark Received" closeout is
+// retired: the server refuses it (CLOSEOUT_REQUIRES_RECEIPT), because the governed receipt records the
+// movement, the custody and the cost evidence and closes this request in the same transaction. The
+// link is shown only to a holder of the capability the Receiving screen is gated on.
+function ReorderRequestReceiveOnReceiving({ hasCapability }) {
+  const canReceive = typeof hasCapability === "function" && hasCapability("receiving.checkIn") === true;
   return (
     <div className="fo-card">
-      <h3>Mark Received</h3>
+      <h3>Receive This Order</h3>
       <p className="fo-muted">
-        This records that the parts arrived and closes out this Reorder Request. It does not update stock yet --
-        stock reconciliation against this receipt is a separate, not-yet-built step.
+        When the parts arrive, receive them on the Receiving screen. The receipt adds them to stock and closes
+        this request.
       </p>
-      {error && <p className="fo-muted">{error}</p>}
-      <div className="disp-board-toolbar">
-        <Button type="button" variant="primary" onClick={handleReceive} disabled={submitting}>
-          Mark Received
-        </Button>
-      </div>
+      {canReceive && (
+        <div className="disp-board-toolbar">
+          <Link to="/inventory/receiving">Open Receiving</Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -996,7 +956,6 @@ function ReorderRequestReceived({ request, employeeDirectory }) {
           </tr>
         </tbody>
       </table>
-      <p className="fo-muted">This records that the parts arrived. It does not update stock yet.</p>
     </div>
   );
 }
@@ -1400,12 +1359,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
     data: reorderRequest,
     loading: reorderRequestLoading,
     error: reorderRequestError,
-    // refreshReorderRequest is an intentional NO-OP retained only for call-site
-    // compatibility -- useReorderRequestForPart() is realtime (onSnapshot), so
-    // its `refresh` is an empty callback (verified useReorderRequests.js:204,
-    // 2026-08-05, W0). The onReviewed/onAssigned/etc. handlers below pass it so
-    // child components have a callback to call; the live subscription, not this
-    // call, is what actually re-renders the request.
+    // refreshReorderRequest RE-READS the request (an EOS fetch, not a live subscription), so each
+    // action card below calls it after its command succeeds and the page shows the new status.
     refresh: refreshReorderRequest,
   } = useReorderRequestForPart(partId, requestId);
   // Firebase exit F4 (DECISIONS #247): the Reorder Request is an EOS row, and the only person it names is its assignee, by
@@ -1468,6 +1423,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         recommendation,
         manualQty,
       });
+      refreshReorderRequest();
     } catch (err) {
       // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
       setReorderError(workflowActionErrorMessage(err));
@@ -1620,7 +1576,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
         <>
           <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} onVoided={refreshReorderRequest} hasCapability={hasCapability} />
-          <ReorderRequestMarkReceived request={reorderRequest} onReceived={refreshReorderRequest} />
+          <ReorderRequestReceiveOnReceiving hasCapability={hasCapability} />
         </>
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.RECEIVED ? (
         <ReorderRequestReceived request={reorderRequest} employeeDirectory={employeeDirectory} />

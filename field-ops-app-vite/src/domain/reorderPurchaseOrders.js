@@ -4,6 +4,7 @@ import { isWriteBlocked } from "../config/env";
 // No Firestore collection-name constant is imported: both writes reach the governed PostgreSQL Reorder
 // authority, and the Reorder runtime census counts every importer that uses one.
 import { reorderApiClient } from "../services/reorderApiClient.js";
+import { throwIfRefused } from "./reorderCommandResult.js";
 
 // Sprint 2.1.10 -- Purchase Order Foundation. The ONLY writer of
 // reorder_purchase_orders, and the only place that ever transitions a
@@ -130,7 +131,7 @@ export function recordPurchaseOrder(
   // transaction; recordReorderPurchaseOrder performs the same two in one PostgreSQL transaction, so
   // the atomicity did not weaken -- the authority moved. The callable is not called as a fallback:
   // two write authorities for one command is what this cutover exists to end.
-  return reorderApiClient.call("recordReorderPurchaseOrder", {
+  return throwIfRefused(reorderApiClient.call("recordReorderPurchaseOrder", {
     reorderRequestId,
     supplier: supplierIdentity,
     externalPoNumber: trimmedPoNumber,
@@ -141,7 +142,7 @@ export function recordPurchaseOrder(
     // where the currency that governs the number of decimal places was known.
     unitPriceMinor,
     currency: trimmedCurrency,
-  });
+  }));
 }
 
 // Cancel/Void schema deployment sequence, PR 5 of 6 (docs/specifications/

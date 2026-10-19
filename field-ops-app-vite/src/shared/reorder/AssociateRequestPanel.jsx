@@ -5,7 +5,6 @@ import { useReorderPurchaseOrderVoid } from "../../hooks/useReorderPurchaseOrder
 import {
   startPurchasing,
   updatePurchasingProgress,
-  receiveReorderRequest,
   getDisplayQty,
 } from "../../domain/inventoryReorderRequests.js";
 import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders.js";
@@ -73,7 +72,7 @@ function RequestSummary({ request, resolveName }) {
   );
 }
 
-function StartPurchasingCard({ request, resolveName }) {
+function StartPurchasingCard({ request, resolveName, onChanged }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -82,6 +81,7 @@ function StartPurchasingCard({ request, resolveName }) {
     setError(null);
     try {
       await startPurchasing(request.id);
+      onChanged();
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -102,7 +102,7 @@ function StartPurchasingCard({ request, resolveName }) {
   );
 }
 
-function PurchasingInProgressCard({ request, resolveName }) {
+function PurchasingInProgressCard({ request, resolveName, onChanged }) {
   const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
   const [vendorContacted, setVendorContacted] = useState(!!request.vendorContacted);
   const [expectedAvailabilityDate, setExpectedAvailabilityDate] = useState(request.expectedAvailabilityDate ?? "");
@@ -129,6 +129,7 @@ function PurchasingInProgressCard({ request, resolveName }) {
     setUpdateError(null);
     try {
       await updatePurchasingProgress(request.id, { purchasingNotes, vendorContacted, expectedAvailabilityDate });
+      onChanged();
     } catch (err) {
       setUpdateError(err.message);
     } finally {
@@ -164,6 +165,7 @@ function PurchasingInProgressCard({ request, resolveName }) {
         unitPriceMajor,
         currency,
       });
+      onChanged();
     } catch (err) {
       setPoError(err.message);
       setPoSubmitting(false);
@@ -285,32 +287,11 @@ function PurchasingInProgressCard({ request, resolveName }) {
 
 function OrderedCard({ request, resolveName }) {
   const { data: purchaseOrder, loading, error: purchaseOrderError } = usePurchaseOrderForReorderRequest(request.id);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-
-  async function handleReceive() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await receiveReorderRequest(request.id);
-    } catch (err) {
-      setError(err.message);
-      setSubmitting(false);
-    }
-  }
 
   return (
     <div className="fo-card">
       <h3>Reorder Request -- Ordered</h3>
       <RequestSummary request={request} resolveName={resolveName} />
-      <table className="fo-table">
-        <tbody>
-          <tr>
-            <td>Ordered</td>
-            <td>{formatTimestamp(request.orderedAt)}</td>
-          </tr>
-        </tbody>
-      </table>
       {loading ? (
         <p className="fo-muted">Loading Purchase Order...</p>
       ) : purchaseOrder ? (
@@ -332,6 +313,10 @@ function OrderedCard({ request, resolveName }) {
               <td>Ordered Date</td>
               <td>{purchaseOrder.orderedDate}</td>
             </tr>
+            <tr>
+              <td>Recorded</td>
+              <td>{formatTimestamp(purchaseOrder.createdAt)}</td>
+            </tr>
             {purchaseOrder.expectedArrivalDate && (
               <tr>
                 <td>Expected Arrival</td>
@@ -350,15 +335,9 @@ function OrderedCard({ request, resolveName }) {
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
       <p className="fo-muted">
-        Marking this received records that the parts arrived and closes out this Reorder Request. It does not update
-        stock yet -- stock reconciliation against this receipt is a separate, not-yet-built step.
+        When the parts arrive, receive them on the Receiving screen. The receipt adds them to stock and closes this
+        request.
       </p>
-      {error && <p className="fo-muted">{error}</p>}
-      <div className="disp-board-toolbar">
-        <Button type="button" onClick={handleReceive} loading={submitting}>
-          Mark Received
-        </Button>
-      </div>
     </div>
   );
 }
@@ -421,7 +400,7 @@ function TerminalCard({ request, resolveName }) {
 }
 
 export function AssignedRequestDetail({ requestId, resolveName, onClose }) {
-  const { data: request, loading, error } = useReorderRequestById(requestId);
+  const { data: request, loading, error, refresh } = useReorderRequestById(requestId);
 
   if (loading) {
     return (
@@ -460,10 +439,10 @@ export function AssignedRequestDetail({ requestId, resolveName, onClose }) {
         </Button>
       </div>
       {request.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE && (
-        <StartPurchasingCard request={request} resolveName={resolveName} />
+        <StartPurchasingCard request={request} resolveName={resolveName} onChanged={refresh} />
       )}
       {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS && (
-        <PurchasingInProgressCard request={request} resolveName={resolveName} />
+        <PurchasingInProgressCard request={request} resolveName={resolveName} onChanged={refresh} />
       )}
       {request.status === REORDER_REQUEST_STATUS.ORDERED && <OrderedCard request={request} resolveName={resolveName} />}
       {[REORDER_REQUEST_STATUS.RECEIVED, REORDER_REQUEST_STATUS.CANCELLED, REORDER_REQUEST_STATUS.VOIDED].includes(request.status) && (
