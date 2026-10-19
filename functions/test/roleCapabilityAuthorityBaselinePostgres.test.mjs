@@ -164,9 +164,11 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // 503 -> 510 (MIGRATION_BACKED 445 -> 452): migration 1764630000000, Warehouse racking (Firebase exit B3, DECISIONS #B3) -- inventory.location.bin.read /
   // .manage mirrored to exactly the current Firebase holders (admin and inventoryBinAdministrator: both; owner, inventoryPutAwayOperator,
   // inventoryStockRelocationOperator: read); no new holder.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 632);
+  // 632 -> 659 (MIGRATION_BACKED 574 -> 601): migration 1764660000000, P-1 governed supplier purchase order authoring (DECISIONS #P-1, Owner ruling D 2026-10-19) -- the five
+  // supplier.purchaseOrder.* keys to the ruled Roles (create 3, send 3, approve 4, cancel 4, read 13 = 27 pairs); no new holder beyond the ruling.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 659);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 574, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 601, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

@@ -60,7 +60,9 @@ test("B4 report / goal grant parity on PostgreSQL: stamped grants, an honoured r
     ...(count === undefined ? [] : [String(count)]),
   ], { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe" });
   const files = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files[files.length - 1].startsWith("1764650000000_"), true, "this proof runs against the newest migration");
+  // The grant migration is no longer the NEWEST (P-1, 1764660000000, was appended after it): this proof runs every migration BEFORE it, then it alone, and leaves the later ones unapplied.
+  const grantIndex = files.findIndex((f) => f.startsWith("1764650000000_"));
+  assert.ok(grantIndex > 0, "the B4 grant migration is present");
   const boundary = files.filter((f) => f < baseline.SEED_BOUNDARY_MIGRATION).length;
 
   migrate(boundary);
@@ -71,7 +73,7 @@ test("B4 report / goal grant parity on PostgreSQL: stamped grants, an honoured r
     await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [tenant]);
     await seedTenantPolicy(repo, tenant, "operator-b4gp");
   }
-  migrate(files.length - boundary - 1); // every migration EXCEPT the grant migration
+  migrate(grantIndex - boundary); // every migration BEFORE the grant migration
 
   // Before the grant migration: the keys are registered (1764640000000) and held by nobody.
   assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
@@ -87,7 +89,7 @@ test("B4 report / goal grant parity on PostgreSQL: stamped grants, an honoured r
              VALUES ($1, $2, $3, $4, 'ADMIN_REVOKED', false, 'fixture: an Administration revoke the migration must honour', 'fixture', $5)`, [`dec-b4gp-${i}`, B, roleKey, capabilityKey, auditId]);
   }
 
-  migrate(); // THE MIGRATION UNDER TEST
+  migrate(1); // THE MIGRATION UNDER TEST
 
   const grantsOf = async (tenant) => (await q(
     `SELECT r.key AS role, c.key AS cap, rc.granted_by AS by FROM eos_policy.role_capabilities rc
