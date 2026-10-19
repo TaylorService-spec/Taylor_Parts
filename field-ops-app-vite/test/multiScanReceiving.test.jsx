@@ -8,6 +8,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import MultiScanReceiving from "../src/modules/receiving/MultiScanReceiving.jsx";
 import { RECEIVING_OUTCOME } from "../src/domain/receivingTransport.js";
+import { adaptReceivingLocationOptions } from "../src/domain/receivingLocationOptionAdapter.js";
 
 afterEach(cleanup);
 
@@ -30,7 +31,8 @@ function deps(over = {}) {
     }),
     fetchPurchaseOrderProgress: vi.fn().mockResolvedValue({ status: RECEIVING_OUTCOME.READY, progress: progress() }),
     fetchReceivingLocationOptions: vi.fn().mockResolvedValue({
-      status: RECEIVING_OUTCOME.READY, options: [{ locationId: "WH-1", label: "Main warehouse" }],
+      // Through the REAL adapter, so the component is tested against the shape it is actually handed.
+      status: RECEIVING_OUTCOME.READY, options: adaptReceivingLocationOptions([{ value: "WH-1", label: "Main warehouse", type: "WAREHOUSE" }]).options,
     }),
     submitCanonicalReceive: vi.fn().mockResolvedValue({
       status: RECEIVING_OUTCOME.APPLIED,

@@ -10,6 +10,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-li
 import ScanWorkspace from "../src/modules/scan/ScanWorkspace.jsx";
 import { RECEIVING_OUTCOME } from "../src/domain/receivingTransport.js";
 import { RECEIVE_CAPABILITY } from "../src/access/scanWorkflows.js";
+import { adaptReceivingLocationOptions } from "../src/domain/receivingLocationOptionAdapter.js";
 
 // The technician hooks reach Firestore; the workspace resolves them itself (renderSubnavItem cannot
 // call hooks), so they are mocked at module level and the identity is injected through `deps`.
@@ -45,7 +46,7 @@ const receivingDeps = (over = {}) => ({
       lines: [{ lineId: "L1", partId: "P1", trackingMode: "NONE", orderedQuantity: 5, receivedQuantity: 0, remainingQuantity: 5, state: "NOT_RECEIVED" }],
     },
   }),
-  fetchReceivingLocationOptions: vi.fn().mockResolvedValue({ status: RECEIVING_OUTCOME.READY, options: [{ locationId: "WH-1", label: "Main" }] }),
+  fetchReceivingLocationOptions: vi.fn().mockResolvedValue({ status: RECEIVING_OUTCOME.READY, options: adaptReceivingLocationOptions([{ value: "WH-1", label: "Main", type: "WAREHOUSE" }]).options }), // the REAL adapter shape
   submitCanonicalReceive: vi.fn().mockResolvedValue({ status: RECEIVING_OUTCOME.APPLIED, receipt: null }),
   ...over,
 });
