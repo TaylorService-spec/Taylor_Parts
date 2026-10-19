@@ -6,6 +6,7 @@ import { isWriteBlocked } from "../config/env";
 // cleanup, and deleting a tested module as a side effect of an authority migration would be scope
 // this change has no business taking.
 import { reorderApiClient } from "../services/reorderApiClient.js";
+import { throwIfRefused } from "./reorderCommandResult.js";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry; Inventory
@@ -124,7 +125,7 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
   // recommendation; they are separate capabilities (create.manual / create.system) because they are
   // separate authorities, and a hand-entered quantity must be greater than zero while a system
   // recommendation may legitimately be zero.
-  return reorderApiClient.call("createReorderRequest", {
+  return throwIfRefused(reorderApiClient.call("createReorderRequest", {
     partId,
     warehouseId,
     recommendationStatus,
@@ -138,7 +139,7 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
     // follows a create which did land is answered by the server's open-demand guard (CONFLICT, naming the existing
     // request), so a retry can never raise a second open request for the same Part + warehouse.
     idempotencyKey: idempotencyKey ?? newIdempotencyKey(),
-  });
+  }));
 }
 
 function newIdempotencyKey() {
@@ -231,11 +232,11 @@ export function reviewReorderRequest(requestId, { decision, notes }, deps = {}) 
   // The status and currentOwner the legacy client wrote by hand are the SERVER'S to decide now:
   // APPROVED advances to READY_FOR_PARTS_MANAGER and the owner is derived from the status, so
   // neither is sent.
-  return client.call("reviewReorderRequest", {
+  return throwIfRefused(client.call("reviewReorderRequest", {
     reorderRequestId: requestId,
     decision,
     reviewNotes: trimmedNotes || undefined,
-  });
+  }));
 }
 
 // Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The only
@@ -285,7 +286,7 @@ export function startPurchasing(requestId, deps = {}) {
   const client = deps.client ?? reorderApiClient;
   // ASSIGNEE ONLY, and the server decides that by resolving the caller to an Employee -- not by
   // comparing a Firebase uid to a document field.
-  return client.call("startPurchasingOnReorder", { reorderRequestId: requestId });
+  return throwIfRefused(client.call("startPurchasingOnReorder", { reorderRequestId: requestId }));
 }
 
 // Sprint 2.1.8 -- Purchasing Progress Update. The only writer of a
@@ -302,34 +303,19 @@ export function startPurchasing(requestId, deps = {}) {
 // existing Reorder Request, not a new object.
 export function updatePurchasingProgress(requestId, { purchasingNotes, vendorContacted, expectedAvailabilityDate }, deps = {}) {
   const client = deps.client ?? reorderApiClient;
-  return client.call("postPurchasingUpdate", {
+  return throwIfRefused(client.call("postPurchasingUpdate", {
     reorderRequestId: requestId,
     purchasingNotes: purchasingNotes?.trim() || undefined,
     vendorContacted: !!vendorContacted,
     // An ISO calendar day or nothing. The server refuses anything else rather than parsing it.
     expectedAvailabilityDate: expectedAvailabilityDate || undefined,
-  });
+  }));
 }
 
-// Sprint 2.1.11 -- Receiving (Reorder Request closeout). The only
-// writer of a receipt. Terminal ORDERED -> RECEIVED transition, same
-// per-user restriction as every write on this object since Sprint
-// 2.1.7: only the assigned Parts Associate, enforced in
-// firestore.rules (request.auth.uid == the request's own
-// assignedToUserId), not just application code.
-//
-// Deliberately a status-closeout note only -- does NOT call
-// recordInventoryAction() (domain/inventoryActions.js) or touch
-// inventory_transactions (Admin-SDK-only, Work-Order-driven ledger,
-// ADR-003) in any way. Reconciling this against real stock counts is
-// a separate, already-tracked backlog item (apply logged actions to
-// the ledger via a Cloud-Function-mediated path once Firebase Blaze
-// is enabled), genuinely blocked on Blaze (issue #15), not solved by
-// this function.
-export function receiveReorderRequest(requestId, deps = {}) {
-  const client = deps.client ?? reorderApiClient;
-  return client.call("markReorderReceived", { reorderRequestId: requestId });
-}
+// Sprint 2.1.11's "Mark Received" closeout (markReorderReceived) is GONE from the client. The server
+// refuses it (CLOSEOUT_REQUIRES_RECEIPT) now that the governed receipt is active: a Reorder is closed by
+// receiving its stock on the Receiving screen (receiveReorderStock), which records the movement, the
+// custody and the cost evidence in the same transaction.
 
 // Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/
 // reorder-request-cancellation.md). The only writer of a cancellation.
@@ -377,8 +363,8 @@ export function cancelReorderRequest(requestId, { reason }, deps = {}) {
   // The status guard that used to be a client-side Firestore transaction read is now the server's
   // precondition, checked against the row it locks. isCancellableReorderRequestStatus remains a
   // separately unit-tested predicate; it is simply no longer the enforcement.
-  return client.call("cancelReorderRequest", {
+  return throwIfRefused(client.call("cancelReorderRequest", {
     reorderRequestId: requestId,
     cancellationReason: trimmedReason,
-  });
+  }));
 }

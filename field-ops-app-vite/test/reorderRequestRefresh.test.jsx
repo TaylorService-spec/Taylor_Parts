@@ -64,3 +64,26 @@ describe("useReorderRequestById refresh", () => {
     await waitFor(() => expect(result.current.data?.status).toBe("ORDERED"));
   });
 });
+
+// The other half of PL3: callReorderApi never throws, so a REFUSED command resolved like a success and
+// the action cards carried on as if the server had agreed. Commands now throw the server's refusal.
+import { throwIfRefused } from "../src/domain/reorderCommandResult.js";
+import { startPurchasing, reviewReorderRequest } from "../src/domain/inventoryReorderRequests.js";
+
+describe("reorder commands surface a refusal", () => {
+  const refused = { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_MISSING", status: 403, message: "not permitted" };
+
+  it("throwIfRefused passes a success through and throws a refusal with its code and reason", async () => {
+    const okClient = { call: vi.fn().mockResolvedValue({ ok: true, result: { status: "X" } }) };
+    await expect(throwIfRefused(okClient.call("startPurchasingOnReorder", {}))).resolves.toMatchObject({ ok: true });
+    const noClient = { call: vi.fn().mockResolvedValue(refused) };
+    await expect(throwIfRefused(noClient.call("startPurchasingOnReorder", {})))
+      .rejects.toMatchObject({ code: "FORBIDDEN", reason: "CAPABILITY_MISSING", status: 403, message: "not permitted" });
+  });
+
+  it("startPurchasing and reviewReorderRequest reject on refusal", async () => {
+    const client = { call: vi.fn().mockResolvedValue(refused) };
+    await expect(startPurchasing("rr_1", { client })).rejects.toMatchObject({ reason: "CAPABILITY_MISSING" });
+    await expect(reviewReorderRequest("rr_1", { decision: "APPROVED" }, { client })).rejects.toMatchObject({ reason: "CAPABILITY_MISSING" });
+  });
+});

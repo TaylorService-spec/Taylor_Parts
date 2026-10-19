@@ -406,9 +406,9 @@ export function useReviewedRequestsHistory(_uid, deps = {}) {
 export function useReorderRequestById(requestId, deps = {}) {
   const read = useGovernedReorderRead("readReorderRequest", { reorderRequestId: requestId },
     !!requestId, deps, (rows) => rows[0] ?? null);
-  if (!requestId) return { data: null, loading: false, error: null };
+  if (!requestId) return { data: null, loading: false, error: null, refresh: read.refresh };
   // A read that succeeded and found nothing is "not_found"; a read that FAILED keeps its own error.
   // Collapsing the two would tell a caller a request does not exist when it was simply not readable.
-  if (!read.loading && !read.error && read.data === null) return { data: null, loading: false, error: "not_found" };
+  if (!read.loading && !read.error && read.data === null) return { data: null, loading: false, error: "not_found", refresh: read.refresh };
   return read;
 }
