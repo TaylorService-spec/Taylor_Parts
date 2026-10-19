@@ -16,6 +16,7 @@ import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 import { FinanceFoundationError, projectReceiptAcquisitionCostOn } from "../eosFinance/financeFoundation.js";
 import { establishIntercompanyObligationsOn, INTERCOMPANY_RECEIPT_TRIGGER } from "../eosFinance/intercompany.js";
 import { establishReceiptPayableOn } from "../eosFinance/vendorPayable.js";
@@ -53,14 +54,19 @@ export async function supplyReceiptCostEvidence(deps: { readonly pool: Pool }, a
   const c: PoolClient = await deps.pool.connect();
   try {
     await c.query("BEGIN");
+    // CAPABILITY (above), THEN COMPANY (ISO-2), THEN the receipt, THEN the warehouse scope. The company filter is IN the WHERE: a receipt of a
+    // company outside the caller's is never locked or read and answers exactly as a missing one, so a warehouse scope on another company's
+    // warehouse can never supply (or learn anything about) its cost evidence.
+    const authority = await resolveInventoryCompanyAuthority(c, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "supplying cost evidence requires operating-company authority; this principal has none");
     const { rows: rr } = await c.query(
       `SELECT r.*, r.status::text AS status_text, r.receiving_location_type::text AS location_type FROM eos_ops.receiving_orders r
-        WHERE r.tenant_id = $1 AND r.id = $2 FOR UPDATE`, [actor.tenantId, receivingId]);
+        WHERE r.tenant_id = $1 AND r.id = $2 AND r.operating_company_key = ANY($3::text[]) FOR UPDATE`, [actor.tenantId, receivingId, [...authority.companyKeys]]);
     const r = rr[0] ?? refuse("RECEIPT_NOT_FOUND", "NOT_FOUND", "no receipt with that id");
     if (r.status_text === "CANCELLED") refuse("RECEIPT_CANCELLED", "PRECONDITION_FAILED", "a cancelled receipt takes no cost evidence");
     let scopeWarehouseId: string;
     try {
-      scopeWarehouseId = (await resolveScopeLocation(c, actor.tenantId, { type: String(r.location_type), locationId: String(r.receiving_location_id) })).scopeWarehouseId;
+      scopeWarehouseId = (await resolveScopeLocation(c, actor.tenantId, { type: String(r.location_type), locationId: String(r.receiving_location_id) }, authority.companyKeys)).scopeWarehouseId;
     } catch (err) {
       if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse: ${err.message}`);
       throw err;

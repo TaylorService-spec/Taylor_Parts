@@ -24,6 +24,14 @@
 //   (operatingCompanyBinding) -- the unit's custody company IS the warehouse's; nothing is inferred AND
 //   serialized-asset state: no unit of this part and serial in custody already.
 //
+// ════════════════════ COMPANY ISOLATION (ISO-2) ════════════════════
+//
+//   capability -> operating-company AUTHORITY (resolveInventoryCompanyAuthority; none at all is COMPANY_AUTHORITY_REQUIRED, before any row is
+//   read) -> the warehouse (a warehouse of a company outside the caller's reads EXACTLY as an unknown one, LOCATION_INVALID) -> the warehouse
+//   SCOPE. A WAREHOUSE scope the caller holds on another company's warehouse is not company authority and writes nothing. A unit (part +
+//   serial) is tenant-unique, so a unit another company already holds is the ordinary ALREADY_EXISTS_CONFLICT: the replay reads are
+//   company-filtered (a foreign unit's location, reason and note are never read back) and a foreign custody row is never locked.
+//
 // ════════════════════ THE LEDGER FACT ════════════════════
 //
 // PostgreSQL derives serial on-hand from eos_ops.inventory_movements, and every custody act there checks custody and
@@ -49,6 +57,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresAcquireWriterState } from "../serializedAsset/acquireWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 export const EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY = "inventory.serializedAsset.acquire";
 /** Mirrors ACQUISITION_REASONS. */
@@ -151,10 +160,15 @@ export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, acto
     if (!actor.capabilities.has(EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY)) {
       refuse("PERMISSION_DENIED", "FORBIDDEN", "actor is not authorized to acquire serialized assets");
     }
+    const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "acquiring a unit requires operating-company authority; this principal has none");
+    }
+    const companyKeys = [...authority.companyKeys];
     let warehouse;
     try {
       // Acquisition admits exactly one kind of place: a WAREHOUSE (ACQUIRED_LOCATION_TYPE). Never a bin, truck or customer.
-      warehouse = await resolveScopeLocation(db, actor.tenantId, { type: "WAREHOUSE", locationId: req.locationId });
+      warehouse = await resolveScopeLocation(db, actor.tenantId, { type: "WAREHOUSE", locationId: req.locationId }, companyKeys);
     } catch (err) {
       if (err instanceof InventoryScopeError) return refuse("LOCATION_INVALID", "PRECONDITION_FAILED", `${req.locationId} is not an active governed company location`);
       throw err;
@@ -181,20 +195,30 @@ export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, acto
     // winner's committed custody + provenance + ledger fact and is replayed (same intent) or refused (different
     // intent). Without it both would pass the "nothing exists yet" reads -- a FOR UPDATE on a row that does not exist
     // locks nothing -- and the loser would die on a unique index with a raw database error.
+    //
+    // A unit another company already holds is the ordinary conflict, decided by a bare existence probe BEFORE the lock and before any
+    // company-filtered read: nothing of the foreign unit (location, reason, note, receipt origin) is read back, and its row is never locked.
+    const foreign = await db.query(
+      `SELECT 1 FROM eos_ops.serialized_custody WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3 AND operating_company_key <> ALL($4::text[])`,
+      [actor.tenantId, req.partId, req.serialNo, companyKeys]);
+    if (foreign.rows.length > 0) refuse("ALREADY_EXISTS_CONFLICT", "CONFLICT", "a unit with this part and serial already exists");
     await db.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
       [`eos_ops.serializedAssetAcquire:${actor.tenantId}:${req.partId}:${req.serialNo}`]);
     const ledgerIdempotencyKey = `serializedAssetAcquisition:${serializedAssetId}`;
     const { rows: custody } = await db.query<{ status: string; location_type: string; location_id: string }>(
       `SELECT status::text AS status, location_type::text AS location_type, location_id FROM eos_ops.serialized_custody
-        WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3 FOR UPDATE`, [actor.tenantId, req.partId, req.serialNo]);
+        WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3 AND operating_company_key = ANY($4::text[]) FOR UPDATE`,
+      [actor.tenantId, req.partId, req.serialNo, companyKeys]);
     const { rows: acquired } = await db.query<{ id: string; reason: string; note: string | null; idempotency_key: string; ledger_movement_id: string }>(
       `SELECT id, reason::text AS reason, note, idempotency_key, ledger_movement_id FROM eos_ops.serialized_asset_acquisitions
-        WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3`, [actor.tenantId, req.partId, req.serialNo]);
+        WHERE tenant_id = $1 AND part_id = $2 AND serial_number = $3 AND operating_company_key = ANY($4::text[])`,
+      [actor.tenantId, req.partId, req.serialNo, companyKeys]);
     const { rows: ledger } = await db.query<{ id: string; movement_type: string; quantity_delta: number; tracking_mode: string;
         part_id: string; serial_number: string | null; location_id: string; source_kind: string | null; source_id: string | null }>(
       `SELECT id, movement_type::text AS movement_type, quantity_delta, tracking_mode::text AS tracking_mode, part_id, serial_number,
               location_id, source_kind, source_id
-         FROM eos_ops.inventory_movements WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, ledgerIdempotencyKey]);
+         FROM eos_ops.inventory_movements WHERE tenant_id = $1 AND idempotency_key = $2 AND operating_company_key = ANY($3::text[])`,
+      [actor.tenantId, ledgerIdempotencyKey, companyKeys]);
     if (custody[0] || acquired[0] || ledger[0]) {
       // Evidence that does not form ONE whole acquisition is never repaired or guessed at here (DQ-019): it fails
       // closed. Provenance without custody, a ledger fact without provenance, or provenance whose ledger fact is

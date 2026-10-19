@@ -241,7 +241,7 @@ interface CountLocation {
 }
 
 /** WHERE the location rolls up to, read from eos_ops through the one scope resolver -- never from the request. */
-async function resolveCountLocation(db: Queryable, tenantId: string, type: unknown, id: string, companyKeys?: readonly string[]): Promise<CountLocation> {
+async function resolveCountLocation(db: Queryable, tenantId: string, type: unknown, id: string, companyKeys: readonly string[]): Promise<CountLocation> {
   try {
     const r = await resolveScopeLocation(db, tenantId, { type, locationId: id }, companyKeys);
     return { type: r.type, id: r.locationId, warehouseId: r.scopeWarehouseId, operatingCompanyKey: r.operatingCompanyKey, active: r.active };
@@ -259,7 +259,7 @@ async function sheetOrRefuse(db: Queryable, actor: CycleCountActor, sheetId: str
   // The company filter is IN the WHERE: a sheet of another company is never locked or read, and answers exactly as a missing one.
   const sheet = await readSheet(db, actor.tenantId, sheetId, forUpdate, companyKeys);
   if (!sheet) refuse("SHEET_NOT_FOUND", "NOT_FOUND", "that count sheet could not be found");
-  const where = await resolveCountLocation(db, actor.tenantId, (sheet as CycleCountSheetFull).location.type, (sheet as CycleCountSheetFull).location.id);
+  const where = await resolveCountLocation(db, actor.tenantId, (sheet as CycleCountSheetFull).location.type, (sheet as CycleCountSheetFull).location.id, companyKeys);
   return { sheet: sheet as CycleCountSheetFull, where };
 }
 
@@ -587,7 +587,7 @@ export async function listEosCycleCountSheets(deps: CycleCountOperationDeps, act
     const sheets = await listSheetsInWarehouses(client, actor.tenantId, warehouseIds, status as CycleCountSheetStatus | null, LIST_LIMIT + 1, keys);
     const page = sheets.slice(0, LIST_LIMIT);
     const out = [];
-    for (const s of page) out.push(projectSheet(s, await resolveCountLocation(client, actor.tenantId, s.location.type, s.location.id)));
+    for (const s of page) out.push(projectSheet(s, await resolveCountLocation(client, actor.tenantId, s.location.type, s.location.id, keys)));
     return { sheets: out, truncated: sheets.length > LIST_LIMIT, scopedWarehouseIds: [...warehouseIds].sort() };
   } finally {
     client.release();

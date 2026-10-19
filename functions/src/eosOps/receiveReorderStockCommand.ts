@@ -361,8 +361,8 @@ export async function resolvePart(client: PoolClient, tenantId: string, partId: 
  */
 export async function requireActiveLocation(
   client: PoolClient, tenantId: string, location: { type: string; locationId: string },
-  /** When given (the supplier PO receipt), a location of a company outside it reads EXACTLY as a nonexistent one: same code, same message. */
-  reachableCompanyKeys?: readonly string[],
+  /** REQUIRED (ISO-2): a location of a company outside it reads EXACTLY as a nonexistent one: same code, same message. */
+  reachableCompanyKeys: readonly string[],
 ): Promise<{ readonly warehouseId: string; readonly operatingCompanyKey: string }> {
   // OD-T5 (Controller 2026-10-01): a purchase order is never received into a truck. Purchased stock arrives at a WAREHOUSE or
   // BIN and reaches a truck only through a governed Transfer -- no reorder-to-truck. (The receipt table CHECKs the same.)
@@ -382,7 +382,7 @@ export async function requireActiveLocation(
     }
     throw err;
   }
-  if (reachableCompanyKeys !== undefined && !reachableCompanyKeys.includes(resolved.operatingCompanyKey)) {
+  if (!reachableCompanyKeys.includes(resolved.operatingCompanyKey)) {
     // Byte-identical to the LocationAuthorityError branch above for an absent id (its code is LOCATION_NOT_FOUND): no existence oracle.
     refuse("DESTINATION_INVALID", "PRECONDITION_FAILED", "the destination is not a governed location: LOCATION_NOT_FOUND");
   }
@@ -648,7 +648,7 @@ export async function receiveReorderStockWithin(
     // Only the ruled predicate: no work-eligibility rule exists for receiving, so none is invented here.
     let scopeWarehouseId: string;
     try {
-      scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef)).scopeWarehouseId;
+      scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef, companyKeys)).scopeWarehouseId;
     } catch (err) {
       if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse (${err.code})`);
       throw err;

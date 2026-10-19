@@ -6,16 +6,17 @@
 // different return under a used key is refused, never "replayed").
 //
 // NEW, by Owner ruling (2026-10-17):
-//   * the OPERATING COMPANY is REQUIRED and must be one of the caller's companies (eosOps/companyAuthority.ts, the #237 check):
+//   * the OPERATING COMPANY is REQUIRED and must be one of the caller's companies (eosOps/inventoryCompanyAuthority.ts, the #237 check; a
+//     protected Administrator holds every governed company, OD-ISO-2):
 //     a company outside them answers exactly like an unknown one (OPERATING_COMPANY_NOT_GOVERNED). No authority at all is
 //     COMPANY_AUTHORITY_REQUIRED. Every refusal precedes any write.
 //   * the receiving WAREHOUSE is optional; when stated it must belong to that company AND be in the caller's warehouse reach
-//     (partsReads.scopedWarehouseIds). Outside either it answers exactly like an unknown warehouse (WAREHOUSE_NOT_FOUND).
+//     (partsReads.scopedWarehouseIds, narrowed to the caller's companies). Outside either it answers exactly like an unknown warehouse (WAREHOUSE_NOT_FOUND).
 //   * every recorded return writes ONE eos_policy.audit_events row in the same transaction; a replay writes nothing.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 import { scopedWarehouseIds } from "./partsReads.js";
 import { withActorAuthority } from "./administrationReach.js";
 
@@ -104,16 +105,22 @@ function requireIntake(actor: ReorderActor): void {
   }
 }
 
-/** The caller's companies; COMPANY_AUTHORITY_REQUIRED when there are none (fail closed, #237). */
-async function callerCompanies(c: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
-  if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "taking a return in requires company authority");
-  return authority.companies;
+/**
+ * The caller's companies (ids and keys) as resolveInventoryCompanyAuthority decides them: their own, or every governed company for a
+ * protected Administrator (OD-ISO-2). COMPANY_AUTHORITY_REQUIRED when there are none (fail closed, #237).
+ */
+async function callerCompanies(c: Pick<PoolClient, "query">, actor: ReorderActor): Promise<{ readonly ids: readonly string[]; readonly keys: readonly string[] }> {
+  const authority = await resolveInventoryCompanyAuthority(c, actor.tenantId, actor.principalId);
+  if (authority.companyKeys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "taking a return in requires company authority");
+  const { rows } = await c.query<{ id: string }>(
+    `SELECT DISTINCT operating_company_id AS id FROM eos_policy.tenant_operating_company_keys
+      WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_key = ANY($2::text[]) ORDER BY 1`, [actor.tenantId, [...authority.companyKeys]]);
+  return { ids: rows.map((r) => String(r.id)), keys: authority.companyKeys };
 }
 
 /** The warehouses the caller may name for a return: in their reach AND belonging to one of their companies, ACTIVE. */
-async function eligibleWarehouses(c: Pick<PoolClient, "query">, actor: ReorderActor, companies: readonly string[]) {
-  const reach = await scopedWarehouseIds(c, actor);
+async function eligibleWarehouses(c: Pick<PoolClient, "query">, actor: ReorderActor, companies: readonly string[], companyKeys: readonly string[]) {
+  const reach = await scopedWarehouseIds(c, actor, { companyKeys });
   if (reach.length === 0) return [];
   const { rows } = await c.query<{ id: string; name: string; company: string }>(
     `SELECT w.id, w.name, k.operating_company_id AS company
@@ -142,12 +149,12 @@ export async function recordReturnIntake(deps: { readonly pool: Pool }, actor: R
   const c = await deps.pool.connect();
   try {
     await c.query("BEGIN");
-    const companies = await callerCompanies(c, actor);
+    const { ids: companies, keys: companyKeys } = await callerCompanies(c, actor);
     if (!companies.includes(req.operatingCompanyId)) {
       refuse("OPERATING_COMPANY_NOT_GOVERNED", "INVALID_INPUT", "operatingCompanyId is not an active operating company you may act for");
     }
     if (req.warehouseId !== null) {
-      const ok = (await eligibleWarehouses(c, actor, [req.operatingCompanyId])).some((w) => w.warehouseId === req.warehouseId);
+      const ok = (await eligibleWarehouses(c, actor, [req.operatingCompanyId], companyKeys)).some((w) => w.warehouseId === req.warehouseId);
       if (!ok) refuse("WAREHOUSE_NOT_FOUND", "NOT_FOUND", "no such receiving warehouse for that operating company");
     }
     // One key, one return. Serialized on the key so two concurrent first attempts cannot both insert.
@@ -194,12 +201,12 @@ export async function listReturnIntakeOptions(deps: { readonly pool: Pool }, act
   const c = await deps.pool.connect();
   try {
     await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const companies = await callerCompanies(c, actor);
+    const { ids: companies, keys: companyKeys } = await callerCompanies(c, actor);
     const keys = (await c.query<{ id: string; key: string }>(
       `SELECT operating_company_id AS id, min(operating_company_key) AS key FROM eos_policy.tenant_operating_company_keys
         WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id = ANY($2::text[]) GROUP BY 1 ORDER BY 1`,
       [actor.tenantId, [...companies]])).rows;
-    const warehouses = await eligibleWarehouses(c, actor, companies);
+    const warehouses = await eligibleWarehouses(c, actor, companies, companyKeys);
     await c.query("COMMIT");
     const keyOf = new Map(keys.map((k) => [String(k.id), String(k.key)]));
     return Object.freeze({

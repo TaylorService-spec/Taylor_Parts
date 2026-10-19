@@ -25,7 +25,7 @@ import {
 } from "./warehouseBinRepository";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse";
 import { withActorAuthority } from "./administrationReach";
-import { resolveCompanyAuthority } from "./companyAuthority";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority";
 import { MAX_BIN_PROPOSALS, classifyBin, planBinCreates, validateProposal, type BinVerdict, type StoredBinRow, type StoredClaimRow } from "./binRackingPlan";
 
 export const WAREHOUSE_ADMIN_AUDIT_TARGETS = Object.freeze({ WAREHOUSE: "warehouse", BIN: "bin" });
@@ -261,12 +261,12 @@ async function setBinMasterStatus(pool: Pool, actor: ConfigurationActor, input: 
 //   overwritten or revived by a create, and a code claim is never released.
 //
 //   COMPANY ISOLATION. A bin carries no company; its warehouse does. Every racking operation reaches only the warehouses of operating
-//   companies the caller is authorized for (resolveCompanyAuthority, #235 / #237): none at all is COMPANY_AUTHORITY_REQUIRED, and a
+//   companies the caller is authorized for (resolveInventoryCompanyAuthority: the caller's own companies, or every governed company for a protected Administrator (OD-ISO-2); #235 / #237): none at all is COMPANY_AUTHORITY_REQUIRED, and a
 //   warehouse (or a bin of a warehouse) outside the caller's companies reads exactly as a nonexistent one.
 const RACKING_LIST_LIMIT = 2000;
 
 async function rackingReach(c: Pick<PoolClient, "query">, actor: ConfigurationActor): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
+  const authority = await resolveInventoryCompanyAuthority(c, actor.tenantId, actor.principalId);
   if (authority.companyKeys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "racking requires operating-company authority; this principal has none");
   return authority.companyKeys;
 }

@@ -205,7 +205,8 @@ test("DQ-036(b): acquire-existing-unit on EOS", { skip: SKIP, concurrency: 1 }, 
       await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by) VALUES ($1, $2, $3, 'WAREHOUSE', $4, now(), $5)`, [`os-x-${wh}`, T, emp, wh, OP]);
     }
     refused(await call(pa, req("SN-w2", { locationId: "WH-OFF" })), 412, "LOCATION_INVALID");
-    refused(await call(pa, req("SN-w3", { locationId: "WH-UNGOV" })), 412, "COMPANY_NOT_GOVERNED");
+    // ISO-2: a warehouse whose company key is bound to NO company the caller holds reads as an unknown warehouse (it was COMPANY_NOT_GOVERNED).
+    refused(await call(pa, req("SN-w3", { locationId: "WH-UNGOV" })), 412, "LOCATION_INVALID");
     // A unit that arrived by RECEIPT is never overwritten.
     await q(`INSERT INTO eos_ops.serialized_custody (id, tenant_id, operating_company_key, part_id, serial_number, status, location_type, location_id, updated_by) VALUES ('ser-rcv', $1, 'key', 'P-SER', 'SN-RCV', 'AVAILABLE', 'WAREHOUSE', 'WH-A', 'u')`, [T]);
     refused(await call(pa, req("SN-RCV")), 409, "ALREADY_EXISTS_CONFLICT", /from a receipt/);

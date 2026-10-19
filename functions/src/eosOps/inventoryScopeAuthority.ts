@@ -56,14 +56,16 @@ export class InventoryScopeError extends Error {
 /**
  * Resolve one inventory location to the warehouse whose scope governs it. Fails closed; never guesses.
  *
- * COMPANY ISOLATION (#235 / #237). When `reachableCompanyKeys` is given, a location of a company OUTSIDE it reads EXACTLY as a
- * nonexistent one -- the same code and the same message, so a warehouse scope never discloses (let alone reaches into) another
- * company's warehouse. Callers that enforce company authority pass the caller's keys; omitting them is the pre-isolation behaviour.
+ * COMPANY ISOLATION (#235 / #237, ISO-2). `reachableCompanyKeys` is REQUIRED (omitting it is a type error, and a JS caller that omits
+ * it fails closed): a location of a company OUTSIDE it reads EXACTLY as a nonexistent one -- the same code and the same message, so a
+ * warehouse scope never discloses (let alone reaches into) another company's warehouse. Callers pass the keys of
+ * `resolveInventoryCompanyAuthority`; there is no unrestricted form.
  */
 export async function resolveScopeLocation(
-  db: Queryable, tenantId: string, ref: { readonly type: unknown; readonly locationId: string }, reachableCompanyKeys?: readonly string[],
+  db: Queryable, tenantId: string, ref: { readonly type: unknown; readonly locationId: string }, reachableCompanyKeys: readonly string[],
 ): Promise<ResolvedScopeLocation> {
-  const reaches = (key: string) => reachableCompanyKeys === undefined || reachableCompanyKeys.includes(key);
+  if (!Array.isArray(reachableCompanyKeys)) throw new TypeError("resolveScopeLocation requires the caller's reachable company keys");
+  const reaches = (key: string) => reachableCompanyKeys.includes(key);
   if (ref.type === "WAREHOUSE") {
     const { rows } = await db.query<{ status: string; operating_company_key: string }>(
       `SELECT status::text AS status, operating_company_key FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`,
@@ -124,7 +126,7 @@ export const TRANSFER_ACT_SCOPE_END: Readonly<Record<TransferAct, "ORIGIN" | "DE
 export async function requiredTransferScope(
   db: Queryable, tenantId: string, act: TransferAct,
   transfer: { readonly origin: InventoryLocationRef; readonly destination: InventoryLocationRef },
-  reachableCompanyKeys?: readonly string[],
+  reachableCompanyKeys: readonly string[],
 ): Promise<ResolvedScopeLocation> {
   const end = TRANSFER_ACT_SCOPE_END[act];
   if (!end) throw new InventoryScopeError("LOCATION_TYPE_INVALID", `unknown transfer act ${String(act)}`);

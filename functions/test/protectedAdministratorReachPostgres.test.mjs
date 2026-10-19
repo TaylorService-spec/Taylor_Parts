@@ -114,7 +114,7 @@ test("protected Administrator reach over queues and warehouses -- administering,
   });
 
   await t.test("warehouses: every ACTIVE warehouse of an authorized company -- not INACTIVE, not unbound, not another tenant's", async () => {
-    assert.deepEqual(await scopedWarehouseIds(pool, admin), ["WH-T", "WH-V"]);
+    assert.deepEqual(await scopedWarehouseIds(pool, admin, { companyKeys: ["taylor", "ventana"] }), ["WH-T", "WH-V"]);
     // ISO inventory: the on-hand READ decides company authority first, and a PROTECTED Administrator holds EVERY governed company for the inventory domains
     // (Owner ruling OD-ISO-2, 2026-10-19: "admin should have all access"), so this Administrator -- no Employee, no company of its own -- reads as before.
     const onHand = await call({ subject: ADMIN_SUBJECT }, "/operations/inventory", "readInventoryOnHand", {});
@@ -205,7 +205,7 @@ test("protected Administrator reach over queues and warehouses -- administering,
     await q(`INSERT INTO eos_workforce.employee_operational_scopes (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by,reason)
              VALUES ('os-preach-wa',$1,'e-preach-wa','WAREHOUSE','WH-T',now(),'fixture','fixture')`, [T]);
     const w = await actorOf("uid-preach-wa");
-    assert.deepEqual(await scopedWarehouseIds(pool, w), ["WH-T"]);
+    assert.deepEqual(await scopedWarehouseIds(pool, w, { companyKeys: ["taylor", "ventana"] }), ["WH-T"]);
     assert.deepEqual(await queueReachKeys(pool, w), []);
     if (w.capabilities.has("inventory.placement.record")) {
       assert.equal((await decide("uid-preach-wa", "inventory.placement.record", "WAREHOUSE", "WH-T")).allowed, true, "own scope still works");

@@ -19,6 +19,7 @@ const ACTOR = "uid-l3-scope";
 let pool = null;
 const q = (text, v = []) => (pool ??= new pg.Pool({ connectionString: URL, max: 3 })).query(text, v);
 let BIN_A = null;
+const ALL = ["key-a", "key-b"];
 
 test("world", { skip: SKIP }, async () => {
   const c = new pg.Client({ connectionString: URL });
@@ -48,15 +49,15 @@ test("world", { skip: SKIP }, async () => {
 });
 
 test("WAREHOUSE -> itself; BIN -> its parent; MOBILE -> ONLY its explicit binding, else fail closed", { skip: SKIP }, async () => {
-  assert.equal((await resolveScopeLocation(pool, T, { type: "WAREHOUSE", locationId: "WH-A" })).scopeWarehouseId, "WH-A");
-  assert.equal((await resolveScopeLocation(pool, T, { type: "BIN", locationId: BIN_A })).scopeWarehouseId, "WH-A");
-  await assert.rejects(resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-unbound" }),
+  assert.equal((await resolveScopeLocation(pool, T, { type: "WAREHOUSE", locationId: "WH-A" }, ALL)).scopeWarehouseId, "WH-A");
+  assert.equal((await resolveScopeLocation(pool, T, { type: "BIN", locationId: BIN_A }, ALL)).scopeWarehouseId, "WH-A");
+  await assert.rejects(resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-unbound" }, ALL),
     (e) => e instanceof InventoryScopeError && e.code === "MOBILE_SCOPE_BINDING_MISSING");
-  await assert.rejects(resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "nope" }), (e) => e.code === "LOCATION_NOT_FOUND");
-  await assert.rejects(resolveScopeLocation(pool, T, { type: "CUSTOMER", locationId: "x" }), (e) => e.code === "LOCATION_TYPE_INVALID");
+  await assert.rejects(resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "nope" }, ALL), (e) => e.code === "LOCATION_NOT_FOUND");
+  await assert.rejects(resolveScopeLocation(pool, T, { type: "CUSTOMER", locationId: "x" }, ALL), (e) => e.code === "LOCATION_TYPE_INVALID");
   await q(`INSERT INTO eos_ops.mobile_location_scope_bindings (id, tenant_id, location_type, location_id, warehouse_id, established_by, reason)
            VALUES ('b1', $1, 'MOBILE', 'truck-a', 'WH-A', $2, 'based at A')`, [T, ACTOR]);
-  const r = await resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-a" });
+  const r = await resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-a" }, ALL);
   assert.equal(r.scopeWarehouseId, "WH-A");
   assert.equal(r.operatingCompanyKey, "key-a", "the truck location's own authored company, not the warehouse's");
 });
@@ -73,23 +74,43 @@ test("binding invariants: same company only, one current, end-only history, neve
   // Re-pointing = end the current row, then bind anew.
   await q(`UPDATE eos_ops.mobile_location_scope_bindings SET effective_to = now(), ended_by = $1, end_reason = 'moved to A2' WHERE id = 'b1'`, [ACTOR]);
   await assert.rejects(q(`UPDATE eos_ops.mobile_location_scope_bindings SET end_reason = 'again' WHERE id = 'b1'`), /APPEND_ONLY/);
-  await assert.rejects(resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-a" }), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING");
+  await assert.rejects(resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-a" }, ALL), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING");
   await q(`INSERT INTO eos_ops.mobile_location_scope_bindings (id, tenant_id, location_type, location_id, warehouse_id, established_by, reason)
            VALUES ('b2', $1, 'MOBILE', 'truck-a', 'WH-A2', $2, 'now at A2')`, [T, ACTOR]);
-  assert.equal((await resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-a" })).scopeWarehouseId, "WH-A2");
+  assert.equal((await resolveScopeLocation(pool, T, { type: "MOBILE", locationId: "truck-a" }, ALL)).scopeWarehouseId, "WH-A2");
 });
 
 test("DQ-024 per-act rule: origin for create/cancel/dispatch, destination for receive/put-away -- the other end is not even resolved", { skip: SKIP }, async () => {
   assert.deepEqual({ ...TRANSFER_ACT_SCOPE_END }, { create: "ORIGIN", cancel: "ORIGIN", dispatch: "ORIGIN", receive: "DESTINATION", putAway: "DESTINATION" });
   const t = { origin: { type: "WAREHOUSE", locationId: "WH-A" }, destination: { type: "MOBILE", locationId: "truck-unbound" } };
   // The destination truck has no binding: that neither blocks nor grants the ORIGIN-scoped acts...
-  for (const act of ["create", "cancel", "dispatch"]) assert.equal((await requiredTransferScope(pool, T, act, t)).scopeWarehouseId, "WH-A");
+  for (const act of ["create", "cancel", "dispatch"]) assert.equal((await requiredTransferScope(pool, T, act, t, ALL)).scopeWarehouseId, "WH-A");
   // ...but receiving AT that truck fails closed.
-  await assert.rejects(requiredTransferScope(pool, T, "receive", t), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING");
+  await assert.rejects(requiredTransferScope(pool, T, "receive", t, ALL), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING");
   const back = { origin: { type: "MOBILE", locationId: "truck-a" }, destination: { type: "BIN", locationId: BIN_A } };
-  assert.equal((await requiredTransferScope(pool, T, "dispatch", back)).scopeWarehouseId, "WH-A2");
-  assert.equal((await requiredTransferScope(pool, T, "putAway", back)).scopeWarehouseId, "WH-A");
-  await assert.rejects(requiredTransferScope(pool, T, "steal", back), InventoryScopeError);
+  assert.equal((await requiredTransferScope(pool, T, "dispatch", back, ALL)).scopeWarehouseId, "WH-A2");
+  assert.equal((await requiredTransferScope(pool, T, "putAway", back, ALL)).scopeWarehouseId, "WH-A");
+  await assert.rejects(requiredTransferScope(pool, T, "steal", back, ALL), InventoryScopeError);
+});
+
+test("ISO-2: the caller's company keys are REQUIRED; a location of a company outside them reads exactly as a nonexistent one", { skip: SKIP }, async () => {
+  const refusalOf = async (promise) => { try { await promise; } catch (e) { return [e.code, e.message]; } return assert.fail("expected a refusal"); };
+  // WH-A / BIN_A / truck-a belong to key-a; WH-B to key-b. A caller reaching only key-b sees key-a's locations as unknown ones.
+  for (const [ref, nope] of [
+    [{ type: "WAREHOUSE", locationId: "WH-A" }, { type: "WAREHOUSE", locationId: "WH-NOPE" }],
+    [{ type: "BIN", locationId: BIN_A }, { type: "BIN", locationId: "bin-nope" }],
+    [{ type: "MOBILE", locationId: "truck-a" }, { type: "MOBILE", locationId: "truck-nope" }],
+  ]) {
+    const foreign = await refusalOf(resolveScopeLocation(pool, T, ref, ["key-b"]));
+    assert.equal(foreign[0], "LOCATION_NOT_FOUND");
+    const unknown = await refusalOf(resolveScopeLocation(pool, T, nope, ["key-b"]));
+    assert.deepEqual(foreign.map((p) => p.replace(/with that id$/, "")), unknown.map((p) => p.replace(/with that id$/, "")), `${ref.type}: foreign == nonexistent`);
+  }
+  assert.equal((await resolveScopeLocation(pool, T, { type: "WAREHOUSE", locationId: "WH-B" }, ["key-b"])).scopeWarehouseId, "WH-B");
+  // No keys at all reaches nothing.
+  await assert.rejects(resolveScopeLocation(pool, T, { type: "WAREHOUSE", locationId: "WH-A" }, []), (e) => e.code === "LOCATION_NOT_FOUND");
+  // A caller that omits them (a JS caller the type system cannot stop) fails closed rather than reaching everything.
+  await assert.rejects(resolveScopeLocation(pool, T, { type: "WAREHOUSE", locationId: "WH-A" }), TypeError);
 });
 
 test("the down migration refuses while a binding exists", { skip: SKIP }, async () => {

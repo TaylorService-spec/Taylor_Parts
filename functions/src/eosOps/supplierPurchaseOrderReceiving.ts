@@ -20,7 +20,7 @@
 // recovery job would raise), in this transaction. No payable is opened, no intercompany correlation is written.
 //
 // COMPANY ISOLATION (#235 / #237). A purchase order belongs to one operating company. The caller must reach that company
-// (resolveCompanyAuthority) -- a caller with no company authority is refused COMPANY_AUTHORITY_REQUIRED before any row is read,
+// (resolveInventoryCompanyAuthority: the caller's own companies; a protected Administrator holds every governed company, OD-ISO-2) -- a caller with no company authority is refused COMPANY_AUTHORITY_REQUIRED before any row is read,
 // and an order of a company outside the caller's reads exactly as a nonexistent one. The destination must be an ACTIVE warehouse
 // (or bin) of the SAME company where the receiver holds the WAREHOUSE Operational Scope (DQ-017): a receipt has one destination,
 // so one owning company, and the order's company is it.
@@ -40,7 +40,7 @@ import { projectReceiptAcquisitionCostOn, FinanceFoundationError } from "../eosF
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 import { scopedWarehouseIds } from "./partsReads.js";
 import type { OpsLocationType } from "./operatingCompanyCustody.js";
 import {
@@ -73,7 +73,7 @@ function requireActor(actor: ReceivingPrincipalActor): void {
 
 /** The operating-company KEYS the caller reaches. Capability first, then company: none at all is a refusal, not an empty answer. */
 async function reachableCompanyKeys(db: Pick<PoolClient, "query">, actor: ReceivingPrincipalActor): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+  const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
   if (authority.companyKeys.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "receiving stock requires operating-company authority; this principal has none");
   }
@@ -233,7 +233,7 @@ export async function listSupplierReceivingLocationOptions(deps: { readonly pool
   return inTransaction(deps.pool, "snapshot", async (c) => {
     const keys = await reachableCompanyKeys(c, actor);
     const po = await readPurchaseOrder(c, actor.tenantId, input.purchaseOrderId as string, keys, false);
-    const scope = await scopedWarehouseIds(c, actor, { administrationReach: false });
+    const scope = await scopedWarehouseIds(c, actor, { administrationReach: false, companyKeys: keys });
     const { rows } = scope.length === 0 ? { rows: [] as Array<Record<string, unknown>> } : await c.query(
       `SELECT id, name, site_label FROM ${SCHEMA}.warehouses
         WHERE tenant_id = $1 AND status::text = 'ACTIVE' AND operating_company_key = $2 AND id = ANY($3::text[]) ORDER BY name, id`,
@@ -333,7 +333,7 @@ export async function receiveSupplierPurchaseOrder(
     }
     let scopeWarehouseId: string;
     try {
-      scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef)).scopeWarehouseId;
+      scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, locationRef, companyKeys)).scopeWarehouseId;
     } catch (err) {
       if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receiving location has no governing warehouse (${err.code})`);
       throw err;

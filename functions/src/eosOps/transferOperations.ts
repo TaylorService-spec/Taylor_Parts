@@ -153,13 +153,13 @@ async function requireCompanyKeys(db: Queryable, actor: TransferOperationActor):
 async function authorizeAct(db: Queryable, actor: TransferOperationActor, act: TransferAct & keyof typeof EOS_TRANSFER_CAPABILITY,
   transfer: { readonly origin: TransferLocationRef; readonly destination: TransferLocationRef }, keys: readonly string[],
   /** An existing transfer (dispatch / receive / cancel): its far end may be another company's; the act's own end may not. */
-  onRecord: boolean): Promise<void> {
+  onRecord: boolean, recordCompanyKeys: readonly string[] = []): Promise<void> {
   const truckReceipt = act === "receive" && transfer.destination.type === "MOBILE";
   let scope;
   try {
     // CREATE names the end itself, so an end of an unreachable company reads as nonexistent. On a RECORD the transfer was already
     // visible to the caller, so the act's end of another company is refused below as outside the caller's reach instead.
-    scope = await requiredTransferScope(db, actor.tenantId, act, transfer, onRecord ? undefined : keys);
+    scope = await requiredTransferScope(db, actor.tenantId, act, transfer, onRecord ? [...keys, ...recordCompanyKeys] : keys);
     if (onRecord && !keys.includes(scope.operatingCompanyKey)) {
       return refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "the warehouse this act works at is outside your operational scope");
     }
@@ -462,7 +462,7 @@ export async function dispatchEosTransfer(deps: TransferOperationDeps, actor: Tr
     requireCapability(actor, "dispatch");
     const keys = await requireCompanyKeys(db, actor);
     const t = await lockTransfer(db, actor, input, keys);
-    await authorizeAct(db, actor, "dispatch", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true);
+    await authorizeAct(db, actor, "dispatch", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true, [t.companies.source, t.companies.destination]);
     if (t.status === "IN_TRANSIT") return { outcome: "replayed" as const, transferOrderId: t.id, ledgerEventIds: await replayLeg(db, t, "out") };
     if (t.status !== "REQUESTED") refuse("STATUS_INVALID", "PRECONDITION_FAILED", `transfer order is ${t.status}, cannot dispatch`);
     if (t.trackingMode === "SERIAL") {
@@ -492,7 +492,7 @@ export async function receiveEosTransfer(deps: TransferOperationDeps, actor: Tra
     requireCapability(actor, "receive");
     const keys = await requireCompanyKeys(db, actor);
     const t = await lockTransfer(db, actor, input, keys);
-    await authorizeAct(db, actor, "receive", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true);
+    await authorizeAct(db, actor, "receive", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true, [t.companies.source, t.companies.destination]);
     if (t.status === "COMPLETED") return { outcome: "replayed" as const, transferOrderId: t.id, ledgerEventIds: await replayLeg(db, t, "in") };
     if (t.status !== "IN_TRANSIT") refuse("STATUS_INVALID", "PRECONDITION_FAILED", `transfer order is ${t.status}, cannot receive`);
     // The dispatch evidence must be there before anything is received against it (DQ-019: never inferred).
@@ -517,7 +517,7 @@ export async function cancelEosTransfer(deps: TransferOperationDeps, actor: Tran
     requireCapability(actor, "cancel");
     const keys = await requireCompanyKeys(db, actor);
     const t = await lockTransfer(db, actor, input, keys);
-    await authorizeAct(db, actor, "cancel", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true);
+    await authorizeAct(db, actor, "cancel", { origin: toRef(t.origin), destination: toRef(t.destination) }, keys, true, [t.companies.source, t.companies.destination]);
     if (t.status === "CANCELLED") return { outcome: "replayed" as const, transferOrderId: t.id };
     if (t.status !== "REQUESTED") refuse("STATUS_INVALID", "PRECONDITION_FAILED", `transfer order is ${t.status}, cancellation is only domain-safe before dispatch`);
     await setStatus(db, actor, t, "REQUESTED", "CANCELLED");

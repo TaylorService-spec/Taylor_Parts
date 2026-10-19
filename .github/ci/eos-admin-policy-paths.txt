@@ -914,6 +914,7 @@ functions/test/rackingPlannerPostgres.test.mjs
 functions/test/supplierPurchaseOrderReceivingPostgres.test.mjs
 functions/test/inventoryCompanyIsolationPostgres.test.mjs
 functions/test/inventoryAdministratorAllCompaniesPostgres.test.mjs
+functions/test/inventoryNeighboursIsolationPostgres.test.mjs
 functions/src/eosOps/inventoryCompanyAuthority.ts
 functions/src/eosWorkforce/employeeCompanyReach.ts
 functions/src/eosOps/cycleCountOperations.ts
