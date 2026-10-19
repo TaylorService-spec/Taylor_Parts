@@ -76,7 +76,7 @@ const KNOWN_UNNAMED = new Set([
   "manageTruckDrawerReadinessGate.test.jsx", "mobileInventorySections.test.jsx",
   "onHandGovernedLedger.test.jsx", "operationalCard.test.jsx",
   "operationsProcurementLiveSource.test.jsx", "opportunitySectionSaveUi.test.jsx", "ownerSelect.test.jsx",
-  "partDetailReorderReenable.test.jsx", "partsStockSection.test.jsx", "performanceSnapshotErrorState.test.jsx",
+  "partsStockSection.test.jsx", "performanceSnapshotErrorState.test.jsx",
   "reconciliationSection.test.jsx", "reorderConsumersDeniedVsAbsent.test.jsx",
   "reorderPurchaseOrderReadErrorContract.test.jsx",
   "reportBuilderArrayFilterAndSavedWiring.test.jsx", "reservationsSection.test.jsx",
