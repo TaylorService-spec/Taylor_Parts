@@ -368,6 +368,26 @@ test("Records and reporting on PostgreSQL: imported history, Data Import, report
     assert.equal((await run(actor(taylorUser, [DEF.read]), mine.definition, { definitionId: mine.id })).kind, "permission-denied");
   });
 
+  await t.test("Saved Reports: at most 200 definitions per owner (create and duplicate refuse the 201st), per owner not per tenant", async () => {
+    const all = [DEF.create, DEF.read, DEF.rename, DEF.duplicate, DEF.del];
+    const call = (fn, a, input) => reports[fn]({ pool }, a, input);
+    const capOwner = taylorUser; // already owns one definition (above), so 199 more reaches the cap exactly
+    await q(`INSERT INTO eos_ops.report_definitions (tenant_id, id, name, owner_principal_id, object_id, definition)
+             SELECT 't1', 'rpt_cap_' || n, 'cap ' || n, $1, 'customer', '{"objectId":"customer","fields":["customer.name"]}'::jsonb FROM generate_series(1, 199) n`, [capOwner]);
+    const def = { objectId: "customer", fields: ["customer.name"] };
+    assert.equal((await refusal(() => call("createSavedReportDefinition", actor(capOwner, all), { name: "one too many", definition: def }))).code, "TOO_MANY_SAVED_DEFINITIONS");
+    assert.equal((await refusal(() => call("duplicateSavedReportDefinition", actor(capOwner, all), { definitionId: "rpt_cap_1" }))).code, "TOO_MANY_SAVED_DEFINITIONS");
+    // Another owner is unaffected (the cap is per owner), and deleting one makes room.
+    const fine = await call("createSavedReportDefinition", actor(ventanaUser, all), { name: "ventana ok", definition: def });
+    assert.equal(fine.ownerUid, ventanaUser);
+    // The capability gate precedes definition validation: an INVALID definition from a caller without the capability answers CAPABILITY_REQUIRED, never INVALID_DEFINITION.
+    assert.equal((await refusal(() => call("createSavedReportDefinition", actor(ventanaUser, [DEF.read]), { name: "n", definition: { objectId: "nope" } }))).code, "CAPABILITY_REQUIRED");
+    await call("deleteSavedReportDefinition", actor(capOwner, all), { definitionId: "rpt_cap_1" });
+    const roomAgain = await call("createSavedReportDefinition", actor(capOwner, all), { name: "room again", definition: def });
+    assert.equal(roomAgain.ownerUid, capOwner);
+    await q(`DELETE FROM eos_ops.report_definitions WHERE id LIKE 'rpt_cap_%' OR id = ANY($1::text[])`, [[roomAgain.id, fine.id]]);
+  });
+
   // ════════════════════ 3. PERFORMANCE GOALS ════════════════════
   const goal = (over) => {
     const g = { id: `g-${randomUUID().slice(0, 8)}`, metric: "service.workOrder.pastDue.count", scope: "FIRM", scopeId: null, value: 5, unit: "COUNT", direction: "AT_MOST", currency: null,

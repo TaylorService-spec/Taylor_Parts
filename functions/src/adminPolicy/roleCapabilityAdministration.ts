@@ -245,6 +245,48 @@ export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new S
   // compiled catalog declares it on admin (whole-catalog composition) and on the lookup Role; neither is a default. Its
   // holders are the inventoryLookupReader composition, granted through Administration.
   "inventory.catalog.alias.read",
+  // Firebase exit B4 (DECISIONS #B4; migration 1764640000000): the 38 report.* ids and performance.goal.read are registered with NO default grant. The compiled catalog declares
+  // every one on admin (whole-catalog composition), owner and the report Roles, but the mirrored grants are a separate Owner-authorized change (OD-B4-1): until it lands no default
+  // writer may import them. When it lands, REMOVE these 39 keys from this fence in the same change that adds the grants to the baseline.
+  "performance.goal.read",
+  "report.contact.field.customer.read",
+  "report.contact.field.email.read",
+  "report.contact.field.name.read",
+  "report.contact.field.phone.read",
+  "report.contact.field.role.read",
+  "report.contact.read",
+  "report.customer.field.accountOwner.read",
+  "report.customer.field.billingAddress.read",
+  "report.customer.field.billingContact.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.externalIds.read",
+  "report.customer.field.name.read",
+  "report.customer.field.notes.read",
+  "report.customer.field.paymentTerms.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.status.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.taxStatus.read",
+  "report.customer.read",
+  "report.definition.create",
+  "report.definition.delete",
+  "report.definition.duplicate",
+  "report.definition.rename",
+  "report.equipment.field.createdAt.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.notes.read",
+  "report.equipment.field.status.read",
+  "report.equipment.read",
+  "report.location.field.accessNotes.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.location.field.name.read",
+  "report.location.read",
 ]);
 
 export type GrantAuthoritySource =

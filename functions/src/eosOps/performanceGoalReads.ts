@@ -17,6 +17,10 @@
 //   2. authority over the number itself: the metric's own existing read capability where the registry names one (flat);
 //   3. EMPLOYEE targets: the subject must be inside the caller's governed hierarchical visibility (access/hierarchicalVisibility.ts, unchanged, over the
 //      tenant's active Role assignments) AND belong to a company the caller reaches (company isolation: a role subtree never crosses a company).
+// KNOWN DIVERGENCE (DECISIONS #B4, LOW-1): Firebase requires a GLOBAL (unscoped) holding for a FIRM target, so a holder whose performance.goal.read comes only from a
+// scoped assignment is denied FIRM there. EOS decides on a flat capability set that does not say whether the holding was scoped, so a scoped holder with operating-company
+// authority CAN read a FIRM target here. It widens nothing beyond the firm-wide target (a target, never an actual) and no scoped assignment of this capability exists in EOS.
+// The Firebase catalog's scopesByPermission / conditionsByPermission are NOT modelled either (recordsReportingOffline pins that statement).
 // Factor 4 (self-approval) and factor 5 (self-targeting) govern WRITES; there is no EOS writer in this batch. A goal's own subject can read it.
 //
 // COMPANY (#235 / #237): capability first, then company. A caller with no operating-company authority is REFUSED, never answered with an empty list.

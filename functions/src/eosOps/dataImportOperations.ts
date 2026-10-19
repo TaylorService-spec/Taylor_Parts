@@ -259,7 +259,16 @@ export async function executeDataImport(deps: { readonly pool: Pool }, actor: Re
 
 // ════════════════════ HISTORY ════════════════════
 
-/** The caller's companies' recent jobs, newest first, with the companies a new file may be staged for and the intake limits. Read-only. */
+/**
+ * A history entry is a SUMMARY: the previewed rows and the per-row outcomes carry the customer's raw file content (names, technicians, serials) and up to the whole import,
+ * and the history list needs only the counts, status and provenance. The full job is returned once, by stage (its preview) and by execute (its result). Shape is kept
+ * (empty arrays) so every consumer of an ImportJob still reads it.
+ */
+function historySummary(job: ImportJob): ImportJob {
+  return { ...job, rows: [], result: job.result ? { ...job.result, rows: [] } : null };
+}
+
+/** The caller's companies' recent jobs (summaries), newest first, with the companies a new file may be staged for and the intake limits. Read-only. */
 export async function listDataImportJobs(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
   requireCapability(actor, DATA_IMPORT_CAPABILITY);
   acceptOnly(input, []);
@@ -270,7 +279,7 @@ export async function listDataImportJobs(deps: { readonly pool: Pool }, actor: R
         WHERE tenant_id = $1 AND operating_company_key = ANY($2::text[]) ORDER BY staged_at DESC, job_id LIMIT ${HISTORY_LIMIT}`,
       [actor.tenantId, [...reach.keys]]);
     return {
-      jobs: rows.map((r) => withCompany(r.job as ImportJob, String(r.operating_company_key))),
+      jobs: rows.map((r) => withCompany(historySummary(r.job as ImportJob), String(r.operating_company_key))),
       limits: IMPORT_LIMITS,
       companies: await companyOptions(c, actor.tenantId, reach.keys),
       wiredEntities: [WIRED_IMPORT_ENTITY],

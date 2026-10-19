@@ -127,3 +127,67 @@ test("the new modules reach no Firebase and no Firebase-era engine; a run is aud
   assert.doesNotMatch(applied, /\brows\b|projected|aggregateRows|cappedAggregates/);
   assert.equal(readdirSync("src/eosOps").filter((n) => /^(recordsSupport|importedServiceHistory|dataImportOperations|reportOperations|performanceGoalReads)\.ts$/.test(n)).length, 5);
 });
+
+test("the 39 registered-not-granted ids are Administration-grant-only: no default writer may import them as system defaults, and the verifier stays green over a tenant that holds none", () => {
+  const { ADMINISTRATION_GRANT_ONLY_CAPABILITIES, defaultWriterMayInsert, resolveCell } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
+  const { verifyLiveTenantAuthority } = require("../lib/adminPolicy/roleCapabilityAuthorityBaseline.js");
+  assert.equal(REGISTERED.length, 39);
+  const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  let declaredPairs = 0;
+  for (const id of REGISTERED) {
+    assert.ok(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id), `${id} must be fenced`);
+    for (const [roleKey, role] of Object.entries(roles)) {
+      if (!role.permissions.includes(id)) continue;
+      declaredPairs++;
+      // The catalog DECLARES it on this Role; a default writer (reconcile, activation tool, seed) must still refuse to insert it.
+      assert.equal(defaultWriterMayInsert(new Map(), roleKey, id).allowed, false, `${roleKey}/${id} must not be imported as a default`);
+      assert.deepEqual(resolveCell({ roleKey, capabilityKey: id, decision: null, isSystemDefault: true }), { shouldHold: false, source: "NONE" });
+      // ...but an explicit Administration grant still wins (the only way a Role holds one).
+      assert.equal(resolveCell({ roleKey, capabilityKey: id, decision: "ADMIN_GRANTED", isSystemDefault: false }).shouldHold, true);
+    }
+  }
+  assert.equal(declaredPairs, 122, "the 122 Firebase-mirrored pairs are exactly what the fence withholds");
+  // A tenant that holds none of them is NOT drift: absence of a fenced default is not a missing default.
+  const v = verifyLiveTenantAuthority({ live: [], decisions: [], environment: "nonprod" });
+  assert.deepEqual(v.missingDefault.filter((c) => REGISTERED.includes(c.capabilityKey)), []);
+  assert.deepEqual(v.drift.filter((d) => REGISTERED.includes(d.capabilityKey)), []);
+  // NOT MODELLED (stated, so a later reader does not assume otherwise): the Firebase catalog's scopesByPermission / conditionsByPermission. A grant here is flat, exactly as the
+  // 122 pairs are; and a FIRM goal target is readable by a scoped holder (the recorded LOW-1 divergence, DECISIONS #B4).
+  assert.match(readFileSync("src/eosOps/performanceGoalReads.ts", "utf8"), /scopesByPermission \/ conditionsByPermission are NOT modelled/);
+  // The Sample Company seed keeps its own filter as belt-and-braces.
+  assert.match(tsCode("scripts/seedSampleCompany.js"), /permission\.startsWith\("report\."\) \|\| permission === "performance\.goal\.read"/);
+});
+
+test("report abuse bounds: counts, duplicate sorts, value lists, string length, stored size, refused on save AND run before any database use", async () => {
+  const untouchable = new Proxy({}, { get() { throw new Error("DB_TOUCHED"); } });
+  const actor = { tenantId: "t1", principalId: "p1", capabilities: new Set(["report.definition.create", "report.customer.read", "report.customer.field.name.read"]) };
+  const base = { objectId: "customer", fields: ["customer.name"] };
+  const entries = (n, make) => Array.from({ length: n }, (_, i) => make(i));
+  const filter = (i) => ({ fieldId: "customer.name", op: "eq", value: `v${i}` });
+  const sorts = (n) => entries(n, () => ({ fieldId: "customer.name", direction: "asc" }));
+  const refused = async (definition, code) => {
+    for (const call of [
+      () => reports.createSavedReportDefinition({ pool: untouchable }, actor, { name: "n", definition }),
+      () => reports.runReportDefinition({ pool: untouchable }, actor, { definition }),
+    ]) {
+      await assert.rejects(call, (e) => e.code === code, JSON.stringify(definition).slice(0, 80));
+    }
+  };
+  const L = reports.REPORT_LIMITS;
+  assert.deepEqual([L.filters, L.sort, L.aggregates, L.groupBy], [25, 5, 10, 10]);
+  await refused({ ...base, filters: entries(26, filter) }, "DEFINITION_TOO_LARGE");
+  await refused({ ...base, sort: sorts(6) }, "DEFINITION_TOO_LARGE");
+  await refused({ ...base, aggregates: entries(11, () => ({ fn: "count" })) }, "DEFINITION_TOO_LARGE");
+  await refused({ ...base, groupBy: entries(11, () => "customer.name") }, "DEFINITION_TOO_LARGE");
+  await refused({ ...base, fields: entries(101, (i) => `customer.f${i}`) }, "DEFINITION_TOO_LARGE");
+  // A duplicate sort field id is invalid even within the count bound.
+  await refused({ ...base, sort: sorts(2) }, "INVALID_DEFINITION");
+  // Value lists and long strings.
+  await refused({ ...base, filters: [{ fieldId: "customer.name", op: "in", value: entries(101, (i) => `v${i}`) }] }, "DEFINITION_TOO_LARGE");
+  await refused({ ...base, filters: [{ fieldId: "customer.name", op: "eq", value: "x".repeat(501) }] }, "DEFINITION_TOO_LARGE");
+  await refused({ ...base, filters: [{ fieldId: "customer.name", op: "in", value: ["ok", "x".repeat(501)] }] }, "DEFINITION_TOO_LARGE");
+  // The stored size: under every count bound but over 32 KB.
+  await refused({ ...base, presentation: { note: "x".repeat(33 * 1024) } }, "DEFINITION_TOO_LARGE");
+  // At the bounds is NOT over them: the limits are inclusive (this reaches the validator, then the database: DB_TOUCHED proves it passed the bounds).
+  await assert.rejects(() => reports.runReportDefinition({ pool: untouchable }, actor, { definition: { ...base, filters: entries(25, filter), sort: sorts(1) } }), /DB_TOUCHED/);
+});

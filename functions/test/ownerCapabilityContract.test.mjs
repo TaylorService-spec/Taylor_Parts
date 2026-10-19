@@ -177,59 +177,11 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "warehouse.transferOrder.read",
   "workOrder.create",
   "workOrder.transition",
-  // Firebase exit B4 (DECISIONS #B4, migration 1764640000000): the 38 report.* ids and performance.goal.read are registered in PostgreSQL (granted to nobody by that
-  // migration). The Owner's compiled catalog already DECLARES every one of them (OWNER_REPORT_PERMISSIONS, OWNER_ENTERPRISE_PERFORMANCE_AUTHORITY), so they enter this list.
-  // 49 -> 88. The mirrored grants are a separate change.
-  "performance.goal.read",
-  "report.contact.field.customer.read",
-  "report.contact.field.email.read",
-  "report.contact.field.name.read",
-  "report.contact.field.phone.read",
-  "report.contact.field.role.read",
-  "report.contact.read",
-  "report.customer.field.accountOwner.read",
-  "report.customer.field.billingAddress.read",
-  "report.customer.field.billingContact.read",
-  "report.customer.field.commercialProfile.read",
-  "report.customer.field.createdAt.read",
-  "report.customer.field.externalIds.read",
-  "report.customer.field.name.read",
-  "report.customer.field.notes.read",
-  "report.customer.field.paymentTerms.read",
-  "report.customer.field.relationshipTypes.read",
-  "report.customer.field.status.read",
-  "report.customer.field.tags.read",
-  "report.customer.field.taxStatus.read",
-  "report.customer.read",
-  "report.definition.create",
-  "report.definition.delete",
-  "report.definition.duplicate",
-  "report.definition.rename",
-  "report.equipment.field.createdAt.read",
-  "report.equipment.field.customer.read",
-  "report.equipment.field.dates.read",
-  "report.equipment.field.identity.read",
-  "report.equipment.field.location.read",
-  "report.equipment.field.name.read",
-  "report.equipment.field.notes.read",
-  "report.equipment.field.status.read",
-  "report.equipment.read",
-  "report.location.field.accessNotes.read",
-  "report.location.field.address.read",
-  "report.location.field.customer.read",
-  "report.location.field.name.read",
-  "report.location.read",
 ];
 
-// THE B4 REGISTRATIONS AWAITING THEIR GRANT. Registered by migration 1764640000000 (Firebase exit B4) and held by NOBODY in PostgreSQL yet: the grants that mirror the Firebase
-// holders are a separate, Owner-authorized change. The Owner's compiled catalog already declares each of them, so a reconcile of Owner would add them; until that change lands
-// they are the ONE named, exact exception to the subset proof below (and the proof is restored in full when they are granted).
-const B4_AWAITING_GRANT = new Set(OWNER_CONTRACT_IN_VOCABULARY.filter((id) => id.startsWith("report.") || id === "performance.goal.read"));
-
-check("Owner's governed (in-vocabulary) capabilities are exactly the 88 in the contract", () => {
+check("Owner's governed (in-vocabulary) capabilities are exactly the 49 in the contract", () => {
   assert.deepEqual(ownerInVocabulary, [...OWNER_CONTRACT_IN_VOCABULARY].sort());
-  assert.equal(ownerInVocabulary.length, 88, "88 governed capabilities -- the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3) + the 38 report.* ids and performance.goal.read (B4)");
-  assert.equal(B4_AWAITING_GRANT.size, 39);
+  assert.equal(ownerInVocabulary.length, 49, "49 governed capabilities -- the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3)");
 });
 
 check("administration READS do not separate Owner from Administrator", () => {
@@ -264,7 +216,10 @@ check("the SUPERSEDED reorder queue key is not declared on Owner", () => {
 
 check("Owner's legacy declaration of Administration-grant-only keys cannot become a grant by reconcile", () => {
   const declaredAdminOnly = [...OWNER].filter((id) => ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id)).sort();
-  assert.deepEqual(declaredAdminOnly, [
+  // Firebase exit B4: Owner's compiled catalog also declares the 38 report.* ids and performance.goal.read, which are fenced the same way until the mirrored grants are authorized.
+  const b4 = declaredAdminOnly.filter((id) => id.startsWith("report.") || id === "performance.goal.read");
+  assert.equal(b4.length, 39);
+  assert.deepEqual(declaredAdminOnly.filter((id) => !b4.includes(id)), [
     "reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.cancel", "reorder.request.reject",
   ]);
   for (const id of declaredAdminOnly) {
@@ -312,21 +267,12 @@ check("RECONCILE PROOF: Owner's governed declaration is a SUBSET of the live Own
   // only write ids eos_policy already knows, so the rows a seed apply would ADD for role `owner`
   // are exactly (catalog owner set INTERSECT vocabulary) MINUS (live owner set). Proving that
   // difference empty proves the apply is a no-op for Owner.
-  const wouldBeAdded = ownerInVocabulary.filter((id) => !LIVE_OWNER.has(id) && !B4_AWAITING_GRANT.has(id));
+  const wouldBeAdded = ownerInVocabulary.filter((id) => !LIVE_OWNER.has(id));
   assert.deepEqual(
     wouldBeAdded,
     [],
     "removing withheldFromReconciliation: [\"owner\"] must add ZERO grants to the live Owner Role",
   );
-});
-
-check("RECONCILE PROOF: the ONE exception is the B4 registrations awaiting their grant -- registered, held by nobody, and not admin-only (admin declares every one too)", () => {
-  const live = [...B4_AWAITING_GRANT].filter((id) => LIVE_OWNER.has(id) || LIVE_ADMIN.has(id));
-  assert.deepEqual(live, [], "this migration granted nothing");
-  for (const id of B4_AWAITING_GRANT) {
-    assert.ok(VOCABULARY.has(id), id);
-    assert.ok(ADMIN.has(id), `${id}: Administrator declares it as well, so granting it to Owner adds nothing admin-only`);
-  }
 });
 
 check("RECONCILE PROOF: and in particular it adds no ADMIN-ONLY capability", () => {
@@ -430,7 +376,7 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 140 -> 142: crm.activity.read / .create (CRM activity on EOS Core, #243, 1764590000000), mirrored to admin, owner, crmActivityContributor.
   // 142 -> 147: the five finance.visibility.* keys (Firebase exit B1, 1764620000000), mirrored to admin and owner (all five), salesperson (self), salesManager (team) and the three money Roles (consolidated).
   // 147 -> 149: inventory.location.bin.read / .manage (Firebase exit B3, 1764630000000), mirrored to admin, inventoryBinAdministrator (both), owner and the two bin-reading operator Roles (read).
-  // 149 -> 188: the 38 report.* ids and performance.goal.read (Firebase exit B4, 1764640000000), REGISTERED and granted to nobody; the mirrored grants are a separate change.
+  // 149 -> 188: the 38 report.* ids and performance.goal.read (Firebase exit B4, 1764640000000), REGISTERED, granted to nobody, and fenced as Administration-grant-only until the mirrored grants are authorized.
   assert.equal(VOCABULARY.size, 188);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);

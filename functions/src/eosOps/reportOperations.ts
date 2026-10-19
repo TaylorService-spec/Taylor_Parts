@@ -79,7 +79,69 @@ function assertValidName(name: unknown): asserts name is string {
   if ((name as string).length > MAX_NAME_LENGTH) refuse("NAME_TOO_LONG", "INVALID_INPUT", `name exceeds ${MAX_NAME_LENGTH} characters`);
 }
 
+/**
+ * ABUSE BOUNDS (independent review MEDIUM-2). The shared validator proves a definition is well-formed and in-catalog but bounds no COUNT: a 100k-entry filters array or a
+ * megabyte `in` list is "valid" and would be stored and then evaluated against every scanned record. These limits are checked BEFORE the validator on every path that accepts a
+ * definition (save and run), they are cheap (length reads, then one serialisation), and they live HERE rather than in the validator on purpose: that module is the Firebase
+ * engine's own port, kept byte-for-byte in parity with the client copy.
+ */
+export const REPORT_LIMITS = Object.freeze({
+  filters: 25, sort: 5, aggregates: 10, groupBy: 10,
+  // Not in the review: `fields` is the same unbounded-array shape. The catalog has fewer than 100 fields across all four objects, and duplicates are already errors.
+  fields: 100,
+  filterValues: 100, stringValue: 500,
+  definitionBytes: 32 * 1024,
+  savedPerOwner: 200,
+});
+
+function assertWithinReportLimits(definition: unknown): void {
+  if (definition === null || typeof definition !== "object" || Array.isArray(definition)) return; // the validator names that
+  const d = definition as Record<string, unknown>;
+  for (const key of ["filters", "sort", "aggregates", "groupBy", "fields"] as const) {
+    const v = d[key];
+    if (Array.isArray(v) && v.length > REPORT_LIMITS[key]) {
+      refuse("DEFINITION_TOO_LARGE", "INVALID_INPUT", `definition.${key} has ${v.length} entries; at most ${REPORT_LIMITS[key]} are allowed`);
+    }
+  }
+  if (Array.isArray(d.sort)) {
+    const seen = new Set<string>();
+    for (const s of d.sort as Array<{ fieldId?: unknown } | null>) {
+      const id = s?.fieldId;
+      if (typeof id !== "string") continue;
+      if (seen.has(id)) refuse("INVALID_DEFINITION", "INVALID_INPUT", `Invalid report definition: sort: duplicate ${id}`);
+      seen.add(id);
+    }
+  }
+  if (Array.isArray(d.filters)) {
+    for (const f of d.filters as Array<{ value?: unknown } | null>) {
+      const value = f?.value;
+      const values = Array.isArray(value) ? value : [value];
+      if (values.length > REPORT_LIMITS.filterValues) {
+        refuse("DEFINITION_TOO_LARGE", "INVALID_INPUT", `a filter value list has ${values.length} entries; at most ${REPORT_LIMITS.filterValues} are allowed`);
+      }
+      for (const v of values) {
+        if (typeof v === "string" && v.length > REPORT_LIMITS.stringValue) {
+          refuse("DEFINITION_TOO_LARGE", "INVALID_INPUT", `a filter value is longer than ${REPORT_LIMITS.stringValue} characters`);
+        }
+      }
+    }
+  }
+  if (Buffer.byteLength(JSON.stringify(definition), "utf8") > REPORT_LIMITS.definitionBytes) {
+    refuse("DEFINITION_TOO_LARGE", "INVALID_INPUT", `the definition is larger than ${REPORT_LIMITS.definitionBytes} bytes`);
+  }
+}
+
+/** A per-owner cap on saved definitions. Serialised per owner (advisory lock) so two concurrent creates cannot both pass the count. Call INSIDE the write transaction. */
+async function assertOwnerCapacity(c: PoolClient, actor: RecordsActor): Promise<void> {
+  await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`report_definitions:${actor.tenantId}:${actor.principalId}`]);
+  const { rows } = await c.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.report_definitions WHERE tenant_id = $1 AND owner_principal_id = $2`, [actor.tenantId, actor.principalId]);
+  if (Number(rows[0].n) >= REPORT_LIMITS.savedPerOwner) {
+    refuse("TOO_MANY_SAVED_DEFINITIONS", "PRECONDITION_FAILED", `at most ${REPORT_LIMITS.savedPerOwner} saved report definitions per user; delete one first`);
+  }
+}
+
 function assertValidDefinition(definition: unknown): ReportDefinition {
+  assertWithinReportLimits(definition);
   const errors = validateReportDefinition(definition);
   if (errors.length > 0) refuse("INVALID_DEFINITION", "INVALID_INPUT", `Invalid report definition: ${errors.join("; ")}`);
   return definition as ReportDefinition;
@@ -109,30 +171,38 @@ function requireRead(actor: RecordsActor): void {
   if (!actor.capabilities.has(REPORT_DEFINITION_CAPABILITIES.read)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this requires ${REPORT_DEFINITION_CAPABILITIES.read}`);
 }
 
-/** The caller's OWN definition, or NOT_FOUND (identical for "missing" and "someone else's"; the foreign attempt is audited). */
+/** Someone else's definition. Returned (not audited here) so the audit is written AFTER the transaction ends: never a second pool connection while one is held. */
+const FOREIGN = Symbol("foreign-definition");
+
+/** The caller's OWN definition; NOT_FOUND when missing; FOREIGN when it belongs to another Principal (the caller then audits it and answers the same NOT_FOUND). */
 async function loadOwned(
-  c: PoolClient, pool: Pool, actor: RecordsActor, action: string, definitionId: string, lock: boolean,
-): Promise<SavedDefinitionRecord & { readonly objectId: string }> {
+  c: PoolClient, actor: RecordsActor, definitionId: string, lock: boolean,
+): Promise<(SavedDefinitionRecord & { readonly objectId: string }) | typeof FOREIGN> {
   const { rows } = await c.query(
     `SELECT id, name, owner_principal_id, object_id, definition, created_at, updated_at FROM ${SCHEMA}.report_definitions
       WHERE tenant_id = $1 AND id = $2 ${lock ? "FOR UPDATE" : ""}`, [actor.tenantId, definitionId]);
   if (rows.length === 0) return NOT_FOUND();
-  if (rows[0].owner_principal_id !== actor.principalId) {
-    await deniedAudit(pool, actor, action, definitionId, `Denied: actor does not own saved definition "${definitionId}".`);
-    return NOT_FOUND();
-  }
+  if (rows[0].owner_principal_id !== actor.principalId) return FOREIGN;
   return { ...recordOf(rows[0]), objectId: String(rows[0].object_id) };
+}
+
+/** After the transaction: audit the foreign attempt and answer exactly as for a missing id (no existence oracle). */
+async function denyForeign(pool: Pool, actor: RecordsActor, action: string, definitionId: string): Promise<never> {
+  await deniedAudit(pool, actor, action, definitionId, `Denied: actor does not own saved definition "${definitionId}".`);
+  return NOT_FOUND();
 }
 
 export async function createSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
   const i = acceptOnly(input, ["name", "definition"]);
   assertActor(actor);
   assertValidName(i.name);
-  // Structural validation FIRST: a malformed definition is refused before any read or write.
-  const definition = assertValidDefinition(i.definition);
   const id = `rpt_${randomUUID()}`;
+  // The CAPABILITY gate is the cheap check, so it runs before the definition is walked: a caller without the capability learns nothing about validation and costs nothing.
   await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.create, "createReportDefinition", id);
+  // Structural validation next: a malformed definition is refused before any write.
+  const definition = assertValidDefinition(i.definition);
   return inTransaction(deps.pool, "write", async (c) => {
+    await assertOwnerCapacity(c, actor);
     const { rows } = await c.query(
       `INSERT INTO ${SCHEMA}.report_definitions (tenant_id, id, name, owner_principal_id, object_id, definition)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id, name, owner_principal_id, definition, created_at, updated_at`,
@@ -174,8 +244,9 @@ export async function renameSavedReportDefinition(deps: { readonly pool: Pool },
   if (!ID_SHAPE(i.definitionId)) refuse("DEFINITION_ID_REQUIRED", "INVALID_INPUT", "definitionId is required");
   const definitionId = i.definitionId as string;
   await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.rename, "renameReportDefinition", definitionId);
-  return inTransaction(deps.pool, "write", async (c) => {
-    const current = await loadOwned(c, deps.pool, actor, "renameReportDefinition", definitionId, true);
+  const result = await inTransaction(deps.pool, "write", async (c) => {
+    const current = await loadOwned(c, actor, definitionId, true);
+    if (current === FOREIGN) return FOREIGN;
     const { rows } = await c.query(
       `UPDATE ${SCHEMA}.report_definitions SET name = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2
         RETURNING id, name, owner_principal_id, definition, created_at, updated_at`, [actor.tenantId, definitionId, i.name]);
@@ -183,6 +254,7 @@ export async function renameSavedReportDefinition(deps: { readonly pool: Pool },
       { outcome: "applied", objectId: current.objectId }, `Saved report definition "${definitionId}" renamed to "${String(i.name)}".`);
     return recordOf(rows[0]);
   });
+  return result === FOREIGN ? denyForeign(deps.pool, actor, "renameReportDefinition", definitionId) : result;
 }
 
 export async function duplicateSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
@@ -192,10 +264,12 @@ export async function duplicateSavedReportDefinition(deps: { readonly pool: Pool
   if (i.name !== undefined && typeof i.name !== "string") refuse("NAME_INVALID", "INVALID_INPUT", "name must be a string when present");
   const definitionId = i.definitionId as string;
   await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.duplicate, "duplicateReportDefinition", definitionId);
-  return inTransaction(deps.pool, "write", async (c) => {
-    const source = await loadOwned(c, deps.pool, actor, "duplicateReportDefinition", definitionId, false);
+  const result = await inTransaction(deps.pool, "write", async (c) => {
+    const source = await loadOwned(c, actor, definitionId, false);
+    if (source === FOREIGN) return FOREIGN;
     const name = i.name !== undefined ? i.name : `${source.name} (copy)`;
     assertValidName(name);
+    await assertOwnerCapacity(c, actor);
     const id = `rpt_${randomUUID()}`;
     const { rows } = await c.query(
       `INSERT INTO ${SCHEMA}.report_definitions (tenant_id, id, name, owner_principal_id, object_id, definition)
@@ -205,6 +279,7 @@ export async function duplicateSavedReportDefinition(deps: { readonly pool: Pool
       { outcome: "applied", objectId: source.objectId }, `Saved report definition "${definitionId}" duplicated to "${id}".`);
     return recordOf(rows[0]);
   });
+  return result === FOREIGN ? denyForeign(deps.pool, actor, "duplicateReportDefinition", definitionId) : result;
 }
 
 export async function deleteSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
@@ -213,13 +288,15 @@ export async function deleteSavedReportDefinition(deps: { readonly pool: Pool },
   if (!ID_SHAPE(i.definitionId)) refuse("DEFINITION_ID_REQUIRED", "INVALID_INPUT", "definitionId is required");
   const definitionId = i.definitionId as string;
   await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.delete, "deleteReportDefinition", definitionId);
-  return inTransaction(deps.pool, "write", async (c) => {
-    const current = await loadOwned(c, deps.pool, actor, "deleteReportDefinition", definitionId, true);
+  const result = await inTransaction(deps.pool, "write", async (c) => {
+    const current = await loadOwned(c, actor, definitionId, true);
+    if (current === FOREIGN) return FOREIGN;
     await c.query(`DELETE FROM ${SCHEMA}.report_definitions WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, definitionId]);
     await recordsAudit(c, actor, "deleteReportDefinition", "reportDefinition", definitionId,
       { outcome: "applied", objectId: current.objectId }, `Saved report definition "${definitionId}" deleted.`);
     return { deleted: true as const };
   });
+  return result === FOREIGN ? denyForeign(deps.pool, actor, "deleteReportDefinition", definitionId) : result;
 }
 
 // ════════════════════ the record loaders: PostgreSQL rows in the catalog's document shape ════════════════════
@@ -369,9 +446,13 @@ export async function runReportDefinition(deps: { readonly pool: Pool; readonly 
   const maxResultRows = deps.options?.maxResultRows ?? MAX_RESULT_ROWS;
   const maxGroupCardinality = deps.options?.maxGroupCardinality ?? MAX_GROUP_CARDINALITY;
   const maxScanDocs = deps.options?.maxScanDocs ?? MAX_SCAN_DOCS;
+  // `definitionId` is an AUDIT LABEL only: the definition that runs is always the one in `definition` (the client sends the saved body), a run never loads or trusts a stored
+  // row by this id, and an unowned or unknown id is simply recorded as given. It confers no access and is not an existence oracle (independent review, info).
   const definitionId = typeof i.definitionId === "string" ? i.definitionId : `adhoc-${randomUUID()}`;
 
-  // Structural validation FIRST: "never valid" is distinct from "no longer fully authorized", and there is no reliable objectId to audit until it passes.
+  // The cheap abuse bounds, then structural validation. The object capability CANNOT be checked first here: it is named by the definition's own objectId, and a denied run must
+  // be audited against a real, validated objectId. "Never valid" is distinct from "no longer fully authorized".
+  assertWithinReportLimits(i.definition);
   const errors = validateReportDefinition(i.definition);
   if (errors.length > 0) refuse("INVALID_DEFINITION", "INVALID_INPUT", `Invalid report definition: ${errors.join("; ")}`);
   const def = i.definition as ReportDefinition;
