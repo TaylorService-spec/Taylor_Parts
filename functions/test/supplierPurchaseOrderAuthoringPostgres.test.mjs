@@ -307,7 +307,7 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     const onOtherReq = (await one(`SELECT source_request_id AS r FROM eos_ops.supplier_purchase_order_lines WHERE purchase_order_id = $1`, [onOther.purchaseOrderId])).r;
     const withReorderPo = await request();
     await q(`INSERT INTO eos_ops.purchase_orders (id, tenant_id, operating_company_key, part_id, supplier_name, external_po_number, ordered_quantity, ordered_date, created_by)
-             VALUES ($1,'t1','sample-co','PART-A','Legacy','PO-9',10,'2026-10-01','fixture')`, [withReorderPo]);
+             VALUES ($1,'t1','sample-co','PART-A','Legacy','PO-9',10,'2026-10-01',$2)`, [withReorderPo, buyer]);
     const before = await counts();
     const expect = async (fn, code, category) => {
       const err = await refusal(fn);

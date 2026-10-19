@@ -735,7 +735,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // gained receivingOrder.record.read. Reads only -- the Reorder distinction below is untouched.
     // 22 -> 23 and 13 -> 14: performance.goal.read (B4 grants, 1764650000000) -- partsManager and partsAssociate both hold it in Firebase.
     // 23 -> 26 and 14 -> 17: supplier.purchaseOrder.approve / .cancel / .read for partsManager; .create / .send / .read for partsAssociate (P-1, Owner ruling D).
-    assert.equal(manager.capabilities.size, 26);
+    assert.equal(manager.capabilities.size, 28); // the parts-manager persona holds partsManager AND purchasingManager: approve, cancel, read + create, send (P-1) = +5
     assert.equal(associate.capabilities.size, 17);
     assert.equal(manager.surfaces.includes("inventory.reorderQueue"), true);
     assert.equal(associate.surfaces.includes("inventory.reorderQueue"), false);

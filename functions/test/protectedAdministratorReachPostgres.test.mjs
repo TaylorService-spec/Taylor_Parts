@@ -67,7 +67,9 @@ test("only administering call sites opt in to reach: the experience surfaces and
     "eosOps/supplierPurchaseOrderReceiving.ts",
     // Returns intake (ISO-2): the WRITE passes the explicit OPT-OUT `administrationReach: false` (it needs the caller's own Employee and warehouse scope);
     // only the OPTIONS read keeps the default inspect-only reach. No `administrationReach: true` appears in it.
-    "eosOps/returnIntake.ts"]);
+    "eosOps/returnIntake.ts",
+    // Supplier PO authoring (P-1): the buyer picker passes the explicit OPT-OUT `administrationReach: false` (it offers only where the caller can act). No `administrationReach: true` appears in it.
+    "eosOps/supplierPurchaseOrderAuthoring.ts"]);
   const users = files.filter((f) => /\badministrationReach\b(?![A-Za-z])/.test(readFileSync(f, "utf8").replace(/from "[^"]*administrationReach[^"]*"/g, "")))
     .map((f) => f.slice(SRC.length + 1));
   assert.deepEqual(users.filter((f) => !KNOWN.has(f)), [], "a new administrationReach opt-in site needs review");
