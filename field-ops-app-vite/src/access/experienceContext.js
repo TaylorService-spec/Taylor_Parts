@@ -72,6 +72,9 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "receiving.checkIn",
   // Rental (#207): earned server-side by rental.agreement.read only.
   "rental.workspace",
+  // Reporting (Firebase exit B4): Report Builder earned by any report.<object>.read, Saved Reports by reportDefinition.read.
+  "reporting.builder",
+  "reporting.savedReports",
   "service.coordinatedVisits",
   "service.dispatch",
   "service.inboundWork",

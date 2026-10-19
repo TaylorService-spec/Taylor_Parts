@@ -9,7 +9,13 @@
 // leaves the server.
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
+import { EOS_SESSION_SOURCE } from "./eosSessionSource.js";
+import { createImportedHistoryClient } from "../services/eosRecordsClients.js";
 
+// FIREBASE EXIT B4 (DECISIONS #B4; F7f-1): WHICH SOURCE ANSWERS is decided once at BUILD time by the F1 flag. Where an EOS API is declared the section reads
+// eos_ops.imported_service_history through the Operations transport (listImportedServiceHistory: customer.record.read + the caller's operating companies) and the
+// Firebase callable below is never invoked -- not as a fallback, not on failure, not on an empty answer. Everywhere else the callable is the sole source, exactly as
+// before. The two answers have ONE shape, so the section is one component.
 const CALLABLE = "listImportedServiceHistory";
 
 /**
@@ -20,7 +26,7 @@ const CALLABLE = "listImportedServiceHistory";
  * about the same empty space, and a section that showed one for the other would be lying about
  * which one to go and fix.
  */
-export async function fetchImportedServiceHistory(accountId, limit) {
+async function firebaseFetchImportedServiceHistory(accountId, limit) {
   try {
     const res = await httpsCallable(functions, CALLABLE)({ accountId, limit });
     const data = res?.data ?? {};
@@ -34,3 +40,5 @@ export async function fetchImportedServiceHistory(accountId, limit) {
     return { ok: false, code, rows: [], truncated: false };
   }
 }
+
+export const fetchImportedServiceHistory = EOS_SESSION_SOURCE ? createImportedHistoryClient() : firebaseFetchImportedServiceHistory;

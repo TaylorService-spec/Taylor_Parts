@@ -19,6 +19,14 @@ import {
   EQUIPMENT_IMPORT_REFUSAL_MESSAGE,
   importRefusedByEquipmentAuthority,
 } from "../config/catalogAuthority.js";
+import { EOS_SESSION_SOURCE } from "./eosSessionSource.js";
+import { createDataImportClient } from "../services/eosRecordsClients.js";
+
+// FIREBASE EXIT B4 (DECISIONS #B4; F7f-2): WHICH SOURCE ANSWERS is decided once at BUILD time by the F1 flag. Where an EOS API is declared the three functions below call
+// the Operations transport (stageDataImport / executeDataImport / listDataImportJobs: admin.dataImport.execute + the caller's operating company) and the Firebase callables
+// are never invoked; everywhere else they are the sole source, exactly as before. The client-side Catalog / Equipment refusals below apply to BOTH sources: they decide
+// what an entity type may do, not where it runs.
+const eosImport = EOS_SESSION_SOURCE ? createDataImportClient() : null;
 
 const STAGE_CALLABLE = "stageDataImport";
 const EXECUTE_CALLABLE = "executeDataImport";
@@ -50,7 +58,8 @@ async function call(name, payload) {
 }
 
 /** Stage a file. Returns either a staged job or an unstaged mapping-validation result. */
-export function stageDataImport({ fileName, fileText = null, fileBase64 = null, entityType = null, mapping = null }) {
+export function stageDataImport({ fileName, fileText = null, fileBase64 = null, entityType = null, mapping = null, operatingCompanyKey = null }) {
+  if (eosImport) return eosImport.stage({ fileName, fileText, fileBase64, entityType, mapping, operatingCompanyKey });
   return call(STAGE_CALLABLE, { fileName, fileText, fileBase64, entityType, mapping });
 }
 
@@ -91,10 +100,12 @@ export function equipmentImportRefusal(entityType) {
 export function executeDataImport(jobId, entityType) {
   const refusal = catalogImportRefusal(entityType) ?? equipmentImportRefusal(entityType);
   if (refusal) return Promise.resolve(refusal);
+  if (eosImport) return eosImport.execute(jobId);
   return call(EXECUTE_CALLABLE, { jobId, approved: true });
 }
 
 export function listDataImportJobs() {
+  if (eosImport) return eosImport.list();
   return call(LIST_CALLABLE, {});
 }
 

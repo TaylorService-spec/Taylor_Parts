@@ -13,6 +13,9 @@
 // THE TRANSPORT MOVES TARGETS, NEVER ACTUALS. Pairing a target with a measurement is the dashboard's
 // job, done against each domain's own read -- see domain/goalProgress.js.
 
+import { EOS_SESSION_SOURCE } from "../access/eosSessionSource.js";
+import { createPerformanceGoalClient } from "./eosRecordsClients.js";
+
 function mapErrorToStatus(err) {
   const raw = err && typeof err.code === "string" ? err.code : "";
   const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
@@ -38,7 +41,7 @@ async function invoke(name, payload) {
  * Returns { result } (the callable's { results, onDate } envelope, passed through verbatim) or
  * { errorStatus } -- never throws. An empty target list short-circuits without a round trip.
  */
-export async function fetchCurrentPerformanceGoals(targets, onDate) {
+async function firebaseFetchCurrentPerformanceGoals(targets, onDate) {
   if (!Array.isArray(targets) || targets.length === 0) {
     return { result: { results: [], onDate } };
   }
@@ -50,7 +53,7 @@ export async function fetchCurrentPerformanceGoals(targets, onDate) {
 }
 
 /** Every version for ONE target, oldest first -- the management history view. */
-export async function fetchPerformanceGoalVersions(target) {
+async function firebaseFetchPerformanceGoalVersions(target) {
   try {
     return { result: await invoke("listPerformanceGoalVersions", { target }) };
   } catch (err) {
@@ -64,10 +67,18 @@ export async function fetchPerformanceGoalVersions(target) {
  * OFFERED == ACCEPTED: the server returns the SAME visibility set the write commands enforce, so a
  * picker cannot offer a person the command would then refuse.
  */
-export async function fetchGoalSubjects() {
+async function firebaseFetchGoalSubjects() {
   try {
     return { result: await invoke("listGoalSubjects", {}) };
   } catch (err) {
     return { errorStatus: mapErrorToStatus(err) };
   }
 }
+
+// FIREBASE EXIT B4 (DECISIONS #B4; F7d): WHICH SOURCE ANSWERS is decided once at BUILD time by the F1 flag. Where an EOS API is declared the three reads go to the Operations
+// transport (listCurrentPerformanceGoals / listPerformanceGoalVersions / listGoalSubjects: performance.goal.read, the four factors translated to EOS reach, and the caller's
+// operating companies) and the Firebase callables above are never invoked -- not as a fallback, not on failure. The shapes are identical, so no screen changes.
+const eosGoals = EOS_SESSION_SOURCE ? createPerformanceGoalClient() : null;
+export const fetchCurrentPerformanceGoals = eosGoals ? eosGoals.fetchCurrentPerformanceGoals : firebaseFetchCurrentPerformanceGoals;
+export const fetchPerformanceGoalVersions = eosGoals ? eosGoals.fetchPerformanceGoalVersions : firebaseFetchPerformanceGoalVersions;
+export const fetchGoalSubjects = eosGoals ? eosGoals.fetchGoalSubjects : firebaseFetchGoalSubjects;
