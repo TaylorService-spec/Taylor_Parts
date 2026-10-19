@@ -503,7 +503,7 @@ describe("the Part list on a 320px phone", () => {
 });
 
 // UI PERMISSION PARITY (PERM-UI, 2026-10-19): New Part / Edit need inventory.catalog.manage; Status needs
-// inventory.catalog.activate. A non-holder sees no control; the server still decides on every call.
+// inventory.catalog.part.activate. A non-holder sees no control; the server still decides on every call.
 describe("PERM-UI: Part Master controls are offered only to their capability holders", () => {
   it("a non-holder sees the list and no New Part, Edit or Status", async () => {
     setup({ hasCapability: () => false });
@@ -522,10 +522,16 @@ describe("PERM-UI: Part Master controls are offered only to their capability hol
   });
 
   it("an activate holder sees Status, but not New Part or Edit", async () => {
-    setup({ hasCapability: (c) => c === "inventory.catalog.activate" });
+    setup({ hasCapability: (c) => c === "inventory.catalog.part.activate" });
     await screen.findByText("PRT-1001");
     expect(screen.getAllByRole("button", { name: "Status" }).length).toBe(PART_ROWS.length);
     expect(screen.queryByRole("button", { name: "New Part" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("GRANT-1 A1: a holder of the old key alone (now the Supplier status key) does not see Part Status", async () => {
+    setup({ hasCapability: (c) => c === "inventory.catalog.activate" });
+    await screen.findByText("PRT-1001");
+    expect(screen.queryByRole("button", { name: "Status" })).toBeNull();
   });
 });

@@ -291,7 +291,7 @@ export default function PartMasterList(props) {
   const loadedParts = state.parts ?? NO_PARTS;
   const parts = useMemo(() => sortRows(loadedParts, localSort, CLIENT_SORT_COLUMNS), [loadedParts, localSort]);
   // UI PERMISSION PARITY (PERM-UI): create / edit are offered only to holders of inventory.catalog.manage, and a status change
-  // only to holders of inventory.catalog.activate -- the capabilities the governed Part commands enforce. The server still decides.
+  // only to holders of inventory.catalog.part.activate -- the capabilities the governed Part commands enforce. The server still decides.
   const canManage = props?.hasCapability?.(PART_CATALOG_GATE.manage) === true;
   const canActivate = props?.hasCapability?.(PART_CATALOG_GATE.activate) === true;
   const actions = !canManage ? null : (

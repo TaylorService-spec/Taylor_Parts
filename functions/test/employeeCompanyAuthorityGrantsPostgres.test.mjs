@@ -426,6 +426,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // Firebase exit B4 appended 1764640000000 (records and reporting on EOS): its down refuses only if a row was written to its tables, and nothing here wrote one, so it is peeled first.
     // B4 report / goal parity (1764650000000) wrote only role_capabilities rows, so its down is clean here and it is peeled before the migration that registered the keys.
     // P-1 supplier PO authoring (1764660000000): its down refuses only if an order, a number, a command record, a decision or a direct grant names it, and nothing here wrote one, so it is peeled first of all.
+    // GRANT-1 Owner policy grants (1764670000000): its down refuses only if an Administration decision or a direct grant names the new key or one of its pairs, and nothing here wrote one, so it is peeled before P-1.
+    if ((await newest()) === "1764670000000_owner-policy-grants") migrate("down", 1);
     if ((await newest()) === "1764660000000_supplier-po-authoring") migrate("down", 1);
     if ((await newest()) === "1764650000000_b4-report-goal-grant-parity") migrate("down", 1);
     if ((await newest()) === "1764640000000_records-reporting-on-eos") migrate("down", 1);

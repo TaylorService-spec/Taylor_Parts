@@ -122,7 +122,7 @@ export const CATALOG_MUTATION_OPERATIONS = Object.freeze([
   "createPartAlias",
   "deactivatePartAlias",
   "reactivatePartAlias",
-  // Firebase exit F5: postgresManufacturerWriter.ts (inventory.catalog.manage; status needs inventory.catalog.activate).
+  // Firebase exit F5: postgresManufacturerWriter.ts (inventory.catalog.manage; status needs inventory.catalog.part.activate).
   "createManufacturer",
   "updateManufacturer",
   "changeManufacturerStatus",

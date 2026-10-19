@@ -243,7 +243,7 @@ export async function updateManufacturer(
 }
 
 /**
- * ACTIVE <-> INACTIVE, under `inventory.catalog.activate`.
+ * ACTIVE <-> INACTIVE, under `inventory.catalog.part.activate` (GRANT-1 A1 split from `inventory.catalog.activate`).
  *
  * The Firestore command's transition rule is the whole of it: the two statuses are the only ones, and changing to
  * the status the record already has is a REFUSAL there (InvalidStatusTransitionError, "manufacturer already X"),

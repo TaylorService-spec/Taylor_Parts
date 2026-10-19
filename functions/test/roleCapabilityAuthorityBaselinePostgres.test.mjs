@@ -166,9 +166,10 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // inventoryStockRelocationOperator: read); no new holder.
   // 632 -> 659 (MIGRATION_BACKED 574 -> 601): migration 1764660000000, P-1 governed supplier purchase order authoring (DECISIONS #P-1, Owner ruling D 2026-10-19) -- the five
   // supplier.purchaseOrder.* keys to the ruled Roles (create 3, send 3, approve 4, cancel 4, read 13 = 27 pairs); no new holder beyond the ruling.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 659);
+  // 659 -> 689 (MIGRATION_BACKED 601 -> 631): migration 1764670000000, GRANT-1 Owner policy grants (2026-10-19) -- A1 2 + A2 4 + A3a 2 + A3b 6 + A4 4 new (the 4 inventory.catalog.read rows were already held) + A7 12 = 30 pairs; no new holder beyond the brief.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 689);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 601, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 631, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

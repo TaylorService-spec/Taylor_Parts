@@ -218,6 +218,8 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("inventory.catalogAdmin", "Catalog Admin", [
     { capabilityKey: "inventory.catalog.manage" },
     { capabilityKey: "inventory.catalog.activate" },
+    // GRANT-1 A1: part / manufacturer status has its own key; the door opens for it as well.
+    { capabilityKey: "inventory.catalog.part.activate" },
   ]),
   surface("inventory.balances", "Stock Position", [
     { capabilityKey: "inventory.transaction.read" },

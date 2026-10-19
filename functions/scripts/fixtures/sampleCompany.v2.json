@@ -1250,6 +1250,7 @@
       "inventory.catalog.cost.edit",
       "inventory.catalog.cost.read",
       "inventory.catalog.manage",
+      "inventory.catalog.part.activate",
       "inventory.catalog.read",
       "inventory.cycleCount.cancel",
       "inventory.cycleCount.close",
@@ -1476,8 +1477,7 @@
           "inventory.cycleCount.submit",
           "inventory.cycleCount.reconcile",
           "inventory.stock.receive",
-          "inventory.transfer.create",
-          "equipment.model.manage"
+          "inventory.transfer.create"
         ],
         "expectedSurfaces": [
           "employees.directory",

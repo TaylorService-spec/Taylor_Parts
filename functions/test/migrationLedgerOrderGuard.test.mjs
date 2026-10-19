@@ -218,8 +218,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 105 -> 106: 1764640000000 -- Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): the 38 report.* ids and performance.goal.read REGISTERED (39 capabilities, granted to nobody), plus eos_ops.imported_service_history, data_import_jobs, report_definitions and performance_goals. APPENDED, an EXPLAINED pending migration.
 // 106 -> 107: 1764650000000 -- B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored role-capability grants for the 39 registered B4 keys; no capability, no schema. APPENDED, an EXPLAINED pending migration.
 // 107 -> 108: 1764660000000 -- P-1 governed supplier purchase order authoring (DECISIONS #P-1, resolves OD-B3-1): five supplier.purchaseOrder.* capabilities, 27 Owner-ruled grants, the order stamps, the lines' source request / price / release columns, the SPO number counter and the authoring idempotency record. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 108;
-const TRACKED_MIGRATION_COUNT = 109; // the 108 runnable + the one deferred file
+// 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): one capability (inventory.catalog.part.activate) and 30 Owner-ruled grants (A1, A2, A3a, A3b, A4, A7); no schema. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 109;
+const TRACKED_MIGRATION_COUNT = 110; // the 109 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -279,6 +280,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764640000000_records-reporting-on-eos",
   "1764650000000_b4-report-goal-grant-parity",
   "1764660000000_supplier-po-authoring",
+  "1764670000000_owner-policy-grants",
 ]);
 
 const repoMigrations = () =>

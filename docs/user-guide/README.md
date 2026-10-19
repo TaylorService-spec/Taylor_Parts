@@ -28,6 +28,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   "Not switched on".
 - [View and manage manufacturers](./inventory/view-manufacturers.md) — see the list, add a manufacturer,
   correct a name, and make one Active or Inactive.
+- [Change a part's status](./inventory/change-a-part-status.md) — who can move a part to its next
+  allowed status, and how it differs from supplier status.
 
 ## Customers
 

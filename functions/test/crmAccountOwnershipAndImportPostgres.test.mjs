@@ -347,7 +347,7 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     assert.deepEqual([await ownerOf("acct-precond"), (await history("acct-precond")).length], ["e-a", 1], "the stale first assignment became a handoff");
     // A stale expected OWNER refuses too; the matching one proceeds as a handoff.
     await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-b" }), code("ACCOUNT_OWNER_CHANGED_SINCE_READ"));
-    await accounts.updateAccount(deps, UPDATER, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-a", ownershipHandoff: { source: "ADMIN_CORRECTION" } });
+    await accounts.updateAccount(deps, UPDATER, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-a", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
     assert.deepEqual((await history("acct-precond")).map((r) => [r.event, r.previous_owner_employee_id, r.new_owner_employee_id]),
       [["INITIAL_OWNER_ASSIGNMENT", null, "e-a"], ["OWNER_HANDOFF", "e-a", "e-c"]]);
     // A refused precondition rolls back the other fields of the same command.
@@ -432,6 +432,15 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     assert.equal((await history(target.accountId)).length, 0, "a refused administrative handoff wrote history");
     assert.equal(await ownerOf(target.accountId), "e-a");
     await accounts.updateAccount(deps, A1, { accountId: target.accountId, ownerEmployeeId: "e-b", ownershipHandoff: { source: "DIRECT_HANDOFF" } });
+    // GRANT-1 A3-REASON: even the holder of ownership.handoff.correct must state WHY; refused before any write (blank, whitespace and absent alike).
+    const before = (await history(target.accountId)).length;
+    for (const source of ["ADMIN_CORRECTION", "CUSTOMER_HANDOFF_REVIEW"]) {
+      for (const handoff of [{ source }, { source, reason: "   " }, { source, reason: null }]) {
+        await assert.rejects(accounts.updateAccount(deps, UPDATER, { accountId: target.accountId, ownerEmployeeId: "e-c", ownershipHandoff: handoff }), code("REASON_REQUIRED"), JSON.stringify(handoff));
+      }
+    }
+    assert.equal((await history(target.accountId)).length, before, "a refused reasonless correction wrote history");
+    assert.equal(await ownerOf(target.accountId), "e-b");
     await accounts.updateAccount(deps, UPDATER, { accountId: target.accountId, ownerEmployeeId: "e-c", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
     assert.deepEqual((await history(target.accountId)).map((r) => [r.source, r.changed_by]), [["DIRECT_HANDOFF", "p-t1"], ["ADMIN_CORRECTION", "p-updater"]]);
   });

@@ -225,11 +225,11 @@ export const conditionIsEvaluableFor = (capabilityKey: string): boolean =>
 export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new Set([
   "reorder.request.approve",
   "reorder.request.reject",
-  "reorder.request.startPurchasing",
-  "reorder.request.postPurchasingUpdate",
+  // GRANT-1 A7 (Owner 2026-10-19, migration 1764670000000): reorder.request.startPurchasing / .postPurchasingUpdate / .recordPurchaseOrder LEFT this fence when the
+  // explicit grants (admin, dispatcher, purchasingManager; generalManager for postPurchasingUpdate) replaced it -- the verified Firebase purchasing parity. The technician
+  // declaration stays a non-default through CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT below (Owner: technicians are excluded).
   "reorder.request.markReceived",
   "reorder.request.cancel",
-  "reorder.request.recordPurchaseOrder",
   "reorder.purchaseOrder.void",
   // Controller ruling DQ-011 (2026-09-28; migration 1763856000000): workOrder.parts.plan is registered with NO
   // default grant. The legacy catalog declares it on the compatibility admin Role (which composes the whole
@@ -244,7 +244,7 @@ export const ADMINISTRATION_GRANT_ONLY_CAPABILITIES: ReadonlySet<string> = new S
   // Controller TRUCK INVENTORY ACTIVATION OD-T6 (2026-10-01; migration 1764410000000): resolve a scanned identifier. The
   // compiled catalog declares it on admin (whole-catalog composition) and on the lookup Role; neither is a default. Its
   // holders are the inventoryLookupReader composition, granted through Administration.
-  "inventory.catalog.alias.read",
+  // (GRANT-1 A7, migration 1764670000000: inventory.catalog.alias.read LEFT this fence -- admin and inventoryStockRelocationOperator are now explicit grants, as in Firebase.)
 ]);
 
 export type GrantAuthoritySource =
@@ -301,6 +301,10 @@ export const CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT: ReadonlySet<string> = 
   ["dispatcher", "reorder.request.assign"], ["dispatcher", "reorder.request.read.queue"],
   ["partsManager", "reorder.request.read.queue"], ["purchasingManager", "reorder.request.read.queue"],
   ["technician", "reorder.purchaseOrder.create"], ["technician", "reorder.purchaseOrder.read"],
+  // GRANT-1 A7 (Owner 2026-10-19): the Firebase grant of these three to the technician was CONDITIONED (assignee-only), and the Owner excluded technicians from the
+  // parity grant. The keys left ADMINISTRATION_GRANT_ONLY_CAPABILITIES (migration 1764670000000), so the technician's legacy catalog declaration is fenced PAIR-LEVEL:
+  // a reconcile reports it as ADMINISTRATION_ONLY and never imports it.
+  ["technician", "reorder.request.startPurchasing"], ["technician", "reorder.request.postPurchasingUpdate"], ["technician", "reorder.request.recordPurchaseOrder"],
   // Owner ruling 3, #242 (F7a, 2026-10-17): inventory.returns.intake is held by ONE Role, the memberless
   // inventoryReturnsIntakeClerk (migration 1764580000000). admin's whole-catalog composition is not a default; the
   // Administrator gets it the way anyone does, through a governed, audited assignment.

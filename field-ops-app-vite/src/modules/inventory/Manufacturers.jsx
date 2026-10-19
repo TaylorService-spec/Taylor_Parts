@@ -5,7 +5,7 @@
 // services/manufacturerCatalogClient.js -> the Catalog API's listManufacturers (eos_ops.manufacturers;
 // inventory.catalog.read AND inventory.manufacturer.read). WRITES -- New Manufacturer, Rename, Status -- go through
 // the same client to createManufacturer / updateManufacturer / changeManufacturerStatus (postgresManufacturerWriter.ts:
-// inventory.catalog.manage, and inventory.catalog.activate for status). The server decides who may; a refusal is
+// inventory.catalog.manage, and inventory.catalog.part.activate for status). The server decides who may; a refusal is
 // shown as the server's answer, the Supplier administration pattern (DECISIONS #196). The concurrency token is the
 // row's `updatedAt`, which the list hands out.
 //
@@ -129,7 +129,7 @@ export function buildManufacturersPresentation(state, sort = null, canCreate = t
 }
 
 export default function Manufacturers({ commands = manufacturerCommands, hasCapability } = {}) {
-  // UI PERMISSION PARITY (PERM-UI): New / Rename need inventory.catalog.manage, Status needs inventory.catalog.activate --
+  // UI PERMISSION PARITY (PERM-UI): New / Rename need inventory.catalog.manage, Status needs inventory.catalog.part.activate --
   // the capabilities the governed Manufacturer commands enforce. The server still decides on every call.
   const canManage = hasCapability?.(PART_CATALOG_GATE.manage) === true;
   const canActivate = hasCapability?.(PART_CATALOG_GATE.activate) === true;
