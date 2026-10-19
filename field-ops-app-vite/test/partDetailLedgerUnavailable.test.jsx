@@ -28,6 +28,13 @@ vi.mock("../src/hooks/useInventoryLedger", () => ({
   useInventoryLedger: () => ledgerState.current,
 }));
 
+// B3-x: the governed balance read. OFF unless a test states otherwise (the environment has not switched it on).
+const balanceState = vi.hoisted(() => ({ current: { status: "OFF", balance: null } }));
+vi.mock("../src/hooks/usePartBalance.js", () => ({
+  BALANCE_STATUS: { OFF: "OFF", LOADING: "LOADING", READY: "READY", DENIED: "DENIED", FAILED: "FAILED" },
+  usePartBalance: () => balanceState.current,
+}));
+
 const reorderRequestState = vi.hoisted(() => ({ current: { data: null, loading: false, error: null, refresh: () => {} } }));
 vi.mock("../src/hooks/useReorderRequests", () => ({
   useReorderRequestForPart: () => reorderRequestState.current,
@@ -98,6 +105,7 @@ const CANONICAL_OK = {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  balanceState.current = { status: "OFF", balance: null };
 });
 
 const renderWithLedger = async (ledger) => {
@@ -124,13 +132,47 @@ describe("PartDetail -- a failed ledger read is UNAVAILABLE, never an empty hist
     await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: null });
     expect(screen.getByText(/No ledger movements have been recorded for this part/)).toBeTruthy();
     expect(screen.getByText(/No movements have been recorded against this part/)).toBeTruthy();
-    expect(screen.queryByText(/unavailable/i)).toBeNull();
+    // (B3-x: the empty state now also offers the manual-quantity Request Reorder, whose warehouse picker may state its own
+    // availability; what must stay absent is the LEDGER bands' unavailable sentences.)
+    expect(screen.queryByText(/stock forecast is unavailable/)).toBeNull();
+    expect(screen.queryByText(/movements are unavailable/)).toBeNull();
+  });
+
+  it("B3-x: a Part the ledger has NOTHING on can still be requested for -- the entry that needs no forecast", async () => {
+    await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: null });
+    expect(screen.getByRole("button", { name: "Request Reorder" })).toBeTruthy();
+    expect(screen.getByLabelText("Manual reorder quantity")).toBeTruthy();
   });
 
   it("while the ledger is loading neither band claims emptiness", async () => {
     await renderWithLedger({ transactions: [], healthEntries: [], loading: true, error: null });
     expect(screen.queryByText(/No ledger movements have been recorded/)).toBeNull();
     expect(screen.queryByText(/No movements have been recorded against this part/)).toBeNull();
+  });
+
+  it("B3-x: where the governed balance answers, Part Detail shows it -- UNKNOWN as Unknown, On Order as its figure, locations by warehouse", async () => {
+    const K = (value) => ({ state: "KNOWN", value });
+    balanceState.current = { status: "READY", balance: {
+      onHand: K(13), reserved: K(3), available: K(10), onOrder: K(7), byLocation: [{ warehouseId: "wh-1", quantity: 13 }],
+    } };
+    await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: null });
+    const stock = screen.getByLabelText("Governed stock position");
+    expect(stock.textContent).toMatch(/On Hand.*13/);
+    expect(stock.textContent).toMatch(/Reserved.*3/);
+    expect(stock.textContent).toMatch(/Available.*10/);
+    expect(screen.getByLabelText("On hand by warehouse").textContent).toMatch(/wh-1.*13/);
+    expect(screen.getByText("7")).toBeTruthy(); // On Order
+    expect(screen.queryByText(/Locations can.t be listed yet/)).toBeNull();
+  });
+
+  it("B3-x: a refused or failed balance read says so -- it is neither the switched-off sentence nor a zero", async () => {
+    balanceState.current = { status: "DENIED", balance: null };
+    await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: null });
+    expect(screen.getByText(/not available to your role/)).toBeTruthy();
+    cleanup();
+    balanceState.current = { status: "FAILED", balance: null };
+    await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: null });
+    expect(screen.getByText(/could not be read\. This is not a statement about how much there is/)).toBeTruthy();
   });
 
   it("a successful read with movements is unaffected", async () => {

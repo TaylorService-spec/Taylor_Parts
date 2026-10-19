@@ -23,3 +23,7 @@ After submitting, the request enters review. You can track it in the queues furt
 ## Related
 - [Review a reorder request](review-a-reorder-request.md)
 - [Find a part and check its stock](find-a-part.md)
+
+## A part with nothing in the ledger
+
+A part with no stock and no recorded movement in your warehouses is exactly the part you may need to order, and it has no forecast to show. Its detail page now says so, and still offers **Request Reorder**: choose the warehouse, type the whole-number quantity you want, and submit. The same permission as for **Needs planning** parts applies (Administrator, Parts Manager or Warehouse Manager). The request enters review exactly like any other.

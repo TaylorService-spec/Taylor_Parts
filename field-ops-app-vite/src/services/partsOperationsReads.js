@@ -94,6 +94,27 @@ export const fetchInventoryPosition = ({ partIds = null, warehouseId = null } = 
 export const fetchInventoryMovements = ({ partIds = null, limit } = {}, options) =>
   call("readInventoryMovements", { ...(partIds ? { partIds } : {}), ...(limit ? { limit } : {}) }, options);
 
+/** One Part's on-hand / reserved / available / on-order (readPartBalance): each figure { state: KNOWN|UNKNOWN|NOT_COUNTED_BY_QUANTITY, value }. */
+export const fetchPartBalance = (partId, options) => call("readPartBalance", { partId }, options);
+
+/**
+ * The balance in the shape the Part lookup consumes (`projection.byLocation[].locationId`). Pure; the server's figures pass through
+ * untouched (UNKNOWN is never turned into 0 here), only the warehouse key is renamed to the lookup's location key.
+ */
+export const balanceProjection = (result) => ({
+  onHand: result?.onHand, reserved: result?.reserved, available: result?.available, onOrder: result?.onOrder,
+  byLocation: (Array.isArray(result?.byLocation) ? result.byLocation : []).map((l) => ({ locationId: l.warehouseId, quantity: l.quantity })),
+});
+
+/** The scan lookup's balance envelope: `{ result }` or `{ errorStatus }` (a refusal is `permission-denied`, never an empty balance). */
+export async function fetchBalanceForScan({ partId }, options) {
+  try {
+    return { result: balanceProjection(await fetchPartBalance(partId, options)) };
+  } catch (err) {
+    return { errorStatus: err?.code === "FORBIDDEN" ? "permission-denied" : "internal", errorDetail: err?.message ?? null };
+  }
+}
+
 export const fetchReceivingLocationOptions = (reorderRequestId, options) =>
   call("listReceivingLocationOptions", { reorderRequestId }, options);
 
@@ -119,6 +140,8 @@ export async function fetchReorderReceivingLocationOptions(reorderRequestId, opt
     const choices = (result?.options ?? []).filter((o) => o.type === "WAREHOUSE").map((o) => Object.freeze({ value: o.locationId, label: o.label }));
     return { status: "ready", options: choices };
   } catch (err) {
-    return { status: OUTCOME_BY_CODE[err?.code] ?? "unavailable", options: [] };
+    // B3-x: the server's own refusal sentence travels with the bounded status ("no receivable Reorder Request in your warehouse scope"),
+    // so a screen can say WHY rather than a generic "not found".
+    return { status: OUTCOME_BY_CODE[err?.code] ?? "unavailable", options: [], message: typeof err?.message === "string" ? err.message : null };
   }
 }

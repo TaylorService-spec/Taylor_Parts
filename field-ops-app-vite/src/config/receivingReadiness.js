@@ -1,3 +1,8 @@
+// FIREBASE EXIT B3-x: in an EOS build the supplier-PO receiving client (services/eosSupplierReceivingClient.js) is NEVER gated by this
+// constant -- the server decides authority on every call. What this constant still decides is (1) the Firebase callable transport below,
+// dead code in an EOS build, and (2) whether the Scan hub OFFERS Receive and the offline receive binding is live. config/environments.json
+// sets it TRUE for the nonprod platform-sandbox (the old DQ-034 reason, "the Firebase receive is unused", predates B3) and FALSE elsewhere.
+//
 // EI Receiving -- the SINGLE fail-closed write-readiness seam for the Receiving callable
 // transport (LF1b).
 //

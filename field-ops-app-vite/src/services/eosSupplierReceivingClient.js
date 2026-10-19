@@ -92,7 +92,9 @@ export function createSupplierReceivingClient({ call = callReorderApi } = {}) {
       // Refused CLIENT-SIDE without any call: a malformed request never reaches the server.
       if (built === null) return { status: RECEIVING_OUTCOME.INVALID, receipt: null };
       const res = await callOp(SUPPLIER_RECEIVING_OPERATIONS.receive, built, call);
-      if (!res.ok) return { status: supplierReceivingOutcomeForFailure(res), receipt: null };
+      // B3-x: the SERVER'S refusal wording travels with the bounded status. "conflict" alone hides the reason (a PRECONDITION_FAILED is not a
+      // conflict); the sentence is the command's own, e.g. "the purchase order is not in a receivable state".
+      if (!res.ok) return { status: supplierReceivingOutcomeForFailure(res), receipt: null, message: typeof res.message === "string" && res.message !== "" ? res.message : null };
       const receipt = validateCanonicalReceiveResponse(res.result);
       if (receipt === null) return { status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null };
       return { status: receipt.outcome === "replayed" ? RECEIVING_OUTCOME.REPLAYED : RECEIVING_OUTCOME.APPLIED, receipt };

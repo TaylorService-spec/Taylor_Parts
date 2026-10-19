@@ -126,3 +126,10 @@ zero.
 
 - [Receive a purchase order](receive-a-purchase-order.md) — the single-part reorder journey
 - [Add and manage a part's barcodes and identifiers](manage-part-identifiers.md) — what makes a scan resolve
+
+## The order number, and what a refusal says
+
+- **Order number.** When the purchase order has a number on it (the number the supplier knows it by), the queue and the top of the receiving screen show it. An order without one still says **No order number recorded**; the screen never shows the platform's internal id in its place.
+- **If a receipt is refused**, the message is the platform's own reason (for example, that the order is not in a receivable state) followed by **Nothing was received**. It no longer says only "conflict".
+- **A reorder purchase order outside your warehouse.** The queue can list reorder purchase orders that belong to a warehouse you do not work in. Opening one now says **Outside your warehouse** and why, instead of "Purchase order not found".
+- Every control on the screen (Add, Undo Last Scan, Clear Queue, Submit Receipt) has a spoken name for screen readers.

@@ -25,6 +25,7 @@ import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./synth
 import { currentMobileLocationIds } from "./mobileStockAuthority.js";
 import { listTruckViews } from "./truckRegistryAdministration.js";
 import { administrationReachTargets } from "./administrationReach.js";
+import { resolveCompanyAuthority } from "./companyAuthority.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -138,6 +139,114 @@ export async function readInventoryOnHand(deps: { readonly pool: Pool }, actor: 
     const totals = new Map<string, number>();
     for (const r of out) totals.set(r.partId, (totals.get(r.partId) ?? 0) + r.onHand);
     return { scopedWarehouseIds: scope, mobileLocationIds: mine, rows: out, totals: [...totals.entries()].map(([partId, onHand]) => ({ partId, onHand })) };
+  });
+}
+
+// ════════════════════ part balance (Firebase exit B3-x) ════════════════════
+//
+// ONE governed read of a Part's on-hand, reserved, available and on-order -- the EOS replacement for the Firebase getPartBalance
+// (inventory/partBalanceReadService.ts), with the SAME ratified arithmetic and the SAME three-valued figures:
+//   KNOWN                    a number
+//   UNKNOWN                  the evidence to answer is missing -- NEVER rendered or computed as 0
+//   NOT_COUNTED_BY_QUANTITY  a serial-tracked Part is counted by unit, never by summed quantity
+//
+//   onHand     Σ signed quantity_delta of NONE-tracked WAREHOUSE / BIN movements at ACTIVE warehouses (a bin is its warehouse's stock; a
+//              truck is excluded by design), floored at 0. UNKNOWN when the caller's scope holds no movement evidence for the Part.
+//   reserved   max(0, RESERVED - RELEASED - CONSUMED) over the Part's Work Order commitments (fulfillmentAvailability.ts
+//              openWorkOrderReserved). A commitment names no location, so reserved is company-wide, never per warehouse. No commitment row
+//              is a known 0 (the reservation ledger is written on every reservation).
+//   available  max(0, onHand - reserved); UNKNOWN whenever onHand is.
+//   onOrder    the Reorder Purchase Orders still ORDERED in the caller's warehouse scope + the remaining quantity of canonical supplier
+//              purchase orders in a receivable status (APPROVED / SENT); UNKNOWN when no purchase order mentions the Part.
+//   byLocation on-hand by warehouse (warehouses holding nothing are omitted), so a breakdown always adds up to its own total.
+//
+// SCOPE. Capability first (inventory.transaction.read, the on-hand read's key -- no new capability, no new holder), then company: none at
+// all is a refusal. Movements and commitments are filtered to the caller's operating companies IN THE WHERE and warehouses to the caller's
+// WAREHOUSE scope, so an out-of-scope row is absent from every figure and nothing about it is disclosed. A read only: nothing may be
+// committed on the strength of this projection.
+const SERIAL_CONTROL_TYPES: readonly string[] = Object.freeze(["SERIALIZED", "SERIALIZED_LOT"]);
+const RECEIVABLE_SUPPLIER_STATUSES: readonly string[] = Object.freeze(["APPROVED", "SENT"]);
+
+export type BalanceFigure = { readonly state: "KNOWN" | "UNKNOWN" | "NOT_COUNTED_BY_QUANTITY"; readonly value: number | null };
+const KNOWN = (value: number): BalanceFigure => Object.freeze({ state: "KNOWN" as const, value });
+const UNKNOWN: BalanceFigure = Object.freeze({ state: "UNKNOWN" as const, value: null });
+const NOT_QUANTITY: BalanceFigure = Object.freeze({ state: "NOT_COUNTED_BY_QUANTITY" as const, value: null });
+
+export async function readPartBalance(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
+  requireCapability(actor, INVENTORY_ON_HAND_READ);
+  const i = acceptOnly(input, ["partId"]);
+  if (!ID(i.partId)) refuse("PART_ID_REQUIRED", "INVALID_INPUT", "partId is required");
+  const partId = i.partId as string;
+  return withReadSnapshot(deps.pool, async (c) => {
+    const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "reading stock balances requires operating-company authority; this principal has none");
+    }
+    const keys = [...authority.companyKeys];
+    const part = await c.query(`SELECT control_type::text AS control_type FROM eos_ops.parts WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, partId]);
+    if (part.rows.length === 0) refuse("PART_NOT_FOUND", "NOT_FOUND", "no such Part");
+    const serialTracked = SERIAL_CONTROL_TYPES.includes(String(part.rows[0].control_type));
+    const scope = await presentableScope(c, actor);
+
+    // ---- on order: Reorder POs (warehouse scope + company) and canonical supplier POs (company) ----
+    const reorderPos = scope.length === 0 ? { rows: [] as Array<Record<string, unknown>> } : await c.query(
+      `SELECT r.status::text AS status, po.ordered_quantity
+         FROM eos_ops.reorder_requests r
+         JOIN eos_ops.purchase_orders po ON po.tenant_id = r.tenant_id AND po.id = r.id
+        WHERE r.tenant_id = $1 AND r.part_id = $2 AND r.operating_company_key = ANY($3::text[]) AND r.warehouse_id = ANY($4::text[])`,
+      [actor.tenantId, partId, keys, scope]);
+    const supplierLines = await c.query(
+      `SELECT p.status AS status, GREATEST(l.ordered_quantity - COALESCE(rc.received, 0), 0)::int AS remaining
+         FROM eos_ops.supplier_purchase_order_lines l
+         JOIN eos_ops.supplier_purchase_orders p ON p.tenant_id = l.tenant_id AND p.id = l.purchase_order_id
+         LEFT JOIN LATERAL (
+           SELECT sum(rl.received_quantity) AS received
+             FROM eos_ops.receiving_orders ro
+             JOIN eos_ops.receiving_order_lines rl ON rl.tenant_id = ro.tenant_id AND rl.receiving_order_id = ro.id
+            WHERE ro.tenant_id = p.tenant_id AND ro.source_kind::text = 'PURCHASE_ORDER' AND ro.source_purchase_order_id = p.id
+              AND ro.status::text <> 'CANCELLED' AND rl.line_id = l.line_id) rc ON TRUE
+        WHERE l.tenant_id = $1 AND l.part_id = $2 AND p.operating_company_key = ANY($3::text[])`,
+      [actor.tenantId, partId, keys]);
+    const sawOrder = reorderPos.rows.length + supplierLines.rows.length > 0;
+    const outstanding =
+      reorderPos.rows.filter((r) => r.status === "ORDERED").reduce((n, r) => n + Number(r.ordered_quantity), 0)
+      + supplierLines.rows.filter((r) => RECEIVABLE_SUPPLIER_STATUSES.includes(String(r.status))).reduce((n, r) => n + Number(r.remaining), 0);
+    const onOrder = sawOrder ? KNOWN(outstanding) : UNKNOWN;
+
+    if (serialTracked) {
+      return { partId, trackingMode: "SERIAL", scopedWarehouseIds: scope, onHand: NOT_QUANTITY, reserved: NOT_QUANTITY, available: NOT_QUANTITY, onOrder,
+        byLocation: [] as Array<{ warehouseId: string; quantity: number }> };
+    }
+
+    // ---- on hand, by governing warehouse ----
+    const stock = scope.length === 0 ? { rows: [] as Array<Record<string, unknown>> } : await c.query(
+      `SELECT x.warehouse_id, sum(x.quantity_delta)::int AS quantity, (w.status::text = 'ACTIVE') AS active
+         FROM (SELECT m.quantity_delta, ${GOVERNING_WAREHOUSE("m.tenant_id", "m.location_type", "m.location_id")} AS warehouse_id
+                 FROM eos_ops.inventory_movements m
+                WHERE m.tenant_id = $1 AND m.part_id = $2 AND m.tracking_mode = 'NONE' AND m.location_type::text IN ('WAREHOUSE', 'BIN')
+                  AND m.operating_company_key = ANY($3::text[])) x
+         JOIN eos_ops.warehouses w ON w.tenant_id = $1 AND w.id = x.warehouse_id
+        WHERE x.warehouse_id = ANY($4::text[])
+        GROUP BY x.warehouse_id, w.status
+        ORDER BY x.warehouse_id`,
+      [actor.tenantId, partId, keys, scope]);
+    const sawStock = stock.rows.length > 0;
+    const activeRows = stock.rows.filter((r) => r.active === true);
+    const onHandValue = Math.max(0, activeRows.reduce((n, r) => n + Number(r.quantity), 0));
+    const onHand = sawStock ? KNOWN(onHandValue) : UNKNOWN;
+
+    // ---- reserved: company-wide Work Order commitments ----
+    const commitments = await c.query(
+      `SELECT COALESCE(SUM(CASE event_type WHEN 'RESERVED' THEN quantity ELSE -quantity END), 0)::int AS net
+         FROM eos_ops.inventory_commitments
+        WHERE tenant_id = $1 AND part_id = $2 AND operating_company_key = ANY($3::text[])`,
+      [actor.tenantId, partId, keys]);
+    const reserved = KNOWN(Math.max(0, Number(commitments.rows[0]?.net ?? 0)));
+    const available = onHand.state === "KNOWN" ? KNOWN(Math.max(0, (onHand.value ?? 0) - (reserved.value ?? 0))) : UNKNOWN;
+    const byLocation = activeRows.filter((r) => Number(r.quantity) > 0)
+      .map((r) => ({ warehouseId: String(r.warehouse_id), quantity: Number(r.quantity) }))
+      .sort((a, b) => (b.quantity - a.quantity) || a.warehouseId.localeCompare(b.warehouseId));
+    return { partId, trackingMode: "NONE", scopedWarehouseIds: scope, onHand, reserved, available, onOrder, byLocation };
   });
 }
 

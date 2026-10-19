@@ -171,6 +171,17 @@ test("MUTATION PROOF: the canonical PO document id is never promoted to an order
   }
 });
 
+test("B3-x (RCV-G5 revised): a supplier row shows the order's externalPoNumber when the server states one, the stated absence when not", () => {
+  const withNumber = buildSupplierQueueRow(supplierPo({ externalPoNumber: " PO-77123 " }), {});
+  assert.equal(withNumber.orderReference, "PO-77123");
+  assert.equal(withNumber.open.purchaseOrderId, "fs-auto-id-9pQ7xW", "the id still travels only as the navigation argument");
+  for (const blank of [null, undefined, "", "   ", 42]) {
+    const row = buildSupplierQueueRow(supplierPo({ externalPoNumber: blank }), {});
+    assert.equal(row.orderReference, null, `${String(blank)} is an absence`);
+    assert.equal(row.orderReferenceAbsence, "No order number recorded");
+  }
+});
+
 test("a reorder row renders its governed external PO number and NEVER the reorderRequestId", () => {
   const withNumber = buildReorderQueueRow(candidate());
   assert.equal(withNumber.orderReference, "TP-88112");
@@ -200,7 +211,8 @@ test("PROVENANCE PIN: orderReference comes from externalPoNumber and NOTHING els
   assert.match(reorderBuilder, /orderReference: typeof row\.externalPoNumber/);
   assert.doesNotMatch(reorderBuilder, /orderReference:[^,\n]*reorderRequestId/);
   const supplierBuilder = src.slice(src.indexOf("function buildSupplierQueueRow"), src.indexOf("function buildReorderQueueRow"));
-  assert.match(supplierBuilder, /orderReference: null/);
+  // RCV-G5 revised (Firebase exit B3-x): a supplier row's reference is the order's externalPoNumber and nothing else.
+  assert.match(supplierBuilder, /orderReference: typeof po\.externalPoNumber/);
   assert.doesNotMatch(supplierBuilder, /orderReference:[^,\n]*purchaseOrderId/);
   // The ids appear ONLY inside the opaque navigation argument.
   assert.match(supplierBuilder, /open: \{ journey: RECEIVING_JOURNEY\.SUPPLIER, purchaseOrderId: po\.purchaseOrderId \}/);
@@ -216,7 +228,8 @@ test("GATE CONTRACT: the corrected Quick Gate asserts the real crumb and never i
   assert.match(gate, /=== "Inventory → Receiving"/);
   assert.match(gate, /\(await crumb\.count\(\)\) === 1/);
   // Order reference: journey-conditional truth, no id-shape heuristic anywhere.
-  assert.match(gate, /orderPrimary !== "No order number recorded"/);
+  // (B3-x, RCV-G5 revised: a supplier row carries its externalPoNumber or states the absence -- the gate asserts it is never EMPTY.)
+  assert.match(gate, /supplier row has an empty Order reference/);
   assert.doesNotMatch(gate, /\{18,28\}|id-?shaped token/i);
 });
 

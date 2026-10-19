@@ -923,3 +923,6 @@ functions/scripts/exportBinSnapshot.js
 functions/scripts/loadSupplierPoFixture.js
 functions/test/supplierPoFixtureLoaderPostgres.test.mjs
 functions/migrations/1764630000000_warehouse-receiving-bins-on-eos.sql
+# Firebase exit B3-x (DECISIONS #B3-x): inventory and purchasing gap closure -- the Part balance read, receipts, receipt correction, serial lookup.
+functions/test/partBalancePostgres.test.mjs
+functions/src/eosOps/partsReads.ts

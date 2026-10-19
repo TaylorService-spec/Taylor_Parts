@@ -21,3 +21,14 @@
 ## Related
 - [Request a reorder](request-a-reorder.md)
 - [Log an inventory action](log-an-inventory-action.md)
+
+## The governed stock position (where it is switched on)
+
+In an environment where the stock-balance read is switched on (the nonprod environments), a part's detail page and the **Scan > Look up** screen show the part's **On Hand**, **Reserved**, **Available** and **On Order**, and on the part page where the on-hand sits, warehouse by warehouse.
+
+- **On Hand** is the stock in the warehouses (and their bins) you work in, for your company. A truck is not warehouse stock and is never counted here.
+- **Reserved** is what open work orders have claimed, for your company. It is not tied to a place, so it is shown once, not per warehouse.
+- **Available** is On Hand minus Reserved, never below zero.
+- **On Order** is what is still on its way: reorder purchase orders not yet received (in your warehouses) plus the part of each supplier purchase order that has not been received.
+- **Unknown** means nothing has been recorded that could answer. It is **never** a zero. A serialized part shows **Counted by unit**: its units are tracked one by one, not as a quantity.
+- If you are not allowed to read balances, or the read failed, the page says that in words instead of showing a number.

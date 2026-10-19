@@ -54,6 +54,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readSupplierPurchaseOrderProgress",
   "listSupplierReceivingLocationOptions",
   "listLegacyInventoryActionNotes",
+  // Firebase exit B3-x: one Part's on-hand / reserved / available / on-order.
+  "readPartBalance",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */

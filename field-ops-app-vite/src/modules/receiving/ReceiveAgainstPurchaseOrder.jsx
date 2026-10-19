@@ -112,7 +112,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     // listReceivingLocationOptions callable, which read Firestore warehouses the PostgreSQL receipt does not accept.
     const [locationsRes, partsRes] = await Promise.all([fetchReorderReceivingLocationOptions(c.receiptSource?.reorderRequestId), readPartsForView([c.partId])]);
     if (!mountedRef.current || generation !== locationRequestGenerationRef.current) return;
-    setLocations({ status: locationsRes.status, options: locationsRes.options ?? [] });
+    setLocations({ status: locationsRes.status, options: locationsRes.options ?? [], message: locationsRes.message ?? null });
     setPartTracking(resolvePartTrackingMode({ partsFetchResult: partsRes, partId: c.partId }));
   }
 
@@ -219,6 +219,16 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
       return <Frame onBack={restart} candidate={candidate}><FailureState title="No Receiving Location" message="No eligible receiving location is available." /></Frame>;
     }
     if (locations.status !== "ready") {
+      // B3-x: a Reorder PO outside the caller's warehouse scope is REAL (the queue lists the Reorder queue's scope, receiving is decided by
+      // warehouse scope) and is told as exactly that, with the server's own sentence -- not as a missing purchase order.
+      if (locations.status === "not_found") {
+        return (
+          <Frame onBack={restart} candidate={candidate}>
+            <FailureState title="Outside your warehouse"
+              message={`${locations.message ?? "This purchase order is not receivable in a warehouse you work in."} Ask a warehouse member who works there to receive it.`} />
+          </Frame>
+        );
+      }
       // "not activated" (readiness false) or a genuine denied/other -> sanitized honest copy.
       const d = describeReceiveOutcome(locations.status);
       return <Frame onBack={restart} candidate={candidate}><FailureState title={d.title} message={d.message} /></Frame>;

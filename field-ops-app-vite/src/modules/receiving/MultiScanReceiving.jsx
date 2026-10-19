@@ -220,6 +220,8 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   const warehouse = useWarehouseSubmit({ offline: deps?.offline });
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
+  /** The SERVER'S own refusal sentence (B3-x), when it stated one; the bounded status above is only a fallback. */
+  const [errorMessage, setErrorMessage] = useState(null);
   const scanRef = useRef(null);
   // Generated ONCE per submission intent and reused across a retry of that intent, so a
   // double-click or a reconnect cannot apply the same receipt twice.
@@ -269,6 +271,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
 
   const submit = async () => {
     setError(null);
+    setErrorMessage(null);
     const lines = buildSubmissionLines(reconciliation);
     if (lines === null || !locationId) return;
     const request = {
@@ -293,7 +296,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           // retryable and becomes queued work rather than an error the operator cannot act on.
           return res.status === RECEIVING_OUTCOME.UNAVAILABLE
             ? { ok: false, error: { code: "unavailable" } }
-            : { ok: false, error: { code: "failed-precondition", details: res.status } };
+            : { ok: false, error: { code: "failed-precondition", details: res.status, message: res.message ?? null } };
         },
         // SERIALS INDIVIDUALLY. One serial is one physical unit; collapsing them into a count would
         // lose the identities the server needs to refuse a duplicate.
@@ -330,6 +333,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         setError(NOT_DURABLE_TEXT);
       } else {
         setError(outcome?.error?.details ?? outcome?.error?.code ?? "internal");
+        setErrorMessage(typeof outcome?.error?.message === "string" ? outcome.error.message : null);
       }
     } finally {
       setSubmitting(false);
@@ -390,7 +394,8 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         ) : null}
         <h2 className="fo-receiving-session__title">{progress.supplierName ?? "Supplier Purchase Order"}</h2>
         <p className="fo-muted">
-          No order number recorded
+          {/* RCV-G5 (revised, B3-x): the order's governed number when the server states one; otherwise the absence, stated. */}
+          {progress.externalPoNumber ? <>Order <strong>{progress.externalPoNumber}</strong></> : "No order number recorded"}
           {" · "}receipt progress <strong>{progress.derivedState.replace(/_/g, " ").toLowerCase()}</strong>
           {storedStatusWords ? <> · order status {storedStatusWords}</> : null}
           {" · "}{progress.lines.length} line{progress.lines.length === 1 ? "" : "s"}
@@ -455,7 +460,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
             placeholder="Serial (serialized parts only)"
             onChange={(e) => setTypedSerial(e.target.value)}
           />
-          <Button type="submit" variant="primary" disabled={!typedScan.trim()}>Add</Button>
+          <Button type="submit" variant="primary" disabled={!typedScan.trim()} aria-label="Add">Add</Button>
         </form>
         <p className="fo-muted">
           {reconciliation.scanCount} scan{reconciliation.scanCount === 1 ? "" : "s"} ·{" "}
@@ -463,10 +468,11 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           Scanning records what you saw; nothing moves until you submit.
         </p>
         <div className="fo-chip-row">
-          <Button type="button" variant="secondary" disabled={reconciliation.scanCount === 0} onClick={() => setQueue(undoLastScan)}>
+          {/* B3-x: each control carries an explicit accessible name (the runtime proof found these unnamed). */}
+          <Button type="button" variant="secondary" disabled={reconciliation.scanCount === 0} onClick={() => setQueue(undoLastScan)} aria-label="Undo Last Scan">
             Undo Last Scan
           </Button>
-          <Button type="button" variant="tertiary" disabled={reconciliation.scanCount === 0} onClick={() => setQueue(clearQueue)}>
+          <Button type="button" variant="tertiary" disabled={reconciliation.scanCount === 0} onClick={() => setQueue(clearQueue)} aria-label="Clear Queue">
             Clear Queue
           </Button>
         </div>
@@ -572,8 +578,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           <p className="fo-inline-error" role="alert">{NOT_DURABLE_TEXT}</p>
         ) : error ? (
           <p className="fo-inline-error" role="alert">
-            The receipt was not accepted ({String(error).toLowerCase()}). Nothing was received — reload
-            the order and try again.
+            {errorMessage
+              ? <>The receipt was not accepted: {errorMessage.replace(/\.+$/, "")}. Nothing was received.</>
+              : <>The receipt was not accepted ({String(error).toLowerCase()}). Nothing was received — reload the order and try again.</>}
           </p>
         ) : null}
         <Button
@@ -592,6 +599,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
                 : undefined
           }
           onClick={submit}
+          aria-label={submitting ? "Submitting…" : "Submit Receipt"}
         >
           {submitting ? "Submitting…" : "Submit Receipt"}
         </Button>

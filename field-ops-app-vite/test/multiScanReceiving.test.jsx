@@ -245,6 +245,17 @@ describe("Multi-scan receiving (submission and receipt)", () => {
     expect(alert.textContent).toMatch(/nothing was received/i);
   });
 
+  it("B3-x: a refusal shows the SERVER'S own sentence, not the bounded word 'conflict'", async () => {
+    const d = deps({ submitCanonicalReceive: vi.fn().mockResolvedValue({
+      status: RECEIVING_OUTCOME.CONFLICT, receipt: null, message: "purchase order is not in a receivable state.",
+    }) });
+    await readyToSubmit(d);
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/The receipt was not accepted: purchase order is not in a receivable state\. Nothing was received\./);
+    expect(alert.textContent).not.toMatch(/\(conflict\)/);
+  });
+
   it("a destination is required before submitting", async () => {
     await openOrder(deps());
     scanPart("P1");
@@ -317,6 +328,25 @@ describe("Frame 1b — journey identity and RCV-G5/G7 truth rules", () => {
     expect(session.querySelectorAll("h2")).toHaveLength(1);
     expect(session.querySelector("h2").textContent).toBe("Acme");
     expect(screen.getByText(/No order number recorded/)).toBeTruthy();
+  });
+
+  it("B3-x (RCV-G5 revised): the order's governed number shows when the server states one -- and the opaque id still never does", async () => {
+    await openOrder(deps({
+      fetchPurchaseOrderProgress: vi.fn().mockResolvedValue({
+        status: RECEIVING_OUTCOME.READY, progress: progress({ externalPoNumber: "TP-88112" }),
+      }),
+    }));
+    const session = document.querySelector(".fo-receiving-session");
+    expect(session.textContent).toContain("TP-88112");
+    expect(screen.queryByText(/No order number recorded/)).toBeNull();
+    expect(session.textContent).not.toContain("PO-1");
+  });
+
+  it("B3-x: the Add / Undo / Clear / Submit controls each carry an accessible name", async () => {
+    await openOrder(deps());
+    for (const name of ["Add", "Undo Last Scan", "Clear Queue", "Submit Receipt"]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-label")).toBe(name);
+    }
   });
 
   it("MUTATION PROOF: the opaque purchaseOrderId never renders inside the session", async () => {
