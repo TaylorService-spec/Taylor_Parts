@@ -21,7 +21,7 @@
 //
 // COMPANY (#235 / #237): capability first, then company. A caller with no operating-company authority is REFUSED, never answered with an empty list.
 import type { Pool, PoolClient } from "pg";
-import { visibleEmployeeIdsFor, type PrincipalPosition } from "../access/hierarchicalVisibility.js";
+import { visibleEmployeeIdsFor, type PrincipalPosition } from "../access/hierarchicalVisibilityCore.js";
 import { currentGoalFor, GoalError, type PerformanceGoal } from "../performance/performanceGoal.js";
 import { findMetric, isScopeBindable, type GoalScopeType } from "../performance/performanceMetricRegistry.js";
 import { scopedWarehouseIds } from "./partsReads.js";
