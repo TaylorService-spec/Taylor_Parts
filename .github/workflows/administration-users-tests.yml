@@ -39,6 +39,9 @@ on:
       - "field-ops-app-vite/test/changeHistoryModel.test.mjs"
       - "field-ops-app-vite/test/administrationUsersSurfaces.test.jsx"
       - "field-ops-app-vite/test/adminUsersDirectory.test.jsx"
+      # The EOS sign-in panel: a completed action is confirmed, a refusal is never shown as one.
+      - "field-ops-app-vite/src/modules/administration/EmployeeLoginAccount.jsx"
+      - "field-ops-app-vite/test/employeeLoginAccountNotice.test.jsx"
       # Scheduling PR-2: the Employee record's Work Schedule tab.
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkSchedule.jsx"
       - "field-ops-app-vite/src/domain/employeeWorkSchedule.js"
@@ -143,7 +146,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: The rendered surfaces -- the governed Employee directory, the record page, the retained editor, history (vitest)
-        run: npx vitest run test/administrationUsersSurfaces.test.jsx test/adminUsersDirectory.test.jsx
+        run: npx vitest run test/administrationUsersSurfaces.test.jsx test/adminUsersDirectory.test.jsx test/employeeLoginAccountNotice.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Employee operating profile (Employee design v4.1) on the Workforce transport -- record, self view, client, pure domain (vitest)
