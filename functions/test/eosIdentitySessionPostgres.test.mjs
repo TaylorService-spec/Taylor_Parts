@@ -235,7 +235,7 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     // The B4 registration migration's down refuses while ANY Role grant holds one of its keys (by design: it never destroys a governed grant), and the grant
     // migration's own down removes only the rows it stamped -- so the fixture's copies are removed here, exactly as the baseline-copy fixture added them.
     await q(`DELETE FROM eos_policy.role_capabilities rc USING eos_policy.capabilities c
-              WHERE c.id = rc.capability_id AND rc.granted_by = 'idn-fixture' AND (c.key LIKE 'report.%' OR c.key = 'performance.goal.read')`);
+              WHERE c.id = rc.capability_id AND rc.granted_by = 'idn-fixture' AND (c.key LIKE 'report.%' OR c.key = 'performance.goal.read' OR c.key = 'inventory.catalog.part.activate')`); // + GRANT-1 (1764670000000): its down refuses while a Role grant it did not write holds the new key
     const down = migrate("down");
     assert.notEqual(down.status, 0);
     assert.match(`${down.stdout}${down.stderr}`, /refusing to drop principal_identities/);

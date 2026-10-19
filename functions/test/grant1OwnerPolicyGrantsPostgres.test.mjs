@@ -94,10 +94,10 @@ test("GRANT-1 Owner policy grants on PostgreSQL: stamped grants, the capability 
 
   await t.test("A1: a Parts Manager activates a Part and a Manufacturer but is refused Supplier status; the existing activator keeps all three; the old key alone opens neither", async () => {
     const pmPerson = await person("uid-grant1-pm", ["partsManager"]);
-    const adminPerson = await person("uid-grant1-admin", ["admin"]);
     const actor = async (who, roles) => ({ tenantId: TENANT, principalId: who.principalId, capabilities: await capsOf(...roles) });
     const pm = await actor(pmPerson, ["partsManager"]);
-    const admin = await actor(adminPerson, ["admin"]);
+    // The admin Role cannot be assigned to a fixture person; the admin actor is the admin Role's capability set (read from its grants) on a tenant member.
+    const admin = await actor(pmPerson, ["admin"]);
     const oldKeyOnly = { tenantId: TENANT, principalId: pmPerson.principalId, capabilities: new Set([OLD_KEY]) };
     const deps = { pool };
 
@@ -160,6 +160,6 @@ test("GRANT-1 Owner policy grants on PostgreSQL: stamped grants, the capability 
     assert.equal(after.includes("partsAssociate|inventory.stock.receive"), false, "an Administration ADMIN_REVOKED is honoured -- never re-granted");
     assert.equal(after.includes("warehouseManager|" + NEW_KEY), true, "another current holder of the old key keeps Part and Manufacturer activation");
     assert.equal(after.length, before - 1 + 1, "one pair withheld (revoked), one carried (the other holder), nothing else");
-    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capability_decisions WHERE tenant_id = $1 AND decision = 'ADMIN_REVOKED' AND superseded_at IS NULL`, [TENANT])).rows[0].n, 1, "the decision stands");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capability_decisions WHERE tenant_id = $1 AND role_key = 'partsAssociate' AND capability_key = 'inventory.stock.receive' AND decision = 'ADMIN_REVOKED' AND superseded_at IS NULL`, [TENANT])).rows[0].n, 1, "the decision stands");
   });
 });

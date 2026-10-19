@@ -146,6 +146,8 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   // Assignment map shares that field name with the Reorder seam and is a DIFFERENT authority. It is pure data:
   // it writes no ownership, reads none at runtime, and nothing in the product imports it.
   "src/eosOps/migration/assignedToUserIdCensus.ts": "NOT APPLICABLE",
+  // Firebase exit B4 (records and reporting on EOS): the report engine READS eos_crm.accounts.owner_employee_id to project the governed `accountOwner` report field. It writes no ownership.
+  "src/eosOps/reportOperations.ts": "NOT APPLICABLE",
   // The pure rule the bounded backfill scripts consume.
   "src/ownership/ownershipBackfillRules.ts": "LEGACY",
   // PostgreSQL / migration modules no callable can reach.

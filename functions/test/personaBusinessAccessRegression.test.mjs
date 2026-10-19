@@ -1317,7 +1317,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // partsAssociate and technician -- so its presence says nothing about being on the service
     // operations team. service.dispatch is the narrow one: two Roles, and it is what the dispatcher
     // persona is for.
-    assert.equal((await holdersOf("workOrder.create")).length, 11);
+    assert.equal((await holdersOf("workOrder.create")).length, 12); // 11 -> 12: serviceInboundWorkReviewer (GRANT-1 A3b, 1764670000000)
     assert.equal((await holdersOf("workOrder.transition")).length, 11);
     for (const personaKey of ["parts-associate", "service-technician-a", "office-manager"]) {
       const r = await resolvePersona(personaKey);
