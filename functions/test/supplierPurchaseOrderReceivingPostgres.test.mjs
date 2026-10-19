@@ -399,6 +399,22 @@ test("Supplier purchase order receiving on PostgreSQL: the whole closure or none
     assert.deepEqual(await counts(), before, "no receipt, movement, number, audit, exception or version");
   });
 
+  await t.test("replay BEFORE the version check: a lost-response retry carrying the ORIGINAL expectedVersion is replayed, not a false 412; a NEW receipt on that stale version still conflicts", async () => {
+    const id = await order({ lines: [["L1", "PART-A", 6]] });
+    const req = request(id, { idempotencyKey: "k-replay-version", expectedVersion: 0, lines: [{ lineId: "L1", partId: "PART-A", receivedQuantity: 3 }] });
+    const original = await run(req);
+    assert.equal(original.outcome, "applied");
+    assert.equal(original.version, 1, "the receipt moved the order's version, so the retry's expectedVersion 0 is now stale");
+    const before = await counts();
+    const retry = await run(req);
+    assert.equal(retry.outcome, "replayed", "the retry the offline queue sends after a lost response");
+    assert.equal(retry.receivingId, original.receivingId);
+    assert.deepEqual(await counts(), before, "nothing is received twice");
+    const stale = await refusal(() => run(request(id, { idempotencyKey: "k-new-stale", expectedVersion: 0, lines: [{ lineId: "L1", partId: "PART-A", receivedQuantity: 1 }] })));
+    assert.equal(stale.code, "RECEIPT_VERSION_CONFLICT", "the concurrency token still guards a genuinely NEW receipt");
+    assert.deepEqual(await counts(), before);
+  });
+
   await t.test("a DIFFERENT request under a used key is refused (IDEMPOTENCY_CONFLICT); the key cannot be borrowed by another actor or order", async () => {
     const id = await order({ lines: [["L1", "PART-A", 9]] });
     await run(request(id, { idempotencyKey: "k-shared", lines: [{ lineId: "L1", partId: "PART-A", receivedQuantity: 3 }] }));

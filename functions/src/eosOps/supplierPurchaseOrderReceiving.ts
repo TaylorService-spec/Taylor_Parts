@@ -348,7 +348,13 @@ export async function receiveSupplierPurchaseOrder(
     }
 
     // ---- 5. VALIDATE THE WHOLE BATCH, before any write (the shared validator) ----
-    const validated = validateReceivingBatch(input, { resolved, partsByPartId });
+    // A same-key RETRY of a receipt that already committed is a REPLAY (decided in step 6, writing nothing). The `expectedVersion` it carries is the
+    // order's version BEFORE that receipt; the receipt itself moved the version, so checking it here would answer a lost-response retry (the offline
+    // queue's normal case) with a false 412 although nothing is received twice. The replay is decided before the version check: the concurrency token
+    // guards a NEW apply only. (Firebase exit B3-x, Logan's receiving proof.)
+    const priorReceipt = (await client.query(
+      `SELECT 1 FROM ${SCHEMA}.receiving_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, receivingId])).rows.length > 0;
+    const validated = validateReceivingBatch(priorReceipt ? { ...input, expectedVersion: undefined } : input, { resolved, partsByPartId });
     if (!validated.valid) {
       const category: ReceiveFailureCategory =
         validated.reason === "over_receipt" || validated.reason === "line_already_satisfied" || validated.reason === "part_inactive"

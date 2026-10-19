@@ -661,6 +661,8 @@ export async function receiveReorderStockWithin(
     }
 
     // ---- 6. VALIDATE THE WHOLE BATCH, before any write ----
+    // (Checked for the same false-412 as the supplier receive, Firebase exit B3-x: a Reorder PO's `resolved.version` is the constant 0 -- the legacy
+    // chain has no revisions and a receipt never moves it -- so a retry carrying expectedVersion 0 still matches. No change needed here.)
     const validated = validateReceivingBatch(input, { resolved, partsByPartId });
     if (!validated.valid) {
       const category: ReceiveFailureCategory =
