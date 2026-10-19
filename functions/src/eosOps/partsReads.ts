@@ -287,7 +287,7 @@ const RECEIPT_COLUMNS = `r.id, r.receiving_order_number, r.status::text AS statu
   EXISTS (SELECT 1 FROM eos_ops.receiving_corrections k WHERE k.tenant_id = r.tenant_id AND k.receiving_order_id = r.id) AS corrected`;
 
 /** The SQL condition (over alias `r`, company keys at `param`): a receipt belongs to one company and is visible only to callers who reach it (ISO inventory: Reorder receipts too). */
-const RECEIPT_COMPANY_SQL = (param: number) => `r.operating_company_key = ANY(${param}::text[])`;
+const RECEIPT_COMPANY_SQL = (param: number) => `r.operating_company_key = ANY($${param}::text[])`;
 
 const receiptOf = (r: Record<string, unknown>) => ({
   receiptId: r.id, receivingOrderNumber: r.receiving_order_number, status: r.status, sourceKind: r.source_kind,

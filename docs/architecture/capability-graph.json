@@ -3793,13 +3793,14 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4086,11 +4087,12 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/inventoryScanCapabilityAccess.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4122,6 +4124,7 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
@@ -4129,7 +4132,7 @@
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 9,
-        "clientReferenceCount": 7,
+        "clientReferenceCount": 8,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4161,13 +4164,14 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 9,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4197,10 +4201,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4231,13 +4236,14 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 8,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4268,13 +4274,14 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4307,10 +4314,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
         "serverReferenceCount": 9,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4340,10 +4348,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inventoryScreenCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
         "serverReferenceCount": 6,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

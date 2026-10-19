@@ -119,7 +119,8 @@ test("protected Administrator reach over queues and warehouses -- administering,
     // company (rule 4). This Administrator has no Employee and so no company: the read is refused, not widened by reach. (The reach itself -- the
     // scopedWarehouseIds assertion above -- is unchanged; it is what an Administrator WITH company authority is then narrowed to.)
     const onHand = await call({ subject: ADMIN_SUBJECT }, "/operations/inventory", "readInventoryOnHand", {});
-    assert.deepEqual([onHand.status, onHand.body.code], [403, "COMPANY_AUTHORITY_REQUIRED"], JSON.stringify(onHand.body).slice(0, 300));
+    assert.equal(onHand.status, 403, JSON.stringify(onHand.body).slice(0, 300));
+    assert.match(onHand.body.message, /requires operating-company authority; this principal has none/, JSON.stringify(onHand.body).slice(0, 300));
     for (const id of ["WH-OFF", "WH-NOKEY", "WH-OTHER"]) {
       assert.equal((await decide(ADMIN_SUBJECT, "warehouse.record.read", "WAREHOUSE", id)).allowed, false, `${id} is never reached`);
     }

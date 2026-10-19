@@ -390,7 +390,9 @@ test("PostgreSQL Receiving: one transaction, the whole business closure or none 
     const err = await refusal(() => run(receipt(id, {
       receivingLocation: { type: "WAREHOUSE", locationId: "wh-dormant" },
     })));
-    assert.equal(err.code, "OPERATING_COMPANY_NOT_GOVERNED");
+    // ISO inventory (#235/#237): a Reorder of a company with no ACTIVE key is a company nobody holds authority over, so it now reads as nonexistent
+    // (the company filter precedes the binding check). It still fails closed and writes nothing.
+    assert.equal(err.code, "REORDER_NOT_FOUND");
     assert.deepEqual(await counts(), before, "no receipt, no movement, no number, no closeout");
   });
 

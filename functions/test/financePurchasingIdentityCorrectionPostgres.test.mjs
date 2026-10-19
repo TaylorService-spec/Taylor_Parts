@@ -436,7 +436,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     const auditBefore = await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1`, [TENANT]);
     const corrected = await correct(adminWho, { receivingId: r1, correction: "CORRECTED", reason: "admin re-receive",
       replacement: { receivingLocation: WH_T, lines: [{ lineId: "L1", partId: "P-ADM1", receivedQuantity: 1 }] }, idempotencyKey: "adm-corr" });
-    refused(corrected, 403, "FORBIDDEN", /only an Employee can correct a receipt|outside your warehouse scope/, "CORRECTED by standing");
+    refused(corrected, 403, "FORBIDDEN", /only an Employee can correct a receipt|outside your warehouse scope|requires operating-company authority/, "CORRECTED by standing"); // ISO inventory: company authority is decided first, and standing implies no company
     assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1`, [TENANT]), auditBefore, "a refusal writes nothing");
     // VOID (the reversal) is administration: applied, audited, history kept.
     assert.equal(ok(await correct(adminWho, { receivingId: r1, correction: "VOID", reason: "admin reversal (G2)", idempotencyKey: "adm-void" }), "VOID by standing").outcome, "applied");
@@ -449,7 +449,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     assert.equal(asAdmin.status === 200, false, `receiving by standing must be refused: ${JSON.stringify(asAdmin.body).slice(0, 200)}`);
     // The receiving picker offers nothing to standing alone.
     const rr3 = await ordered({ partId: "P-ADM2", warehouseId: "wh-t", qty: 1, supplier: EXT, price: 100 });
-    refused(await inv(adminWho, "listReceivingLocationOptions", { reorderRequestId: rr3 }), 404, "NOT_FOUND", /warehouse scope/, "picker by standing");
+    refused(await inv(adminWho, "listReceivingLocationOptions", { reorderRequestId: rr3 }), 403, "FORBIDDEN", /operating-company authority/, "picker by standing (ISO inventory: standing implies no company)");
     // Purchasing steps are the ASSIGNEE's: never reach.
     const started = await inv(adminWho, "postPurchasingUpdate", { reorderRequestId: rr3, note: "x" });
     assert.equal(started.status === 200, false, JSON.stringify(started.body).slice(0, 200));
