@@ -70,7 +70,7 @@ export default function EquipmentModels({ hasCapability, client, commands = equi
     <section aria-label="Equipment models">
       <p className="fo-muted">Manufacturer and model reference records that Equipment, Parts and Sales Agreements point at. Every change is authorized server-side.</p>
       <Button variant="primary" disabled={busy} onClick={() => open({ mode: "create" }, BLANK)}>New Equipment Model</Button>
-      {!panel && outcome && <p role="status" className={`fo-state fo-state-message fo-tone-${outcome.kind === "applied" || outcome.kind === "replayed" ? "positive" : "attention"}`}>{outcome.message}</p>}
+      {!panel && outcome && <p role="status" className="fo-muted">{outcome.message}</p>}
 
       {state.phase === "loading" && <p className="fo-muted" role="status">Loading equipment models…</p>}
       {state.phase === "denied" && <p className="fo-muted" role="status">You do not have access to read equipment models.</p>}
@@ -94,7 +94,7 @@ export default function EquipmentModels({ hasCapability, client, commands = equi
 
       {panel && (
         <Modal title={panel.mode === "create" ? "New Equipment Model" : `Edit ${panel.model.displayName}`} onClose={close}>
-          {outcome && <p role="status" className="fo-state fo-state-message fo-tone-attention">{outcome.message}</p>}
+          {outcome && <p role="alert" className="fo-muted">{outcome.message}</p>}
           <form className="fo-form fo-create-modal-form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
             {fields.map((k) => (
               <Field key={k} label={FIELD_LABELS[k]}>
