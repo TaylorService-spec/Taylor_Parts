@@ -41,6 +41,7 @@ import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAutho
 import { lockStockLocation } from "./stockLocationLock.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { reopenLinkedRequestsAfterVoid } from "./supplierPoRequestLinks.js";
 
 const SCHEMA = "eos_ops";
 
@@ -245,6 +246,9 @@ async function voidWithin(
     `UPDATE ${SCHEMA}.supplier_purchase_orders SET version = version + 1, status = $3, updated_by = $4, updated_at = $5
       WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, purchaseOrderId, afterStatus, actor.principalId, at]);
 
+  // ---- 8b. THE LINKED REQUESTS (P-1): a request closed by this receipt whose line is no longer fully received returns to ORDERED, as a Reorder does ----
+  const reopenedRequestIds = await reopenLinkedRequestsAfterVoid(client, { tenantId: actor.tenantId, principalId: actor.principalId, purchaseOrderId, at });
+
   // ---- 9. MISSING-COST EXCEPTIONS RESOLVED (append-only rows), then the CORRECTION RECORD ----
   const resolved = await resolveReceiptCostExceptionsOn(client, financeActor, { receivingId: c.receivingId, correctionId, resolution: "RECEIPT_VOIDED", reason: c.reason });
   let inserted: Array<Record<string, unknown>>;
@@ -270,7 +274,7 @@ async function voidWithin(
     [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, c.receivingId, JSON.stringify({ status: receipt.status }),
       JSON.stringify(await withActorAuthority(client, actor.tenantId, actor.principalId, {
         status: "CANCELLED", receivingCorrectionId: correctionId, correctionKind: "VOID", operatingCompanyKey: receipt.operating_company_key, location: where,
-        compensatingMovementIds: movementIds, reversedFacts: reversed, resolvedExceptionIds: resolved, purchaseOrderId,
+        compensatingMovementIds: movementIds, reversedFacts: reversed, resolvedExceptionIds: resolved, purchaseOrderId, reopenedRequestIds,
         purchaseOrder: { statusBefore: before.status, statusAfter: afterStatus, versionBefore: before.version, versionAfter: before.version + 1 },
       })), at, c.reason]);
 

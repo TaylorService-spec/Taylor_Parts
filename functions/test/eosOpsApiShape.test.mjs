@@ -45,7 +45,10 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       // Returns intake (Firebase exit F7a, DECISIONS #242): the caller's companies and receiving warehouses.
       "listReturnIntakeOptions",
       // Supplier purchase order receiving + the archived legacy notes (Firebase exit B3, DECISIONS #B3).
-      "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "listLegacyInventoryActionNotes",
+      "listReceivableSupplierPurchaseOrders",
+      // Supplier purchase order authoring (P-1, DECISIONS #P-1): the reads (supplier.purchaseOrder.read; the picker: .create).
+      "listSupplierPurchaseOrders", "readSupplierPurchaseOrder", "listPurchasableReorderRequests",
+      "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "listLegacyInventoryActionNotes",
       // The Part balance (Firebase exit B3-x): on-hand / reserved / available / on-order of one Part, three-valued.
       "readPartBalance",
       // Records and reporting (Firebase exit B4, DECISIONS #B4): imported service history, Data Import history, saved report definitions, a report run, performance goals.
@@ -65,6 +68,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "recordReturnIntake",
     // Supplier purchase order receiving (Firebase exit B3): the canonical PURCHASE_ORDER source, no fallback to or from receiveReorderStock.
     "receiveSupplierPurchaseOrder",
+    // Supplier purchase order authoring (P-1): create, and approve / send / cancel as ONE transition command.
+    "createSupplierPurchaseOrder", "transitionSupplierPurchaseOrder",
     // The supplier-PO receipt correction (Firebase exit B3-x): VOID only; no fallback to or from correctReorderReceipt.
     "correctSupplierPurchaseOrderReceipt",
     // Records and reporting (Firebase exit B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
@@ -244,7 +249,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // + governed part-supplier terms (listPartSupplierItems + four commands; SUP-1).
   // + the supplier purchase order receipt and its three reads, and the archived legacy notes read (Firebase exit B3, DECISIONS #B3): 39 -> 44.
   // + readPartBalance and correctSupplierPurchaseOrderReceipt (Firebase exit B3-x): 44 -> 46.
-  assert.equal(reorderOps.length, 46);
+  // + supplier purchase order authoring (P-1): three reads and two commands: 46 -> 51.
+  assert.equal(reorderOps.length, 51);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

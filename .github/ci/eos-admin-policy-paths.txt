@@ -960,3 +960,14 @@ functions/test/b4ReportGoalGrantParity.test.mjs
 functions/test/b4ReportGoalGrantParityPostgres.test.mjs
 functions/migrations/1764650000000_b4-report-goal-grant-parity.sql
 docs/architecture/b4-report-goal-grant-parity.json
+# P-1 governed supplier purchase order authoring (DECISIONS #P-1; resolves OD-B3-1): the suites AND their subjects (the commands, the numbering, the request link,
+# the receive / void extensions, the Reorder PO guard, the migration and the baseline it explains).
+functions/test/supplierPurchaseOrderAuthoringOffline.test.mjs
+functions/test/supplierPurchaseOrderAuthoringPostgres.test.mjs
+functions/src/eosOps/supplierPurchaseOrderAuthoring.ts
+functions/src/eosOps/supplierPoNumbering.ts
+functions/src/eosOps/supplierPoRequestLinks.ts
+functions/src/eosOps/supplierReceiptCorrection.ts
+functions/src/eosOps/purchasingRepository.ts
+functions/src/eosOps/reorderLifecycleCommands.ts
+functions/migrations/1764660000000_supplier-po-authoring.sql

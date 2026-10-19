@@ -179,6 +179,26 @@ export const EQUIPMENT_REGISTER_GATE = Object.freeze({ manage: "equipment.record
 export const EQUIPMENT_MODEL_GATE = Object.freeze({ manage: "equipment.model.manage" });
 
 /**
+ * Purchasing > Purchase Orders > Supplier purchase orders (P-1, DECISIONS #P-1; Owner ruling D). EOS-ONLY keys (no Firebase twin): asked under their own
+ * names of the caller's EOS capability set (access/eosCapabilityAccess.js), registered by the P-1 migration. Each control is offered only to a holder of
+ * the capability its governed command enforces (functions/src/eosOps/supplierPurchaseOrderAuthoring.ts); the server's own `allowed` flags then narrow it
+ * by status and segregation of duties, and the command re-decides on every call.
+ *
+ *   read    the Supplier purchase orders view            -> supplier.purchaseOrder.read
+ *   create  "Raise supplier purchase order"              -> supplier.purchaseOrder.create
+ *   approve Approve (never the creator's own order)      -> supplier.purchaseOrder.approve
+ *   send    Mark as sent to the supplier                 -> supplier.purchaseOrder.send
+ *   cancel  Cancel (before anything is received)         -> supplier.purchaseOrder.cancel
+ */
+export const SUPPLIER_PURCHASE_ORDER_GATE = Object.freeze({
+  read: "supplier.purchaseOrder.read",
+  create: "supplier.purchaseOrder.create",
+  approve: "supplier.purchaseOrder.approve",
+  send: "supplier.purchaseOrder.send",
+  cancel: "supplier.purchaseOrder.cancel",
+});
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -215,6 +235,8 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   customerRecord: Object.freeze(Object.values(CUSTOMER_RECORD_GATE)),
   equipmentRegister: Object.freeze(Object.values(EQUIPMENT_REGISTER_GATE)),
   equipmentModel: Object.freeze(Object.values(EQUIPMENT_MODEL_GATE)),
+  // P-1: modules/purchasing/SupplierPurchaseOrders.jsx (mounted by PurchaseOrders.jsx).
+  supplierPurchaseOrder: Object.freeze(Object.values(SUPPLIER_PURCHASE_ORDER_GATE)),
 });
 
 /**

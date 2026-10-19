@@ -52,6 +52,10 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   // Firebase exit B3: the canonical supplier purchase order (services/eosSupplierReceivingClient.js) and the archived legacy notes.
   "listReceivableSupplierPurchaseOrders",
   "readSupplierPurchaseOrderProgress",
+  // P-1: supplier purchase order authoring reads (supplier.purchaseOrder.read; the picker: .create).
+  "listSupplierPurchaseOrders",
+  "readSupplierPurchaseOrder",
+  "listPurchasableReorderRequests",
   "listSupplierReceivingLocationOptions",
   "listLegacyInventoryActionNotes",
   // Firebase exit B3-x: one Part's on-hand / reserved / available / on-order.
@@ -94,6 +98,9 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "setPreferredPartSupplierItem",
   // Firebase exit B3: the canonical PURCHASE_ORDER receipt (no fallback to or from receiveReorderStock).
   "receiveSupplierPurchaseOrder",
+  // P-1: supplier purchase order authoring (create; approve / send / cancel are ONE transition command).
+  "createSupplierPurchaseOrder",
+  "transitionSupplierPurchaseOrder",
   // Firebase exit B3-x: the supplier-PO receipt correction (VOID only).
   "correctSupplierPurchaseOrderReceipt",
   // Firebase exit B4: Data Import of SERVICE_HISTORY and the saved report definitions.
@@ -120,6 +127,9 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   // SUP-1: one Part's governed supplier terms.
   "listPartSupplierItems",
   "listReceivableSupplierPurchaseOrders",
+  // P-1: supplier purchase order authoring reads that take no required input.
+  "listSupplierPurchaseOrders",
+  "listPurchasableReorderRequests",
   "listDataImportJobs",
   "listSavedReportDefinitions",
   "listGoalSubjects",

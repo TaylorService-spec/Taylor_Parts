@@ -36,6 +36,7 @@ import { validateReceivingBatch, type ResolvedPartAuthority } from "../inventory
 import type { ResolvedReceivingSource } from "../inventoryReceiving/receivingSourceResolver.js";
 import { canonicalReceivingOrderDocId, fingerprintReceivingOrder } from "../inventoryReceiving/receivingIdentity.js";
 import { allocateReceivingOrderNumber } from "./receivingNumbering.js";
+import { closeLinkedRequestsOnReceipt } from "./supplierPoRequestLinks.js";
 import { projectReceiptAcquisitionCostOn, FinanceFoundationError } from "../eosFinance/financeFoundation.js";
 import { insertReceivingOrder, type OpsTrackingMode } from "./purchasingRepository.js";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
@@ -449,9 +450,17 @@ export async function receiveSupplierPurchaseOrder(
       `UPDATE ${SCHEMA}.supplier_purchase_orders SET version = version + 1, status = $3, updated_by = $4, updated_at = now()
         WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, purchaseOrderId, storedStatus, actor.principalId]);
 
+    // ---- 10b. THE LINKED REQUESTS (P-1, Owner ruling A): a request whose PO line this receipt COMPLETES is closed (ORDERED -> RECEIVED) in this same
+    // transaction -- per line, proportionally: a partly received line leaves its request ORDERED. A fixture / migrated line names no request.
+    const closedRequestIds = await closeLinkedRequestsOnReceipt(client, {
+      tenantId: actor.tenantId, principalId: actor.principalId, purchaseOrderId, receivedAt,
+      previouslyReceived: new Map(lines.map((l) => [l.lineId, l.previouslyReceived])),
+      receivedNow: new Map(lines.map((l) => [l.lineId, l.receivedNow])),
+    });
+
     // ---- 11. AUDIT ----
     await audit(client, actor.tenantId, actor.principalId, receivingId, {
-      receivingId, sourceKind: SUPPLIER_PO_SOURCE_KIND, purchaseOrderId, lineCount: value.lines.length,
+      receivingId, sourceKind: SUPPLIER_PO_SOURCE_KIND, purchaseOrderId, lineCount: value.lines.length, closedRequestIds,
       totalQuantity: value.lines.reduce((sum, l) => sum + l.receivedQuantity, 0), locationType: locationRef.type, locationId: locationRef.locationId,
       movementCount: movementIds.length, serialCount: serializedCustodyIds.length, storedStatus,
     }, receivedAt, "stock received against a supplier purchase order");

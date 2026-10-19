@@ -76,6 +76,7 @@ const COLLECTION_PAGES = [
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",
   "modules/purchasing/PurchaseOrders.jsx",
+  "modules/purchasing/SupplierPurchaseOrders.jsx",  // P-1: the supplier purchase orders view, a sibling collection of PurchaseOrders (DECISIONS #P-1)
   "modules/inventory/Transfers.jsx",
   // Added by the Owner visual correction (2026-08-27): Job Assignments was BLOCKED on a product
   // question and therefore received no presentation work, which is why it looked nothing like

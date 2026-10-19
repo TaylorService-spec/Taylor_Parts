@@ -111,6 +111,7 @@ const CONFORMANT_SURFACES = [
   "modules/inventory/TruckInventory.jsx",  // moved from CONFORMANT_WORKSPACES (Wave 1)
   // TRANCHE 3 — operational movement families.
   "modules/purchasing/PurchaseOrders.jsx",
+  "modules/purchasing/SupplierPurchaseOrders.jsx",  // P-1: the supplier purchase orders view, a sibling collection of PurchaseOrders (DECISIONS #P-1)
   "modules/inventory/Transfers.jsx",
   // OWNER VISUAL CORRECTION 2026-08-27 — Job Assignments was BLOCKED on a PRODUCT question and
   // therefore received no presentation work, which is why it looked nothing like Opportunity. The
@@ -202,6 +203,7 @@ const NORTH_STAR_COLLECTION_PAGES = [
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",
   "modules/purchasing/PurchaseOrders.jsx",
+  "modules/purchasing/SupplierPurchaseOrders.jsx",  // P-1: the supplier purchase orders view, a sibling collection of PurchaseOrders (DECISIONS #P-1)
   "modules/inventory/Transfers.jsx",
   "modules/jobs/Jobs.jsx",
   // DISPATCH NORTH STAR P1 (2026-08-27). A board rather than a table, and a collection page all

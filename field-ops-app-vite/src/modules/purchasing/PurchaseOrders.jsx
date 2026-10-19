@@ -104,7 +104,12 @@ const STATUS_ORDER = {
 };
 
 export default function PurchaseOrders() {
-  const requestsRead = useReorderRequestsByStatuses(PO_REQUEST_STATUSES);
+  const rawRequestsRead = useReorderRequestsByStatuses(PO_REQUEST_STATUSES);
+  // P-1 (DECISIONS #P-1): a request ORDERED on a SUPPLIER purchase order has no recorded Reorder purchase order BY DESIGN -- its order is the supplier
+  // purchase order (Supplier purchase orders view). Left in, it would read here as an ORPHAN ("marked ordered, purchase order could not be read"),
+  // a false integrity exception. The server states which requests those are (supplierPurchaseOrderId); nothing is guessed here.
+  const requestsData = useMemo(() => rawRequestsRead.data.filter((r) => !r.supplierPurchaseOrderId), [rawRequestsRead.data]);
+  const requestsRead = useMemo(() => ({ ...rawRequestsRead, data: requestsData }), [rawRequestsRead, requestsData]);
   const ids = useMemo(() => requestsRead.data.map((r) => r.id), [requestsRead.data]);
   const purchaseOrdersRead = usePurchaseOrdersByIds(ids);
   const [filterKey, setFilterKey] = useState("open");

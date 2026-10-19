@@ -1304,6 +1304,10 @@
     {
       "file": "test/recordsReportingEos.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/eosSupplierPurchasingClient.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
