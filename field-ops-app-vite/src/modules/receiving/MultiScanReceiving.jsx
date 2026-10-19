@@ -553,7 +553,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
                 labels — there is deliberately NO fallback to the raw locationId, which is a storage
                 key and not a place an operator can recognise. */}
             {locationsState === "READY" && locations.options.map((o) => (
-              <option key={o.locationId} value={o.locationId}>{o.label}</option>
+              <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
         </div>
