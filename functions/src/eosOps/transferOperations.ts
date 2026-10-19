@@ -376,10 +376,19 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
     // DQ-024: create needs the ORIGIN's scope.
     await authorizeAct(db, actor, "create", value, keys, false);
 
+    // BOTH ENDPOINTS are validated against the caller's companies BEFORE the idempotency lookup, so a replay can never answer for a destination the caller
+    // could not have named (a foreign destination reads as nonexistent on a replayed key exactly as on a fresh one). Existence only here; ACTIVE-ness is
+    // decided after the replay, as before (a replay of a transfer whose endpoint has since closed is still a replay).
+    const origin = await endpointFacts(db, actor.tenantId, value.origin, keys);
+    const destination = await endpointFacts(db, actor.tenantId, value.destination, keys);
+    if (!origin.exists) refuse("ORIGIN_INVALID", "INVALID_INPUT", "origin is not an active governed location");
+    if (!destination.exists) refuse("DESTINATION_INVALID", "INVALID_INPUT", "destination is not an active governed location");
+
     // Idempotency: the key is the transfer's identity. Same request -> replayed; different -> conflict.
     await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-transfer-create:${actor.tenantId}:${value.idempotencyKey}`]);
     const { rows: prior } = await db.query<{ id: string }>(
-      `SELECT id FROM eos_ops.transfer_orders WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, value.idempotencyKey]);
+      `SELECT id FROM eos_ops.transfer_orders WHERE tenant_id = $1 AND idempotency_key = $2
+          AND (source_operating_company_key = ANY($3::text[]) OR destination_operating_company_key = ANY($3::text[]))`, [actor.tenantId, value.idempotencyKey, [...keys]]);
     if (prior[0]) {
       const stored = await readTransferOrder(db as unknown as Pool, actor.tenantId, prior[0].id);
       const s = stored as TransferOrderRecord;
@@ -392,10 +401,8 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
     }
     if (part.status !== "ACTIVE") refuse("PART_INVALID", "INVALID_INPUT", "part is not active");
 
-    const origin = await endpointFacts(db, actor.tenantId, value.origin, keys);
-    const destination = await endpointFacts(db, actor.tenantId, value.destination, keys);
-    if (!origin.exists || !origin.active) refuse("ORIGIN_INVALID", "INVALID_INPUT", "origin is not an active governed location");
-    if (!destination.exists || !destination.active) refuse("DESTINATION_INVALID", "INVALID_INPUT", "destination is not an active governed location");
+    if (!origin.active) refuse("ORIGIN_INVALID", "INVALID_INPUT", "origin is not an active governed location");
+    if (!destination.active) refuse("DESTINATION_INVALID", "INVALID_INPUT", "destination is not an active governed location");
     // A movement that never leaves its Warehouse is a RELOCATION, refused here by name.
     if (origin.custodyWarehouseId !== null && origin.custodyWarehouseId === destination.custodyWarehouseId) {
       refuse("SAME_CUSTODY_PARENT", "PRECONDITION_FAILED", "origin and destination share a custody Warehouse: use a relocation");
@@ -414,11 +421,18 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
        RETURNING last_value`, [actor.tenantId, year]);
     const transferOrderNumber = formatEosTransferOrderNumber(year, Number(n[0].last_value));
 
-    const created = await createTransferOrder(db as unknown as Pool, actor.tenantId, actor.principalId,
-      { source: origin.operatingCompanyKey as string, destination: destination.operatingCompanyKey as string },
-      { partId: part.partId, trackingMode: value.trackingMode, quantity: value.quantity,
-        origin: { type: value.origin.type, id: value.origin.locationId }, destination: { type: value.destination.type, id: value.destination.locationId },
-        serialNumbers: serials, status: "REQUESTED", transferOrderNumber, idempotencyKey: value.idempotencyKey });
+    let created: TransferOrderRecord;
+    try {
+      created = await createTransferOrder(db as unknown as Pool, actor.tenantId, actor.principalId,
+        { source: origin.operatingCompanyKey as string, destination: destination.operatingCompanyKey as string },
+        { partId: part.partId, trackingMode: value.trackingMode, quantity: value.quantity,
+          origin: { type: value.origin.type, id: value.origin.locationId }, destination: { type: value.destination.type, id: value.destination.locationId },
+          serialNumbers: serials, status: "REQUESTED", transferOrderNumber, idempotencyKey: value.idempotencyKey });
+    } catch (err) {
+      // The key belongs to a transfer of a company the caller does not reach (the replay lookup above is company-filtered): the ordinary key conflict.
+      if ((err as { code?: string }).code === "23505") refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a different transfer");
+      throw err;
+    }
     await audit(db, actor, "transfer.create", created);
     return { outcome: "applied" as const, transferOrderId: created.id, transferOrderNumber };
   });

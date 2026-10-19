@@ -692,10 +692,15 @@ export async function receiveReorderStockWithin(
     const fingerprint = fingerprintReceivingOrder(value);
 
     const existing = await client.query(
-      `SELECT id, receiving_order_number, received_at, request_fingerprint
+      `SELECT id, receiving_order_number, received_at, request_fingerprint, operating_company_key
          FROM ${SCHEMA}.receiving_orders WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, receivingId],
     );
+    // The receipt id derives from the key alone, so another company's receipt can sit under this key. It is never replayed (no receipt number, no
+    // time): a key a foreign company holds is the ordinary key conflict.
+    if (existing.rows.length > 0 && !companyKeys.includes(String(existing.rows[0].operating_company_key))) {
+      refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a DIFFERENT receipt");
+    }
 
     // ---- 8. REPLAY, decided BEFORE the status gate and writing nothing ----
     if (existing.rows.length > 0) {

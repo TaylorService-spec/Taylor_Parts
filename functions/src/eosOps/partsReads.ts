@@ -515,7 +515,8 @@ async function presentableScope(c: PoolClient, actor: ReorderActor, companyKeys:
  * `companyWide: true` (ISO inventory): EVERY warehouse of the caller's operating companies, in scope or not, each carrying `inScope`. It exists for the
  * Transfers workspace, which must (a) offer a destination the way createTransfer accepts one -- any ACTIVE warehouse of a company the caller reaches, no
  * warehouse scope needed at the far end -- and (b) NAME every endpoint a transfer shows. It names warehouses only (no quantity, no bin list), is held to a
- * transfer capability, and never reaches a company the caller has no authority over.
+ * transfer capability, and never reaches a company the caller has no authority over. ACTIVE warehouses only: a closed warehouse is neither a destination nor
+ * needed to name a transfer's endpoint that matters to the open work (a closed one falls back to its id).
  */
 export async function listInventoryWarehouses(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   const i = acceptOnly(input, ["companyWide"]);
@@ -533,7 +534,7 @@ export async function listInventoryWarehouses(deps: { readonly pool: Pool }, act
          FROM eos_ops.warehouses w
          LEFT JOIN eos_policy.tenant_operating_company_keys k
            ON k.tenant_id = w.tenant_id AND k.operating_company_key = w.operating_company_key AND k.status = 'ACTIVE'
-        WHERE w.tenant_id = $1 AND (CASE WHEN $4::boolean THEN w.operating_company_key = ANY($3::text[]) AND w.id <> ALL($5::text[]) ELSE w.id = ANY($2::text[]) END)
+        WHERE w.tenant_id = $1 AND (CASE WHEN $4::boolean THEN w.operating_company_key = ANY($3::text[]) AND w.id <> ALL($5::text[]) AND w.status::text = 'ACTIVE' ELSE w.id = ANY($2::text[]) END)
         ORDER BY w.name, w.id`, [actor.tenantId, scope, [...keys], companyWide, [...PRESENTATION_EXCLUDED]]);
     return { items: rows.map((r) => ({ warehouseId: r.id, name: r.name, siteLabel: r.site_label, status: r.status,
       operatingCompanyId: r.operating_company_id ?? null, binCount: Number(r.bin_count), inScope: scope.includes(String(r.id)) })) };

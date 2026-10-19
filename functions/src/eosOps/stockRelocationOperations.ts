@@ -294,12 +294,14 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     const planned = planRows(req);
     const { rows: prior } = await db.query<{
       id: string; idempotency_key: string; part_id: string; tracking_mode: string; location_type: string; location_id: string;
-      movement_type: string; quantity_delta: number; serial_number: string | null; source_kind: string; source_id: string;
+      movement_type: string; quantity_delta: number; serial_number: string | null; source_kind: string; source_id: string; operating_company_key: string;
     }>(
       `SELECT id, idempotency_key, part_id, tracking_mode::text AS tracking_mode, location_type::text AS location_type, location_id,
-              movement_type::text AS movement_type, quantity_delta, serial_number, source_kind, source_id
+              movement_type::text AS movement_type, quantity_delta, serial_number, source_kind, source_id, operating_company_key
          FROM eos_ops.inventory_movements WHERE tenant_id = $1 AND idempotency_key = ANY($2)`,
       [actor.tenantId, planned.map((p) => p.idempotencyKey)]);
+    // Rows of a company the caller does not reach under this key: the ordinary key conflict, decided before anything is compared or counted.
+    if (prior.some((r) => !companyKeys.includes(r.operating_company_key))) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "idempotency_key_reused");
     if (prior.length > 0 && prior.length < planned.length) refuse("INTEGRITY", "CONFLICT", "partial_prior_relocation");
     if (prior.length === planned.length) {
       const byKey = new Map(prior.map((r) => [r.idempotency_key, r]));

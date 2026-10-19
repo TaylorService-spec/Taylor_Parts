@@ -302,7 +302,12 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
     // REPLAY FIRST, before any gate on current state.
     const probeIds = serials.length > 0 ? serials.map((s) => eosPlacementId(req.idempotencyKey, s)) : [eosPlacementId(req.idempotencyKey, req.partId)];
     const present = await readPlacements(db, actor.tenantId, probeIds);
+    // The key held by a placement in ANOTHER warehouse (another company's, whatever Part it names) is the ordinary key conflict, never a raw unique violation at the insert.
+    const heldElsewhere = await db.query(`SELECT 1 FROM eos_ops.bin_placements WHERE tenant_id = $1 AND idempotency_key = $2 AND warehouse_id <> $3 LIMIT 1`, [actor.tenantId, req.idempotencyKey, req.warehouseId]);
+    if (heldElsewhere.rows.length > 0) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "different_stow");
     if (present.length > 0) {
+      // A placement under this key in another warehouse (so, here, another company's) is the ordinary key conflict, before any count or comparison.
+      if (present.some((d) => d.warehouse_id !== req.warehouseId)) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "different_stow");
       if (present.length !== probeIds.length) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "partial_key_reuse");
       let storedBinCode: string | null = null;
       for (const d of present) {

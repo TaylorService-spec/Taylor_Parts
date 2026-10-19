@@ -162,6 +162,7 @@ test("Company isolation for warehouse-scoped inventory: capability, then company
       await one(`SELECT count(*)::int n FROM eos_ops.cycle_count_sheets`), await one(`SELECT count(*)::int n FROM eos_ops.cycle_count_lines`),
       await one(`SELECT count(*)::int n FROM eos_ops.transfer_orders`), await one(`SELECT count(*)::int n FROM eos_ops.inventory_movements`),
       await one(`SELECT count(*)::int n FROM eos_ops.receiving_orders`), await one(`SELECT count(*)::int n FROM eos_policy.audit_events`),
+      await one(`SELECT count(*)::int n FROM eos_ops.bin_placements`), await one(`SELECT count(*)::int n FROM eos_ops.receiving_corrections`),
     ];
   };
   const noWrite = async (fn) => { const before = await counts(); const out = await fn(); assert.deepEqual(await counts(), before, "a refusal precedes every write"); return out; };
@@ -386,6 +387,11 @@ test("Company isolation for warehouse-scoped inventory: capability, then company
     // Scoped at wh-t1 (and at the OTHER company's wh-v): every Taylor warehouse is NAMED with its scope mark, and the other company's is absent.
     const out = await reads.listInventoryWarehouses({ pool }, as(foreignScoped, ["warehouse.transferOrder.read"]), { companyWide: true });
     assert.deepEqual(out.items.map((w) => [w.warehouseId, w.status, w.inScope]), [["wh-t1", "ACTIVE", true], ["wh-t2", "ACTIVE", false]]);
+    // A closed warehouse of the caller's own company is not offered (ACTIVE only).
+    await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+             VALUES ('wh-closed','t1','taylor-co','wh-closed','Sampleton','INACTIVE','NATIVE','fixture','fixture')`);
+    const withClosed = await reads.listInventoryWarehouses({ pool }, as(foreignScoped, ["warehouse.transferOrder.read"]), { companyWide: true });
+    assert.deepEqual(withClosed.items.map((w) => w.warehouseId), ["wh-t1", "wh-t2"], "an INACTIVE warehouse is not returned");
     const mine = await reads.listInventoryWarehouses({ pool }, as(inCo, ["inventory.transfer.create"]), { companyWide: true });
     assert.deepEqual(mine.items.map((w) => [w.warehouseId, w.inScope]), [["wh-t1", true], ["wh-t2", true]]);
     assert.equal((await refusal(() => reads.listInventoryWarehouses({ pool }, as(inCo, ["warehouse.record.read"]), { companyWide: true }))).code, "CAPABILITY_MISSING");
@@ -395,6 +401,76 @@ test("Company isolation for warehouse-scoped inventory: capability, then company
     const nowhere = await person({ scopes: ["wh-t1"] });
     const made = await tr.createEosTransfer(TR, as(nowhere), { partId: "PART-A", quantity: 1, origin: W("wh-t1"), destination: W("wh-t2"), idempotencyKey: "iso-tr-dest" });
     assert.equal(made.outcome, "applied");
+  });
+
+  // ════════════════════ IDEMPOTENCY KEYS: a replay or a conflict never answers for another company ════════════════════
+  await t.test("transfer create: replaying a transfer whose destination the caller cannot name reads EXACTLY like a fresh key; a key another company holds is the ordinary conflict", async () => {
+    const f = as(foreignScoped);
+    const body = { partId: "PART-A", quantity: 1, origin: W("wh-t1"), destination: W("wh-v") };
+    // A Taylor-origin transfer INTO Ventana's warehouse, made by the actor who reaches both companies, under a known key.
+    const made = await tr.createEosTransfer(TR, as(crossActor), { ...body, idempotencyKey: "iso-tr-replay" });
+    assert.equal(made.outcome, "applied");
+    // The scoped Taylor actor repeats the EXACT body and key: the destination is validated first, so this is the fresh-key refusal -- not 'replayed', no id, no number.
+    await noWrite(() => sameAsMissing(() => tr.createEosTransfer(TR, f, { ...body, idempotencyKey: "iso-tr-replay" }),
+      () => tr.createEosTransfer(TR, f, { ...body, idempotencyKey: `iso-tr-fresh-${randomUUID()}` }), "replay of a foreign-destination transfer == fresh key"));
+    // A key held by a transfer of a company the caller does not reach (the Ventana-only transfer made above): a clean key conflict, never that transfer's data.
+    const err = await noWrite(() => refusal(() => tr.createEosTransfer(TR, as(inCo), { partId: "PART-A", quantity: 1, origin: W("wh-t1"), destination: W("wh-t2"), idempotencyKey: "iso-tr-v" })));
+    assert.deepEqual([err.code, err.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"]);
+  });
+
+  await t.test("receipt correction: a key another company's correction already holds is refused cleanly BEFORE any work -- for the caller's own valid receipt", async () => {
+    const key = "iso-corr-shared-key";
+    const voided = await corr.correctReorderReceipt({ pool }, as(crossActor), { receivingId: ventanaReceipt, correction: "VOID", reason: "wrong delivery", idempotencyKey: key });
+    assert.equal(voided.outcome, "applied");
+    const rrOwn = await chain("rr-t-own", "taylor-co", "wh-t1");
+    const own = (await rcv.receiveReorderStock({ pool }, as(inCo), receipt(rrOwn, "wh-t1"))).receivingId;
+    const err = await noWrite(() => refusal(() => corr.correctReorderReceipt({ pool }, as(inCo), { receivingId: own, correction: "VOID", reason: "wrong delivery", idempotencyKey: key })));
+    assert.deepEqual([err.code, err.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"], "a governed refusal, not a raw unique violation");
+    assert.equal((await q(`SELECT status::text s FROM eos_ops.receiving_orders WHERE id = $1`, [own])).rows[0].s !== "CANCELLED", true, "the caller's own receipt is untouched");
+    // Same shape as an ordinary conflict on the caller's OWN key (a different request under it).
+    const mineKey = `iso-corr-mine-${randomUUID()}`;
+    assert.equal((await corr.correctReorderReceipt({ pool }, as(inCo), { receivingId: own, correction: "VOID", reason: "first", idempotencyKey: mineKey })).outcome, "applied");
+    const ordinary = await refusal(() => corr.correctReorderReceipt({ pool }, as(inCo), { receivingId: own, correction: "VOID", reason: "a different reason", idempotencyKey: mineKey }));
+    assert.deepEqual([err.code, err.category, err.message], [ordinary.code, ordinary.category, ordinary.message]);
+  });
+
+  await t.test("Reorder receipt, cycle count, put-away and relocation: a key another company used is the ordinary key conflict -- never its data, never a lock", async () => {
+    // Reorder receipt: the receipt id derives from the key alone, so Ventana's receipt sits under 'idem-rr-v'.
+    const rrMine = await chain("rr-t-key", "taylor-co", "wh-t1");
+    const r1 = await noWrite(() => refusal(() => rcv.receiveReorderStock({ pool }, as(inCo), receipt(rrMine, "wh-t1", "PART-A", { idempotencyKey: "idem-rr-v" }))));
+    assert.deepEqual([r1.code, r1.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"]);
+    // Cycle count: Ventana's sheet holds 'iso-cc-v'.
+    const c1 = await noWrite(() => refusal(() => cc.createEosCycleCountSheet(CC, as(inCo), { location: { type: "WAREHOUSE", locationId: "wh-t1" }, idempotencyKey: "iso-cc-v" })));
+    assert.deepEqual([c1.code, c1.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"]);
+    // Relocation and put-away: made in Ventana's warehouse by the cross-company actor, then the same keys from Taylor.
+    const RL = { pool, postgresState: ACTIVE };
+    const PL = { pool, postgresState: ACTIVE };
+    assert.equal((await reloc.relocateEosStock(RL, as(crossActor), { partId: "PART-A", source: W("wh-v"), destination: { type: "BIN", locationId: BIN_V }, quantity: 1, idempotencyKey: "iso-rl-x" })).outcome, "relocated");
+    const l1 = await noWrite(() => refusal(() => reloc.relocateEosStock(RL, as(inCo), { partId: "PART-B", source: W("wh-t1"), destination: { type: "BIN", locationId: BIN_T }, quantity: 1, idempotencyKey: "iso-rl-x" })));
+    assert.deepEqual([l1.code, l1.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"]);
+    assert.equal((await plc.recordEosPutAway(PL, as(crossActor), { warehouseId: "wh-v", partId: "PART-A", binId: BIN_V, quantity: 1, idempotencyKey: "iso-pl-x" })).outcome, "recorded");
+    const p1 = await noWrite(() => refusal(() => plc.recordEosPutAway(PL, as(inCo), { warehouseId: "wh-t1", partId: "PART-A", binId: BIN_T, quantity: 1, idempotencyKey: "iso-pl-x" })));
+    assert.deepEqual([p1.code, p1.category], ["IDEMPOTENCY_CONFLICT", "CONFLICT"]);
+  });
+
+  await t.test("transfer receive: a Technician's truck path is held to the truck's company too (a transfer into another company's truck is refused)", async () => {
+    const tech = await person({ eligibility: false, scopes: [] });
+    const techEmployee = (await q(`SELECT employee_id FROM eos_policy.employee_principal_links WHERE principal_id = $1`, [tech])).rows[0].employee_id;
+    await q(`INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
+             VALUES ('we-iso-tech','t1',$1,'SERVICE_TECHNICIAN', now(), 'fixture')`, [techEmployee]);
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+             VALUES ('os-iso-tech-mob','t1',$1,'MOBILE','mob-t', now(), 'fixture')`, [techEmployee]);
+    const t0 = as(tech, ["inventory.transfer.receive"]);
+    // Taylor stock sent to Ventana's truck by the actor who reaches both: visible to the Taylor technician (its source company), but its destination truck is not theirs.
+    const toForeignTruck = (await tr.createEosTransfer(TR, as(crossActor), { partId: "PART-A", quantity: 1, origin: W("wh-t1"), destination: M("mob-v"), idempotencyKey: "iso-tr-tech" })).transferOrderId;
+    const e1 = await noWrite(() => refusal(() => tr.receiveEosTransfer(TR, t0, { transferOrderId: toForeignTruck })));
+    assert.equal(e1.code, "OUTSIDE_OPERATIONAL_SCOPE");
+    // A transfer between Ventana places only (neither company reachable) reads as nonexistent to the technician.
+    await noWrite(() => sameAsMissing(() => tr.receiveEosTransfer(TR, t0, { transferOrderId: ventanaTransfer }), () => tr.receiveEosTransfer(TR, t0, { transferOrderId: "trf_does_not_exist" }), "technician, foreign-only transfer"));
+    // The technician's own company's truck still works the same path: a transfer into mob-t is refused only for the ordinary reasons (status), not for company.
+    const intoOwnTruck = (await tr.createEosTransfer(TR, as(inCo), { partId: "PART-A", quantity: 1, origin: W("wh-t1"), destination: M("mob-t"), idempotencyKey: "iso-tr-own-truck" })).transferOrderId;
+    const e2 = await refusal(() => tr.receiveEosTransfer(TR, t0, { transferOrderId: intoOwnTruck }));
+    assert.equal(e2.code, "STATUS_INVALID", "past company and scope: only the transfer's state refuses");
   });
 
   // ════════════════════ ROOT CAUSE OF S1: the Administration command no longer CREATES a cross-company scope ════════════════════

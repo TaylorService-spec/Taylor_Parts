@@ -173,7 +173,7 @@ async function correctWithin(
   const where = { type: String(receipt.location_type), locationId: String(receipt.receiving_location_id) };
   let scopeWarehouseId: string;
   try {
-    scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where)).scopeWarehouseId;
+    scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where, c.companyKeys)).scopeWarehouseId;
   } catch (err) {
     if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse (${err.code})`);
     throw err;
@@ -198,7 +198,8 @@ async function correctWithin(
 
   // ---- 2b. REPLAY: the same key + the same request returns the recorded correction and writes nothing. Decided AFTER the Reorder lock and the
   // scope check, and BEFORE the already-cancelled and Reorder-state refusals (the replay of a correction finds its own receipt cancelled and its
-  // Reorder reopened). The company filter keeps another company's correction invisible: its key then refuses cleanly at the unique INSERT. ----
+  // Reorder reopened). The company filter keeps another company's correction invisible -- and a key ANOTHER company's correction already holds is refused
+  // right here, before any work, with the same governed error as any key conflict (never a raw unique violation at the INSERT, never that correction's data). ----
   const prior = await client.query(
     `SELECT * FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND idempotency_key = $2 AND operating_company_key = ANY($3::text[])`,
     [actor.tenantId, c.idempotencyKey, [...c.companyKeys]]);
@@ -207,6 +208,10 @@ async function correctWithin(
       refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
     }
     return resultOf(prior.rows[0], "replayed");
+  }
+  const heldElsewhere = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, c.idempotencyKey]);
+  if (heldElsewhere.rows.length > 0) {
+    refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
   }
   if (receipt.status === "CANCELLED") {
     const { rows: done } = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND receiving_order_id = $2`,

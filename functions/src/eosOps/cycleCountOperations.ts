@@ -347,7 +347,11 @@ export async function createEosCycleCountSheet(deps: CycleCountOperationDeps, ac
     const where = await resolveCountLocation(db, actor.tenantId, location.type, locationId, keys);
     await authorizeAtWarehouse(db, actor, EOS_CYCLE_COUNT_CAPABILITY.create, where.warehouseId);
     // REPLAY FIRST: the same key is the same sheet; the same key for a different location is a conflict.
-    const existing = await readSheet(db, actor.tenantId, sheetId, true);
+    // A sheet under this key that belongs to a company the caller does not reach is never locked or compared: it is the ordinary key conflict.
+    const existing = await readSheet(db, actor.tenantId, sheetId, true, keys);
+    if (!existing && (await readSheet(db, actor.tenantId, sheetId, false))) {
+      refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "that request id already created a sheet for a different location");
+    }
     if (existing) {
       if (existing.location.type !== where.type || existing.location.id !== where.id) {
         refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "that request id already created a sheet for a different location");
