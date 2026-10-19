@@ -145,8 +145,11 @@ export function composeJobCard(workOrder, { readiness = null, customerName = nul
   return {
     workOrderId: workOrder.id,
     woNumber: str(workOrder.woNumber) ?? workOrder.id,
-    customer: customerName ?? str(workOrder.customerId),
-    location: locationLabel ?? str(workOrder.locationId),
+    // TW2: NEVER a raw id. `customerId` / `locationId` are references (acct_..., site_...), not names; a card that
+    // falls back to them shows "acct_2f9c" to a person standing in a customer's kitchen. The name comes from the
+    // governed field context (useWorkOrderFieldContext); until it resolves the card says so, and says WHY if it never does.
+    customer: customerName ?? null,
+    location: locationLabel ?? null,
     type: str(workOrder.type),
     status: str(workOrder.status),
     scheduledStart: workOrder.scheduledStart ?? null,

@@ -5,7 +5,10 @@ import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import EquipmentInstallCloseout from "./EquipmentInstallCloseout";
 import JobLabor from "./JobLabor";
-import { activeFieldWorkOrders, FIELD_ACTIONS } from "../../domain/fieldWorkOrder";
+import { activeFieldWorkOrders, awaitingDispatchWorkOrders, fieldPhase, FIELD_ACTIONS, FIELD_PHASE } from "../../domain/fieldWorkOrder";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import { withTruckStock } from "../../domain/fieldTruckReadiness.js";
+import { useMyTruckStock } from "../../hooks/useMyTruckStock.js";
 import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob";
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
@@ -51,9 +54,14 @@ const SyncQueue = lazy(() => import("./SyncQueue.jsx"));
 // denial can never render as "no customer". See
 // docs/assessments/f1-technician-customer-identity.md.
 
-export default function FieldMode({ deps } = {}) {
+// `workOrderId` (TW1): open ONE specific job of the technician's own -- what a tapped card on the phone's Jobs tab does.
+// It selects among the technician's OWN assigned Work Orders only (an id that is not theirs finds nothing), and every
+// action, gate and tool below is the same governed surface the "My Day" view uses. It grants no authority.
+export default function FieldMode({ deps, workOrderId = null } = {}) {
+  // The technician PROFILE state only (loading / failed-with-retry). No id is taken from it: every id this screen needs --
+  // the ownership check, the scanner, the offline queue -- is the governed Employee id the server returned
+  // (`ownEmployeeId`) or the signed-in principal, never the Firestore-derived users.technicianId.
   const {
-    technicianId,
     loading: technicianLoading,
     error: technicianError,
     retry: retryTechnician,
@@ -81,12 +89,30 @@ export default function FieldMode({ deps } = {}) {
   // how FieldMode renders at desktop widths -- it owns its own.
   const provided = useProvidedOfflineRuntime();
   const own = useOfflineRuntime({
-    disabled: !!provided, technicianId: () => technicianId, ...(deps?.offline ?? {}),
+    disabled: !!provided, ...(deps?.offline ?? {}),
   });
   const offline = provided ?? own;
 
-  const active = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
+  const selected = useMemo(
+    () => (workOrderId ? (workOrders ?? []).find((w) => w.id === workOrderId) ?? null : null),
+    [workOrders, workOrderId],
+  );
+  const active = useMemo(
+    () => (workOrderId ? (selected ? [selected] : []) : activeFieldWorkOrders(workOrders)),
+    [workOrders, workOrderId, selected],
+  );
   const [current, ...upNext] = active;
+  // TW3: assigned-but-not-dispatched work, so "nothing dispatched" is never said as "nothing assigned".
+  const awaitingDispatch = useMemo(() => awaitingDispatchWorkOrders(workOrders), [workOrders]);
+
+  // TW4: the technician's own truck stock, folded into the shared readiness projection as its `truck` dimension.
+  // Re-read when this job's recorded quantities move: recording usage consumes the truck's stock.
+  const usedKey = (current?.inventorySnapshot ?? []).map((p) => `${p.partId ?? p.sku}:${p.qtyUsed ?? 0}`).join("|");
+  const truckStock = useMyTruckStock({ refreshKey: usedKey, ...(deps?.truckStock ?? {}) });
+  const plannedParts = useMemo(
+    () => withTruckStock(current?.inventorySnapshot ?? [], truckStock),
+    [current, truckStock],
+  );
 
   const { context: fieldContext, denied: contextDenied, loading: contextLoading } =
     useWorkOrderFieldContext(current?.id ?? null);
@@ -107,12 +133,14 @@ export default function FieldMode({ deps } = {}) {
     return buildCurrentJob({
       workOrder: current ?? null,
       technicianId: ownEmployeeId,
-      plannedParts: current?.inventorySnapshot ?? [],
+      plannedParts,
+      // The truck dimension is on only when the stock was actually READ; otherwise the projection stays honest (UNKNOWN).
+      capabilities: truckStock.known ? { truckInventory: true } : {},
       customerResolver,
       siteResolver,
       contextPending: contextLoading,
     });
-  }, [current, ownEmployeeId, fieldContext, contextDenied, contextLoading]);
+  }, [current, ownEmployeeId, plannedParts, truckStock.known, fieldContext, contextDenied, contextLoading]);
 
   const advance = useCallback(async (workOrderId, action) => {
     if (pending.id) return; // duplicate-tap guard
@@ -223,27 +251,34 @@ export default function FieldMode({ deps } = {}) {
       ) : null}
 
       <header className="fo-field__head">
-        <h2 className="fo-field__title">My Day</h2>
-        <p className="fo-field__count">
-          {active.length === 0
-            ? "Nothing assigned"
-            : active.length === 1
-              ? "1 job"
-              : `${active.length} jobs`}
-        </p>
+        <h2 className="fo-field__title">{workOrderId ? "Job" : "My Day"}</h2>
+        {!workOrderId && (
+          <p className="fo-field__count">
+            {active.length > 0
+              ? (active.length === 1 ? "1 job" : `${active.length} jobs`)
+              : awaitingDispatch.length > 0 ? "Nothing dispatched" : "Nothing assigned"}
+          </p>
+        )}
       </header>
 
       {active.length === 0 ? (
-        <p className="fo-muted">No assigned work orders.</p>
+        workOrderId ? (
+          <p className="fo-muted">This job is no longer on your list.</p>
+        ) : awaitingDispatch.length > 0 ? (
+          <AwaitingDispatch workOrders={awaitingDispatch} />
+        ) : (
+          <p className="fo-muted">No assigned work orders.</p>
+        )
       ) : (
         <CurrentJob
           workOrder={current ?? null}
           job={job}
           inventoryState={contextDenied ? null : fieldContext?.inventory?.state ?? null}
+          truckKnown={truckStock.known}
+          awaitingDispatch={fieldPhase(current) === FIELD_PHASE.AWAITING_DISPATCH}
           pending={pending.id === job.workOrderId ? pending.action : null}
           failure={failure?.id === job.workOrderId ? failure : null}
           onAdvance={advance}
-          technicianId={ownEmployeeId}
           offline={offline}
           deps={deps}
         />
@@ -272,14 +307,14 @@ export default function FieldMode({ deps } = {}) {
         >
           Parts Scanner <span aria-hidden="true">{scannerOpen ? "▲" : "▼"}</span>
         </Button>
-        {scannerOpen && <PartsScanner technicianId={technicianId} />}
+        {scannerOpen && <PartsScanner />}
       </section>
     </div>
   );
 }
 
 /** Context -> State -> Attention -> Readiness -> Next Best Action, in that order. */
-function CurrentJob({ job, workOrder, inventoryState = null, pending, failure, onAdvance, technicianId, offline, deps }) {
+function CurrentJob({ job, workOrder, inventoryState = null, truckKnown = false, awaitingDispatch = false, pending, failure, onAdvance, offline, deps }) {
   // Scanning and note-taking are opened FROM the job, so both inherit its context. Collapsed by
   // default: the job's own answer -- where am I, what is wrong, what next -- must not be pushed off
   // the top of a phone by tools nobody has asked for yet.
@@ -292,8 +327,8 @@ function CurrentJob({ job, workOrder, inventoryState = null, pending, failure, o
       <CustomerContext context={job.context} reference={job.reference} />
       <JobState state={job.state} />
       <Attention items={job.attention} />
-      <Readiness readiness={job.readiness} inventoryState={inventoryState} />
-      <NextAction job={job} pending={pending} failure={failure} onAdvance={onAdvance} />
+      <Readiness readiness={job.readiness} inventoryState={inventoryState} truckKnown={truckKnown} />
+      <NextAction job={job} pending={pending} failure={failure} onAdvance={onAdvance} awaitingDispatch={awaitingDispatch} />
 
       <div className="fo-job__tools">
         <Button
@@ -327,7 +362,7 @@ function CurrentJob({ job, workOrder, inventoryState = null, pending, failure, o
       {/* THE WORK ORDER IS PASSED DOWN, never re-picked. The technician opened this from a specific
           job and the screen already knows which one. */}
       {tool === "scan" && (
-        <PartsScanner technicianId={technicianId} workOrderId={job.workOrderId} />
+        <PartsScanner workOrderId={job.workOrderId} />
       )}
       {/* THE OFFLINE RUNTIME IS PASSED DOWN, never re-created. One queue per technician, per device --
           a second runtime inside a tool would be a second queue nobody is watching. */}
@@ -440,7 +475,7 @@ function Attention({ items }) {
 }
 
 /** "Are the necessary parts ready?" — the SHARED projection, presented for field use. */
-function Readiness({ readiness, inventoryState = null }) {
+function Readiness({ readiness, inventoryState = null, truckKnown = false }) {
   const { jobReadiness, counts, rows, plannedCount } = readiness;
   const label =
     jobReadiness === "NO_PLAN" ? "No parts planned"
@@ -461,7 +496,12 @@ function Readiness({ readiness, inventoryState = null }) {
       {/* The governed field context states the Inventory boundary; it is said out loud rather than shown as a
           stock figure nobody read. */}
       {inventoryState === "NOT_YET_ACTIVATED" && (
-        <p className="fo-muted" role="note">Inventory readiness is not activated yet — stock on hand is not checked.</p>
+        // TW4: the technician's own truck IS read now (readTruckStock); only warehouse stock is not checked here.
+        <p className="fo-muted" role="note">
+          {truckKnown
+            ? "Inventory readiness is not activated yet — warehouse stock is not checked. This shows the stock on your truck."
+            : "Inventory readiness is not activated yet — stock on hand is not checked."}
+        </p>
       )}
       {rows.length > 0 && (
         <ul className="fo-readiness__rows">
@@ -481,6 +521,13 @@ function Readiness({ readiness, inventoryState = null }) {
                   (row.partId ?? row.sku)
                 )}
               </span>
+              {/* TW4: planned vs what is physically on the technician's own truck, only when that stock was read. */}
+              {row.dimensions?.truck?.status === "KNOWN" && (
+                <span className="fo-readiness-row__truck fo-muted">
+                  Planned {row.qtyPlanned} · On your truck {row.dimensions.truck.onTruck}
+                  {row.dimensions.truck.onTruck < Math.max(0, row.qtyPlanned - row.qtyUsed) ? " · not enough" : ""}
+                </span>
+              )}
               <span className="fo-readiness-row__state">{row.readiness}</span>
             </li>
           ))}
@@ -491,9 +538,13 @@ function Readiness({ readiness, inventoryState = null }) {
 }
 
 /** "What should I do next?" — governed, or an honest nothing. */
-function NextAction({ job, pending, failure, onAdvance }) {
+function NextAction({ job, pending, failure, onAdvance, awaitingDispatch = false }) {
   const next = job.nextAction;
   if (!next) {
+    // TW3: a SCHEDULED job is the technician's, but dispatch has not released it -- say that, not "nothing available".
+    if (awaitingDispatch) {
+      return <p className="fo-muted fo-job__next-empty">Scheduled, not yet dispatched. You can start it once dispatch sends it to you.</p>;
+    }
     return (
       <p className="fo-muted fo-job__next-empty">
         No action is available to you on this work order right now.
@@ -515,5 +566,28 @@ function NextAction({ job, pending, failure, onAdvance }) {
         <p role="alert" className="fo-job__failure">{failure.message}</p>
       )}
     </div>
+  );
+}
+
+/**
+ * TW3 -- the technician's jobs that are assigned but not yet dispatched. "My Day" lists only released work, so without this a
+ * technician whose jobs are all SCHEDULED read "No assigned work orders" -- which is false.
+ */
+function AwaitingDispatch({ workOrders }) {
+  const n = workOrders.length;
+  return (
+    <section className="fo-field__section" aria-label="Scheduled, not yet dispatched">
+      <p className="fo-muted">
+        {n === 1 ? "1 scheduled job, not yet dispatched" : `${n} scheduled jobs, not yet dispatched`}. They appear here to start once dispatch sends them to you.
+      </p>
+      <ul className="fo-upnext">
+        {workOrders.map((wo) => (
+          <li key={wo.id} className="fo-upnext__row">
+            <span className="fo-upnext__ref">{wo.woNumber ?? wo.id}</span>
+            <span className="fo-upnext__complaint">{formatTimestamp(wo.scheduledStart, { unknown: "time not set" })}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

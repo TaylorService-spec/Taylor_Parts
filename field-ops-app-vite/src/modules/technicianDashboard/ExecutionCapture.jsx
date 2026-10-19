@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { snapshotPartName, snapshotPartSku } from "../../domain/workOrderInventorySnapshot";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
+import { describeExecutionOutcome } from "../../domain/executionOutcome.js";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { Button } from "../../shared/ui/primitives/index.js";
 
@@ -48,7 +49,12 @@ export default function ExecutionCapture({ workOrder }) {
     setSubmittingSku(sku);
     setError(null);
     try {
-      await updateWorkOrderExecutionData(workOrder.id, { qtyUsedUpdates: [{ sku, delta }] });
+      const result = await updateWorkOrderExecutionData(workOrder.id, { qtyUsedUpdates: [{ sku, delta }] });
+      // TW5: a request the server held back (plan cap) is SAID, never left looking recorded.
+      if (result?.outcome === "NOT_APPLIED" || result?.outcome === "PARTIALLY_APPLIED") {
+        const said = describeExecutionOutcome(result, { qty: Math.abs(delta), label: item?.name ?? sku, woNumber: workOrder.woNumber ?? workOrder.id });
+        setError(said.text);
+      }
     } catch (err) {
       // Safe, categorized copy -- never the raw message / Functions code.
       console.error(err);

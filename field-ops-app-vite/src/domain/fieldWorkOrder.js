@@ -1,6 +1,7 @@
 // Explicit .js extension: Vite resolves extensionless imports but the plain
 // `node --test` runner does not, and this module is unit-tested there.
 import { getAllowedActions } from "./workOrderWorkflow.js";
+import { toMillis } from "./timestampMillis.js";
 
 /**
  * F0 — field-facing selectors over the GOVERNED Work Order (`fieldops_wos`).
@@ -99,6 +100,21 @@ export function sortFieldWorkOrders(workOrders = []) {
 /** The technician's active queue, most-advanced first. */
 export function activeFieldWorkOrders(workOrders = []) {
   return sortFieldWorkOrders(workOrders.filter(isActiveFieldWorkOrder));
+}
+
+/**
+ * TW3 -- the technician's OWN jobs that are assigned but not yet dispatched (SCHEDULED and earlier), soonest first.
+ *
+ * "My Day" lists only dispatched/active work, so a technician whose jobs are all SCHEDULED read "No assigned work
+ * orders" -- false: the jobs ARE assigned, dispatch has simply not released them. This is the other half of that answer.
+ * Terminal work is never here (the assigned read does not return it, and fieldPhase puts it in FINISHED).
+ */
+export function awaitingDispatchWorkOrders(workOrders = []) {
+  const list = Array.isArray(workOrders) ? workOrders : [];
+  const at = (wo) => toMillis(wo?.scheduledStart) ?? Number.POSITIVE_INFINITY;
+  return list
+    .filter((wo) => !!wo && !isActiveFieldWorkOrder(wo) && fieldPhase(wo) === FIELD_PHASE.AWAITING_DISPATCH)
+    .sort((a, b) => at(a) - at(b) || String(a.woNumber ?? a.id).localeCompare(String(b.woNumber ?? b.id)));
 }
 
 /**

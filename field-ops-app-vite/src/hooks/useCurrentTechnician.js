@@ -140,6 +140,15 @@ function useEosCurrentTechnician() {
   };
 }
 
+// FIREBASE ARM: HELD FOR THE PRODUCTION RECOVERY RELEASE (2026-10-19, TECH lane).
+// REPLACE -> VERIFY -> REMOVE -> PROVE AGAIN: the EOS replacement above is in place and VERIFIED -- where EOS_SESSION_SOURCE is
+// true this hook takes the governed Employee from AuthContext and the Firestore arm is inert (enabled:false -> no
+// subscription, no read; test/technicianIdentityEos.test.jsx). It is NOT removed because the production build still runs
+// Firebase (EOS_SESSION_SOURCE is false and no EOS API is declared there), and for that build users.technicianId +
+// fieldops_technicians is the only technician link: deleting the arm now would leave production technicians unlinked.
+// Remove it in the release that moves production to the EOS session source, not before. No consumer takes an ID from this
+// hook for anything but display/profile state any more (the shell, the scanner and the offline queue use the governed
+// Employee id or the signed-in principal).
 /** Both hooks are always called so the rules of hooks hold; the one that is not the source is inert. eosSource is a test seam. */
 export function useCurrentTechnician({ eosSource } = {}) {
   const eos = (eosSource ?? EOS_SESSION_SOURCE) === true;

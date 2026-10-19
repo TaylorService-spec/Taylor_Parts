@@ -60,7 +60,8 @@ export async function submitOrQueue({ send, buildIntent, enqueue, nav = null } =
   } catch (err) {
     outcome = { ok: false, error: { code: err?.code ?? null, details: err?.details ?? null } };
   }
-  if (outcome?.ok) return { result: SUBMIT_RESULT.SENT, serverIds: outcome.serverIds ?? null };
+  // `detail` is the sender's own answer (e.g. what recordWorkOrderExecution applied), handed back untouched.
+  if (outcome?.ok) return { result: SUBMIT_RESULT.SENT, serverIds: outcome.serverIds ?? null, detail: outcome.detail ?? null };
 
   const failure = classifyFailure({ code: outcome?.error?.code, details: outcome?.error?.details });
   // Only a failure that retrying could plausibly fix becomes queued work.

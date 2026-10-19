@@ -18,8 +18,8 @@
 // Home and Jobs are eager: they are the first thing opened, and deferring them would move the wait
 // rather than remove it.
 import { lazy, Suspense, useMemo, useState } from "react";
-import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
+import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import {
   HANDHELD_TABS, MORE_ITEMS, SYNC_PRESENTATION,
   composeTechnicianHome, composeJobCards, homePrimaryActionLabel,
@@ -38,16 +38,18 @@ const SyncQueue = lazy(() => import("../mobile/SyncQueue"));
 
 export default function TechnicianShell({ deps = {} }) {
   const [tab, setTab] = useState("home");
-  const { technicianId, loading: techLoading } = useCurrentTechnician();
-  // The technician's own work: the governed listMyAssignedWorkOrders read (the server resolves the
-  // Employee). `technicianId` above keys the offline queue only; it never selects Work Orders.
+  // TW1: the job a tapped card opened (a Work Order id), or null for the list.
+  const [openJobId, setOpenJobId] = useState(null);
+  // The technician's own work: the governed listMyAssignedWorkOrders read (the server resolves the Employee). This shell
+  // holds NO technician identity of its own: the offline queue is keyed by the signed-in principal (useOfflineRuntime), and
+  // the Firestore-derived users.technicianId link (hooks/useCurrentTechnician.js) is no longer read here at all.
   const { data: workOrders, loading: workOrdersLoading } = useAssignedWorkOrders();
 
   // ONE technician-scoped subscription feeds every tab. Home and Jobs are two views of the same
   // read, not two reads -- a phone on a weak connection should not pay twice for one answer.
   // WO-02 left `pending` as a prop with nothing behind it. It is now the REAL queue: what this
   // technician has captured on this device and the platform has not yet accepted.
-  const offline = useOfflineRuntime({ technicianId: () => technicianId, ...(deps.offline ?? {}) });
+  const offline = useOfflineRuntime({ ...(deps.offline ?? {}) });
   const home = useMemo(
     () => composeTechnicianHome({
       workOrders: workOrders ?? [],
@@ -58,7 +60,7 @@ export default function TechnicianShell({ deps = {} }) {
     [workOrders, deps.pending, offline.queue],
   );
   const cards = useMemo(() => composeJobCards(workOrders ?? []), [workOrders]);
-  const loading = techLoading || workOrdersLoading;
+  const loading = workOrdersLoading;
 
   return (
     // ONE runtime for the whole shell. Everything below -- FieldMode, its note, time, parts, install
@@ -72,7 +74,16 @@ export default function TechnicianShell({ deps = {} }) {
             offline={offline} onOpenSync={() => setTab("more")} fieldModeDeps={deps.fieldMode}
           />
         )}
-        {tab === "jobs" && <HandheldJobs cards={cards} loading={loading} />}
+        {tab === "jobs" && (openJobId
+          // The SAME governed current-job surface "My Day" uses -- accept / travel / arrive / start / scan / use / note /
+          // time / complete, behind the same gates -- pointed at the one job that was tapped. It adds no authority.
+          ? (
+            <section aria-label="Job">
+              <Button variant="secondary" className="fo-handheld__back" onClick={() => setOpenJobId(null)}>← My jobs</Button>
+              <FieldMode workOrderId={openJobId} deps={deps.fieldMode} />
+            </section>
+          )
+          : <HandheldJobs cards={cards} loading={loading} onOpen={setOpenJobId} />)}
         {tab === "scan" && (
           <Suspense fallback={<p className="fo-muted" role="status">Starting the scanner…</p>}>
             <ScanWorkspace deps={deps.scan} />
@@ -89,7 +100,7 @@ export default function TechnicianShell({ deps = {} }) {
             type="button"
             className={`fo-handheld__tab${tab === t.key ? " fo-handheld__tab--active" : ""}`}
             aria-current={tab === t.key ? "page" : undefined}
-            onClick={() => setTab(t.key)}
+            onClick={() => { setOpenJobId(null); setTab(t.key); }}
           >
             {t.label}
           </button>
@@ -165,7 +176,7 @@ function HandheldHome({ home, loading, onOpenJobs, offline, onOpenSync, fieldMod
 }
 
 /** Cards, not a table. A desktop grid on a phone is a horizontal scrollbar with extra steps. */
-function HandheldJobs({ cards, loading }) {
+function HandheldJobs({ cards, loading, onOpen }) {
   if (loading) return <p className="fo-muted" role="status">Loading your jobs…</p>;
   if (cards.length === 0) {
     return <p className="fo-muted">No jobs are assigned to you right now.</p>;
@@ -173,21 +184,39 @@ function HandheldJobs({ cards, loading }) {
   return (
     <section aria-label="My jobs">
       <ul className="fo-handheld__jobs">
-        {cards.map((c) => (
-          <li key={c.workOrderId} className="fo-handheld__job">
-            <p className="fo-handheld__job-ref">{c.woNumber}{c.isInstall ? " · Installation" : ""}</p>
-            <p className="fo-handheld__job-customer">{c.customer ?? "Customer unknown"}</p>
-            <p className="fo-muted">{c.location ?? "Location unknown"}</p>
-            <p className="fo-muted">
-              {c.status}
-              {/* UNKNOWN is shown as UNKNOWN. Rendering it as "Missing" would send somebody to a
-                  supplier for parts that may be sitting on their van. */}
-              {c.readiness ? ` · parts ${c.readiness.toLowerCase()}` : ""}
-            </p>
-          </li>
-        ))}
+        {cards.map((c) => <HandheldJobCard key={c.workOrderId} card={c} onOpen={onOpen} />)}
       </ul>
     </section>
+  );
+}
+
+/**
+ * One job card. TW1: it OPENS the job (a button, 44px+). TW2: customer and site are NAMES resolved through the governed field
+ * context -- the same read FieldMode uses -- and never the raw `acct_...` / `site_...` references.
+ */
+function HandheldJobCard({ card: c, onOpen }) {
+  const { context, denied, loading } = useWorkOrderFieldContext(c.workOrderId);
+  const customer = context?.customer?.state === "RESOLVED" ? context.customer.displayName : null;
+  const site = context?.site?.state === "RESOLVED" ? context.site.displayLabel : null;
+  // Loading, denied and genuinely absent are three different things and are said as three different things.
+  const unresolved = (what) => (loading ? `Loading ${what}…` : denied ? `${what[0].toUpperCase()}${what.slice(1)} details unavailable to your role` : `No ${what} on record`);
+  return (
+    <li className="fo-handheld__job">
+      <button
+        type="button" className="fo-handheld__job-open" onClick={() => onOpen(c.workOrderId)}
+        aria-label={`Open ${c.woNumber}${customer ? `, ${customer}` : ""}`}
+      >
+        <span className="fo-handheld__job-ref">{c.woNumber}{c.isInstall ? " · Installation" : ""}</span>
+        <span className="fo-handheld__job-customer">{customer ?? unresolved("customer")}</span>
+        <span className="fo-muted">{site ?? unresolved("site")}</span>
+        <span className="fo-muted">
+          {c.status}
+          {/* UNKNOWN is shown as UNKNOWN. Rendering it as "Missing" would send somebody to a
+              supplier for parts that may be sitting on their van. */}
+          {c.readiness ? ` · parts ${c.readiness.toLowerCase()}` : ""}
+        </span>
+      </button>
+    </li>
   );
 }
 

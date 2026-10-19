@@ -2,7 +2,10 @@
 //
 // Firebase: the execution-capture callable wrote `inventorySnapshot[].qtyUsed` as a DELTA per Part, clamped to
 // [0, qtyPlanned], and appended `executionNote`, for the technician on their OWN assignment on a non-terminal
-// Work Order, keyed by an idempotencyKey. Every one of those rules is kept. Two things are deliberately not:
+// Work Order, keyed by an idempotencyKey. Every one of those rules is kept (TW5, 2026-10-19: Firebase parity CONFIRMED --
+// mergeQtyUsed capped qtyUsed at qtyPlanned since #925, so usage beyond plan was never recorded; what changed is that a
+// held-back request now says so: outcome NOT_APPLIED / PARTIALLY_APPLIED with a per-line reason, never "RECORDED").
+// Two things are deliberately not:
 //
 //   * NO STOCK MOVES. Recording an actual is not consuming stock; the ruling makes stock movement an explicit
 //     boundary. The actuals recorded here are what an activated Inventory authority would consume from.
@@ -120,9 +123,22 @@ export interface AppliedUsage {
   readonly qtyPlanned: number;
   /** OD-T4: the ledger row this line posted at the truck, when it consumed. */
   readonly movementId?: string;
+  /**
+   * Why this line applied less than was asked (TW5), or absent when it applied exactly the request.
+   *   PLAN_LIMIT_REACHED  a positive request ran into the Work Order's planned quantity (the Firebase cap, kept).
+   *   NOTHING_TO_REVERSE  a correction asked to take back more than was recorded.
+   */
+  readonly reason?: "PLAN_LIMIT_REACHED" | "NOTHING_TO_REVERSE";
 }
+/**
+ * RECORDED          everything asked was applied (or a note was written).
+ * PARTIALLY_APPLIED some usage was applied and some was held back; the lines carry the governed `reason`.
+ * NOT_APPLIED       usage was asked and NONE of it was applied (and no note was written); the lines carry the reason.
+ *                   Stock did not move. A SUCCESSFUL, idempotent answer -- not a failure, and not "Recorded".
+ * REPLAYED          the same key was already answered.
+ */
 export interface ExecutionResult {
-  readonly outcome: "RECORDED" | "REPLAYED";
+  readonly outcome: "RECORDED" | "REPLAYED" | "PARTIALLY_APPLIED" | "NOT_APPLIED";
   readonly workOrderId: string;
   readonly usage: readonly AppliedUsage[];
   readonly noteRecorded: boolean;
@@ -234,8 +250,10 @@ export async function recordWorkOrderExecution(
          VALUES ($1,$2,$3,'PART_USAGE',$4,$5,$6,NULL,$7,$8,$9,$10)`,
         [`woe_${randomUUID()}`, actor.tenantId, request.workOrderId, line.partId, line.qtyDelta, appliedDelta,
          `${request.idempotencyKey}#part:${line.partId}`, fingerprint, actor.principalId, now]);
+      // TW5: an applied delta short of the request is SAID, with the governed reason, never left for the screen to guess.
+      const reason = appliedDelta === line.qtyDelta ? null : line.qtyDelta > 0 ? ("PLAN_LIMIT_REACHED" as const) : ("NOTHING_TO_REVERSE" as const);
       applied.push(Object.freeze({ partId: line.partId, requestedDelta: line.qtyDelta, appliedDelta, qtyUsed: next, qtyPlanned: planned,
-        ...(movementId ? { movementId } : {}) }));
+        ...(movementId ? { movementId } : {}), ...(reason ? { reason } : {}) }));
     }
     if (request.note !== null) {
       await client.query(
@@ -247,8 +265,10 @@ export async function recordWorkOrderExecution(
          fingerprint, actor.principalId, now]);
     }
     await client.query("COMMIT");
+    const outcome = applied.length > 0 && request.note === null && applied.every((u) => u.appliedDelta === 0) ? ("NOT_APPLIED" as const)
+      : applied.some((u) => u.reason !== undefined) ? ("PARTIALLY_APPLIED" as const) : ("RECORDED" as const);
     return Object.freeze({
-      outcome: "RECORDED" as const, workOrderId: request.workOrderId, usage: Object.freeze(applied),
+      outcome, workOrderId: request.workOrderId, usage: Object.freeze(applied),
       noteRecorded: request.note !== null, inventoryBoundary: boundary, ...consumedFrom,
     });
   } catch (err) {

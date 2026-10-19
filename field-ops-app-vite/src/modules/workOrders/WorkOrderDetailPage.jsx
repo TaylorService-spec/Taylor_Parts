@@ -15,6 +15,7 @@ import WorkOrderActions from "../controlTower/WorkOrderActions";
 import WorkOrderPartsPlanEditor from "./WorkOrderPartsPlanEditor";
 import CustomerSchedulingLinkPanel from "./CustomerSchedulingLinkPanel.jsx";
 import { useMyWorkOrderCapabilities } from "../../hooks/useMyWorkOrderCapabilities.js";
+import { WORK_ORDER_ACTION_CAPABILITY } from "../../access/sessionAccess.js";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { savedListState } from "../../navigation/listStateMemory.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
@@ -43,6 +44,9 @@ import {
   deriveWorkOrderIntelligence,
   mergeWorkOrderAttention,
 } from "../../domain/workOrderIntelligence.js";
+
+// The server accepts schedule OR this key to read/issue customer scheduling links (eosOps/selfScheduling.ts).
+const SELF_SCHEDULING_ISSUE_CAPABILITY = "workOrder.selfScheduling.issue";
 
 // THE WORK ORDER, COMPOSED IN THE NORTH STAR GRAMMAR.
 //
@@ -101,6 +105,16 @@ export default function WorkOrderDetailPage() {
     hasCapability: myWorkOrderCapabilities.has,
     resolving: myWorkOrderCapabilities.status === "loading",
   };
+  // ITEM 7 -- WHAT THIS CALLER MAY BE OFFERED AND MAY READ. This page is mounted by anyone holding service.workOrders, the
+  // assigned technician included, but the OFFICE parts of it are for office authority: the technician roster read
+  // (listWorkOrderTechnicians) needs schedule OR dispatch, and the scheduling-link read (readSelfSchedulingSessions) needs
+  // issue OR schedule -- both refused 403 for a technician. So those reads are not made, and the office-only controls not
+  // drawn, unless the caller's own capability set (the same one the server re-checks) holds the key. Fail closed: while the
+  // set is loading or failed, `has` is false and nothing office-side fires.
+  const canSchedule = myWorkOrderCapabilities.has(WORK_ORDER_ACTION_CAPABILITY.Schedule);
+  const canDispatch = myWorkOrderCapabilities.has(WORK_ORDER_ACTION_CAPABILITY.Dispatch);
+  const canReadRoster = canSchedule || canDispatch;
+  const canUseSchedulingLink = canSchedule || myWorkOrderCapabilities.has(SELF_SCHEDULING_ISSUE_CAPABILITY);
   const { workOrder, loading, error, retry } = useWorkOrder(workOrderId);
   const { context: readinessContext } = useWorkOrderReadinessContext(workOrderId);
   // useEquipmentDoc returns { equipment, loading, error } — NOT { data }. Destructuring `data`
@@ -111,7 +125,9 @@ export default function WorkOrderDetailPage() {
   const { equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   // Keyed by EMPLOYEE id, like the governed Work Order's assignee (not fieldops_technicians).
   const directoryRows = useMemo(() => (workOrder ? [workOrder] : []), [workOrder]);
-  const { data: technicians, error: techniciansError } = useWorkOrderTechnicianDirectory(directoryRows);
+  // `enabled: canReadRoster` -- a technician resolves the assignee NAME from the row itself (assigneeDisplayName), which the
+  // directory merges in without the roster read.
+  const { data: technicians, error: techniciansError } = useWorkOrderTechnicianDirectory(directoryRows, { enabled: canReadRoster });
 
   // ONE DERIVATION PER FACT (NS-P4). Everything below renders what these return; nothing re-derives.
   const header = useMemo(() => workOrderHeader(workOrder), [workOrder]);
@@ -308,22 +324,28 @@ export default function WorkOrderDetailPage() {
           // here and must never be mistaken for one: a permission-disabled button means "not you",
           // and these mean "not yet, for anyone". The tooltip says which, in those words.
           <>
-            <button
-              type="button"
-              className="fo-button ns-btn-pending"
-              disabled
-              title="Not available yet — rescheduling a dispatched work order needs a transition the engine does not have (backlog B1). Not a permission limit."
-            >
-              Reschedule
-            </button>
-            <button
-              type="button"
-              className="fo-button ns-btn-pending ns-btn-pending--primary"
-              disabled
-              title="Not available yet — there is no technician notification channel to send to (backlog B2). Not a permission limit."
-            >
-              Message Technician
-            </button>
+            {/* ITEM 7: the placeholders belong to office authority (schedule / dispatch). A technician is not shown
+                office controls that can never light up for them. */}
+            {canReadRoster && (
+              <>
+                <button
+                  type="button"
+                  className="fo-button ns-btn-pending"
+                  disabled
+                  title="Not available yet — rescheduling a dispatched work order needs a transition the engine does not have (backlog B1). Not a permission limit."
+                >
+                  Reschedule
+                </button>
+                <button
+                  type="button"
+                  className="fo-button ns-btn-pending ns-btn-pending--primary"
+                  disabled
+                  title="Not available yet — there is no technician notification channel to send to (backlog B2). Not a permission limit."
+                >
+                  Message Technician
+                </button>
+              </>
+            )}
             <WorkOrderActions
               workOrder={workOrder}
               role={role}
@@ -339,7 +361,7 @@ export default function WorkOrderDetailPage() {
       />
 
       {/* CUSTOMER SELF-SCHEDULING: issue a link for an unscheduled job; the customer's booking lands on THIS record. */}
-      <CustomerSchedulingLinkPanel workOrder={workOrder} />
+      {canUseSchedulingLink && <CustomerSchedulingLinkPanel workOrder={workOrder} />}
 
       {/* THE LIFECYCLE SPINE (NS-P1) — the single change the audits called critically absent.
           Rendered as the BAND rather than the row: on a record page the spine is the loudest
