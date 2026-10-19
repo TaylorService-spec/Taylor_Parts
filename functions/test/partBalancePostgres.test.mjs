@@ -119,8 +119,8 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
      VALUES ($1,'t1',$2,'wo-fixture',$3,$4,$5,$1,'fixture')`, [`cmt-bal-${++seq}`, companyKey, partId, eventType, quantity]);
   const reorder = async (partId, warehouseId, status, quantity, companyKey = "sample-co") => {
     const id = `rr-bal-${++seq}`;
-    await q(`INSERT INTO eos_ops.reorder_requests (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity, updated_by, provenance, requested_by)
-             VALUES ($1,'t1',$2,$3,$4,$5,$6,$7,'NATIVE',$7)`, [id, companyKey, partId, warehouseId, status, quantity, receiver]);
+    await q(`INSERT INTO eos_ops.reorder_requests (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity, updated_by, provenance, requested_by, received_at)
+             VALUES ($1,'t1',$2,$3,$4,$5,$6,$7,'NATIVE',$7,$8)`, [id, companyKey, partId, warehouseId, status, quantity, receiver, status === "RECEIVED" ? new Date() : null]);
     await q(`INSERT INTO eos_ops.purchase_orders (id, tenant_id, operating_company_key, part_id, supplier_name, external_po_number, ordered_quantity, ordered_date, created_by)
              VALUES ($1,'t1',$2,$3,'Acme',$1,$4,'2026-01-01',$5)`, [id, companyKey, partId, quantity, receiver]);
     return id;
