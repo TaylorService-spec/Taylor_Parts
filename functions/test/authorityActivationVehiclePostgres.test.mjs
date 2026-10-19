@@ -324,8 +324,10 @@ test("the GOVERNED authority, asked directly, has ZERO edit-without-read on the 
     // ONE row survives, and it is the one the manifest names: officeManager holds workOrder.create
     // and no transition, so it is a CREATE-without-read that ruling B's thirteen rows -- scoped to
     // workOrder.transition holders -- deliberately did not cover. Recorded rather than closed.
-    assert.deepEqual(await governedEditWithoutRead(pool, scoped), ["workOrder/officeManager"],
-      "every row ruling B scoped is closed, and the one outside it is the one the manifest classifies");
+    // + reportDefinition/reportAuthor (Firebase exit B4 grants, 1764650000000): reportAuthor holds report.definition.create / .rename / .duplicate and NOT reportDefinition.read,
+    // exactly as in Firebase (an author who cannot list definitions; every saved-definition command re-decides its own capability and ownership). Recorded parity, not a defect.
+    assert.deepEqual(await governedEditWithoutRead(pool, scoped), ["reportDefinition/reportAuthor", "workOrder/officeManager"],
+      "every row ruling B scoped is closed; the two outside it are the one the manifest classifies and the Firebase-parity reportAuthor");
     assert.ok(RESIDUAL_EDIT_WITHOUT_READ.some((r) => r.objectKey === "workOrder" && r.roleKey === "officeManager"));
 
     // AND THE OTHER RESIDUAL workOrder ROW IS ABSENT HERE, which is the proof that its disposition is

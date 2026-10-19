@@ -1028,9 +1028,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.deepEqual([...viewer].sort(), ["reportDefinition.read", ...b4KeysHeldBy("reportViewer")].sort());
     assert.equal(b4KeysHeldBy("reportViewer").length, 26);
     const viewerAccess = objectAccessOf(viewer);
-    for (const mutating of ["CREATE", "EDIT", "BUSINESS_ACTION", "ADMIN_ACTION"]) {
+    // The 26 B4 report.* reads (1764650000000) are BUSINESS_ACTION-kind registrations with no CRED verb (reads of the report engine, not a mutation): exactly 26, and still no CREATE / EDIT / ADMIN_ACTION.
+    for (const mutating of ["CREATE", "EDIT", "ADMIN_ACTION"]) {
       assert.equal(viewerAccess.kinds[mutating] ?? 0, 0, `the reporting baseline acquired a ${mutating}`);
     }
+    assert.equal(viewerAccess.kinds.BUSINESS_ACTION ?? 0, 26, "the 26 Firebase report reads, nothing else");
     // NOT GRANTABLE THE OTHER WAY EITHER: the delete is UNREGISTERED, so it is ungrantable rather
     // than merely ungranted, and the field-level report ids are deliberately outside the vocabulary.
     assert.equal(capabilityCatalog.some((c) => c.key === "reportDefinition.delete"), false);
@@ -1162,11 +1164,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
 
     assert.deepEqual(decideWorkflowAction(before, instance, "MarkReady", attempt),
       { allowed: false, refusal: "notBoundToRole" });
-    // ONE, not zero: Reporting Slice 1 gave reportViewer reportDefinition.read. That makes this proof
+    // 27 (reportDefinition.read + the 26 B4 report reads, 1764650000000), not zero: Reporting Slice 1 gave reportViewer reportDefinition.read. That makes this proof
     // STRONGER, not weaker -- the Role now has a real, non-empty authority, so "the binding did not
     // change it" is a comparison between two populated sets rather than between two emptinesses.
     const capsBefore = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
-    assert.deepEqual([...capsBefore].sort(), ["reportDefinition.read"]);
+    assert.deepEqual([...capsBefore].sort(), ["reportDefinition.read", ...b4KeysHeldBy("reportViewer")].sort());
 
     // Workflow administration is the workflowDefinition.bindRole CAPABILITY now (workflow control
     // plane), never the Role name. No Role holds it in this chain (asserted above), so the fixture
