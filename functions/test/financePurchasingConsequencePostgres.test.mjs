@@ -36,7 +36,7 @@ test("15 / 22. static: only the receipt command composes the Finance writer; no 
   assert.equal(ops.some((o) => /financ|fact|obligation|counterpart|acquisitionCost/i.test(o)), false, "no Operations operation manufactures Finance truth");
   assert.equal(/firebase/i.test(readFileSync(join(SRC, "eosFinance/financeFoundation.ts"), "utf8").replace(/no Firebase[^\n]*/gi, "")), false);
   // The ONE governed receipt correction (DECISIONS #193) originates in Operations; no accounting-only correction exists.
-  assert.deepEqual(ops.filter((o) => /receipt/i.test(o) && /correct|void|cancel|reverse/i.test(o)), ["correctReorderReceipt"]);
+  assert.deepEqual(ops.filter((o) => /receipt/i.test(o) && /correct|void|cancel|reverse/i.test(o)), ["correctReorderReceipt", "correctSupplierPurchaseOrderReceipt"]); // + the supplier-PO correction (Firebase exit B3-x): one per receipt source type, never a fallback between them
 });
 
 test("Finance Activation 1 over the governed purchasing / receiving path", { skip: SKIP, concurrency: 1 }, async (t) => {

@@ -40,8 +40,22 @@
       { "role": "inventoryLookupReader", "key": "inventory.catalog.alias.read" },
       { "role": "inventoryStockRelocationOperator", "key": "inventory.catalog.alias.read" }
     ],
-    "eosOnly": []
+    "eosOnly": [],
+    "toAdd": "= firebaseOnly: the exact (role, key) pairs to GRANT to reach parity. admin holds the whole catalog by derivation and needs no row; 9 pairs.",
+    "toRemove": "= eosOnly: the exact (role, key) pairs to REVOKE to reach parity. NONE among the repository-known holders (partsAssociate is the Firebase Parts Associate and stays)."
   },
+  "decisionItems": [
+    {
+      "id": "REMOVAL-CHECK",
+      "kind": "separate Owner decision, only if triggered",
+      "text": "Reaching parity could require REMOVING a live EOS holder of one of the four keys that Firebase never had (for example a role Administration granted on nonprod beyond partsAssociate). The repository shows none and this file proposes no removal. If the controller's live-roster check finds one, it is listed as its own decision (revoking an existing holder changes someone's access) and is NOT folded into the grant migration."
+    },
+    {
+      "id": "GENERALMANAGER-AND-DISPATCHER",
+      "kind": "confirm before granting",
+      "text": "generalManager (postPurchasingUpdate) and dispatcher (all three) are Firebase holders the brief did not name. Exact parity includes them; if the live nonprod roster already holds them they drop out of toAdd. The brief's named gap is purchasingManager x3 and the two alias.read functional roles."
+    }
+  ],
   "diffNotes": [
     "firebaseOnly is relative to the repository-known EOS holders above; rows the live nonprod roster already holds (for example dispatcher) are removed by the controller when it verifies the roster. The brief named purchasingManager (three keys) and the alias.read holders; generalManager and dispatcher are listed because the Firebase catalogs hold them and 'exact parity' means no Firebase holder is left out and none is added.",
     "The purchasingManager rows are the Firebase 'buyer's workflow' the EOS grants left with partsAssociate only.",
@@ -54,7 +68,7 @@
   },
   "newAuthority": {
     "note": "Nothing new is proposed as a holder. Presented separately, per the Owner direction:",
-    "inventory.receipt.correct": "Already registered; held by NOBODY. The supplier-PO receipt correction and the Reorder receipt correction both use it. A proposed eligible-role matrix for Owner approval is in docs/architecture/b3x-receipt-correction-eligibility-matrix.md. Activation (any grant) is an Owner decision.",
+    "inventory.receipt.correct": "Already registered; held by NOBODY. The supplier-PO receipt correction and the Reorder receipt correction both use it. A proposed eligible-role matrix for Owner approval is in docs/proposals/receipt-correction-role-matrix.md. Activation (any grant) is an Owner decision.",
     "readPartBalance": "Reuses inventory.transaction.read; no new key, no new holder."
   },
   "notes": [
