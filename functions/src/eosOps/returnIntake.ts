@@ -11,13 +11,14 @@
 //     a company outside them answers exactly like an unknown one (OPERATING_COMPANY_NOT_GOVERNED). No authority at all is
 //     COMPANY_AUTHORITY_REQUIRED. Every refusal precedes any write.
 //   * the receiving WAREHOUSE is optional; when stated it must belong to that company AND be in the caller's warehouse reach
-//     (partsReads.scopedWarehouseIds, narrowed to the caller's companies). Outside either it answers exactly like an unknown warehouse (WAREHOUSE_NOT_FOUND).
+//     (partsReads.scopedWarehouseIds, narrowed to the caller's companies; the WRITE uses the caller's own WAREHOUSE scope only -- never the Administrator's inspect-only reach). Outside either it answers exactly like an unknown warehouse (WAREHOUSE_NOT_FOUND).
 //   * every recorded return writes ONE eos_policy.audit_events row in the same transaction; a replay writes nothing.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { ReorderLifecycleError, type ReorderActor } from "./reorderLifecycleCommands.js";
 import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 import { scopedWarehouseIds } from "./partsReads.js";
+import { postgresPrincipalDimensionReader } from "./contextualAuthorization.js";
 import { withActorAuthority } from "./administrationReach.js";
 
 export const RETURN_INTAKE_CAPABILITY = "inventory.returns.intake";
@@ -119,8 +120,12 @@ async function callerCompanies(c: Pick<PoolClient, "query">, actor: ReorderActor
 }
 
 /** The warehouses the caller may name for a return: in their reach AND belonging to one of their companies, ACTIVE. */
-async function eligibleWarehouses(c: Pick<PoolClient, "query">, actor: ReorderActor, companies: readonly string[], companyKeys: readonly string[]) {
-  const reach = await scopedWarehouseIds(c, actor, { companyKeys });
+async function eligibleWarehouses(
+  c: Pick<PoolClient, "query">, actor: ReorderActor, companies: readonly string[], companyKeys: readonly string[],
+  /** The OPTIONS read may show an Administrator its inspect-only reach; the WRITE never does (ISO-2 round 2). */
+  administrationReach: boolean,
+) {
+  const reach = await scopedWarehouseIds(c, actor, { companyKeys, administrationReach });
   if (reach.length === 0) return [];
   const { rows } = await c.query<{ id: string; name: string; company: string }>(
     `SELECT w.id, w.name, k.operating_company_id AS company
@@ -150,11 +155,17 @@ export async function recordReturnIntake(deps: { readonly pool: Pool }, actor: R
   try {
     await c.query("BEGIN");
     const { ids: companies, keys: companyKeys } = await callerCompanies(c, actor);
+    // A WRITE needs the caller's own Employee: company authority alone (a protected Administrator holds every company, OD-ISO-2) is not
+    // enough, and the Administrator's inspect-only warehouse reach never authorizes it. Before this change an Employee-less caller had no
+    // company authority at all, so this refusal adds nothing for anyone else.
+    if ((await postgresPrincipalDimensionReader(c).linkedEmployeeId(actor.tenantId, actor.principalId)) === null) {
+      refuse("EMPLOYEE_LINK_REQUIRED", "FORBIDDEN", "only an Employee can take a return in");
+    }
     if (!companies.includes(req.operatingCompanyId)) {
       refuse("OPERATING_COMPANY_NOT_GOVERNED", "INVALID_INPUT", "operatingCompanyId is not an active operating company you may act for");
     }
     if (req.warehouseId !== null) {
-      const ok = (await eligibleWarehouses(c, actor, [req.operatingCompanyId], companyKeys)).some((w) => w.warehouseId === req.warehouseId);
+      const ok = (await eligibleWarehouses(c, actor, [req.operatingCompanyId], companyKeys, false)).some((w) => w.warehouseId === req.warehouseId);
       if (!ok) refuse("WAREHOUSE_NOT_FOUND", "NOT_FOUND", "no such receiving warehouse for that operating company");
     }
     // One key, one return. Serialized on the key so two concurrent first attempts cannot both insert.
@@ -206,7 +217,7 @@ export async function listReturnIntakeOptions(deps: { readonly pool: Pool }, act
       `SELECT operating_company_id AS id, min(operating_company_key) AS key FROM eos_policy.tenant_operating_company_keys
         WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_id = ANY($2::text[]) GROUP BY 1 ORDER BY 1`,
       [actor.tenantId, [...companies]])).rows;
-    const warehouses = await eligibleWarehouses(c, actor, companies, companyKeys);
+    const warehouses = await eligibleWarehouses(c, actor, companies, companyKeys, true);
     await c.query("COMMIT");
     const keyOf = new Map(keys.map((k) => [String(k.id), String(k.key)]));
     return Object.freeze({

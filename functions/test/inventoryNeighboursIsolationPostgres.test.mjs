@@ -134,6 +134,25 @@ test("ISO-2: the warehouse-scoped neighbours decide capability, then company, th
     assert.equal((await acquire(cross, { serialNo: "SN-V1", locationId: "WH-V", idempotencyKey: "iso2-acq-v1" })).outcome, "replayed");
   });
 
+  await t.test("intake: a foreign unit is refused by the PRE-LOCK probe -- no advisory lock taken, no foreign row locked, not the unique-violation path", async () => {
+    // Hold BOTH locks another writer of the Ventana unit would hold: the per-unit advisory lock and the custody row lock. If the refusal waited for either,
+    // or reached the INSERT, this would block (a hung promise fails the race) or surface the unique-violation message instead of the probe's.
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`eos_ops.serializedAssetAcquire:${T}:P-SER:SN-V1`]);
+      await holder.query(`SELECT 1 FROM eos_ops.serialized_custody WHERE tenant_id = $1 AND part_id = 'P-SER' AND serial_number = 'SN-V1' FOR UPDATE`, [T]);
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("the foreign-unit refusal blocked on a lock the probe must precede")), 8000).unref());
+      const clash = await noWrite(() => Promise.race([refusal(() => acquire(inCo, { serialNo: "SN-V1", locationId: "WH-T", idempotencyKey: "iso2-acq-lock" })), timeout]));
+      assert.equal(clash.code, "ALREADY_EXISTS_CONFLICT");
+      assert.equal(clash.message, "a unit with this part and serial already exists", "the probe's answer, not the unique-violation mapping");
+      assert.doesNotMatch(clash.message, /concurrently/);
+    } finally {
+      await holder.query("ROLLBACK").catch(() => undefined);
+      holder.release();
+    }
+  });
+
   await t.test("intake: capability first, then company authority", async () => {
     const noCap = await noWrite(() => refusal(() => acquire(noCompany, { serialNo: "SN-N0", locationId: "WH-T", idempotencyKey: "iso2-acq-n0" }, [])));
     assert.equal(noCap.code, "PERMISSION_DENIED");
@@ -220,6 +239,8 @@ test("ISO-2: the warehouse-scoped neighbours decide capability, then company, th
     assert.equal((await intake(inCo, returnReq({ warehouseId: "WH-T" }))).outcome, "recorded");
     const foreignWh = await noWrite(() => refusal(() => intake(foreignScoped, returnReq({ warehouseId: "WH-V" }))));
     assert.equal(foreignWh.code, "WAREHOUSE_NOT_FOUND");
+    const unknownWh = await refusal(() => intake(foreignScoped, returnReq({ warehouseId: "WH-NOPE" })));
+    assert.deepEqual(shapeOf(foreignWh), shapeOf(unknownWh), "foreign warehouse == unknown warehouse: same code, category and message");
     const foreignCo = await noWrite(() => refusal(() => intake(foreignScoped, returnReq({ operatingCompanyId: "ventana", warehouseId: "WH-V" }))));
     assert.equal(foreignCo.code, "OPERATING_COMPANY_NOT_GOVERNED");
     const none = await noWrite(() => refusal(() => intake(noCompany, returnReq({}))));
@@ -274,7 +295,11 @@ test("ISO-2: the warehouse-scoped neighbours decide capability, then company, th
     assert.deepEqual((await rackCall("listRackingWarehouses", adminId, {})).items.map((w) => w.warehouseId).sort(), ["WH-T", "WH-V"]);
     const options = await rets.listReturnIntakeOptions({ pool }, as(adminId, [RETURN_INTAKE]), {});
     assert.deepEqual(options.warehouses.map((w) => w.warehouseId).sort(), ["WH-T", "WH-V"]);
-    assert.equal((await intake(adminId, returnReq({ operatingCompanyId: "ventana", warehouseId: "WH-V" }))).outcome, "recorded");
+    // A WRITE needs the Administrator's OWN Employee (and, naming a warehouse, its own scope): the inspect-only reach above never authorizes it.
+    for (const over of [{ operatingCompanyId: "ventana", warehouseId: "WH-V" }, { operatingCompanyId: "ventana" }, { warehouseId: "WH-T" }]) {
+      const refused = await noWrite(() => refusal(() => intake(adminId, returnReq(over))));
+      assert.deepEqual([refused.code, refused.category], ["EMPLOYEE_LINK_REQUIRED", "FORBIDDEN"], JSON.stringify(over));
+    }
 
     // The CAPABILITY is still required, and company authority does not replace the Employee / warehouse-scope rule: no scope bypass.
     assert.equal((await noWrite(() => refusal(() => receive(adminId, receiveReq(poV3, "WH-V", { idempotencyKey: "iso2-adm-1" }), [])))).code, "CAPABILITY_REQUIRED");
@@ -292,8 +317,15 @@ test("ISO-2: the warehouse-scoped neighbours decide capability, then company, th
              VALUES ('os-iso2n-adm-t',$1,'e-iso2n-adm','WAREHOUSE','WH-T', now(), 'fixture')`, [T]);
     assert.equal((await noWrite(() => refusal(() => receive(adminId, receiveReq(poV3, "WH-V", { idempotencyKey: "iso2-adm-3" }))))).code, "OUTSIDE_OPERATIONAL_SCOPE");
     assert.equal((await noWrite(() => refusal(() => acquire(adminId, { serialNo: "SN-A1", locationId: "WH-V", idempotencyKey: "iso2-adm-acq" })))).code, "OUTSIDE_OPERATIONAL_SCOPE");
+    // Returns intake keeps its design: a warehouse outside the caller's OWN scope answers exactly like an unknown one (WAREHOUSE_NOT_FOUND), never a distinct
+    // "outside scope" that would confirm it exists. The Administrator's inspect-only reach does not widen it.
+    const outsideScope = await noWrite(() => refusal(() => intake(adminId, returnReq({ operatingCompanyId: "ventana", warehouseId: "WH-V" }))));
+    const unknownWarehouse = await refusal(() => intake(adminId, returnReq({ operatingCompanyId: "ventana", warehouseId: "WH-NOPE" })));
+    assert.deepEqual(shapeOf(outsideScope), shapeOf(unknownWarehouse));
+    assert.equal(outsideScope.code, "WAREHOUSE_NOT_FOUND");
     await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
              VALUES ('os-iso2n-adm-v',$1,'e-iso2n-adm','WAREHOUSE','WH-V', now(), 'fixture')`, [T]);
+    assert.equal((await intake(adminId, returnReq({ operatingCompanyId: "ventana", warehouseId: "WH-V" }))).outcome, "recorded");
     assert.equal((await receive(adminId, receiveReq(poV3, "WH-V", { idempotencyKey: "iso2-adm-4" }))).outcome, "applied");
     assert.equal((await correct(adminId, receiptV2, "iso2-adm-void-2")).outcome, "applied");
     assert.equal((await acquire(adminId, { serialNo: "SN-A1", locationId: "WH-V", idempotencyKey: "iso2-adm-acq" })).outcome, "acquired");
