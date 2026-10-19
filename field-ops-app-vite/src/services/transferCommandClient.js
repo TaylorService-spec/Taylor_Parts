@@ -28,26 +28,8 @@ export const TRANSFER_OPERATIONS = Object.freeze({
 const OPTS = Object.freeze({ serviceLabel: "the transfer service" });
 const write = (operation, input) => eosOperationOrThrow(EOS_OPERATIONS_ROUTES.TRANSFER, operation, input, OPTS);
 
-/** One EOS transfer-order item as the { docId, data } row the transfer view-model reads. Pure; exported for tests. */
-export function toTransferOrderDoc(item) {
-  const ref = (e) => (e && typeof e === "object" ? { type: e.type, locationId: e.locationId, ...(e.warehouseId ? { warehouseId: e.warehouseId } : {}) } : e);
-  return Object.freeze({
-    docId: item.transferOrderId,
-    data: Object.freeze({
-      partId: item.partId,
-      status: item.status,
-      trackingMode: item.trackingMode ?? null,
-      quantity: item.quantity,
-      ...(Array.isArray(item.serialNumbers) && item.serialNumbers.length > 0 ? { serialNumbers: [...item.serialNumbers] } : {}),
-      origin: ref(item.origin),
-      destination: ref(item.destination),
-      transferOrderNumber: item.transferOrderNumber ?? null,
-      createdAt: item.createdAt ?? null,
-      createdBy: item.createdBy ?? null,
-      canReceive: item.canReceive === true,
-    }),
-  });
-}
+export { toTransferOrderDoc } from "../domain/transferOrderDoc.js";
+import { toTransferOrderDoc } from "../domain/transferOrderDoc.js";
 
 /** The governed transfer list, adapted. `{ items, truncated }`. */
 export async function listTransferOrderDocs(input = {}, call = eosOperationOrThrow) {

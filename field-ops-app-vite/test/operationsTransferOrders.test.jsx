@@ -44,7 +44,7 @@ afterEach(cleanup);
 
 const WAREHOUSES = [{ id: "WH-1", name: "Main Warehouse" }, { id: "WH-2", name: "Satellite" }];
 const resolveName = (id) => `NAME(${id})`;
-const legacyDoc = (docId, status) => ({ docId, data: { partId: "PART-1", fromWarehouseId: "WH-1", toWarehouseId: "WH-2", quantity: 9, status } });
+const eosDoc = (docId, status) => ({ docId, data: { partId: "PART-1", origin: { type: "WAREHOUSE", locationId: "WH-1" }, destination: { type: "WAREHOUSE", locationId: "WH-2" }, quantity: 9, status } });
 
 function renderPanel(transferOrderDocs) {
   return render(
@@ -58,7 +58,7 @@ function renderPanel(transferOrderDocs) {
 
 describe("WarehousePanel location-aware Transfer Orders table", () => {
   it("renders Part | Origin | Destination | Status and NO Quantity column", () => {
-    renderPanel([legacyDoc("TO-1", "COMPLETED")]);
+    renderPanel([eosDoc("TO-1", "COMPLETED")]);
     expect(screen.getByText("Origin")).toBeTruthy();
     expect(screen.getByText("Destination")).toBeTruthy();
     expect(screen.getAllByText("Part").length).toBeGreaterThan(0);
@@ -82,8 +82,8 @@ describe("WarehousePanel location-aware Transfer Orders table", () => {
 
   it("counts invalid/contradictory records in a hidden warning and never renders them", () => {
     renderPanel([
-      legacyDoc("TO-VALID", "REQUESTED"),
-      { docId: "TO-BAD", data: { partId: "PART-2", fromWarehouseId: "WH-1", toWarehouseId: "WH-2", status: "PENDING" } },
+      eosDoc("TO-VALID", "REQUESTED"),
+      { docId: "TO-BAD", data: { partId: "PART-2", origin: { type: "WAREHOUSE", locationId: "WH-1" }, destination: { type: "WAREHOUSE", locationId: "WH-2" }, status: "PENDING" } },
     ]);
     expect(screen.getByText(/1 transfer order hidden/i)).toBeTruthy();
     expect(screen.getByText("NAME(PART-1)")).toBeTruthy();
@@ -98,7 +98,7 @@ describe("WarehousePanel location-aware Transfer Orders table", () => {
   });
 
   it("has no action/write controls and wraps the table for horizontal scrolling", () => {
-    const { container } = renderPanel([legacyDoc("TO-1", "REQUESTED")]);
+    const { container } = renderPanel([eosDoc("TO-1", "REQUESTED")]);
     // Sortable column headers (item C, 2026-10-08) are the only buttons: they reorder loaded rows, write nothing.
     expect(container.querySelector("button:not(.fo-sortable-th__button)")).toBeNull();
     expect(container.querySelectorAll(".fo-sortable-th__button")).toHaveLength(4);
@@ -118,7 +118,7 @@ function deferred() {
 describe("Operations accessVersion fail-closed invalidation", () => {
   it("drops prior-scope rows synchronously on an accessVersion change (before new read settles)", async () => {
     h.warehouses = WAREHOUSES;
-    h.transferResult = () => Promise.resolve([legacyDoc("TO-1", "REQUESTED")]);
+    h.transferResult = () => Promise.resolve([eosDoc("TO-1", "REQUESTED")]);
     let view;
     await act(async () => {
       view = render(<Operations accessVersion={1} />);
@@ -160,13 +160,13 @@ describe("Operations accessVersion fail-closed invalidation", () => {
 
     // The STALE v1 read now completes -> it must NOT restore a v1-scope row.
     await act(async () => {
-      d1.resolve([legacyDoc("TO-STALE", "CANCELLED")]);
+      d1.resolve([eosDoc("TO-STALE", "CANCELLED")]);
     });
     expect(screen.queryByText("Cancelled")).toBeNull();
 
     // The fresh v2 read completes -> its rows render.
     await act(async () => {
-      d2.resolve([legacyDoc("TO-FRESH", "COMPLETED")]);
+      d2.resolve([eosDoc("TO-FRESH", "COMPLETED")]);
     });
     expect(screen.getByText("Completed")).toBeTruthy();
   });
