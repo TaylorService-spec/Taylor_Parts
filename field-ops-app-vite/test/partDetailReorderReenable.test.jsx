@@ -234,7 +234,7 @@ describe("PartDetail -- Fix 3: workflow action failures show safe categorized co
     rawError.code = "permission-denied";
     assignReorderRequest.mockRejectedValue(rawError);
     searchParts.mockResolvedValue(CANONICAL_OK);
-    render(<PartDetail />);
+    render(<PartDetail hasCapability={(c) => c === "reorder.request.assign"} />);
     await screen.findByText("CANONICAL-NAME-A");
 
     fireEvent.click(screen.getByRole("button", { name: "Select Employee (test stub)" }));
@@ -243,5 +243,43 @@ describe("PartDetail -- Fix 3: workflow action failures show safe categorized co
     await waitFor(() => expect(assignReorderRequest).toHaveBeenCalled());
     await screen.findByText("You're not allowed to perform this action. Nothing was changed.");
     expect(screen.queryByText(/RAW-INTERNAL-DETAIL/)).toBeNull();
+  });
+});
+
+// PL10 (purchasing-loop proof, 2026-10-19): Logan, a Parts Associate, was offered Approve/Reject on a
+// pending request and the server refused. Each reorder control is shown only to a holder of the
+// capability its server command enforces.
+describe("PartDetail -- PL10: reorder controls match the server capabilities", () => {
+  const pending = { id: "r10", partId: "TST-9001", status: "PENDING_REVIEW", createdAt: 1000 };
+  const ready = { id: "r11", partId: "TST-9001", status: "READY_FOR_PARTS_MANAGER", reviewedAt: 1000 };
+  const show = async (data, hasCapability) => {
+    reorderRequestState.current = { data, loading: false, error: null, refresh: () => {} };
+    searchParts.mockResolvedValue(CANONICAL_OK);
+    render(<PartDetail hasCapability={hasCapability} />);
+    await screen.findByText("CANONICAL-NAME-A");
+  };
+
+  it("a non-reviewer sees the pending request without Approve or Reject", async () => {
+    await show(pending, () => false);
+    expect(screen.getByText("Reorder Request -- Pending Review")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    expect(screen.getByText(/Waiting for review/)).toBeTruthy();
+  });
+
+  it("approve and reject are gated separately", async () => {
+    await show(pending, (c) => c === "reorder.request.approve");
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+  });
+
+  it("assign and cancel need their own capabilities", async () => {
+    await show(ready, () => false);
+    expect(screen.queryByRole("button", { name: "Assign" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel Reorder Request" })).toBeNull();
+    cleanup();
+    await show(ready, (c) => c === "reorder.request.assign" || c === "reorder.request.cancel");
+    expect(screen.getByRole("button", { name: "Assign" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel Reorder Request" })).toBeTruthy();
   });
 });
