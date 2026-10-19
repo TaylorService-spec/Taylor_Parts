@@ -1,6 +1,6 @@
 // RECORDS AND REPORTING ON EOS -- the OFFLINE contracts (Firebase exit B4, DECISIONS #B4). No database.
-//   1. The migration registers EXACTLY the Firebase catalog's report ids (minus the one with an EOS twin) plus performance.goal.read -- and GRANTS NOTHING.
-//   2. The Firebase holders those registrations will be mirrored to (the separate, Owner-authorized grant change) are the counts DECISIONS #B4 records.
+//   1. The registration migration (1764640000000) registers EXACTLY the Firebase catalog's report ids (minus the one with an EOS twin) plus performance.goal.read -- and GRANTS NOTHING (the grants are 1764650000000, b4ReportGoalGrantParity.test.mjs).
+//   2. The Firebase holders those registrations were mirrored to (the Owner-authorized grant change, migration 1764650000000) are the counts DECISIONS #B4 records.
 //   3. The new operations are routed, closed, and not behind the Reorder boundary.
 //   4. The report fields the sandbox withholds are the fields the EOS engine withholds.
 //   5. The new modules reach no Firebase and no Firebase-era report engine; the two doors are earned by the mirrored keys.
@@ -128,34 +128,32 @@ test("the new modules reach no Firebase and no Firebase-era engine; a run is aud
   assert.equal(readdirSync("src/eosOps").filter((n) => /^(recordsSupport|importedServiceHistory|dataImportOperations|reportOperations|performanceGoalReads)\.ts$/.test(n)).length, 5);
 });
 
-test("the 39 registered-not-granted ids are Administration-grant-only: no default writer may import them as system defaults, and the verifier stays green over a tenant that holds none", () => {
-  const { ADMINISTRATION_GRANT_ONLY_CAPABILITIES, defaultWriterMayInsert, resolveCell } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
+test("the 39 ids are no longer fenced: migration 1764650000000 granted the 122 Firebase pairs explicitly (the explicit grant replaces the fence), and an Administration revoke still wins", () => {
+  const { ADMINISTRATION_GRANT_ONLY_CAPABILITIES, defaultWriterMayInsert, resolveCell, decisionIndex } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
   const { verifyLiveTenantAuthority } = require("../lib/adminPolicy/roleCapabilityAuthorityBaseline.js");
   assert.equal(REGISTERED.length, 39);
   const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
   let declaredPairs = 0;
   for (const id of REGISTERED) {
-    assert.ok(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id), `${id} must be fenced`);
+    assert.equal(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(id), false, `${id} must not be fenced`);
     for (const [roleKey, role] of Object.entries(roles)) {
       if (!role.permissions.includes(id)) continue;
       declaredPairs++;
-      // The catalog DECLARES it on this Role; a default writer (reconcile, activation tool, seed) must still refuse to insert it.
-      assert.equal(defaultWriterMayInsert(new Map(), roleKey, id).allowed, false, `${roleKey}/${id} must not be imported as a default`);
-      assert.deepEqual(resolveCell({ roleKey, capabilityKey: id, decision: null, isSystemDefault: true }), { shouldHold: false, source: "NONE" });
-      // ...but an explicit Administration grant still wins (the only way a Role holds one).
+      // The catalog DECLARES it on this Role and the baseline now carries the grant, so a default writer may insert it -- unless an Administration revoke is current.
+      assert.equal(defaultWriterMayInsert(new Map(), roleKey, id).allowed, true, `${roleKey}/${id} is a governed default`);
+      assert.deepEqual(defaultWriterMayInsert(decisionIndex([{ roleKey, capabilityKey: id, decision: "ADMIN_REVOKED" }]), roleKey, id), { allowed: false, source: "ADMIN_REVOKED" });
       assert.equal(resolveCell({ roleKey, capabilityKey: id, decision: "ADMIN_GRANTED", isSystemDefault: false }).shouldHold, true);
     }
   }
-  assert.equal(declaredPairs, 122, "the 122 Firebase-mirrored pairs are exactly what the fence withholds");
-  // A tenant that holds none of them is NOT drift: absence of a fenced default is not a missing default.
+  assert.equal(declaredPairs, 122, "the 122 Firebase-mirrored pairs are exactly what the catalog declares and the migration grants");
+  // The baseline now carries the 122, so a tenant that lacks one has a MISSING DEFAULT (drift the verifier reports), and every missing default is one of the 122.
   const v = verifyLiveTenantAuthority({ live: [], decisions: [], environment: "nonprod" });
-  assert.deepEqual(v.missingDefault.filter((c) => REGISTERED.includes(c.capabilityKey)), []);
-  assert.deepEqual(v.drift.filter((d) => REGISTERED.includes(d.capabilityKey)), []);
+  assert.equal(v.missingDefault.filter((c) => REGISTERED.includes(c.capabilityKey)).length, 122);
   // NOT MODELLED (stated, so a later reader does not assume otherwise): the Firebase catalog's scopesByPermission / conditionsByPermission. A grant here is flat, exactly as the
   // 122 pairs are; and a FIRM goal target is readable by a scoped holder (the recorded LOW-1 divergence, DECISIONS #B4).
   assert.match(readFileSync("src/eosOps/performanceGoalReads.ts", "utf8"), /scopesByPermission \/ conditionsByPermission are NOT modelled/);
-  // The Sample Company seed keeps its own filter as belt-and-braces.
-  assert.match(tsCode("scripts/seedSampleCompany.js"), /permission\.startsWith\("report\."\) \|\| permission === "performance\.goal\.read"/);
+  // The temporary Sample Company seed filter is gone (the grants landed).
+  assert.doesNotMatch(tsCode("scripts/seedSampleCompany.js"), /permission\.startsWith\("report\."\) \|\| permission === "performance\.goal\.read"/);
 });
 
 test("report abuse bounds: counts, duplicate sorts, value lists, string length, stored size, refused on save AND run before any database use", async () => {

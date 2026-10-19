@@ -293,8 +293,8 @@ test("REPORTING is a BLOCKED_DOMAIN placeholder and holds no reporting authority
   // Pinning the exact set is STRICTER than the empty pin it replaces: a second reporting capability
   // arriving without an Owner ruling fails here.
   const vocabulary = SAMPLE_COMPANY.expectedAccess.postgresCapabilityVocabulary;
-  // Firebase exit B4 (migration 1764640000000, DECISIONS #B4) REGISTERED the 38 report.* ids (and performance.goal.read) -- registered, NOT granted: no Role and no Principal holds any of
-  // them (the 122 mirrored grants are a separate Owner-authorized change), so this persona stays BLOCKED_DOMAIN and the three report Roles below stay held by nobody. The pin is therefore
+  // Firebase exit B4 (migration 1764640000000, DECISIONS #B4) REGISTERED the 38 report.* ids (and performance.goal.read); migration 1764650000000 (OD-B4-1) granted them to the Firebase-mirrored Roles. No
+  // Principal holds any of them directly, so this persona stays BLOCKED_DOMAIN and the three report Roles below stay held by nobody. The pin is therefore
   // reportDefinition.read plus EXACTLY 38 report.* ids, and still no reportDefinition.delete.
   const reportIds = vocabulary.filter((k) => k.startsWith("report"));
   assert.ok(reportIds.includes("reportDefinition.read"));

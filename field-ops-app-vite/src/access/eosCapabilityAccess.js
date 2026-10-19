@@ -45,8 +45,8 @@ export const EOS_KEY_FOR_FIREBASE_ID = Object.freeze({
 export const FIREBASE_IDS_WITHOUT_EOS_TWIN = Object.freeze({
   // report.{customer,contact,location,equipment}.read and report.definition.{create,rename,duplicate,delete} LEFT this table in Firebase exit B4 (DECISIONS #B4):
   // migration 1764640000000 registers them (with the report field reads) in EOS under the SAME names, so Report Builder and Saved Reports ask them under their own
-  // names. report.definition.read still maps to its EOS twin reportDefinition.read above. Registered, NOT granted by that migration: the 122 mirrored grants are a
-  // separate, Owner-authorized change, and until they land nobody holds these keys on EOS.
+  // names. report.definition.read still maps to its EOS twin reportDefinition.read above. Registered by that migration; the 122 Firebase-mirrored grants
+  // followed in migration 1764650000000 (Owner-authorized, nonprod), so these keys have exactly the Firebase holders on EOS.
   "inventory.balance.read": "Only My Dashboard cards and the legacy phone shell read it; neither is reachable under the EOS source.",
   // inventory.location.bin.{read,manage} LEFT this table in Firebase exit B3 (DECISIONS #B3): migration 1764630000000 registers both in EOS under the SAME
   // names, held by the CURRENT holders only (admin, the memberless inventoryBinAdministrator), so Warehouse Racking asks them under their own names.
