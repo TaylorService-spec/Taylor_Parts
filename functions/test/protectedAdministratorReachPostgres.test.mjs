@@ -214,7 +214,7 @@ test("protected Administrator reach over queues and warehouses -- administering,
     for (const subject of ["uid-preach-wa"]) assert.deepEqual(await reach.administrationReachTargets(pool, T, (await actorOf(subject)).principalId, "WAREHOUSE"), []);
     const tech = await person("uid-preach-tech", ["technician"], { id: "e-preach-tech", name: "Tess Tech", technician: true });
     const tActor = await actorOf("uid-preach-tech");
-    assert.deepEqual([await scopedWarehouseIds(pool, tActor), await queueReachKeys(pool, tActor)], [[], []]);
+    assert.deepEqual([await scopedWarehouseIds(pool, tActor, { companyKeys: ["taylor", "ventana"] }), await queueReachKeys(pool, tActor)], [[], []]);
     void tech;
   });
 
