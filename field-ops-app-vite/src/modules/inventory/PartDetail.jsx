@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { readPartsForView, isCatalogReadRefused } from "../../services/partMasterQueries";
-import { REORDER_PURCHASE_ORDER_VOID_GATE } from "../../access/shellCapabilityGates.js";
+import { REORDER_PURCHASE_ORDER_VOID_GATE, REORDER_WORKFLOW_GATE } from "../../access/shellCapabilityGates.js";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
@@ -223,20 +223,13 @@ const TERMINAL_REORDER_REQUEST_STATUSES = new Set([
 // admin/dispatcher already -- see the run-field-ops-app-vite skill's
 // Gotchas) -- firestore.rules is the actual enforcement, same posture
 // as every other write on this object.
-// UI PERMISSION PARITY (PL10). Each reorder control is shown only to a holder of the capability its server
-// command enforces (functions/src/eosOps/reorderLifecycleCommands.ts and reorderAssignmentAuthority.ts).
-// The server stays the authority; this only stops offering a button the server will refuse.
-const REORDER_UI_GATE = Object.freeze({
-  approve: "reorder.request.approve",
-  reject: "reorder.request.reject",
-  assign: "reorder.request.assign",
-  cancel: "reorder.request.cancel",
-});
+// UI PERMISSION PARITY (PL10): each reorder control is shown only to a holder of the capability its server
+// command enforces -- REORDER_WORKFLOW_GATE, declared in access/shellCapabilityGates.js so the shell asks for it.
 const holds = (hasCapability, capability) => typeof hasCapability === "function" && hasCapability(capability) === true;
 
 function CancelReorderRequestAction({ request, onCancelled, hasCapability }) {
   const [open, setOpen] = useState(false);
-  if (!holds(hasCapability, REORDER_UI_GATE.cancel)) return null;
+  if (!holds(hasCapability, REORDER_WORKFLOW_GATE.cancel)) return null;
   return (
     <div className="disp-board-toolbar">
       <Button type="button" variant="secondary" onClick={() => setOpen(true)}>Cancel Reorder Request</Button>
@@ -310,8 +303,8 @@ function VoidPurchaseOrderAction({ request, onVoided, hasCapability }) {
 // badge, not a crash.
 function ReorderRequestReview({ request, onReviewed, hasCapability }) {
   const [confirmingReject, setConfirmingReject] = useState(false);
-  const canApprove = holds(hasCapability, REORDER_UI_GATE.approve);
-  const canReject = holds(hasCapability, REORDER_UI_GATE.reject);
+  const canApprove = holds(hasCapability, REORDER_WORKFLOW_GATE.approve);
+  const canReject = holds(hasCapability, REORDER_WORKFLOW_GATE.reject);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -491,7 +484,7 @@ function ReorderRequestAssignment({ request, onAssigned, hasCapability }) {
 
       {error && <p className="fo-muted">{error}</p>}
 
-      {!holds(hasCapability, REORDER_UI_GATE.assign) ? (
+      {!holds(hasCapability, REORDER_WORKFLOW_GATE.assign) ? (
         <p className="fo-muted">Waiting for a Parts Manager to assign this request.</p>
       ) : (
       <form className="fo-form" onSubmit={handleAssign}>

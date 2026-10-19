@@ -142,6 +142,21 @@ export const REORDER_PURCHASE_ORDER_VOID_GATE = Object.freeze({
 });
 
 /**
+ * Inventory > Part detail → the Reorder workflow cards' Approve / Reject / Assign / Cancel controls.
+ *
+ * Each is offered only to a holder of the capability its governed command enforces
+ * (functions/src/eosOps/reorderLifecycleCommands.ts, reorderAssignmentAuthority.ts). The commands still
+ * decide reach (queue scope, company, status); this gate only stops offering a control the server will
+ * refuse (PL10, purchasing-loop proof 2026-10-19).
+ */
+export const REORDER_WORKFLOW_GATE = Object.freeze({
+  approve: "reorder.request.approve",
+  reject: "reorder.request.reject",
+  assign: "reorder.request.assign",
+  cancel: "reorder.request.cancel",
+});
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -171,6 +186,8 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   equipmentCompatibility: Object.freeze(Object.values(EQUIPMENT_COMPATIBILITY_GATE)),
   // modules/inventory/PartDetail.jsx VoidPurchaseOrderAction.
   reorderPurchaseOrderVoid: Object.freeze(Object.values(REORDER_PURCHASE_ORDER_VOID_GATE)),
+  // modules/inventory/PartDetail.jsx Reorder workflow cards.
+  reorderWorkflow: Object.freeze(Object.values(REORDER_WORKFLOW_GATE)),
 });
 
 /**
