@@ -687,19 +687,61 @@ export async function executeOperation(
       // RECORDS AND REPORTING (Firebase exit B4, DECISIONS #B4). ONE resolution, conditioned grants withheld (a key reached only through a grant condition is
       // not held here -- the same rule the supplier-terms and returns routes apply). Each operation decides capability, then company, itself.
       case "listImportedServiceHistory": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listImportedServiceHistory({ pool }, actor, request.input ?? {}));
+      }
       case "listDataImportJobs": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listDataImportJobs({ pool }, actor, request.input ?? {}));
+      }
       case "listSavedReportDefinitions": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listSavedReportDefinitions({ pool }, actor, request.input ?? {}));
+      }
       case "readSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await readSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
       case "runReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await runReportDefinition({ pool }, actor, request.input ?? {}));
+      }
       case "listCurrentPerformanceGoals": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listCurrentPerformanceGoals({ pool }, actor, request.input ?? {}));
+      }
       case "listPerformanceGoalVersions": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listPerformanceGoalVersions({ pool }, actor, request.input ?? {}));
+      }
       case "listGoalSubjects": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listGoalSubjects({ pool }, actor, request.input ?? {}));
+      }
       case "stageDataImport": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await stageDataImport({ pool }, actor, request.input ?? {}));
+      }
       case "executeDataImport": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await executeDataImport({ pool }, actor, request.input ?? {}));
+      }
       case "createSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await createSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
       case "renameSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await renameSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
       case "duplicateSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await duplicateSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
       case "deleteSavedReportDefinition": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await deleteSavedReportDefinition({ pool }, actor, request.input ?? {}));
+      }
       case "correctReorderReceipt": {
         const { actor, pool } = await reorderActor();
         return ok(await correctReorderReceipt({ pool }, actor, request.input ?? {}));
