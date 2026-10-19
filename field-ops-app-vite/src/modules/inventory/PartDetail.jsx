@@ -223,8 +223,20 @@ const TERMINAL_REORDER_REQUEST_STATUSES = new Set([
 // admin/dispatcher already -- see the run-field-ops-app-vite skill's
 // Gotchas) -- firestore.rules is the actual enforcement, same posture
 // as every other write on this object.
-function CancelReorderRequestAction({ request, onCancelled }) {
+// UI PERMISSION PARITY (PL10). Each reorder control is shown only to a holder of the capability its server
+// command enforces (functions/src/eosOps/reorderLifecycleCommands.ts and reorderAssignmentAuthority.ts).
+// The server stays the authority; this only stops offering a button the server will refuse.
+const REORDER_UI_GATE = Object.freeze({
+  approve: "reorder.request.approve",
+  reject: "reorder.request.reject",
+  assign: "reorder.request.assign",
+  cancel: "reorder.request.cancel",
+});
+const holds = (hasCapability, capability) => typeof hasCapability === "function" && hasCapability(capability) === true;
+
+function CancelReorderRequestAction({ request, onCancelled, hasCapability }) {
   const [open, setOpen] = useState(false);
+  if (!holds(hasCapability, REORDER_UI_GATE.cancel)) return null;
   return (
     <div className="disp-board-toolbar">
       <Button type="button" variant="secondary" onClick={() => setOpen(true)}>Cancel Reorder Request</Button>
@@ -296,8 +308,10 @@ function VoidPurchaseOrderAction({ request, onVoided, hasCapability }) {
 // for those, so a legacy/transitional request never displays blank.
 // request.urgency is null for NEEDS_PLANNING -- shown as a distinct
 // badge, not a crash.
-function ReorderRequestReview({ request, onReviewed }) {
+function ReorderRequestReview({ request, onReviewed, hasCapability }) {
   const [confirmingReject, setConfirmingReject] = useState(false);
+  const canApprove = holds(hasCapability, REORDER_UI_GATE.approve);
+  const canReject = holds(hasCapability, REORDER_UI_GATE.reject);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -354,14 +368,22 @@ function ReorderRequestReview({ request, onReviewed }) {
 
       <FormError role="alert">{error}</FormError>
 
-      <div className="disp-board-toolbar">
-        <Button type="button" variant="primary" onClick={handleApprove} disabled={submitting}>
-          Approve
-        </Button>
-        <Button type="button" variant="destructive" onClick={() => { setError(null); setConfirmingReject(true); }} disabled={submitting}>
-          Reject
-        </Button>
-      </div>
+      {canApprove || canReject ? (
+        <div className="disp-board-toolbar">
+          {canApprove && (
+            <Button type="button" variant="primary" onClick={handleApprove} disabled={submitting}>
+              Approve
+            </Button>
+          )}
+          {canReject && (
+            <Button type="button" variant="destructive" onClick={() => { setError(null); setConfirmingReject(true); }} disabled={submitting}>
+              Reject
+            </Button>
+          )}
+        </div>
+      ) : (
+        <p className="fo-muted">Waiting for review by someone who can approve reorder requests.</p>
+      )}
 
       {confirmingReject && (
         <ConfirmDialog
@@ -407,7 +429,7 @@ function ReorderRequestReview({ request, onReviewed }) {
 // canSubmitManualZeroHistoryQuantity() does not exist for this
 // transition and is not added here -- flagged as a known,
 // intentional gap, not fixed in this correction.
-function ReorderRequestAssignment({ request, onAssigned }) {
+function ReorderRequestAssignment({ request, onAssigned, hasCapability }) {
   // THE PICKER ALREADY CHOSE AN EMPLOYEE. It then derived that Employee's Firebase uid and submitted
   // THAT -- so a correct choice became a uid on the way to the database. The Employee id is what the
   // governed assignment authority names, so it is simply what gets submitted now, and the uid is not
@@ -469,6 +491,9 @@ function ReorderRequestAssignment({ request, onAssigned }) {
 
       {error && <p className="fo-muted">{error}</p>}
 
+      {!holds(hasCapability, REORDER_UI_GATE.assign) ? (
+        <p className="fo-muted">Waiting for a Parts Manager to assign this request.</p>
+      ) : (
       <form className="fo-form" onSubmit={handleAssign}>
         <EmployeeAssignmentPicker
           useEmployees={useReorderAssignmentTargets}
@@ -484,8 +509,9 @@ function ReorderRequestAssignment({ request, onAssigned }) {
           </Button>
         </div>
       </form>
+      )}
 
-      <CancelReorderRequestAction request={request} onCancelled={onAssigned} />
+      <CancelReorderRequestAction request={request} onCancelled={onAssigned} hasCapability={hasCapability} />
     </div>
   );
 }
@@ -497,7 +523,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
 // screen (any admin/dispatcher can read it) sees a passive waiting
 // message instead of the button. Writes go exclusively through
 // domain/inventoryReorderRequests.js's startPurchasing().
-function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }) {
+function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory, hasCapability }) {
   const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -561,7 +587,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
         <p className="fo-muted">Waiting for the assigned Parts Associate to start purchasing.</p>
       )}
 
-      <CancelReorderRequestAction request={request} onCancelled={onStarted} />
+      <CancelReorderRequestAction request={request} onCancelled={onStarted} hasCapability={hasCapability} />
     </div>
   );
 }
@@ -577,7 +603,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
 // update doesn't require re-entering everything. Writes go exclusively
 // through domain/inventoryReorderRequests.js's
 // updatePurchasingProgress().
-function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory }) {
+function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory, hasCapability }) {
   const { user } = useAuth();
   // THE SERVER'S ANSWER, RENDERED -- not a uid comparison recomputed in the browser. The governed
   // read resolves the caller to an Employee through an active employee_principal_link and compares
@@ -683,7 +709,7 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
         <p className="fo-muted">Waiting for the assigned Parts Associate to post a purchasing update.</p>
       )}
 
-      <CancelReorderRequestAction request={request} onCancelled={onUpdated} />
+      <CancelReorderRequestAction request={request} onCancelled={onUpdated} hasCapability={hasCapability} />
     </div>
   );
 }
@@ -1563,14 +1589,14 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const reorderWorkflowCard =
     !reorderRequestLoading && !reorderRequestError && reorderRequest ? (
       reorderRequest.status === REORDER_REQUEST_STATUS.PENDING_REVIEW ? (
-        <ReorderRequestReview request={reorderRequest} onReviewed={refreshReorderRequest} />
+        <ReorderRequestReview request={reorderRequest} onReviewed={refreshReorderRequest} hasCapability={hasCapability} />
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER ? (
-        <ReorderRequestAssignment request={reorderRequest} onAssigned={refreshReorderRequest} />
+        <ReorderRequestAssignment request={reorderRequest} onAssigned={refreshReorderRequest} hasCapability={hasCapability} />
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE ? (
-        <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} employeeDirectory={employeeDirectory} />
+        <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} employeeDirectory={employeeDirectory} hasCapability={hasCapability} />
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? (
         <>
-          <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} employeeDirectory={employeeDirectory} />
+          <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} employeeDirectory={employeeDirectory} hasCapability={hasCapability} />
           <ReorderRequestRecordPurchaseOrder request={reorderRequest} onRecorded={refreshReorderRequest} accessVersion={accessVersion} />
         </>
       ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
