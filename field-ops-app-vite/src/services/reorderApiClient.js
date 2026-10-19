@@ -56,6 +56,16 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "listLegacyInventoryActionNotes",
   // Firebase exit B3-x: one Part's on-hand / reserved / available / on-order.
   "readPartBalance",
+  // Firebase exit B4: records and reporting (services/eosRecordsClients.js) -- imported service history, Data Import history, Report Builder / Saved Reports and
+  // the three performance-goal reads. Each is its own authority on the server (not behind the Reorder boundary).
+  "listImportedServiceHistory",
+  "listDataImportJobs",
+  "listSavedReportDefinitions",
+  "readSavedReportDefinition",
+  "runReportDefinition",
+  "listCurrentPerformanceGoals",
+  "listPerformanceGoalVersions",
+  "listGoalSubjects",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -86,6 +96,13 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "receiveSupplierPurchaseOrder",
   // Firebase exit B3-x: the supplier-PO receipt correction (VOID only).
   "correctSupplierPurchaseOrderReceipt",
+  // Firebase exit B4: Data Import of SERVICE_HISTORY and the saved report definitions.
+  "stageDataImport",
+  "executeDataImport",
+  "createSavedReportDefinition",
+  "renameSavedReportDefinition",
+  "duplicateSavedReportDefinition",
+  "deleteSavedReportDefinition",
 ]);
 
 /** Reads that take no input. */
@@ -103,6 +120,9 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   // SUP-1: one Part's governed supplier terms.
   "listPartSupplierItems",
   "listReceivableSupplierPurchaseOrders",
+  "listDataImportJobs",
+  "listSavedReportDefinitions",
+  "listGoalSubjects",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);

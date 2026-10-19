@@ -475,6 +475,9 @@ test("interactive login is declared for exactly the personas with user access", 
 test("the capability key set is derived from the Role catalog, never hand-typed", () => {
   const keys = sampleCompanyCapabilityKeys();
   const union = new Set(MANIFEST.principals.flatMap((p) => p.securityRoles).flatMap((r) => ROLE_CATALOG[r].permissions ?? []));
+  // Firebase exit B4 (DECISIONS #B4, OD-B4-1): the report.* ids and performance.goal.read are granted by migration 1764650000000 (the 122 Firebase-mirrored pairs), so the temporary narrowing that
+  // left them out is gone: the key set is exactly the catalog's union again, and (non-vacuity) it now includes them.
+  assert.ok([...union].some((k) => k.startsWith("report.") || k === "performance.goal.read"), "non-vacuity: the catalog declares the B4 ids on the Roles the manifest names");
   assert.deepEqual([...keys].sort(), [...union].sort());
   assert.ok(keys.includes("admin.employeeProfile.write"), "the reporting-relationship command's own capability must be reconciled");
 });

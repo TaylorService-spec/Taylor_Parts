@@ -675,7 +675,9 @@ function sampleCompanyCapabilityKeys(manifest = MANIFEST) {
         unknownRoles.push(roleKey);
         continue;
       }
-      for (const permission of role.permissions ?? []) keys.add(permission);
+      for (const permission of role.permissions ?? []) {
+        keys.add(permission);
+      }
     }
   }
   if (unknownRoles.length > 0) {

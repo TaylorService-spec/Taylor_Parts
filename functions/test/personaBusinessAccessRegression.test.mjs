@@ -107,6 +107,10 @@ const baselineDeployment = JSON.parse(readFileSync(
   path.join(FUNCTIONS_DIR, "src", "adminPolicy", "seed", "roleCapabilityAuthorityBaseline.json"), "utf8",
 )).deployment;
 
+// B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the Firebase holders of the 39 keys, as the parity evidence records them.
+const B4_PARITY = JSON.parse(readFileSync(path.join(FUNCTIONS_DIR, "..", "docs", "architecture", "b4-report-goal-grant-parity.json"), "utf8"));
+const b4KeysHeldBy = (role) => Object.entries(B4_PARITY.holdersByKey).filter(([, holders]) => holders.includes(role)).map(([key]) => key);
+
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to resolve against";
 
@@ -189,7 +193,7 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // 34 -> 35: `analysis.workspace` (Analysis & Reporting, #208), earned by any read a measure is decided on, or reportDefinition.read.
   // 35 -> 36: `finance.policy` (Financial Policy Administration UI, #232 Phase 2), earned by finance.policy.read flat or at
   // operatingCompany scope.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 37); // 36 -> 37: inventory.racking (B3)
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 39); // 36 -> 37: inventory.racking (B3); 37 -> 39: reporting.builder and reporting.savedReports (B4)
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -218,10 +222,13 @@ test("every destination a persona's surfaces could open is REGISTERED -- mapped 
   const mapped = new Set(Object.values(NAV_SURFACE_ACCESS).flat());
   const unmapped = EXPERIENCE_SURFACE_KEYS.filter((k) => !mapped.has(k));
   assert.deepEqual(unmapped, [], "an earnable surface reaches no destination");
-  // The reporting destinations, which the Reporting persona's North Star names, are DECLARED GAPS.
+  // The reporting destinations, which the Reporting persona's North Star names: Report Builder and Saved Reports are MAPPED to their own doors (Firebase exit B4),
+  // and the eight domain report destinations stay a DECLARED domain gap.
   assert.ok(NAV_SURFACE_GAPS["reporting/*"], "the reporting domain gap is no longer declared");
-  assert.ok(NAV_SURFACE_GAPS["reporting/builder"]);
-  assert.ok(NAV_SURFACE_GAPS["reporting/savedReports"]);
+  assert.equal(NAV_SURFACE_GAPS["reporting/builder"], undefined);
+  assert.equal(NAV_SURFACE_GAPS["reporting/savedReports"], undefined);
+  assert.deepEqual(NAV_SURFACE_ACCESS["reporting/builder"], ["reporting.builder"]);
+  assert.deepEqual(NAV_SURFACE_ACCESS["reporting/savedReports"], ["reporting.savedReports"]);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
@@ -314,7 +321,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 102 -> 103: 1764610000000 -- Employee company-access grants (DECISIONS #249): one table + a store guard; no capability, no grant.
   // 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys, 15 grants to the current Firebase holders.
   // 104 -> 105: 1764630000000 -- Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive.
-  assert.equal(files.length, 105, "the migration chain moved; re-measure before trusting anything below");
+  // 105 -> 106: 1764640000000 -- Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): the 38 report.* ids and performance.goal.read REGISTERED (39 capabilities, granted to nobody), plus eos_ops.imported_service_history, data_import_jobs, report_definitions and performance_goals.
+  // 106 -> 107: 1764650000000 -- B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored role-capability grants for the 39 registered B4 keys; no capability, no schema.
+  assert.equal(files.length, 107, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -397,13 +406,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
     // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
     // admin.administratorRole.assign.
-    assert.equal(rebuilt.length, 510, "the repository rebuild total"); // 503 -> 510: the seven Warehouse racking mirror grants (1764630000000). // 488 -> 503: the fifteen Finance visibility mirror grants (1764620000000). // 482 -> 488: the six CRM activity grants (1764590000000). // 481 -> 482: the returns-intake clerk grant (1764580000000). // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
-    assert.equal(baselineDeployment.rebuildTotal, 510);
+    assert.equal(rebuilt.length, 632, "the repository rebuild total"); // 510 -> 632: the 122 B4 report / performance-goal parity grants (1764650000000). // 503 -> 510: the seven Warehouse racking mirror grants (1764630000000). // 488 -> 503: the fifteen Finance visibility mirror grants (1764620000000). // 482 -> 488: the six CRM activity grants (1764590000000). // 481 -> 482: the returns-intake clerk grant (1764580000000). // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
+    assert.equal(baselineDeployment.rebuildTotal, 632);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
     assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
       "migration:1763078400000", "migration:1764500000000", "migration:1764510000000", "migration:1764520000000", "migration:1764580000000",
-      "migration:1764590000000", "migration:1764620000000", "migration:1764630000000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 123);
+      "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 245);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
@@ -418,14 +427,15 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(await stampedBy("migration:1764590000000"), 6); // CRM activity (#243): two keys x admin, owner, crmActivityContributor
     assert.equal(await stampedBy("migration:1764620000000"), 15); // Finance visibility mirror (B1): five keys to the current Firebase holders
     assert.equal(await stampedBy("migration:1764630000000"), 7); // Warehouse racking (B3): two keys to the current Firebase holders (admin, inventoryBinAdministrator, owner, the two bin-reading operator Roles)
-    // The whole 510-vs-387 difference carries the ten grant-bearing migrations' provenance.
-    assert.equal(26 + 1 + 1 + 16 + 20 + 30 + 1 + 6 + 15 + 7, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    assert.equal(await stampedBy("migration:1764650000000"), 122); // Report / goal parity (B4): the 39 B4 keys to the current Firebase holders (admin 39, owner 39, reportViewer 26, reportFinanceViewer 5, reportAuthor 3, ten goal readers)
+    // The whole 632-vs-387 difference carries the eleven grant-bearing migrations' provenance.
+    assert.equal(26 + 1 + 1 + 16 + 20 + 30 + 1 + 6 + 15 + 7 + 122, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 149); // 147 -> 149: inventory.location.bin.read / .manage (B3, 1764630000000). // 142 -> 147: the five finance.visibility.* keys (B1, 1764620000000). // 140 -> 142: crm.activity.read / .create (#243). // 139 -> 140: inventory.returns.intake (#242). // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (#232, 1764560000000), granted to NO Role. 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role. 122 -> 128: the six rental capabilities (#207, 1764520000000). // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 188); // 149 -> 188: the 38 report.* ids and performance.goal.read (B4, 1764640000000), granted to NO Role. // 147 -> 149: inventory.location.bin.read / .manage (B3, 1764630000000). // 142 -> 147: the five finance.visibility.* keys (B1, 1764620000000). // 140 -> 142: crm.activity.read / .create (#243). // 139 -> 140: inventory.returns.intake (#242). // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (#232, 1764560000000), granted to NO Role. 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role. 122 -> 128: the six rental capabilities (#207, 1764520000000). // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -545,7 +555,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 73 -> 75: crm.activity.read / .create (#243, 1764590000000), mirrored onto admin AND owner.
     // 75 -> 80: the five finance.visibility.* keys (B1, 1764620000000), mirrored onto admin AND owner as in Firebase (D-249-4).
     // 80 -> 82: inventory.location.bin.read / .manage (B3, 1764630000000), mirrored onto admin; owner gains bin.read only.
-    assert.equal(admin.capabilities.size, 82);
+    // 82 -> 121: the 39 B4 report.* / performance.goal.read keys (1764650000000), mirrored onto admin AND owner as in Firebase.
+    assert.equal(admin.capabilities.size, 121);
     // 50 -> 51: admin.administratorRole.assign (migration 1763078400000, Owner ruling R1) -- the bounded
     // Administrator STAFFING capability. Admin does not need it (it holds admin.securityPolicy.write, which is
     // the stronger authority for the same act), so it is the ONE ruled owner-only key, named and not a drift.
@@ -560,7 +571,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // migration (administering EOS confers no rental authority), so ruled owner-only keys as well.
     // 65 -> 67: crm.activity.read / .create (#243), the same two keys admin gained -- neither Role gains anything the other lacks.
     // 67 -> 72: the same five finance.visibility.* keys admin gained (B1) -- neither Role gains anything the other lacks.
-    assert.equal(owner.capabilities.size, 73); // 72 -> 73: inventory.location.bin.read (B3)
+    assert.equal(owner.capabilities.size, 112); // 72 -> 73: inventory.location.bin.read (B3). 73 -> 112: the same 39 B4 keys admin gained (1764650000000)
     const RULED_OWNER_ONLY = ["admin.administratorRole.assign", "salesAgreement.tradeIn.approve", "finance.settlement.record", "finance.settlement.apply",
       "finance.settlement.correct", "finance.reconciliation.record", "rental.agreement.read", "rental.agreement.manage", "rental.charge.record",
       "rental.unit.assign", "rental.unit.return", "rental.fleet.manage"];
@@ -585,8 +596,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // Rental (#207): `rental.workspace` is the one surface owner reaches and admin does not -- the rental read is business
     // authority the migration withholds from admin, by the same rule as the settlement keys above.
     assert.deepEqual(owner.surfaces.filter((s) => !admin.surfaces.includes(s)), ["rental.workspace"]);
-    assert.equal(admin.surfaces.length, 26); // + analysis.workspace (#208); + inventory.racking (B3)
-    assert.equal(owner.surfaces.length, 24); // + analysis.workspace (#208); + inventory.racking (B3)
+    assert.equal(admin.surfaces.length, 28); // + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4: admin holds reportDefinition.read); + reporting.builder (B4 grants: report.*.read)
+    assert.equal(owner.surfaces.length, 26); // + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4: owner holds reportDefinition.read); + reporting.builder (B4 grants: report.*.read)
     // NOT THE SAME ROLE, stated as an assertion rather than left implicit in the counts above.
     assert.notEqual(admin.capabilities.size, owner.capabilities.size);
     assert.notDeepEqual(admin.surfaces, owner.surfaces);
@@ -718,8 +729,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 22 and 13, not 20 and 11: ruling B gave workOrder.record.read to both partsManager and
     // partsAssociate, and the parts-associate persona also carries inventoryReceivingClerk, which
     // gained receivingOrder.record.read. Reads only -- the Reorder distinction below is untouched.
-    assert.equal(manager.capabilities.size, 22);
-    assert.equal(associate.capabilities.size, 13);
+    // 22 -> 23 and 13 -> 14: performance.goal.read (B4 grants, 1764650000000) -- partsManager and partsAssociate both hold it in Firebase.
+    assert.equal(manager.capabilities.size, 23);
+    assert.equal(associate.capabilities.size, 14);
     assert.equal(manager.surfaces.includes("inventory.reorderQueue"), true);
     assert.equal(associate.surfaces.includes("inventory.reorderQueue"), false);
     assert.equal(manager.destinations.includes("inventory/reorderQueue"), true);
@@ -844,7 +856,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     for (const key of personaKeys) assert.deepEqual(PERSONAS[key].securityRoles, ["salesperson"]);
     const resolved = await Promise.all(personaKeys.map(resolvePersona));
     for (const r of resolved) {
-      assert.equal(r.capabilities.size, 18); // 17 -> 18: finance.visibility.self (B1, INACTIVE mirror of the Firebase salesperson grant)
+      assert.equal(r.capabilities.size, 19); // 17 -> 18: finance.visibility.self (B1, INACTIVE mirror of the Firebase salesperson grant). 18 -> 19: performance.goal.read (B4 grants, 1764650000000)
       // 8, not 7: `commercial.agreements` is a declared surface now (lanes BL + BQ) and salesperson
       // already held salesAgreement.read, so it resolves for all three without any new grant.
       assert.equal(r.surfaces.length, 9); // + analysis.workspace (#208), narrowed inside to the seller's own channels
@@ -1012,23 +1024,30 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // baseline is read-only" is now a statement with content: there is a read, and there is no write
     // to exclude because none is registered.
     const viewer = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
-    assert.deepEqual([...viewer].sort(), ["reportDefinition.read"]);
+    // Firebase exit B4 (migration 1764650000000, OD-B4-1) then mirrored the 26 report.* keys reportViewer holds in Firebase (the four object reads and the field reads, no mutation).
+    assert.deepEqual([...viewer].sort(), ["reportDefinition.read", ...b4KeysHeldBy("reportViewer")].sort());
+    assert.equal(b4KeysHeldBy("reportViewer").length, 26);
     const viewerAccess = objectAccessOf(viewer);
-    for (const mutating of ["CREATE", "EDIT", "BUSINESS_ACTION", "ADMIN_ACTION"]) {
+    // The 26 B4 report.* reads (1764650000000) are BUSINESS_ACTION-kind registrations with no CRED verb (reads of the report engine, not a mutation): exactly 26, and still no CREATE / EDIT / ADMIN_ACTION.
+    for (const mutating of ["CREATE", "EDIT", "ADMIN_ACTION"]) {
       assert.equal(viewerAccess.kinds[mutating] ?? 0, 0, `the reporting baseline acquired a ${mutating}`);
     }
+    assert.equal(viewerAccess.kinds.BUSINESS_ACTION ?? 0, 26, "the 26 Firebase report reads, nothing else");
     // NOT GRANTABLE THE OTHER WAY EITHER: the delete is UNREGISTERED, so it is ungrantable rather
     // than merely ungranted, and the field-level report ids are deliberately outside the vocabulary.
     assert.equal(capabilityCatalog.some((c) => c.key === "reportDefinition.delete"), false);
-    assert.deepEqual(capabilityCatalog.filter((c) => c.key.startsWith("report")).map((c) => c.key).sort(),
-      ["reportDefinition.read"]);
+    // Firebase exit B4 REGISTERED the 38 report.* ids (migration 1764640000000) and mirrored their Firebase holders (1764650000000), so the catalog carries 39 report ids and the viewer holds reportDefinition.read plus its 26 Firebase keys.
+    const reportKeys = capabilityCatalog.filter((c) => c.key.startsWith("report")).map((c) => c.key);
+    assert.equal(reportKeys.length, 39);
+    assert.ok(reportKeys.includes("reportDefinition.read"));
+    assert.equal(reportKeys.filter((k) => k.startsWith("report.")).length, 38);
     // Granted to the three Roles the ruling names and to no job-title Role.
     assert.deepEqual(await holdersOf("reportDefinition.read"), ["admin", "owner", "reportViewer"]);
 
-    // STILL ZERO for the other two reporting Roles -- Slice 1 is a slice, not the domain.
+    // The other two reporting Roles hold EXACTLY their Firebase B4 keys (5 finance fields; create / duplicate / rename) and no door: neither earns a surface.
     for (const role of ["reportFinanceViewer", "reportAuthor"]) {
       const caps = await capabilitiesForRoleKeys(pool, TENANT, [role]);
-      assert.equal(caps.size, 0, `${role} gained authority outside Reporting Slice 1`);
+      assert.deepEqual([...caps].sort(), b4KeysHeldBy(role).sort(), `${role} holds more or less than its Firebase B4 keys`);
       const r = await resolve([role], NO_DIMENSIONS);
       assert.deepEqual([...r.surfaces], []);
       assert.deepEqual(r.destinations, []);
@@ -1044,9 +1063,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(analyst.capabilities.size, 0);
     assert.deepEqual([...analyst.surfaces], []);
     assert.deepEqual(analyst.destinations, []);
-    // And the destinations it would need are declared gaps governed by the Firebase capability feed,
-    // not by eos_policy -- which is why Slice 1 could not open them and did not try.
-    assert.match(NAV_SURFACE_GAPS["reporting/builder"], /Firebase capability feed/);
+    // Report Builder and Saved Reports are now governed destinations (Firebase exit B4): the report.* ids are REGISTERED in eos_policy.capabilities, but granted to
+    // nobody by that migration, so this persona still reaches none of them -- it holds no Principal and no Security Role.
+    assert.deepEqual(NAV_SURFACE_ACCESS["reporting/builder"], ["reporting.builder"]);
   });
 
   // ── 9. RESTRICTED PERSONAS
@@ -1081,7 +1100,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // rather than `admin` (lane BI), and lane BN's contract withholds Data Import, receiving check-in
     // and dispatch from Owner.
     const ownerExecutive = await resolvePersona("owner-executive");
-    assert.equal(ownerExecutive.surfaces.length, 24); // + rental.workspace (#207) + analysis.workspace (#208); + inventory.racking (B3)
+    assert.equal(ownerExecutive.surfaces.length, 26); // + rental.workspace (#207) + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4); + reporting.builder (B4 grants)
     assert.ok(ownerExecutive.destinations.length >= 20,
       `owner-executive reached only ${ownerExecutive.destinations.length} destinations`);
     // technician-on-leave is the same PERSON as a technician minus the authority: the Employee, the
@@ -1145,11 +1164,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
 
     assert.deepEqual(decideWorkflowAction(before, instance, "MarkReady", attempt),
       { allowed: false, refusal: "notBoundToRole" });
-    // ONE, not zero: Reporting Slice 1 gave reportViewer reportDefinition.read. That makes this proof
+    // 27 (reportDefinition.read + the 26 B4 report reads, 1764650000000), not zero: Reporting Slice 1 gave reportViewer reportDefinition.read. That makes this proof
     // STRONGER, not weaker -- the Role now has a real, non-empty authority, so "the binding did not
     // change it" is a comparison between two populated sets rather than between two emptinesses.
     const capsBefore = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
-    assert.deepEqual([...capsBefore].sort(), ["reportDefinition.read"]);
+    assert.deepEqual([...capsBefore].sort(), ["reportDefinition.read", ...b4KeysHeldBy("reportViewer")].sort());
 
     // Workflow administration is the workflowDefinition.bindRole CAPABILITY now (workflow control
     // plane), never the Role name. No Role holds it in this chain (asserted above), so the fixture
@@ -1172,8 +1191,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const resolved = await resolve(["reportViewer"], NO_DIMENSIONS);
     // ONE door, from reportDefinition.read (the report catalog), not from the binding: the Analysis workspace, where the
     // Reporting Analyst reads the measure catalog and no business figure (each needs its own domain read).
-    assert.deepEqual([...resolved.surfaces], ["analysis.workspace"]);
-    assert.deepEqual(resolved.destinations, ["analysis/analysis"]);
+    // Firebase exit B4 added the Saved Reports door (`reporting.savedReports`, gated by the SAME reportDefinition.read) and, with the 1764650000000 grants, the Report Builder door
+    // (`reporting.builder`, gated by the report.<object>.read the viewer holds), so the viewer resolves exactly those three doors and no other.
+    assert.deepEqual([...resolved.surfaces].sort(), ["analysis.workspace", "reporting.builder", "reporting.savedReports"]);
+    assert.ok(resolved.destinations.includes("analysis/analysis"));
+    assert.deepEqual(resolved.destinations.filter((d) => !["analysis/analysis", "reporting/builder", "reporting/savedReports"].includes(d)), []);
     // The workOrder Object capabilities exist and reportViewer holds none of them.
     const workOrderKeys = capabilityCatalog.filter((c) => c.objectKey === "workOrder").map((c) => c.key);
     assert.ok(workOrderKeys.length > 0);
@@ -1194,7 +1216,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const EXPECTED_SURFACE_COUNTS = {
       // Rental (#207): + rental.workspace for every persona whose Role holds rental.agreement.read.
       // Analysis (#208): + analysis.workspace for every persona holding a read a measure is decided on (or the report catalog read).
-      "owner-executive": 24, "administrator": 26, "general-manager": 17, "office-manager": 4,
+      "owner-executive": 26, "administrator": 28, "general-manager": 17, "office-manager": 4,
       "service-manager": 14, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
       "contract-technician": 3, "technician-on-leave": 0, "retail-sales-a": 9, "retail-sales-b": 9,
       "national-accounts-sales": 9, "parts-manager": 14, "parts-associate": 9,
@@ -1232,6 +1254,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // the baseline.
     // `purchasing.suppliers` joins it BY DESIGN (Parts / Purchasing / Receiving, 2026-10-01): supplier.record.read is
     // registered ungranted, and its holders are the LIVE Administration delta (partsPurchasingReceivingDelta.ts).
+    // (`reporting.builder` USED to join it: the report.* object reads were registered but not granted until migration 1764650000000, OD-B4-1, so it is now granted and leaves the census.)
     // `finance.policy` joins it BY DESIGN (Financial Policy Phase 2, DECISIONS #232): finance.policy.* are registered with no
     // baseline grant; the owner Role's read/approve/activate and the custom financialPolicyPreparer Role are LIVE
     // Administration decisions (nonprod 2026-10-14), never the baseline. Protected-Administrator standing is not a baseline

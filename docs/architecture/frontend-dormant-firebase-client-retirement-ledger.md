@@ -196,3 +196,16 @@ Removing it needs a ruling: retire canonical supplier-PO receiving, or build its
 - **The files stay.** Each Firebase-calling file keeps its Firebase arm for the builds that declare no EOS API (production), so the baseline file count does not move; the choice is a build-time ternary, never a runtime fallback. The Firebase arms leave with the production cutover (level D) and the server callables with an operator undeploy (reserved).
 - **The `RECEIVING_TRANSPORT_READY` gate is the Firebase arm's alone.** The EOS supplier receive has no readiness constant: the server decides authority on every call, and a refusal is a bounded outcome. It is never "unavailable" by design (Owner ruling 4).
 - **Nothing is copied.** The Firebase bins are censused offline (`scripts/exportBinSnapshot.js` + `scripts/binCensus.js`, operator-run, not yet run); the `inventory_actions` copy and any `purchase_orders` copy stay HELD.
+
+## B4: Records and reporting move to EOS (2026-10-18; DECISIONS #B4)
+
+| Firebase call removed from the EOS build | Replaced by |
+| --- | --- |
+| `access/importedServiceHistorySource.js`: `listImportedServiceHistory` | `services/eosRecordsClients.js` `createImportedHistoryClient` → `/operations/inventory` `listImportedServiceHistory` |
+| `access/dataImportClient.js`: `stageDataImport`, `executeDataImport`, `listDataImportJobs` | `createDataImportClient` → `stageDataImport` / `executeDataImport` / `listDataImportJobs` |
+| `domain/reporting/reportExecutionSeam.js`: `runReportDefinitionCallable` | `createReportRunClient` → `runReportDefinition` |
+| `domain/reporting/savedReportService.js`: `create/get/list/rename/duplicate/deleteSavedDefinitionCallable` | `createSavedReportClient` → the six `*SavedReportDefinition(s)` operations |
+| `services/performanceGoalClient.js`: `listCurrentPerformanceGoals`, `listPerformanceGoalVersions`, `listGoalSubjects` | `createPerformanceGoalClient` → the same three operations |
+
+- **The files stay.** Each Firebase-calling file keeps its Firebase arm for the builds that declare no EOS API (production), so the baseline file count does not move; the choice is a build-time ternary, never a runtime fallback. The Firebase arms leave with the production cutover (level D) and the server callables with an operator undeploy (reserved).
+- **Nothing is copied.** The Firebase imported service history, saved report definitions and performance goals stay in Firestore; every copy stays HELD (DECISIONS #B4, OD-B4-6).

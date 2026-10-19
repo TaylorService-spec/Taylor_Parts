@@ -53,6 +53,9 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   kind of import does, what it refuses and why, and what it will never do. Sandbox only.
 - [Set up warehouse racking](./administration/set-up-warehouse-racking.md) — describing a
   warehouse's aisles, bays and positions once and creating all of its bins in one pass.
+- [Build and save a report](./administration/build-and-save-a-report.md) — Reporting → Report Builder
+  and Saved Reports: choosing customers, contacts, locations or equipment, columns, filters, grouping
+  and sorting; saving, renaming, duplicating and deleting; what you can and cannot see in a report.
 - [Administration: Policy and Access](../training/administration-policy-and-access.md) — the canonical
   Administration guide: Security Roles on the Employee record, Object Security, Effective Access, Direct
   Exceptions, Functional Roles, workflows, the protected Owner and the Owner's Administrator staffing.
@@ -62,6 +65,12 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Give someone Finance access to a company](./administration/give-finance-access-to-a-company.md) — a Role's "Finance access only" setting, so a Finance company assignment does not add the company to everyday work
 - [Give an Employee access to another company](./administration/give-an-employee-access-to-another-company.md) — explicit company access for one Employee: reach to a company, no permissions, no Finance access
 - [Integrations](./administration/integrations-guide.md)
+
+## Goals
+
+- [Performance goals](./performance-goals.md) — where a target appears next to a figure, what "No
+  target has been set", "outside your access" and "could not be read" each mean, and which targets you
+  can see. Goals are not created from EOS screens yet.
 
 More guides will be added here as they're written. If a guide references a screen or control that
 isn't live yet, it says so rather than describing something you can't actually do.

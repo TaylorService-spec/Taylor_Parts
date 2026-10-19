@@ -230,7 +230,12 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     await assert.rejects(q("UPDATE eos_policy.principal_identities SET external_subject = 'eos-moved-0001'"), /APPEND_ONLY/);
   });
 
-  await t.test("the migration's down step REFUSES while bindings exist, and the table survives", () => {
+  await t.test("the migration's down step REFUSES while bindings exist, and the table survives", async () => {
+    // The fixture above copied the committed authority baseline into this tenant under 'idn-fixture', including the 122 B4 report / goal pairs (1764650000000).
+    // The B4 registration migration's down refuses while ANY Role grant holds one of its keys (by design: it never destroys a governed grant), and the grant
+    // migration's own down removes only the rows it stamped -- so the fixture's copies are removed here, exactly as the baseline-copy fixture added them.
+    await q(`DELETE FROM eos_policy.role_capabilities rc USING eos_policy.capabilities c
+              WHERE c.id = rc.capability_id AND rc.granted_by = 'idn-fixture' AND (c.key LIKE 'report.%' OR c.key = 'performance.goal.read')`);
     const down = migrate("down");
     assert.notEqual(down.status, 0);
     assert.match(`${down.stdout}${down.stderr}`, /refusing to drop principal_identities/);
