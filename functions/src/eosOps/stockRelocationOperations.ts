@@ -51,6 +51,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { EOS_PLACEMENT_RECORD_CAPABILITY, insertPlacements, planPlacements, readPlacements } from "./binPlacementOperations.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -209,9 +210,10 @@ function planRows(req: EosRelocationRequest): PlannedRow[] {
   ]);
 }
 
-async function resolveEndpoint(db: Queryable, tenantId: string, ref: LocationRef) {
+async function resolveEndpoint(db: Queryable, tenantId: string, ref: LocationRef, companyKeys: readonly string[]) {
   try {
-    return await resolveScopeLocation(db, tenantId, ref);
+    // COMPANY ISOLATION (#235 / #237): an endpoint of a company outside the caller's reads EXACTLY as a nonexistent one.
+    return await resolveScopeLocation(db, tenantId, ref, companyKeys);
   } catch (err) {
     if (err instanceof InventoryScopeError) {
       return refuse("NOT_FOUND", "NOT_FOUND", ref.type === "BIN" ? "bin_not_found" : "warehouse_not_found");
@@ -243,6 +245,13 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
       refuse("CAPABILITY_MISSING", "FORBIDDEN", "placement_not_authorized");
     }
 
+    // ---- 2b. COMPANY AUTHORITY (#235 / #237): capability first, then company -- none at all is refused before any row is read ----
+    const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "relocating stock requires operating-company authority; this principal has none");
+    }
+    const companyKeys = authority.companyKeys;
+
     // ---- 3. part authority: tracking mode from eos_ops.parts, never the request ----
     const [part] = await createPostgresPartPolicyAuthority().readPartPolicies(db, actor.tenantId, [req.partId]);
     if (!part.found) refuse("NOT_FOUND", "NOT_FOUND", "part_not_found");
@@ -251,8 +260,8 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     if (isSerial !== serials.length > 0) refuse("INVALID", "INVALID_INPUT", isSerial ? "serial_numbers_required" : "serial_numbers_not_allowed");
 
     // ---- 4. endpoints: governed, same custody warehouse; the actor's scope over THAT warehouse ----
-    const source = await resolveEndpoint(db, actor.tenantId, req.source);
-    const destination = await resolveEndpoint(db, actor.tenantId, req.destination);
+    const source = await resolveEndpoint(db, actor.tenantId, req.source, companyKeys);
+    const destination = await resolveEndpoint(db, actor.tenantId, req.destination, companyKeys);
     if (source.scopeWarehouseId !== destination.scopeWarehouseId) {
       refuse("CROSS_WAREHOUSE", "PRECONDITION_FAILED", "different_custody_parents_use_transfer");
     }
@@ -285,12 +294,14 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     const planned = planRows(req);
     const { rows: prior } = await db.query<{
       id: string; idempotency_key: string; part_id: string; tracking_mode: string; location_type: string; location_id: string;
-      movement_type: string; quantity_delta: number; serial_number: string | null; source_kind: string; source_id: string;
+      movement_type: string; quantity_delta: number; serial_number: string | null; source_kind: string; source_id: string; operating_company_key: string;
     }>(
       `SELECT id, idempotency_key, part_id, tracking_mode::text AS tracking_mode, location_type::text AS location_type, location_id,
-              movement_type::text AS movement_type, quantity_delta, serial_number, source_kind, source_id
+              movement_type::text AS movement_type, quantity_delta, serial_number, source_kind, source_id, operating_company_key
          FROM eos_ops.inventory_movements WHERE tenant_id = $1 AND idempotency_key = ANY($2)`,
       [actor.tenantId, planned.map((p) => p.idempotencyKey)]);
+    // Rows of a company the caller does not reach under this key: the ordinary key conflict, decided before anything is compared or counted.
+    if (prior.some((r) => !companyKeys.includes(r.operating_company_key))) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "idempotency_key_reused");
     if (prior.length > 0 && prior.length < planned.length) refuse("INTEGRITY", "CONFLICT", "partial_prior_relocation");
     if (prior.length === planned.length) {
       const byKey = new Map(prior.map((r) => [r.idempotency_key, r]));

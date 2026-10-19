@@ -137,8 +137,8 @@ test("Supplier receipt history and VOID correction on PostgreSQL", { skip: SKIP,
     const hidden = await refusal(() => reads.readReceipt({ pool }, actor([RECEIPT_READ], ventana), { receiptId: rcv.receivingId }));
     const missing = await refusal(() => reads.readReceipt({ pool }, actor([RECEIPT_READ], ventana), { receiptId: "rcvc_does_not_exist" }));
     assert.deepEqual([hidden.code, hidden.category, hidden.message], [missing.code, missing.category, missing.message]);
-    // A principal with no company authority sees no supplier receipt at all (and still reads its own warehouse-scoped Reorder receipts).
-    assert.equal((await reads.listReceipts({ pool }, actor([RECEIPT_READ], nobody), {})).items.length, 0);
+    // A principal with no company authority is REFUSED the receipt history -- capability first, then company (ISO inventory: Reorder receipts follow the same rule).
+    assert.equal((await refusal(() => reads.listReceipts({ pool }, actor([RECEIPT_READ], nobody), {}))).code, "COMPANY_AUTHORITY_REQUIRED");
   });
 
   await t.test("authority: capability first, then company; a foreign-company receipt is nonexistent; scope is required; nothing is written", async () => {

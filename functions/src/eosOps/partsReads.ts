@@ -13,6 +13,12 @@
 // Employee, or no scope, sees nothing -- fail closed, and the answer says so (`scopedWarehouseIds`). Tenant is always the
 // resolved actor's; no tenant, company or scope is accepted from the caller.
 //
+// COMPANY ISOLATION (#235 / #237; ISO inventory, 2026-10-19). A WAREHOUSE scope is not company authority. Every read here decides, in this
+// order: the CAPABILITY, then the caller's operating-company AUTHORITY (resolveCompanyAuthority -- none at all is COMPANY_AUTHORITY_REQUIRED,
+// before any row is read), then the warehouse scope, narrowed to warehouses OF those companies (scopedWarehouseIds `companyKeys`). Movements,
+// receipts, transfers and trucks of a company outside the caller's are absent from every answer -- the filter is in the WHERE -- and a single
+// record of such a company (a receipt, a truck) reads EXACTLY as a nonexistent one.
+//
 // TRUCKS (Controller OD-T3, 2026-10-01). A Technician's current MOBILE scope over a truck is a SECOND, narrower reach for
 // the inventory reads: that truck's stock, and nothing else (`mobileLocationIds`, mobileStockAuthority.ts). No Technician
 // sees a warehouse, another Employee's truck or a tenant-wide view. Warehouse staff keep seeing a truck only through its
@@ -25,7 +31,7 @@ import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./synth
 import { currentMobileLocationIds } from "./mobileStockAuthority.js";
 import { listTruckViews } from "./truckRegistryAdministration.js";
 import { administrationReachTargets } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -69,7 +75,9 @@ async function withReadSnapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>
  * without either. Reads only: no command takes its authority from this list.
  */
 export async function scopedWarehouseIds(
-  c: Pick<PoolClient, "query">, actor: ReorderActor, options: { readonly administrationReach?: boolean } = {},
+  c: Pick<PoolClient, "query">, actor: ReorderActor,
+  /** `companyKeys` (ISO inventory): keep only the warehouses OF those operating companies -- a warehouse scope never reaches into another company's warehouse. */
+  options: { readonly administrationReach?: boolean; readonly companyKeys?: readonly string[] } = {},
 ): Promise<string[]> {
   const reader = postgresPrincipalDimensionReader(c);
   const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
@@ -78,7 +86,20 @@ export async function scopedWarehouseIds(
   // An EXECUTION picker passes administrationReach: false -- it must offer only where the caller can act.
   const administered = options.administrationReach === false ? []
     : await administrationReachTargets(c, actor.tenantId, actor.principalId, "WAREHOUSE");
-  return [...new Set([...own, ...administered])].sort();
+  const all = [...new Set([...own, ...administered])].sort();
+  if (options.companyKeys === undefined || all.length === 0) return all;
+  const { rows } = await c.query(
+    `SELECT id FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = ANY($2::text[]) AND operating_company_key = ANY($3::text[])`,
+    [actor.tenantId, all, [...options.companyKeys]]);
+  const reachable = new Set(rows.map((r) => String(r.id)));
+  return all.filter((id) => reachable.has(id));
+}
+
+/** CAPABILITY FIRST (the caller's requireCapability), THEN COMPANY (#235 / #237): the operating-company KEYS the caller reaches; none at all is a refusal, not an empty answer. */
+async function reachableCompanyKeys(c: Pick<PoolClient, "query">, actor: ReorderActor, what: string): Promise<readonly string[]> {
+  const authority = await resolveInventoryCompanyAuthority(c, actor.tenantId, actor.principalId);
+  if (authority.companyKeys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", `${what} requires operating-company authority; this principal has none`);
+  return authority.companyKeys;
 }
 
 /** SQL resolving (location_type, location_id) to its governing warehouse; MOBILE only through a CURRENT binding. */
@@ -113,7 +134,8 @@ export async function readInventoryOnHand(deps: { readonly pool: Pool }, actor: 
   if (mobileLocationId !== null && !ID(mobileLocationId)) refuse("MOBILE_LOCATION_ID_INVALID", "INVALID_INPUT", "mobileLocationId must be a governed id");
   if (warehouseId !== null && mobileLocationId !== null) refuse("FILTER_CONFLICT", "INVALID_INPUT", "state warehouseId or mobileLocationId, not both");
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await scopedWarehouseIds(c, actor);
+    const keys = await reachableCompanyKeys(c, actor, "reading on-hand stock");
+    const scope = await scopedWarehouseIds(c, actor, { companyKeys: keys });
     const mine = await currentMobileLocationIds(c, actor);
     // A truck filter narrows to that truck: reached through the caller's own MOBILE scope, or through its binding to a
     // warehouse the caller is scoped over (checked by the governing-warehouse predicate below).
@@ -128,12 +150,13 @@ export async function readInventoryOnHand(deps: { readonly pool: Pool }, actor: 
                       ${GOVERNING_WAREHOUSE("m.tenant_id", "m.location_type", "m.location_id")} AS governing_warehouse_id
                  FROM eos_ops.inventory_movements m
                 WHERE m.tenant_id = $1 AND ($2::text[] IS NULL OR m.part_id = ANY($2::text[]))
-                  AND ($5::text IS NULL OR (m.location_type::text = 'MOBILE' AND m.location_id = $5))) x
+                  AND ($5::text IS NULL OR (m.location_type::text = 'MOBILE' AND m.location_id = $5))
+                  AND m.operating_company_key = ANY($6::text[])) x
         WHERE governing_warehouse_id = ANY($3::text[]) OR (location_type::text = 'MOBILE' AND location_id = ANY($4::text[]))
         GROUP BY 1, 2, 3, 4
        HAVING sum(quantity_delta) <> 0
         ORDER BY 1, 4, 2, 3`,
-      [actor.tenantId, partIds, visible, visibleTrucks, mobileLocationId]);
+      [actor.tenantId, partIds, visible, visibleTrucks, mobileLocationId, [...keys]]);
     const out: OnHandRow[] = rows.map((r) => ({ partId: r.part_id, locationType: r.location_type, locationId: r.location_id,
       warehouseId: r.governing_warehouse_id ?? null, onHand: Number(r.on_hand) }));
     const totals = new Map<string, number>();
@@ -178,15 +201,11 @@ export async function readPartBalance(deps: { readonly pool: Pool }, actor: Reor
   if (!ID(i.partId)) refuse("PART_ID_REQUIRED", "INVALID_INPUT", "partId is required");
   const partId = i.partId as string;
   return withReadSnapshot(deps.pool, async (c) => {
-    const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
-    if (authority.companyKeys.length === 0) {
-      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "reading stock balances requires operating-company authority; this principal has none");
-    }
-    const keys = [...authority.companyKeys];
+    const keys = [...(await reachableCompanyKeys(c, actor, "reading stock balances"))];
     const part = await c.query(`SELECT control_type::text AS control_type FROM eos_ops.parts WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, partId]);
     if (part.rows.length === 0) refuse("PART_NOT_FOUND", "NOT_FOUND", "no such Part");
     const serialTracked = SERIAL_CONTROL_TYPES.includes(String(part.rows[0].control_type));
-    const scope = await presentableScope(c, actor);
+    const scope = await presentableScope(c, actor, keys);
 
     // ---- on order: Reorder POs (warehouse scope + company) and canonical supplier POs (company) ----
     const reorderPos = scope.length === 0 ? { rows: [] as Array<Record<string, unknown>> } : await c.query(
@@ -263,9 +282,8 @@ const RECEIPT_COLUMNS = `r.id, r.receiving_order_number, r.status::text AS statu
   END AS external_po_number,
   EXISTS (SELECT 1 FROM eos_ops.receiving_corrections k WHERE k.tenant_id = r.tenant_id AND k.receiving_order_id = r.id) AS corrected`;
 
-/** The SQL condition (over alias `r`, company keys at `param`): a SUPPLIER-PO receipt belongs to one company and is visible only to callers who reach it. */
-const SUPPLIER_RECEIPT_COMPANY_SQL = (param: number) =>
-  `(r.source_kind::text <> 'PURCHASE_ORDER' OR r.operating_company_key = ANY($${param}::text[]))`;
+/** The SQL condition (over alias `r`, company keys at `param`): a receipt belongs to one company and is visible only to callers who reach it (ISO inventory: Reorder receipts too). */
+const RECEIPT_COMPANY_SQL = (param: number) => `r.operating_company_key = ANY($${param}::text[])`;
 
 const receiptOf = (r: Record<string, unknown>) => ({
   receiptId: r.id, receivingOrderNumber: r.receiving_order_number, status: r.status, sourceKind: r.source_kind,
@@ -278,7 +296,7 @@ const receiptOf = (r: Record<string, unknown>) => ({
   receivedByPrincipalId: r.created_by,
 });
 
-/** Receipt history. Reorder receipts follow the caller's warehouse scope; SUPPLIER-PO receipts additionally follow the caller's operating companies (B3-x, #235/#237). */
+/** Receipt history. Every receipt follows the caller's warehouse scope AND operating companies (#235/#237; Reorder receipts since ISO inventory, supplier-PO receipts since B3-x). */
 export async function listReceipts(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, RECEIPT_READ);
   const i = acceptOnly(input, ["reorderRequestId", "limit"]);
@@ -287,13 +305,13 @@ export async function listReceipts(deps: { readonly pool: Pool }, actor: Reorder
   const reorderRequestId = i.reorderRequestId === undefined || i.reorderRequestId === null ? null : i.reorderRequestId;
   if (reorderRequestId !== null && !ID(reorderRequestId)) refuse("REORDER_REQUEST_ID_INVALID", "INVALID_INPUT", "reorderRequestId must be a governed id");
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await scopedWarehouseIds(c, actor);
+    const companyKeys = [...(await reachableCompanyKeys(c, actor, "reading receipts"))];
+    const scope = await scopedWarehouseIds(c, actor, { companyKeys });
     if (scope.length === 0) return { scopedWarehouseIds: scope, items: [] };
-    const companyKeys = [...(await resolveCompanyAuthority(c, actor.tenantId, actor.principalId)).companyKeys];
     const { rows } = await c.query(
       `SELECT * FROM (SELECT ${RECEIPT_COLUMNS}, ${GOVERNING_WAREHOUSE("r.tenant_id", "r.receiving_location_type", "r.receiving_location_id")} AS governing_warehouse_id
                         FROM eos_ops.receiving_orders r
-                       WHERE r.tenant_id = $1 AND ($2::text IS NULL OR r.source_reorder_request_id = $2) AND ${SUPPLIER_RECEIPT_COMPANY_SQL(5)}) x
+                       WHERE r.tenant_id = $1 AND ($2::text IS NULL OR r.source_reorder_request_id = $2) AND ${RECEIPT_COMPANY_SQL(5)}) x
         WHERE governing_warehouse_id = ANY($3::text[])
         ORDER BY received_at DESC, id DESC LIMIT $4`,
       [actor.tenantId, reorderRequestId, scope, limit, companyKeys]);
@@ -306,12 +324,12 @@ export async function readReceipt(deps: { readonly pool: Pool }, actor: ReorderA
   const i = acceptOnly(input, ["receiptId"]);
   if (!ID(i.receiptId)) refuse("RECEIPT_ID_REQUIRED", "INVALID_INPUT", "receiptId is required");
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await scopedWarehouseIds(c, actor);
-    const companyKeys = [...(await resolveCompanyAuthority(c, actor.tenantId, actor.principalId)).companyKeys];
+    const companyKeys = [...(await reachableCompanyKeys(c, actor, "reading a receipt"))];
+    const scope = await scopedWarehouseIds(c, actor, { companyKeys });
     const { rows } = await c.query(
       `SELECT ${RECEIPT_COLUMNS}, ${GOVERNING_WAREHOUSE("r.tenant_id", "r.receiving_location_type", "r.receiving_location_id")} AS governing_warehouse_id
-         FROM eos_ops.receiving_orders r WHERE r.tenant_id = $1 AND r.id = $2 AND ${SUPPLIER_RECEIPT_COMPANY_SQL(3)}`, [actor.tenantId, i.receiptId, companyKeys]);
-    // Outside scope (warehouse, or -- for a supplier-PO receipt -- company) answers exactly as missing: no existence oracle.
+         FROM eos_ops.receiving_orders r WHERE r.tenant_id = $1 AND r.id = $2 AND ${RECEIPT_COMPANY_SQL(3)}`, [actor.tenantId, i.receiptId, companyKeys]);
+    // Outside scope (warehouse or company) answers exactly as missing: no existence oracle.
     if (rows.length === 0 || !scope.includes(String(rows[0].governing_warehouse_id))) refuse("RECEIPT_NOT_FOUND", "NOT_FOUND", "no such receipt");
     const lines = await c.query(
       `SELECT line_id, part_id, expected_quantity, received_quantity, serial_numbers FROM eos_ops.receiving_order_lines
@@ -334,9 +352,12 @@ export async function listReceivingLocationOptions(deps: { readonly pool: Pool }
   const i = acceptOnly(input, ["reorderRequestId"]);
   if (!ID(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
   return withReadSnapshot(deps.pool, async (c) => {
-    const rr = await c.query(`SELECT warehouse_id, status::text AS status FROM eos_ops.reorder_requests WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, i.reorderRequestId]);
+    const keys = await reachableCompanyKeys(c, actor, "listing receiving destinations");
+    const rr = await c.query(
+      `SELECT warehouse_id, status::text AS status FROM eos_ops.reorder_requests WHERE tenant_id = $1 AND id = $2 AND operating_company_key = ANY($3::text[])`,
+      [actor.tenantId, i.reorderRequestId, [...keys]]);
     // The RECEIVING picker offers only where the caller can receive: execution, never administration reach (G2).
-    const scope = await scopedWarehouseIds(c, actor, { administrationReach: false });
+    const scope = await scopedWarehouseIds(c, actor, { administrationReach: false, companyKeys: keys });
     if (rr.rows.length === 0 || !scope.includes(String(rr.rows[0].warehouse_id))) refuse("REORDER_NOT_FOUND", "NOT_FOUND", "no receivable Reorder Request in your warehouse scope");
     const wh = await c.query(`SELECT id, name, site_label, status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, rr.rows[0].warehouse_id]);
     if (wh.rows.length === 0 || wh.rows[0].status !== "ACTIVE") return { reorderRequestId: i.reorderRequestId, receivable: rr.rows[0].status === "ORDERED", options: [] };
@@ -430,17 +451,19 @@ export async function readInventoryMovements(deps: { readonly pool: Pool }, acto
   const limit = i.limit === undefined ? 1000 : i.limit;
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 5000) refuse("LIMIT_INVALID", "INVALID_INPUT", "limit is 1..5000");
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await scopedWarehouseIds(c, actor);
+    const keys = await reachableCompanyKeys(c, actor, "reading movements");
+    const scope = await scopedWarehouseIds(c, actor, { companyKeys: keys });
     if (scope.length === 0) return { scopedWarehouseIds: scope, items: [], truncated: false };
     const { rows } = await c.query(
       `SELECT * FROM (SELECT m.id, m.part_id, m.movement_type::text AS movement_type, m.quantity_delta, m.location_type::text AS location_type,
                              m.location_id, m.source_kind, m.source_id, m.serial_number, m.occurred_at,
                              ${GOVERNING_WAREHOUSE("m.tenant_id", "m.location_type", "m.location_id")} AS governing_warehouse_id
                         FROM eos_ops.inventory_movements m
-                       WHERE m.tenant_id = $1 AND ($2::text[] IS NULL OR m.part_id = ANY($2::text[]))) x
+                       WHERE m.tenant_id = $1 AND ($2::text[] IS NULL OR m.part_id = ANY($2::text[]))
+                         AND m.operating_company_key = ANY($5::text[])) x
         WHERE governing_warehouse_id = ANY($3::text[])
         ORDER BY occurred_at DESC, id DESC LIMIT $4`,
-      [actor.tenantId, partIds, scope, (limit as number) + 1]);
+      [actor.tenantId, partIds, scope, (limit as number) + 1, [...keys]]);
     const truncated = rows.length > (limit as number);
     return {
       scopedWarehouseIds: scope,
@@ -478,25 +501,39 @@ function requireAnyCapability(actor: ReorderActor, keys: readonly string[]): voi
   }
 }
 
-async function presentableScope(c: PoolClient, actor: ReorderActor): Promise<string[]> {
-  return (await scopedWarehouseIds(c, actor)).filter((w) => !PRESENTATION_EXCLUDED.includes(w));
+async function presentableScope(c: PoolClient, actor: ReorderActor, companyKeys: readonly string[]): Promise<string[]> {
+  return (await scopedWarehouseIds(c, actor, { companyKeys })).filter((w) => !PRESENTATION_EXCLUDED.includes(w));
 }
 
+/**
+ * The caller's governed warehouses. Default: those in the caller's WAREHOUSE scope, of the caller's companies (the pickers where the caller WORKS).
+ *
+ * `companyWide: true` (ISO inventory): EVERY warehouse of the caller's operating companies, in scope or not, each carrying `inScope`. It exists for the
+ * Transfers workspace, which must (a) offer a destination the way createTransfer accepts one -- any ACTIVE warehouse of a company the caller reaches, no
+ * warehouse scope needed at the far end -- and (b) NAME every endpoint a transfer shows. It names warehouses only (no quantity, no bin list), is held to a
+ * transfer capability, and never reaches a company the caller has no authority over. ACTIVE warehouses only: a closed warehouse is neither a destination nor
+ * needed to name a transfer's endpoint that matters to the open work (a closed one falls back to its id).
+ */
 export async function listInventoryWarehouses(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
-  requireAnyCapability(actor, [WAREHOUSE_READ, INVENTORY_ON_HAND_READ]);
-  acceptOnly(input, []);
+  const i = acceptOnly(input, ["companyWide"]);
+  if (i.companyWide !== undefined && typeof i.companyWide !== "boolean") refuse("COMPANY_WIDE_INVALID", "INVALID_INPUT", "companyWide must be true or false");
+  const companyWide = i.companyWide === true;
+  if (companyWide) requireAnyCapability(actor, [TRANSFER_ORDER_READ, ...TRANSFER_ACT_CAPABILITIES]);
+  else requireAnyCapability(actor, [WAREHOUSE_READ, INVENTORY_ON_HAND_READ]);
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await presentableScope(c, actor);
-    if (scope.length === 0) return { items: [] };
+    const keys = await reachableCompanyKeys(c, actor, "listing warehouses");
+    const scope = await presentableScope(c, actor, keys);
+    if (!companyWide && scope.length === 0) return { items: [] };
     const { rows } = await c.query(
       `SELECT w.id, w.name, w.site_label, w.status::text AS status, k.operating_company_id,
               (SELECT count(*)::int FROM eos_ops.bins b WHERE b.tenant_id = w.tenant_id AND b.warehouse_id = w.id AND b.status = 'ACTIVE') AS bin_count
          FROM eos_ops.warehouses w
          LEFT JOIN eos_policy.tenant_operating_company_keys k
            ON k.tenant_id = w.tenant_id AND k.operating_company_key = w.operating_company_key AND k.status = 'ACTIVE'
-        WHERE w.tenant_id = $1 AND w.id = ANY($2::text[]) ORDER BY w.name, w.id`, [actor.tenantId, scope]);
+        WHERE w.tenant_id = $1 AND (CASE WHEN $4::boolean THEN w.operating_company_key = ANY($3::text[]) AND w.id <> ALL($5::text[]) AND w.status::text = 'ACTIVE' ELSE w.id = ANY($2::text[]) END)
+        ORDER BY w.name, w.id`, [actor.tenantId, scope, [...keys], companyWide, [...PRESENTATION_EXCLUDED]]);
     return { items: rows.map((r) => ({ warehouseId: r.id, name: r.name, siteLabel: r.site_label, status: r.status,
-      operatingCompanyId: r.operating_company_id ?? null, binCount: Number(r.bin_count) })) };
+      operatingCompanyId: r.operating_company_id ?? null, binCount: Number(r.bin_count), inScope: scope.includes(String(r.id)) })) };
   });
 }
 
@@ -506,7 +543,8 @@ export async function listInventoryLocations(deps: { readonly pool: Pool }, acto
   const warehouseId = i.warehouseId === undefined || i.warehouseId === null ? null : i.warehouseId;
   if (warehouseId !== null && !ID(warehouseId)) refuse("WAREHOUSE_ID_INVALID", "INVALID_INPUT", "warehouseId must be a governed id");
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await presentableScope(c, actor);
+    const keys = await reachableCompanyKeys(c, actor, "listing locations");
+    const scope = await presentableScope(c, actor, keys);
     const visible = warehouseId === null ? scope : scope.filter((w) => w === warehouseId);
     // OD-T3 / Package G: trucks are resolvable locations -- the caller's own scoped trucks, and the trucks currently bound
     // to a warehouse the caller is scoped over (a transfer destination). Nothing else.
@@ -524,7 +562,8 @@ export async function listInventoryLocations(deps: { readonly pool: Pool }, acto
          LEFT JOIN eos_ops.mobile_location_scope_bindings sb ON sb.tenant_id = m.tenant_id AND sb.location_type = 'MOBILE'
                                                             AND sb.location_id = m.location_id AND sb.effective_to IS NULL
         WHERE m.tenant_id = $1 AND m.location_type = 'MOBILE' AND (sb.warehouse_id = ANY($2::text[]) OR m.location_id = ANY($3::text[]))
-        ORDER BY m.display_label, m.location_id`, [actor.tenantId, visible, mine])).rows;
+          AND m.operating_company_key = ANY($4::text[])
+        ORDER BY m.display_label, m.location_id`, [actor.tenantId, visible, mine, [...keys]])).rows;
     return { items: [
       ...wh.map((w) => ({ type: "WAREHOUSE", locationId: w.id, warehouseId: w.id, code: null, name: w.name, status: w.status })),
       ...bins.map((b) => ({ type: "BIN", locationId: b.id, warehouseId: b.warehouse_id, code: b.code ?? null, name: b.name ?? null, status: b.status })),
@@ -544,9 +583,10 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
   const limit = i.limit === undefined || i.limit === null ? 200 : i.limit;
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 500) refuse("LIMIT_INVALID", "INVALID_INPUT", "limit is an integer 1..500");
   return withReadSnapshot(deps.pool, async (c) => {
-    const scope = await scopedWarehouseIds(c, actor);
+    const keys = await reachableCompanyKeys(c, actor, "listing transfers");
+    const scope = await scopedWarehouseIds(c, actor, { companyKeys: keys });
     // `canReceive` is an EXECUTION hint: only the caller's OWN warehouse scope, never administration reach (#224).
-    const receivable = await scopedWarehouseIds(c, actor, { administrationReach: false });
+    const receivable = await scopedWarehouseIds(c, actor, { administrationReach: false, companyKeys: keys });
     // OD-T3: a Technician sees the transfers INTO a truck it holds MOBILE scope over (to receive them), and no others.
     const mine = actor.capabilities.has("inventory.transfer.receive") ? await currentMobileLocationIds(c, actor) : [];
     if (scope.length === 0 && mine.length === 0) return { items: [] };
@@ -557,9 +597,10 @@ export async function listTransferOrders(deps: { readonly pool: Pool }, actor: R
                 t.destination_location_type::text AS dt, t.destination_location_id AS di, t.created_at, t.created_by,
                 ${GOVERNING_WAREHOUSE("t.tenant_id", "t.origin_location_type", "t.origin_location_id")} AS ow,
                 ${GOVERNING_WAREHOUSE("t.tenant_id", "t.destination_location_type", "t.destination_location_id")} AS dw
-           FROM eos_ops.transfer_orders t WHERE t.tenant_id = $1 AND ($2::text IS NULL OR t.status::text = $2)) x
+           FROM eos_ops.transfer_orders t WHERE t.tenant_id = $1 AND ($2::text IS NULL OR t.status::text = $2)
+            AND (t.source_operating_company_key = ANY($6::text[]) OR t.destination_operating_company_key = ANY($6::text[]))) x
         WHERE ow = ANY($3::text[]) OR dw = ANY($3::text[]) OR (dt = 'MOBILE' AND di = ANY($5::text[]))
-        ORDER BY created_at DESC, id LIMIT $4`, [actor.tenantId, status, scope, limit, mine]);
+        ORDER BY created_at DESC, id LIMIT $4`, [actor.tenantId, status, scope, limit, mine, [...keys]]);
     return { items: rows.map((r) => ({
       transferOrderId: r.id, transferOrderNumber: r.transfer_order_number, status: r.status, partId: r.part_id, trackingMode: r.tracking_mode,
       quantity: Number(r.quantity), serialNumbers: r.serial_numbers ?? [],
@@ -585,11 +626,12 @@ export async function listTruckRoster(deps: { readonly pool: Pool }, actor: Reor
   return withReadSnapshot(deps.pool, async (c) => {
     const mine = await currentMobileLocationIds(c, actor);
     const tenantWide = TRUCK_ROSTER_READERS.some((k) => actor.capabilities.has(k));
-    if (!tenantWide && mine.length === 0) {
-      if (!actor.capabilities.has(INVENTORY_ON_HAND_READ)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `this read requires one of ${TRUCK_ROSTER_READERS.join(", ")}`);
-      return { scope: "OWN", mobileLocationIds: mine, trucks: [] };
+    if (!tenantWide && mine.length === 0 && !actor.capabilities.has(INVENTORY_ON_HAND_READ)) {
+      refuse("CAPABILITY_MISSING", "FORBIDDEN", `this read requires one of ${TRUCK_ROSTER_READERS.join(", ")}`);
     }
-    const trucks = await listTruckViews(c, actor.tenantId, tenantWide ? {} : { mobileLocationIds: mine });
+    const keys = await reachableCompanyKeys(c, actor, "reading the truck roster");
+    if (!tenantWide && mine.length === 0) return { scope: "OWN", mobileLocationIds: mine, trucks: [] };
+    const trucks = await listTruckViews(c, actor.tenantId, { ...(tenantWide ? {} : { mobileLocationIds: mine }), companyKeys: keys });
     return { scope: tenantWide ? "TENANT" : "OWN", mobileLocationIds: mine, trucks };
   });
 }
@@ -605,15 +647,17 @@ export async function readTruckStock(deps: { readonly pool: Pool }, actor: Reord
   if (!ID(i.mobileLocationId)) refuse("MOBILE_LOCATION_ID_INVALID", "INVALID_INPUT", "mobileLocationId is required");
   const locationId = i.mobileLocationId as string;
   return withReadSnapshot(deps.pool, async (c) => {
+    const keys = await reachableCompanyKeys(c, actor, "reading truck stock");
     const mine = await currentMobileLocationIds(c, actor);
-    const scope = await scopedWarehouseIds(c, actor);
+    const scope = await scopedWarehouseIds(c, actor, { companyKeys: keys });
     const { rows: loc } = await c.query(
       `SELECT m.display_label, m.active, m.operating_company_key, t.truck_id, t.vehicle_number, t.status::text AS truck_status,
               ${GOVERNING_WAREHOUSE("m.tenant_id", "m.location_type", "m.location_id")} AS bound_warehouse_id
          FROM eos_ops.mobile_locations m
          LEFT JOIN eos_ops.trucks t ON t.tenant_id = m.tenant_id AND t.mobile_location_type = m.location_type AND t.mobile_location_id = m.location_id
         WHERE m.tenant_id = $1 AND m.location_type = 'MOBILE' AND m.location_id = $2`, [actor.tenantId, locationId]);
-    const l = loc[0];
+    // A truck of a company outside the caller's reads EXACTLY as a missing one.
+    const l = loc[0] && keys.includes(String(loc[0].operating_company_key)) ? loc[0] : undefined;
     const reach = !l ? null : mine.includes(locationId) ? "MOBILE_SCOPE" : l.bound_warehouse_id && scope.includes(l.bound_warehouse_id) ? "WAREHOUSE_SCOPE" : null;
     if (!reach) refuse("TRUCK_NOT_FOUND", "NOT_FOUND", "no truck you can see has that location");
     const { rows: qty } = await c.query(

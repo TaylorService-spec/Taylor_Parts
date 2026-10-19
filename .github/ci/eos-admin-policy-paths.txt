@@ -912,6 +912,14 @@ field-ops-app-vite/src/modules/administration/UserDetail.jsx
 functions/test/rackingPlannerOffline.test.mjs
 functions/test/rackingPlannerPostgres.test.mjs
 functions/test/supplierPurchaseOrderReceivingPostgres.test.mjs
+functions/test/inventoryCompanyIsolationPostgres.test.mjs
+functions/test/inventoryAdministratorAllCompaniesPostgres.test.mjs
+functions/src/eosOps/inventoryCompanyAuthority.ts
+functions/src/eosWorkforce/employeeCompanyReach.ts
+functions/src/eosOps/cycleCountOperations.ts
+functions/src/eosOps/cycleCountRepository.ts
+functions/src/eosOps/receiptCorrectionCommand.ts
+functions/src/eosOps/truckRegistryAdministration.ts
 functions/src/eosOps/supplierPurchaseOrderReceiving.ts
 functions/src/eosOps/legacyInventoryActionNotes.ts
 functions/src/eosOps/warehouseBinAdministration.ts

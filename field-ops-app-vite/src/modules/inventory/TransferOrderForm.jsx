@@ -7,11 +7,12 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // origin/destination active-ness, on-hand/SERIAL-availability sufficiency). This form only shapes the
 // request; it never decides whether the transfer is actually legal.
 //
-// WAREHOUSE AND TRUCK ENDPOINTS. The warehouses are the caller's governed warehouses from eos_ops (listInventoryWarehouses);
+// WAREHOUSE AND TRUCK ENDPOINTS. The ORIGIN warehouses are the caller's own scoped warehouses from eos_ops (listInventoryWarehouses); the DESTINATION
+// warehouses are every ACTIVE warehouse of the caller's companies (listInventoryWarehouses companyWide) -- the rule createTransfer applies;
 // since the Truck Inventory activation (2026-10-01, Package D) the trucks are the ACTIVE MOBILE locations bound to those
 // warehouses (listInventoryLocations), so Warehouse -> Truck, Truck -> Warehouse and Truck -> Truck are offered when the
 // server returned any truck. Never the Firestore `warehouses` / `mobile_locations` reads.
-export default function TransferOrderForm({ warehouseOptions, truckOptions = [], submitting, onSubmit, onCancel }) {
+export default function TransferOrderForm({ warehouseOptions, destinationWarehouseOptions, truckOptions = [], submitting, onSubmit, onCancel }) {
   const [draft, setDraft] = useState({
     partId: "",
     quantity: "1",
@@ -23,7 +24,11 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions = [],
   });
   const [errors, setErrors] = useState({});
 
-  const locationOptions = (type) => (type === "MOBILE" ? truckOptions ?? [] : warehouseOptions ?? []);
+  // ORIGIN = where the caller works; DESTINATION = any ACTIVE warehouse of the caller's companies (the server's own rule for a create), minus the
+  // origin warehouse itself (a move that never leaves its warehouse is a relocation, which the server refuses for a transfer).
+  const destinationWarehouses = (destinationWarehouseOptions ?? warehouseOptions ?? [])
+    .filter((o) => !(draft.originType === "WAREHOUSE" && draft.originLocationId !== "" && o.id === draft.originLocationId));
+  const locationOptions = (type, end = "origin") => (type === "MOBILE" ? truckOptions ?? [] : end === "destination" ? destinationWarehouses : warehouseOptions ?? []);
   const offersTrucks = Array.isArray(truckOptions) && truckOptions.length > 0;
 
   function set(field, value) {
@@ -80,7 +85,7 @@ export default function TransferOrderForm({ warehouseOptions, truckOptions = [],
           </select>
           <select aria-label="Destination location" value={draft.destinationLocationId} onChange={(e) => set("destinationLocationId", e.target.value)} disabled={submitting} required>
             <option value="">Select…</option>
-            {locationOptions(draft.destinationType).map((o) => (
+            {locationOptions(draft.destinationType, "destination").map((o) => (
               <option key={o.id} value={o.id}>{o.label}</option>
             ))}
           </select>

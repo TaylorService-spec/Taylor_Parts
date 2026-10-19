@@ -53,13 +53,22 @@ export class InventoryScopeError extends Error {
   }
 }
 
-/** Resolve one inventory location to the warehouse whose scope governs it. Fails closed; never guesses. */
-export async function resolveScopeLocation(db: Queryable, tenantId: string, ref: { readonly type: unknown; readonly locationId: string }): Promise<ResolvedScopeLocation> {
+/**
+ * Resolve one inventory location to the warehouse whose scope governs it. Fails closed; never guesses.
+ *
+ * COMPANY ISOLATION (#235 / #237). When `reachableCompanyKeys` is given, a location of a company OUTSIDE it reads EXACTLY as a
+ * nonexistent one -- the same code and the same message, so a warehouse scope never discloses (let alone reaches into) another
+ * company's warehouse. Callers that enforce company authority pass the caller's keys; omitting them is the pre-isolation behaviour.
+ */
+export async function resolveScopeLocation(
+  db: Queryable, tenantId: string, ref: { readonly type: unknown; readonly locationId: string }, reachableCompanyKeys?: readonly string[],
+): Promise<ResolvedScopeLocation> {
+  const reaches = (key: string) => reachableCompanyKeys === undefined || reachableCompanyKeys.includes(key);
   if (ref.type === "WAREHOUSE") {
     const { rows } = await db.query<{ status: string; operating_company_key: string }>(
       `SELECT status::text AS status, operating_company_key FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`,
       [tenantId, ref.locationId]);
-    if (!rows[0]) throw new InventoryScopeError("LOCATION_NOT_FOUND", "no warehouse with that id");
+    if (!rows[0] || !reaches(rows[0].operating_company_key)) throw new InventoryScopeError("LOCATION_NOT_FOUND", "no warehouse with that id");
     return { type: "WAREHOUSE", locationId: ref.locationId, scopeWarehouseId: ref.locationId,
       operatingCompanyKey: rows[0].operating_company_key, active: rows[0].status === "ACTIVE" };
   }
@@ -69,7 +78,7 @@ export async function resolveScopeLocation(db: Queryable, tenantId: string, ref:
          FROM eos_ops.bins b JOIN eos_ops.warehouses w ON w.tenant_id = b.tenant_id AND w.id = b.warehouse_id
         WHERE b.tenant_id = $1 AND b.id = $2`,
       [tenantId, ref.locationId]);
-    if (!rows[0]) throw new InventoryScopeError("LOCATION_NOT_FOUND", "no bin with that id");
+    if (!rows[0] || !reaches(rows[0].operating_company_key)) throw new InventoryScopeError("LOCATION_NOT_FOUND", "no bin with that id");
     const r = rows[0];
     return { type: "BIN", locationId: ref.locationId, scopeWarehouseId: r.warehouse_id, operatingCompanyKey: r.operating_company_key,
       active: r.bin_status === "ACTIVE" && r.warehouse_status === "ACTIVE" };
@@ -79,7 +88,7 @@ export async function resolveScopeLocation(db: Queryable, tenantId: string, ref:
       `SELECT active, operating_company_key FROM eos_ops.mobile_locations
         WHERE tenant_id = $1 AND location_type = 'MOBILE' AND location_id = $2`,
       [tenantId, ref.locationId]);
-    if (!loc[0]) throw new InventoryScopeError("LOCATION_NOT_FOUND", "no truck location with that id");
+    if (!loc[0] || !reaches(loc[0].operating_company_key)) throw new InventoryScopeError("LOCATION_NOT_FOUND", "no truck location with that id");
     const { rows: bound } = await db.query<{ warehouse_id: string }>(
       `SELECT warehouse_id FROM eos_ops.mobile_location_scope_bindings
         WHERE tenant_id = $1 AND location_type = 'MOBILE' AND location_id = $2 AND effective_to IS NULL`,
@@ -115,8 +124,9 @@ export const TRANSFER_ACT_SCOPE_END: Readonly<Record<TransferAct, "ORIGIN" | "DE
 export async function requiredTransferScope(
   db: Queryable, tenantId: string, act: TransferAct,
   transfer: { readonly origin: InventoryLocationRef; readonly destination: InventoryLocationRef },
+  reachableCompanyKeys?: readonly string[],
 ): Promise<ResolvedScopeLocation> {
   const end = TRANSFER_ACT_SCOPE_END[act];
   if (!end) throw new InventoryScopeError("LOCATION_TYPE_INVALID", `unknown transfer act ${String(act)}`);
-  return resolveScopeLocation(db, tenantId, end === "ORIGIN" ? transfer.origin : transfer.destination);
+  return resolveScopeLocation(db, tenantId, end === "ORIGIN" ? transfer.origin : transfer.destination, reachableCompanyKeys);
 }

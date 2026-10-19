@@ -20,6 +20,11 @@
 // refusals are deliberately distinct: WAREHOUSE_NOT_FOUND (unknown, or another tenant's -- indistinguishable by
 // design, since a foreign warehouse must not be confirmed to exist) and WAREHOUSE_INACTIVE.
 //
+// COMPANY AUTHORITY (ISO inventory, 2026-10-19; #235 / #237). A WAREHOUSE scope is not company authority, and a scope in another company's warehouse is
+// INERT (reads and commands decide company authority first). This command no longer CREATES one: a WAREHOUSE whose governed company the Employee has no
+// company authority in is refused (WAREHOUSE_COMPANY_NOT_AUTHORIZED), and a MOBILE location is held to the Employee's own company as before. Existing scope
+// rows are never changed or ended here -- isolation on the reads and commands already makes them inert.
+//
 // ASSIGNMENT TIME ONLY. An existing scope whose warehouse LATER goes INACTIVE is a remediation finding for the step
 // D/E tooling, never a silent revocation here: this command never ends a scope it was not asked to end.
 //
@@ -52,6 +57,7 @@ import {
   EMPLOYEE_OPERATIONAL_SCOPE_WRITE, OPERATIONAL_SCOPE_ASSIGN_ACTION, OPERATIONAL_SCOPE_END_ACTION,
   OPERATIONAL_SCOPE_TYPES, isOperationalScopeType, type OperationalScopeType,
 } from "../operationalScopeVocabulary";
+import { employeeCompanyKeys, governedCompanyKeys, warehouseCompanyAllowed } from "../employeeCompanyReach";
 
 function requireScopeType(value: unknown): OperationalScopeType {
   if (!isOperationalScopeType(value)) {
@@ -124,10 +130,14 @@ async function requireActiveScopeTarget(
   }
   if (scopeType !== "WAREHOUSE") refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", `scopeType must be one of ${OPERATIONAL_SCOPE_TYPES.join(", ")}`);
   const { rows } = await db.query(
-    `SELECT status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [tenantId, scopeId],
+    `SELECT status::text AS status, operating_company_key FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [tenantId, scopeId],
   );
   if (rows.length === 0) refuse("WAREHOUSE_NOT_FOUND", "NOT_FOUND", "the warehouse does not exist in this tenant");
   if (rows[0].status !== "ACTIVE") refuse("WAREHOUSE_INACTIVE", "PRECONDITION_FAILED", "an inactive warehouse cannot receive a new operational scope");
+  if (!warehouseCompanyAllowed(String(rows[0].operating_company_key), await governedCompanyKeys(db, tenantId), await employeeCompanyKeys(db, tenantId, employeeId))) {
+    refuse("WAREHOUSE_COMPANY_NOT_AUTHORIZED", "PRECONDITION_FAILED",
+      "the warehouse belongs to an operating company the Employee has no company authority in; grant company access first, or choose a warehouse of the Employee's company");
+  }
 }
 
 export interface OperationalScopeChangeResult {

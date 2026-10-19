@@ -196,7 +196,7 @@ test("the DEPLOYED constant is { FROZEN, ACTIVE }; an INACTIVE state still refus
 test("authority: capability, work eligibility, Employee link and the CUSTODY warehouse's scope -- each its own refusal", { skip: SKIP }, async () => {
   refused(await call(NO_CAPS, move(1, "k-a1")), 403, "CAPABILITY_MISSING");
   refused(await call(NO_ELIG, move(1, "k-a2")), 403, "WORK_ELIGIBILITY_MISSING");
-  refused(await call(NO_EMPLOYEE, move(1, "k-a3")), 403, "EMPLOYEE_LINK_REQUIRED");
+  refused(await call(NO_EMPLOYEE, move(1, "k-a3")), 403, "COMPANY_AUTHORITY_REQUIRED"); // ISO inventory: no Employee, no company authority
   refused(await call(MOVER_B, move(1, "k-a4")), 403, "OUTSIDE_OPERATIONAL_SCOPE");
   assert.equal(await count("SELECT count(*) AS n FROM eos_ops.inventory_movements WHERE source_kind = 'STOCK_RELOCATION'"), 0);
 });

@@ -17,7 +17,13 @@ import { render, screen, within, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { UNRESOLVED_REFERENCE_LABEL } from "../src/metadata/referenceResolution.js";
 
-const readState = { loading: true, error: null, transferOrderDocs: [], warehouses: [], transferOrdersTruncated: false, warehousesTruncated: false };
+const readState = { loading: true, error: null, transferOrderDocs: [], warehouses: [], partNames: {}, truckNames: {}, transferOrdersTruncated: false, warehousesTruncated: false };
+// UI PERMISSION PARITY (ISO inventory): the screen offers a control only to a holder of the capability the server enforces. Default: all four held.
+const caps = vi.hoisted(() => ({ held: new Set(["inventory.transfer.create", "inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"]) }));
+vi.mock("../src/access/inventoryScreenCapabilities.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  useInventoryScreenCapabilities: () => ({ hasCapability: (id) => caps.held.has(id) }),
+}));
 const actionsState = {
   status: null,
   busyId: null,
@@ -48,6 +54,9 @@ function renderSurface() {
 }
 
 beforeEach(() => {
+  caps.held = new Set(["inventory.transfer.create", "inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"]);
+  readState.partNames = {};
+  readState.truckNames = {};
   readState.loading = true;
   readState.error = null;
   readState.transferOrderDocs = [];
@@ -272,5 +281,96 @@ describe("Transfers truncation disclosure", () => {
     readState.transferOrdersTruncated = false;
     renderSurface();
     expect(screen.queryByText(/some are not listed/i)).toBeNull();
+  });
+});
+
+describe("Transfers surface -- controls follow the capability the server enforces (UI permission parity)", () => {
+  beforeEach(() => {
+    readState.loading = false;
+    readState.error = null;
+    readState.warehouses = [];
+  });
+
+  it("Receive is NOT offered to a caller without inventory.transfer.receive (the Noor case); Dispatch and Cancel still are", () => {
+    caps.held = new Set(["inventory.transfer.create", "inventory.transfer.dispatch", "inventory.transfer.cancel"]);
+    readState.transferOrderDocs = [transferDoc({ docId: "to-1", status: "IN_TRANSIT" }), transferDoc({ docId: "to-2", status: "REQUESTED" })];
+    renderSurface();
+    expect(screen.queryByRole("button", { name: /^receive$/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /^dispatch$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^cancel$/i })).toBeTruthy();
+  });
+
+  it("New Transfer is NOT offered without inventory.transfer.create (the Morgan case)", () => {
+    caps.held = new Set(["inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"]);
+    readState.transferOrderDocs = [];
+    renderSurface();
+    expect(screen.queryByRole("button", { name: /new transfer/i })).toBeNull();
+  });
+
+  it("each row action is gated by its OWN capability", () => {
+    caps.held = new Set(["inventory.transfer.cancel"]);
+    readState.transferOrderDocs = [transferDoc({ docId: "to-1", status: "REQUESTED" }), transferDoc({ docId: "to-2", status: "IN_TRANSIT" })];
+    renderSurface();
+    expect(screen.queryByRole("button", { name: /^dispatch$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^receive$/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /^cancel$/i })).toBeTruthy();
+  });
+
+  it("holding none of the four: review only, no control, and the page says why", () => {
+    caps.held = new Set();
+    readState.transferOrderDocs = [transferDoc({ docId: "to-1", status: "REQUESTED" })];
+    renderSurface();
+    expect(screen.queryByRole("button", { name: /^(new transfer|dispatch|receive|cancel)$/i })).toBeNull();
+    expect(screen.getByText(/your account does not hold/i)).toBeTruthy();
+  });
+});
+
+describe("Transfers surface -- names every endpoint and the part (ISO inventory)", () => {
+  beforeEach(() => {
+    readState.loading = false;
+    readState.error = null;
+    readState.warehouses = [
+      { id: "taylor-main", name: "Taylor Main", status: "ACTIVE", inScope: true },
+      { id: "taylor-service", name: "Taylor Service", status: "ACTIVE", inScope: false },
+    ];
+  });
+
+  it("an out-of-scope destination warehouse shows its NAME, a truck its governed name, and the part its catalog name", () => {
+    readState.partNames = { "PART-100": "Condenser Fan Motor" };
+    readState.truckNames = { "truck-9": "Sample Truck 01" };
+    readState.transferOrderDocs = [
+      transferDoc({ docId: "to-1", origin: { type: "WAREHOUSE", locationId: "taylor-main" }, destination: { type: "WAREHOUSE", locationId: "taylor-service" } }),
+      transferDoc({ docId: "to-2", origin: { type: "WAREHOUSE", locationId: "taylor-main" }, destination: { type: "MOBILE", locationId: "truck-9" } }),
+    ];
+    renderSurface();
+    const table = screen.getByRole("table", { name: /transfers/i });
+    expect(within(table).getByText("Taylor Service")).toBeTruthy();
+    expect(within(table).queryByText("taylor-service")).toBeNull();
+    expect(within(table).getByText("Sample Truck 01")).toBeTruthy();
+    expect(within(table).queryByText("truck-9")).toBeNull();
+    expect(within(table).getAllByRole("link", { name: "Condenser Fan Motor" })[0].getAttribute("href")).toBe("/inventory/PART-100");
+    expect(within(table).queryByText(UNRESOLVED_REFERENCE_LABEL)).toBeNull();
+  });
+});
+
+describe("Transfers surface -- New Transfer offers destinations the way createTransfer accepts them", () => {
+  it("origin = the caller's scoped warehouses; destination = every ACTIVE warehouse of the caller's companies, minus the chosen origin", () => {
+    readState.loading = false;
+    readState.error = null;
+    readState.transferOrderDocs = [];
+    readState.warehouses = [
+      { id: "taylor-main", name: "Taylor Main", status: "ACTIVE", inScope: true },
+      { id: "taylor-service", name: "Taylor Service", status: "ACTIVE", inScope: false },
+      { id: "taylor-closed", name: "Taylor Closed", status: "INACTIVE", inScope: false },
+    ];
+    renderSurface();
+    fireEvent.click(screen.getByRole("button", { name: /new transfer/i }));
+    const origin = screen.getByLabelText("Origin location");
+    const originNames = [...origin.querySelectorAll("option")].map((o) => o.textContent);
+    expect(originNames).toEqual(["Select…", "Taylor Main"]);
+    const destNames = () => [...screen.getByLabelText("Destination location").querySelectorAll("option")].map((o) => o.textContent);
+    expect(destNames()).toEqual(["Select…", "Taylor Main", "Taylor Service"]);
+    fireEvent.change(origin, { target: { value: "taylor-main" } });
+    expect(destNames()).toEqual(["Select…", "Taylor Service"]);
   });
 });

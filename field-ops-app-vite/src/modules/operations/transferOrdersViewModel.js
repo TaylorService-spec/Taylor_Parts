@@ -14,8 +14,9 @@
 //
 // LABELS (no N+1, never fabricated): WAREHOUSE endpoints resolve from the already-loaded
 // warehouse list (one map, zero extra reads); a missing warehouse falls back to the raw
-// id. BIN/MOBILE/VENDOR/CUSTOMER have no governed label authority yet, so they carry the
-// raw locationId (the panel shows a type badge). No static/fabricated names.
+// id. A MOBILE endpoint resolves from the governed truck names the caller's location read returned (`names.truckNames`); BIN/VENDOR/CUSTOMER have no
+// governed label authority yet, so they carry the raw locationId (the panel shows a type badge). The Part resolves from the governed Catalog read
+// (`names.partNames`), or is absent -- never a fabricated name. No static/fabricated names.
 import { toTransferRef } from "../../domain/transferOrderView.js";
 
 function warehouseNameMap(warehouses) {
@@ -32,15 +33,17 @@ function warehouseNameMap(warehouses) {
 
 // One endpoint's display view: { type, locationId, label }. WAREHOUSE resolves its name
 // from the map (raw-id fallback); every other type carries the raw locationId only.
-function endpointView(ref, nameMap) {
-  const label = ref.type === "WAREHOUSE" ? nameMap.get(ref.locationId) ?? ref.locationId : ref.locationId;
+function endpointView(ref, nameMap, truckNames) {
+  const label = ref.type === "WAREHOUSE" ? nameMap.get(ref.locationId) ?? ref.locationId
+    : ref.type === "MOBILE" ? (truckNames && typeof truckNames[ref.locationId] === "string" ? truckNames[ref.locationId] : ref.locationId)
+      : ref.locationId;
   return { type: ref.type, locationId: ref.locationId, label };
 }
 
 // Build the location-aware Transfer Orders view from { docId, data } pairs. Returns
 // { rows, hiddenInvalidCount }; rows are sorted deterministically by transferOrderId and
 // carry ONLY display fields (no quantity, timestamps, tracking mode, or serial membership).
-export function buildTransferOrdersView(transferOrderDocs, warehouses) {
+export function buildTransferOrdersView(transferOrderDocs, warehouses, names = {}) {
   const nameMap = warehouseNameMap(warehouses);
   const list = Array.isArray(transferOrderDocs) ? transferOrderDocs : [];
   const rows = [];
@@ -62,9 +65,10 @@ export function buildTransferOrdersView(transferOrderDocs, warehouses) {
     rows.push({
       transferOrderId: ref.transferOrderId,
       partId: ref.partId,
+      ...(names?.partNames && typeof names.partNames[ref.partId] === "string" ? { partName: names.partNames[ref.partId] } : {}),
       status: ref.status,
-      origin: endpointView(ref.origin, nameMap),
-      destination: endpointView(ref.destination, nameMap),
+      origin: endpointView(ref.origin, nameMap, names?.truckNames),
+      destination: endpointView(ref.destination, nameMap, names?.truckNames),
     });
   }
 

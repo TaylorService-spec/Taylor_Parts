@@ -157,7 +157,7 @@ export default function LookupScan({ deps }) {
         Lookup reads only. Nothing here moves, counts or changes stock.
       </p>
 
-      <LookupResult loading={loading} result={result} />
+      <LookupResult loading={loading} result={result} onPutAway={deps?.onPutAway} />
     </div>
   );
 }
@@ -234,7 +234,7 @@ async function loadPartDetailReads(part, { readBalance, readSerialized, readLoca
  * failed read is never rendered as a result, and an identifier that could not be CHECKED is never
  * rendered as an identifier that does not EXIST.
  */
-function LookupResult({ loading, result }) {
+function LookupResult({ loading, result, onPutAway }) {
   if (loading) return <p className="fo-muted" role="status">Looking that up…</p>;
 
   switch (result.state) {
@@ -307,12 +307,17 @@ function LookupResult({ loading, result }) {
 
     case LOOKUP_STATE.RESOLVED:
       return (
-        <ResolvedPart
-          part={result.part}
-          rows={result.rows}
-          matchedBy={result.matchedBy}
-          matchedIdentifier={result.matchedIdentifier}
-        />
+        <>
+          <ResolvedPart
+            part={result.part}
+            rows={result.rows}
+            matchedBy={result.matchedBy}
+            matchedIdentifier={result.matchedIdentifier}
+          />
+          {/* P1: Put Away starts here -- offered only to a caller who may put away (the workspace passes the action only then). The lookup itself
+              still moves nothing; this opens the Put Away workflow, which records where the stock went and is authorized by the server. */}
+          {onPutAway && <Button type="button" variant="secondary" onClick={onPutAway}>Put Away</Button>}
+        </>
       );
 
     default:

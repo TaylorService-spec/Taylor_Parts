@@ -286,6 +286,8 @@
     "test/financeVisibilityPostgres.test.mjs",
     "test/workOrderCommandCompanyAuthorityPostgres.test.mjs",
     "test/supplierPurchaseOrderReceivingPostgres.test.mjs",
+    "test/inventoryCompanyIsolationPostgres.test.mjs",
+    "test/inventoryAdministratorAllCompaniesPostgres.test.mjs",
     "test/rackingPlannerPostgres.test.mjs",
     "test/supplierPoFixtureLoaderPostgres.test.mjs",
     "test/partBalancePostgres.test.mjs",

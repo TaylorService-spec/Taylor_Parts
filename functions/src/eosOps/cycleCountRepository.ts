@@ -399,15 +399,19 @@ export interface CycleCountSheetFull extends CycleCountSheetRecord {
   readonly createdBy: string;
 }
 
-/** The sheet row, or null. `forUpdate` locks it for the caller's transaction (one writer per sheet). */
-export async function readSheet(db: Queryable, tenantId: string, sheetId: string, forUpdate = false): Promise<CycleCountSheetFull | null> {
+/**
+ * The sheet row, or null. `forUpdate` locks it for the caller's transaction (one writer per sheet).
+ * `companyKeys` (company isolation, #235/#237): the filter is IN the WHERE, so a sheet of a company outside it is null -- exactly a
+ * missing one -- and its row is never locked, read or counted.
+ */
+export async function readSheet(db: Queryable, tenantId: string, sheetId: string, forUpdate = false, companyKeys?: readonly string[]): Promise<CycleCountSheetFull | null> {
   const { rows } = await db.query<{
     id: string; operating_company_key: string; location_type: OpsLocationType; location_id: string;
     status: CycleCountSheetStatus; created_by: string;
   }>(
     `SELECT id, operating_company_key, location_type, location_id, status, created_by
-       FROM ${SCHEMA}.cycle_count_sheets WHERE tenant_id = $1 AND id = $2${forUpdate ? " FOR UPDATE" : ""}`,
-    [tenantId, sheetId],
+       FROM ${SCHEMA}.cycle_count_sheets WHERE tenant_id = $1 AND id = $2${companyKeys ? " AND operating_company_key = ANY($3::text[])" : ""}${forUpdate ? " FOR UPDATE" : ""}`,
+    companyKeys ? [tenantId, sheetId, [...companyKeys]] : [tenantId, sheetId],
   );
   const r = rows[0];
   if (!r) return null;
@@ -498,6 +502,7 @@ export async function cancelSheet(db: Queryable, tenantId: string, actorId: stri
  */
 export async function listSheetsInWarehouses(
   db: Queryable, tenantId: string, warehouseIds: readonly string[], status: CycleCountSheetStatus | null, limit: number,
+  companyKeys?: readonly string[],
 ): Promise<CycleCountSheetFull[]> {
   if (warehouseIds.length === 0) return [];
   const { rows } = await db.query<{
@@ -511,9 +516,10 @@ export async function listSheetsInWarehouses(
         AND ((s.location_type = 'WAREHOUSE' AND s.location_id = ANY($2::text[]))
           OR (s.location_type = 'BIN' AND b.warehouse_id = ANY($2::text[])))
         AND ($3::text IS NULL OR s.status::text = $3)
+        AND ($5::text[] IS NULL OR s.operating_company_key = ANY($5::text[]))
       ORDER BY s.created_at DESC, s.id
       LIMIT $4`,
-    [tenantId, [...warehouseIds], status, limit],
+    [tenantId, [...warehouseIds], status, limit, companyKeys ? [...companyKeys] : null],
   );
   return rows.map((r) => ({
     id: r.id, tenantId, operatingCompanyKey: r.operating_company_key,

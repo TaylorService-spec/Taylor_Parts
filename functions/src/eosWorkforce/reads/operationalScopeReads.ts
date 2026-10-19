@@ -20,6 +20,7 @@ import {
 } from "./employeeReadKernel";
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
 import { OPERATIONAL_SCOPE_TYPES, OPERATIONAL_SCOPE_TYPE_LABEL, type OperationalScopeType } from "../operationalScopeVocabulary";
+import { employeeCompanyKeys, governedCompanyKeys, warehouseCompanyAllowed } from "../employeeCompanyReach";
 
 const MAX_HISTORY = 100;
 
@@ -127,7 +128,7 @@ export interface OperationalScopeTargetType {
 const TARGET_SOURCES: Readonly<Record<OperationalScopeType, { readonly valueSource: string; readonly sql: string }>> = Object.freeze({
   WAREHOUSE: Object.freeze({
     valueSource: "eos_ops.warehouses (ACTIVE, this tenant)",
-    sql: `SELECT id AS value, coalesce(name, id) AS label FROM eos_ops.warehouses
+    sql: `SELECT id AS value, coalesce(name, id) AS label, operating_company_key AS company_key FROM eos_ops.warehouses
            WHERE tenant_id = $1 AND status::text = 'ACTIVE' ORDER BY lower(coalesce(name, id)), id`,
   }),
   REORDER_QUEUE: Object.freeze({
@@ -141,7 +142,7 @@ const TARGET_SOURCES: Readonly<Record<OperationalScopeType, { readonly valueSour
   MOBILE: Object.freeze({
     valueSource: "eos_ops.mobile_locations (ACTIVE, this tenant; a linked truck must be active)",
     sql: `SELECT m.location_id AS value,
-                 coalesce(t.display_label || ' (' || t.vehicle_number || ')', m.display_label) AS label
+                 coalesce(t.display_label || ' (' || t.vehicle_number || ')', m.display_label) AS label, m.operating_company_key AS company_key
             FROM eos_ops.mobile_locations m
             LEFT JOIN eos_ops.trucks t ON t.tenant_id = m.tenant_id AND t.mobile_location_type = m.location_type AND t.mobile_location_id = m.location_id
            WHERE m.tenant_id = $1 AND m.active AND (t.truck_id IS NULL OR t.active)
@@ -149,18 +150,41 @@ const TARGET_SOURCES: Readonly<Record<OperationalScopeType, { readonly valueSour
   }),
 });
 
-/** The governed, tenant-scoped values each Operational Scope type may take. Gate: employee.record.read. */
+/**
+ * The governed, tenant-scoped values each Operational Scope type may take. Gate: employee.record.read.
+ *
+ * `employeeId` (optional; ISO inventory): offer only what the command would accept FOR THAT EMPLOYEE -- a WAREHOUSE of a governed company the Employee has no
+ * company authority in is excluded, and a MOBILE location is limited to the Employee's own company. Without it the read is unchanged (every governed value).
+ */
 export function listOperationalScopeTargets(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<{
   readonly scopeTypes: readonly OperationalScopeTargetType[];
 }> {
   return runEmployeeRead(deps, actor,
-    () => { acceptOnly(input, []); return null; },
+    () => {
+      acceptOnly(input, ["employeeId"]);
+      const raw = input?.employeeId;
+      return raw === undefined || raw === null ? null : requireEmployeeId(raw);
+    },
     () => [EMPLOYEE_RECORD_READ],
-    async (db, tenantId) => {
+    async (db, tenantId, _principalId, employeeId) => {
       const scopeTypes: OperationalScopeTargetType[] = [];
+      const employeeKeys = employeeId === null ? null : await employeeCompanyKeys(db, tenantId, employeeId);
+      const governed = employeeKeys === null ? null : await governedCompanyKeys(db, tenantId);
       for (const scopeType of OPERATIONAL_SCOPE_TYPES) {
         const source = TARGET_SOURCES[scopeType];
-        const { rows } = await db.query(source.sql, [tenantId]);
+        let { rows } = await db.query(source.sql, [tenantId]);
+        if (employeeKeys !== null && governed !== null && scopeType === "WAREHOUSE") {
+          rows = rows.filter((r: Record<string, unknown>) => warehouseCompanyAllowed(String(r.company_key), governed, employeeKeys));
+        }
+        if (employeeKeys !== null && scopeType === "MOBILE") {
+          // The command holds a truck to the Employee's OWN company (a technician never gains another company's truck).
+          const home = await db.query(
+            `SELECT k.operating_company_key AS key FROM eos_workforce.employees e
+               JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = e.tenant_id AND k.operating_company_id = e.operating_company_id AND k.status = 'ACTIVE'
+              WHERE e.tenant_id = $1 AND e.id = $2`, [tenantId, employeeId]);
+          const homeKeys = new Set(home.rows.map((r: Record<string, unknown>) => String(r.key)));
+          rows = rows.filter((r: Record<string, unknown>) => homeKeys.has(String(r.company_key)));
+        }
         scopeTypes.push(Object.freeze({
           scopeType, label: OPERATIONAL_SCOPE_TYPE_LABEL[scopeType], valueSource: source.valueSource,
           available: rows.length > 0,

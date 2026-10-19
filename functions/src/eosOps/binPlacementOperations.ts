@@ -35,6 +35,7 @@ import { isSafeIdSegment, normalizeBinCode } from "../inventoryLocation/binRegis
 import type { PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -274,10 +275,16 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
 
   return inTransaction(deps.pool, async (db) => {
     if (!actor.capabilities.has(EOS_PLACEMENT_RECORD_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_PLACEMENT_RECORD_CAPABILITY}`);
+    // COMPANY AUTHORITY (#235 / #237): capability first, then company -- none at all is refused before any row is read, and a warehouse of a
+    // company outside the caller's reads EXACTLY as a nonexistent one (a warehouse scope never reaches into another company's warehouse).
+    const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
+    if (authority.companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "recording a placement requires operating-company authority; this principal has none");
+    }
     // The warehouse must be governed, and the actor's scope over it is authoritative.
     let warehouse;
     try {
-      warehouse = await resolveScopeLocation(db, actor.tenantId, { type: "WAREHOUSE", locationId: req.warehouseId });
+      warehouse = await resolveScopeLocation(db, actor.tenantId, { type: "WAREHOUSE", locationId: req.warehouseId }, authority.companyKeys);
     } catch (err) {
       if (err instanceof InventoryScopeError) return refuse("WAREHOUSE_NOT_FOUND", "NOT_FOUND", "no governed warehouse with that id");
       throw err;
@@ -295,7 +302,12 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
     // REPLAY FIRST, before any gate on current state.
     const probeIds = serials.length > 0 ? serials.map((s) => eosPlacementId(req.idempotencyKey, s)) : [eosPlacementId(req.idempotencyKey, req.partId)];
     const present = await readPlacements(db, actor.tenantId, probeIds);
+    // The key held by a placement in ANOTHER warehouse (another company's, whatever Part it names) is the ordinary key conflict, never a raw unique violation at the insert.
+    const heldElsewhere = await db.query(`SELECT 1 FROM eos_ops.bin_placements WHERE tenant_id = $1 AND idempotency_key = $2 AND warehouse_id <> $3 LIMIT 1`, [actor.tenantId, req.idempotencyKey, req.warehouseId]);
+    if (heldElsewhere.rows.length > 0) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "different_stow");
     if (present.length > 0) {
+      // A placement under this key in another warehouse (so, here, another company's) is the ordinary key conflict, before any count or comparison.
+      if (present.some((d) => d.warehouse_id !== req.warehouseId)) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "different_stow");
       if (present.length !== probeIds.length) refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "partial_key_reuse");
       let storedBinCode: string | null = null;
       for (const d of present) {

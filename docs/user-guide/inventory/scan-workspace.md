@@ -256,3 +256,8 @@ first, so that stock is never recorded into racking that does not exist.
 Where a screen offers a note, you can **type it or dictate it**. Dictation puts words in the box and
 nothing more: it never sends anything, never interprets what you said, and never decides anything.
 Check the text and correct it before you save — what gets saved is what you read.
+
+## Putting stock away from a lookup or a receipt
+
+If you may put stock away, **Put Away** appears under a Look up result and on the receipt confirmation after you receive. It opens the Put Away workflow (you then scan the bin and the item). If you cannot put stock away, the button is not shown.
+

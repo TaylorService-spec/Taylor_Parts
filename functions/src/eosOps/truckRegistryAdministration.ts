@@ -132,9 +132,14 @@ export const truckView = (r: Record<string, unknown>) => Object.freeze({
   scopedEmployeeNames: Object.freeze([...((r.scoped_employee_names as string[]) ?? [])]),
 });
 
-export async function listTruckViews(db: Pick<PoolClient, "query">, tenantId: string, filter: { readonly mobileLocationIds?: readonly string[] } = {}) {
+/**
+ * `companyKeys` (company isolation, #235/#237): only trucks OF those operating companies -- the truck's company is its MOBILE location's, or, for a truck
+ * not yet linked to one, its home warehouse's. Omitted = every truck (the Administration registry).
+ */
+export async function listTruckViews(db: Pick<PoolClient, "query">, tenantId: string, filter: { readonly mobileLocationIds?: readonly string[]; readonly companyKeys?: readonly string[] } = {}) {
   const { rows } = await db.query(`${TRUCK_VIEW} WHERE t.tenant_id = $1 AND ($2::text[] IS NULL OR t.mobile_location_id = ANY($2::text[]))
-    ORDER BY lower(t.display_label), t.truck_id`, [tenantId, filter.mobileLocationIds ? [...filter.mobileLocationIds] : null]);
+    AND ($3::text[] IS NULL OR coalesce(m.operating_company_key, (SELECT w.operating_company_key FROM eos_ops.warehouses w WHERE w.tenant_id = t.tenant_id AND w.id = t.home_warehouse_id)) = ANY($3::text[]))
+    ORDER BY lower(t.display_label), t.truck_id`, [tenantId, filter.mobileLocationIds ? [...filter.mobileLocationIds] : null, filter.companyKeys ? [...filter.companyKeys] : null]);
   return rows.map(truckView);
 }
 

@@ -10,6 +10,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const require = createRequire(import.meta.url);
 const fin = require("../lib/eosFinance/financeFoundation.js");
@@ -85,6 +86,9 @@ test("Taylor / Ventana intercompany over the governed Purchasing path", { skip: 
   const corrector = await person("uid-corr", ["warehouseManager", "inventoryReceivingClerk"], { id: "e-corr", name: "Casey Corrector" });
   const partsMgr = await person("uid-pmgr", ["partsManager"], { id: "e-pmgr", name: "Parker Parts-Manager" });
   const whAssoc = await person("uid-wa", ["warehouseAssociate"], { id: "e-wa", name: "Wren Warehouse" });
+  // ISO inventory (#235/#237): Reorder receiving and correction now decide COMPANY AUTHORITY before the warehouse scope, so the receivers who work in both
+  // companies' warehouses (Taylor's and Ventana's) are given explicit synthetic reach to both -- the same helper the other company-scoped suites use.
+  for (const p of [pa, pm, corrector, partsMgr, whAssoc]) await grantSyntheticCompanyAuthority(pool, TENANT, p.principalId, ["taylor", "ventana"]);
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-t',$1,'taylor','Shared Building -- Taylor','Shared Building','ACTIVE','NATIVE','fixture','fixture'),
                   ('wh-v',$1,'ventana','Shared Building -- Ventana','Shared Building','ACTIVE','NATIVE','fixture','fixture')`, [TENANT]);

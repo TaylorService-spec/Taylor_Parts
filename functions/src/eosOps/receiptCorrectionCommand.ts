@@ -42,6 +42,7 @@ import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAutho
 import { lockStockLocation } from "./stockLocationLock.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { principalHasProtectedAdministratorStanding, withActorAuthority } from "./administrationReach.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 const SCHEMA = "eos_ops";
 
@@ -110,7 +111,14 @@ export async function correctReorderReceipt(
   const client = await deps.pool.connect();
   try {
     await client.query("BEGIN");
-    const result = await correctWithin(client, deps, actor, { receivingId, kind, reason, idempotencyKey, fingerprint,
+    // CAPABILITY FIRST (above), THEN COMPANY (#235 / #237): none at all is refused before any row is read.
+    // The ONE resolver: a protected Administrator holds every governed company (Owner ruling OD-ISO-2, so G2's audited VOID is unchanged); everyone else is held
+    // to their own company authority. CORRECTED by an Administrator still reaches the unchanged scope refusal (a re-receive is the worker's act).
+    const companyKeys = (await resolveInventoryCompanyAuthority(client, actor.tenantId, actor.principalId)).companyKeys;
+    if (companyKeys.length === 0) {
+      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "correcting a receipt requires operating-company authority; this principal has none");
+    }
+    const result = await correctWithin(client, deps, actor, { receivingId, kind, reason, idempotencyKey, fingerprint, companyKeys: [...companyKeys],
       replacement: (replacement as Record<string, unknown> | undefined) ?? null });
     await client.query("COMMIT");
     return result;
@@ -135,48 +143,34 @@ async function correctWithin(
   deps: { readonly now?: () => Date },
   actor: ReceivingPrincipalActor,
   c: { receivingId: string; kind: ReceiptCorrectionKind; reason: string; idempotencyKey: string; fingerprint: string;
-    replacement: Record<string, unknown> | null },
+    companyKeys: readonly string[]; replacement: Record<string, unknown> | null },
 ): Promise<ReceiptCorrectionResult> {
-  // ---- 1. REPLAY: the same key + the same request returns the recorded correction and writes nothing ----
-  const prior = await client.query(`SELECT * FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND idempotency_key = $2`,
-    [actor.tenantId, c.idempotencyKey]);
-  if (prior.rows[0]) {
-    if (prior.rows[0].request_fingerprint !== c.fingerprint) {
-      refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
-    }
-    return resultOf(prior.rows[0], "replayed");
-  }
-
-  // ---- 2. THE RECEIPT, and the SERIALIZATION ANCHOR the receipt itself takes (its Reorder), locked first ----
+  // ---- 1. THE RECEIPT (company filter IN the WHERE: another company's receipt is nonexistent) and the SERIALIZATION ANCHOR the receipt itself
+  // takes (its Reorder), locked first. The replay probe is NOT first: it runs after the lock, the company filter and the scope check below
+  // (a replay is neither a lock-free read nor a way past authority) -- the order #2153 gave the supplier-PO path. ----
   const { rows: peek } = await client.query(
-    `SELECT source_kind::text AS source_kind, source_reorder_request_id FROM ${SCHEMA}.receiving_orders WHERE tenant_id = $1 AND id = $2`,
-    [actor.tenantId, c.receivingId]);
+    `SELECT source_kind::text AS source_kind, source_reorder_request_id FROM ${SCHEMA}.receiving_orders
+      WHERE tenant_id = $1 AND id = $2 AND operating_company_key = ANY($3::text[])`,
+    [actor.tenantId, c.receivingId, [...c.companyKeys]]);
   if (!peek[0]) refuse("RECEIPT_NOT_FOUND", "NOT_FOUND", "no receipt with that id in this tenant");
   if (peek[0].source_kind !== LEGACY_SOURCE_KIND) {
     refuse("RECEIPT_SOURCE_NOT_OWNED", "PRECONDITION_FAILED", `this authority corrects ${LEGACY_SOURCE_KIND} receipts only`);
   }
   const reorderId = String(peek[0].source_reorder_request_id);
   const { rows: rr } = await client.query(
-    `SELECT status::text AS status FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, reorderId]);
+    `SELECT status::text AS status FROM ${SCHEMA}.reorder_requests WHERE tenant_id = $1 AND id = $2 AND operating_company_key = ANY($3::text[]) FOR UPDATE`,
+    [actor.tenantId, reorderId, [...c.companyKeys]]);
   const { rows: rcv } = await client.query(
     `SELECT id, operating_company_key, source_purchase_order_id, receiving_location_type::text AS location_type, receiving_location_id,
             status::text AS status
        FROM ${SCHEMA}.receiving_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, c.receivingId]);
   const receipt = rcv[0];
-  if (receipt.status === "CANCELLED") {
-    const { rows: done } = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND receiving_order_id = $2`,
-      [actor.tenantId, c.receivingId]);
-    refuse(done[0] ? "RECEIPT_ALREADY_CORRECTED" : "RECEIPT_CANCELLED", "PRECONDITION_FAILED", "this receipt is already cancelled; nothing to correct");
-  }
-  if (rr[0]?.status !== "RECEIVED") {
-    refuse("REORDER_STATE_INVALID", "PRECONDITION_FAILED", `the receipt's Reorder is ${rr[0]?.status ?? "missing"}, not RECEIVED`);
-  }
 
-  // ---- 3. AUTHORITY: inventory.receipt.correct + WAREHOUSE scope over the receipt location (a destination act) ----
+  // ---- 2. AUTHORITY: inventory.receipt.correct + WAREHOUSE scope over the receipt location (a destination act) ----
   const where = { type: String(receipt.location_type), locationId: String(receipt.receiving_location_id) };
   let scopeWarehouseId: string;
   try {
-    scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where)).scopeWarehouseId;
+    scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where, c.companyKeys)).scopeWarehouseId;
   } catch (err) {
     if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse (${err.code})`);
     throw err;
@@ -199,7 +193,33 @@ async function correctWithin(
     refuse("ADMINISTRATOR_REVERSAL_ONLY", "FORBIDDEN", "a protected Administrator may void (reverse) a receipt, never re-receive it as CORRECTED");
   }
 
-  // ---- 4. THE LINES, and the INVENTORY INVARIANT: the received stock must still be where the receipt put it ----
+  // ---- 2b. REPLAY: the same key + the same request returns the recorded correction and writes nothing. Decided AFTER the Reorder lock and the
+  // scope check, and BEFORE the already-cancelled and Reorder-state refusals (the replay of a correction finds its own receipt cancelled and its
+  // Reorder reopened). The company filter keeps another company's correction invisible -- and a key ANOTHER company's correction already holds is refused
+  // right here, before any work, with the same governed error as any key conflict (never a raw unique violation at the INSERT, never that correction's data). ----
+  const prior = await client.query(
+    `SELECT * FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND idempotency_key = $2 AND operating_company_key = ANY($3::text[])`,
+    [actor.tenantId, c.idempotencyKey, [...c.companyKeys]]);
+  if (prior.rows[0]) {
+    if (prior.rows[0].request_fingerprint !== c.fingerprint) {
+      refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
+    }
+    return resultOf(prior.rows[0], "replayed");
+  }
+  const heldElsewhere = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND idempotency_key = $2`, [actor.tenantId, c.idempotencyKey]);
+  if (heldElsewhere.rows.length > 0) {
+    refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key already recorded a DIFFERENT receipt correction");
+  }
+  if (receipt.status === "CANCELLED") {
+    const { rows: done } = await client.query(`SELECT 1 FROM ${SCHEMA}.receiving_corrections WHERE tenant_id = $1 AND receiving_order_id = $2`,
+      [actor.tenantId, c.receivingId]);
+    refuse(done[0] ? "RECEIPT_ALREADY_CORRECTED" : "RECEIPT_CANCELLED", "PRECONDITION_FAILED", "this receipt is already cancelled; nothing to correct");
+  }
+  if (rr[0]?.status !== "RECEIVED") {
+    refuse("REORDER_STATE_INVALID", "PRECONDITION_FAILED", `the receipt's Reorder is ${rr[0]?.status ?? "missing"}, not RECEIVED`);
+  }
+
+  // ---- 3. THE LINES, and the INVENTORY INVARIANT: the received stock must still be where the receipt put it ----
   const { rows: lines } = await client.query(
     `SELECT line_id, part_id, tracking_mode::text AS tracking_mode, received_quantity FROM ${SCHEMA}.receiving_order_lines
       WHERE tenant_id = $1 AND receiving_order_id = $2 ORDER BY line_id`, [actor.tenantId, c.receivingId]);

@@ -242,7 +242,8 @@ test("Truck Inventory activation over the governed transports", { skip: SKIP, co
     assert.deepEqual(mine.trucks.map((x) => x.truckId), ["trk-1"]);
     const roster = ok(await call(dispatcher, INV, "listTruckRoster", {}));
     assert.equal(roster.scope, "TENANT");
-    assert.deepEqual(roster.trucks.map((x) => x.truckId).sort(), ["trk-1", "trk-2", "trk-v"]);
+    // ISO inventory (#235/#237): the roster is the caller's COMPANIES' trucks -- this dispatcher is a Taylor Employee, so Ventana's truck is not on it.
+    assert.deepEqual(roster.trucks.map((x) => x.truckId).sort(), ["trk-1", "trk-2"]);
     assert.deepEqual(roster.trucks.find((x) => x.truckId === "trk-1").scopedEmployeeIds, ["e-tech-a", "e-tech-x"]);
     const stock = ok(await call(techA, INV, "readTruckStock", { mobileLocationId: "mob-trk-1" }));
     assert.equal(stock.reach, "MOBILE_SCOPE");
