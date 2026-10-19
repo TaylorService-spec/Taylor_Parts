@@ -270,7 +270,8 @@ describe("Equipment", () => {
 
   it("a pencil opens the SAME modal the Edit action opens", () => {
     expect(EQUIP).toMatch(/const openEditFor = \(\) => setEditing\(true\)/);
-    expect(EQUIP).toMatch(/onEditField=\{openEditFor\}/);
+    // PERM-UI: the pencil is offered only to equipment.record.manage holders, but it is the same modal.
+    expect(EQUIP).toMatch(/onEditField=\{canEdit \? openEditFor : null\}/);
     expect(EQUIP).toMatch(/EquipmentEditModal/);
   });
 

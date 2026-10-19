@@ -14,29 +14,39 @@
 // read-only, cross-customer, LOADED-only-filtered list (see its own header comment);
 // EquipmentRegister's account-first bounding is what the create flow requires
 // (EquipmentCreateModal's Location options -- and the write itself -- are scoped to
-// one fixed Account, never a picker of its own). No new role gating is added: the
-// whole /equipment domain is already admin/dispatcher-only (navConfig.js -- no
-// legacyKey defaults to PLACEHOLDER_DEFAULT_ROLES), so this tab inherits that gate
-// exactly like the other two.
+// one fixed Account, never a picker of its own). PERM-UI (2026-10-19): the Add Equipment tab (and the
+// Equipment Models tab) are now offered only to holders of the capability their server command enforces
+// (equipment.record.manage / equipment.model.manage); the other two tabs are unchanged.
 import { useRef, useState } from "react";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import CustomerEquipment from "./CustomerEquipment";
 import AvailableEquipment from "./AvailableEquipment";
 import EquipmentRegister from "./EquipmentRegister";
 
-const TABS = [
+import EquipmentModels from "./EquipmentModels";
+import { EQUIPMENT_REGISTER_GATE, EQUIPMENT_MODEL_GATE } from "../../access/shellCapabilityGates.js";
+
+// UI PERMISSION PARITY (PERM-UI): the two authoring tabs exist only for the holder of the capability their server command
+// enforces -- Add Equipment: equipment.record.manage; Equipment Models: equipment.model.manage. The server still decides.
+const READ_TABS = [
   { id: "customer", label: "Customer Equipment" },
   { id: "available", label: "Available Equipment" },
-  { id: "add", label: "Add Equipment" },
 ];
+const ADD_TAB = { id: "add", label: "Add Equipment" };
+const MODELS_TAB = { id: "models", label: "Equipment Models" };
 
 // `accessVersion` is still ACCEPTED and no longer used. App.jsx passes it, and the Customer
 // Equipment tab was its only consumer — it keyed the accessVersion-scoped paging hook that tab
 // no longer reads. Kept in the signature rather than removed from the call site, because the
 // access-version seam is a governance contract and quietly dropping the prop would make it look
 // as though this workspace had never been inside it. Underscored so lint agrees it is deliberate.
-export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
-  const [active, setActive] = useState("customer");
+export default function EquipmentWorkspace({ accessVersion: _accessVersion, hasCapability }) {
+  const canAdd = hasCapability?.(EQUIPMENT_REGISTER_GATE.manage) === true;
+  const canModels = hasCapability?.(EQUIPMENT_MODEL_GATE.manage) === true;
+  const TABS = [...READ_TABS, ...(canAdd ? [ADD_TAB] : []), ...(canModels ? [MODELS_TAB] : [])];
+  const [chosen, setActive] = useState("customer");
+  // A tab whose capability has since been withdrawn is never the active one.
+  const active = TABS.some((t) => t.id === chosen) ? chosen : "customer";
   const tabRefs = useRef({});
 
   const onKeyDown = (e) => {
@@ -121,9 +131,16 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
       <div role="tabpanel" id="eq-panel-available" aria-labelledby="eq-tab-available" hidden={active !== "available"}>
         <AvailableEquipment />
       </div>
-      <div role="tabpanel" id="eq-panel-add" aria-labelledby="eq-tab-add" hidden={active !== "add"}>
-        <EquipmentRegister />
-      </div>
+      {canAdd && (
+        <div role="tabpanel" id="eq-panel-add" aria-labelledby="eq-tab-add" hidden={active !== "add"}>
+          <EquipmentRegister />
+        </div>
+      )}
+      {canModels && (
+        <div role="tabpanel" id="eq-panel-models" aria-labelledby="eq-tab-models" hidden={active !== "models"}>
+          <EquipmentModels hasCapability={hasCapability} />
+        </div>
+      )}
     </WorkspaceIdentity>
   );
 }

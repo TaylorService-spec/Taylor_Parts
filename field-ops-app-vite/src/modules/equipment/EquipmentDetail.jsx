@@ -25,6 +25,7 @@ import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import { equipmentRecordPage } from "../../metadata/definitions/equipmentPage.js";
 import { equipmentEntity } from "../../metadata/definitions/equipment.js";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { EQUIPMENT_REGISTER_GATE } from "../../access/shellCapabilityGates.js";
 
 // Derived ONCE, at module scope: the page definition does not depend on the record, and rebuilding
 // it per render would hand MetadataRecordPage a new object identity on every pass.
@@ -54,7 +55,10 @@ const recordShell = equipmentRecordShellDefinition(equipmentRecordPage);
 // domain/equipmentStatus.js was created to replace, and it survived here because nothing forced the
 // question. The status word now comes from `equipmentRecordFacts`, which reads that one vocabulary.
 
-export default function EquipmentDetail() {
+export default function EquipmentDetail({ hasCapability } = {}) {
+  // UI PERMISSION PARITY (PERM-UI): Edit (the button and the field pencils) is offered only to a holder of
+  // equipment.record.manage, the capability updateEquipment enforces. The server still decides.
+  const canEdit = hasCapability?.(EQUIPMENT_REGISTER_GATE.manage) === true;
   const { equipmentId } = useParams();
   const navigate = useNavigate();
   const { equipment, installedUnit, events, loading, error } = useEquipmentDoc(equipmentId);
@@ -174,10 +178,12 @@ export default function EquipmentDetail() {
         facts={facts.filter((f) => !f.isStatus).map((f) => ({ key: f.key, label: f.label, value: f.value }))}
         actions={
           // Available, so it is a live control -- kept alongside the asset's identity rather than
-          // among the #15-gated lifecycle actions in the rail.
-          <Button variant="primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
+          // among the #15-gated lifecycle actions in the rail. Offered to equipment.record.manage holders only.
+          canEdit ? (
+            <Button variant="primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          ) : null
         }
       />
       {/* The stored status value, kept addressable for the tests and gates that assert on it — it
@@ -208,7 +214,7 @@ export default function EquipmentDetail() {
           definition={recordShell}
           record={equipment}
           entityResolver={() => equipmentEntity}
-          onEditField={openEditFor}
+          onEditField={canEdit ? openEditFor : null}
         />
 
         {/* §8 linked Work Orders + §10 derived Service History. Both come from the same

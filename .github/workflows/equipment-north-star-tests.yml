@@ -55,6 +55,8 @@ on:
       - "field-ops-app-vite/test/equipmentNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/equipmentNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/equipmentNorthStarWorkspace.test.jsx"
+      - "field-ops-app-vite/test/equipmentModels.test.jsx"
+      - "field-ops-app-vite/src/services/equipmentModelCatalogClient.js"
       - ".github/workflows/equipment-north-star-tests.yml"
   push:
     branches: [main]
@@ -75,6 +77,8 @@ on:
       - "field-ops-app-vite/test/equipmentNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/equipmentNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/equipmentNorthStarWorkspace.test.jsx"
+      - "field-ops-app-vite/test/equipmentModels.test.jsx"
+      - "field-ops-app-vite/src/services/equipmentModelCatalogClient.js"
       - ".github/workflows/equipment-north-star-tests.yml"
   workflow_dispatch:
 
@@ -115,7 +119,7 @@ jobs:
         run: node --test test/equipmentNorthStarQuickGateContract.test.mjs
         working-directory: field-ops-app-vite
       - name: The existing Equipment render gates still hold (vitest + jsdom)
-        run: npx vitest run test/equipmentWorkspace.test.jsx test/equipmentTimeline.test.jsx test/equipmentListMigration.test.jsx test/equipmentDetailAccountFailClosed.test.jsx
+        run: npx vitest run test/equipmentModels.test.jsx test/equipmentWorkspace.test.jsx test/equipmentTimeline.test.jsx test/equipmentListMigration.test.jsx test/equipmentDetailAccountFailClosed.test.jsx
         working-directory: field-ops-app-vite
       - name: The shell/collection membership gates (vitest)
         run: npx vitest run test/compositionConformance.test.jsx test/listsP2Tranche1.test.jsx test/rawIdPresentationGuard.test.jsx test/activeLabelConformance.test.jsx

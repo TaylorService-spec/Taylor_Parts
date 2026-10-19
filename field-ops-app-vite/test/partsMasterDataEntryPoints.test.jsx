@@ -73,7 +73,7 @@ const READY = { ok: true, parts: [{ partId: "TST-9001", internalPartNumber: "TST
 describe("PartsList -- New Part entry point", () => {
   it("no modal mounted until 'New Part' is clicked; clicking opens mode='create'", async () => {
     searchParts.mockResolvedValue(READY);
-    render(<PartsList accessVersion={1} />);
+    render(<PartsList accessVersion={1} hasCapability={() => true} />);
     expect(screen.queryByTestId("part-write-modal")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /new part/i }));
     expect(screen.getByTestId("part-write-modal").textContent).toBe("create");
@@ -87,7 +87,7 @@ describe("PartDetail -- Edit/Status entry points", () => {
   // unchanged, which is what this test is actually for.
   it("Edit part and Change status buttons open the modal in the matching mode, for THIS part", async () => {
     searchParts.mockResolvedValue(READY);
-    render(<PartDetail />);
+    render(<PartDetail hasCapability={() => true} />);
     await screen.findByRole("button", { name: /^edit part$/i });
 
     fireEvent.click(screen.getByRole("button", { name: /^edit part$/i }));
@@ -103,7 +103,7 @@ describe("PartDetail -- Edit/Status entry points", () => {
 
   it("shows the resolved Manufacturer NAME (via the trusted catalog read), not the opaque manufacturerId", async () => {
     searchParts.mockResolvedValue(READY);
-    render(<PartDetail />);
+    render(<PartDetail hasCapability={() => true} />);
     // findAllByText, not findByText: P1v2 states the manufacturer TWICE by design (Owner ruling,
     // 2026-08-31) — once in the identity line for recognition, once in the Part information band's
     // master-data summary. What this test is about is unchanged and is asserted on the line below:
@@ -115,7 +115,7 @@ describe("PartDetail -- Edit/Status entry points", () => {
 
   it("no Edit/Status buttons when the canonical read cannot resolve this part (BLOCKED)", async () => {
     searchParts.mockResolvedValue({ ok: true, parts: READY.parts, invalid: [{ partId: "TST-9001", secretField: "x", invalid: true }] });
-    render(<PartDetail />);
+    render(<PartDetail hasCapability={() => true} />);
     await screen.findByText(/could not be verified against the canonical source/i);
     expect(screen.queryByRole("button", { name: /edit part details/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /change status/i })).toBeNull();
@@ -126,7 +126,7 @@ describe("DQ-034 hold -- no Part change is OFFERED while Catalog changes are pau
   it("PartsList: New Part is locked with the reason and opens nothing", async () => {
     hold.held = true;
     searchParts.mockResolvedValue(READY);
-    render(<PartsList accessVersion={1} />);
+    render(<PartsList accessVersion={1} hasCapability={() => true} />);
     const newPart = screen.getByRole("button", { name: /new part/i });
     expect(newPart.disabled).toBe(true);
     expect(screen.getByText(/catalog changes are paused during the migration/i)).toBeTruthy();
@@ -137,7 +137,7 @@ describe("DQ-034 hold -- no Part change is OFFERED while Catalog changes are pau
   it("PartDetail: Edit part / Change status are disabled, the pause is stated, and the Part still reads", async () => {
     hold.held = true;
     searchParts.mockResolvedValue(READY);
-    render(<PartDetail />);
+    render(<PartDetail hasCapability={() => true} />);
     const edit = await screen.findByRole("button", { name: /^edit part$/i });
     const status = screen.getByRole("button", { name: /change status/i });
     expect(edit.disabled).toBe(true);
@@ -148,5 +148,34 @@ describe("DQ-034 hold -- no Part change is OFFERED while Catalog changes are pau
     expect(screen.queryByTestId("part-write-modal")).toBeNull();
     // Reads continue from PostgreSQL: the canonical read ran and the record rendered.
     expect(searchParts).toHaveBeenCalled();
+  });
+});
+
+// UI PERMISSION PARITY (PERM-UI, 2026-10-19): New Part / Edit part need inventory.catalog.manage and Change status needs
+// inventory.catalog.activate -- the capabilities the governed commands enforce. A non-holder sees no control; the server still decides.
+describe("PERM-UI: Part controls are offered only to their capability holders", () => {
+  it("PartsList: a non-holder sees no New Part; a manage holder does", async () => {
+    searchParts.mockResolvedValue(READY);
+    render(<PartsList accessVersion={1} hasCapability={() => false} />);
+    expect(screen.queryByRole("button", { name: /new part/i })).toBeNull();
+    cleanup();
+    render(<PartsList accessVersion={1} hasCapability={(c) => c === "inventory.catalog.manage"} />);
+    expect(screen.getByRole("button", { name: /new part/i })).toBeTruthy();
+  });
+
+  it("PartDetail: Edit part needs manage, Change status needs activate; a non-holder sees neither", async () => {
+    searchParts.mockResolvedValue(READY);
+    render(<PartDetail hasCapability={() => false} />);
+    await screen.findByText("CANONICAL-NAME-A");
+    expect(screen.queryByRole("button", { name: /^edit part$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /change status/i })).toBeNull();
+    cleanup();
+    render(<PartDetail hasCapability={(c) => c === "inventory.catalog.manage"} />);
+    await screen.findByRole("button", { name: /^edit part$/i });
+    expect(screen.queryByRole("button", { name: /change status/i })).toBeNull();
+    cleanup();
+    render(<PartDetail hasCapability={(c) => c === "inventory.catalog.activate"} />);
+    await screen.findByRole("button", { name: /change status/i });
+    expect(screen.queryByRole("button", { name: /^edit part$/i })).toBeNull();
   });
 });

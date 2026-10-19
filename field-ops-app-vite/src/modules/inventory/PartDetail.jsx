@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { readPartsForView, isCatalogReadRefused } from "../../services/partMasterQueries";
-import { REORDER_PURCHASE_ORDER_VOID_GATE, REORDER_WORKFLOW_GATE } from "../../access/shellCapabilityGates.js";
+import { REORDER_PURCHASE_ORDER_VOID_GATE, REORDER_WORKFLOW_GATE, PART_CATALOG_GATE } from "../../access/shellCapabilityGates.js";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
@@ -1654,12 +1654,18 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   frames agree that Edit part is the filled one, so it takes the primary variant it
                   never had; responsive layout may restack these, it may not reverse them. */}
               {/* DQ-034: while the Catalog mutation hold is on, neither change is OFFERED -- both stay, disabled, with why. */}
-              <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
-                Edit Part
-              </Button>{" "}
-              <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
-                Change Status
-              </Button>
+              {/* UI PERMISSION PARITY (PERM-UI): Edit Part needs inventory.catalog.manage, Change Status needs
+                  inventory.catalog.activate -- the capabilities the governed commands enforce. */}
+              {holds(hasCapability, PART_CATALOG_GATE.manage) && (
+                <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
+                  Edit Part
+                </Button>
+              )}{" "}
+              {holds(hasCapability, PART_CATALOG_GATE.activate) && (
+                <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
+                  Change Status
+                </Button>
+              )}
             </>
           )
         }

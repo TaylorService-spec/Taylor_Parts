@@ -158,7 +158,7 @@ test("the Render Catalog API exposes bounded operations, and no 'all parts'", ()
       "listManufacturers", "getManufacturer", "searchManufacturers"]);
   assert.deepEqual([...HTTP.CATALOG_MUTATION_OPERATIONS],
     ["createPart", "updatePart", "changePartStatus", "createPartAlias", "deactivatePartAlias", "reactivatePartAlias",
-      "createManufacturer", "updateManufacturer", "changeManufacturerStatus"]);
+      "createManufacturer", "updateManufacturer", "changeManufacturerStatus", "createEquipmentModel", "updateEquipmentModel"]);
   // There is deliberately no operation that returns the whole catalogue.
   for (const op of [...HTTP.CATALOG_READ_OPERATIONS, ...HTTP.CATALOG_MUTATION_OPERATIONS]) {
     assert.equal(/^(listParts|allParts|getAllParts|fetchPartMasterList)$/.test(op), false, `${op} would re-create the whole-collection read`);

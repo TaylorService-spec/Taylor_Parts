@@ -63,7 +63,7 @@ function stub({ equipment = EQUIPMENT, account = {}, locations = {} } = {}) {
   });
 }
 
-const renderRecord = () => render(<MemoryRouter><EquipmentDetail /></MemoryRouter>);
+const renderRecord = () => render(<MemoryRouter><EquipmentDetail hasCapability={() => true} /></MemoryRouter>);
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -253,6 +253,19 @@ describe("inventory control and lifecycle authority are unchanged", () => {
     const actions = [...container.querySelectorAll("[data-equipment-action]")]
       .map((el) => el.getAttribute("data-equipment-action"));
     expect(new Set(actions)).toEqual(new Set(["edit", "move", "retire"]));
+  });
+
+  // UI PERMISSION PARITY (PERM-UI, 2026-10-19): Edit is offered only to a holder of equipment.record.manage.
+  it("PERM-UI: a non-holder sees the record and no Edit; a holder sees it", () => {
+    stub();
+    const denied = render(<MemoryRouter><EquipmentDetail hasCapability={() => false} /></MemoryRouter>);
+    expect(denied.container.querySelector('[data-equipment-action="edit"]')).toBeNull();
+    denied.unmount();
+    const held = render(<MemoryRouter><EquipmentDetail hasCapability={(c) => c === "equipment.record.manage"} /></MemoryRouter>);
+    expect(held.container.querySelector('[data-equipment-action="edit"]')).toBeTruthy();
+    held.unmount();
+    const unanswered = render(<MemoryRouter><EquipmentDetail /></MemoryRouter>);
+    expect(unanswered.container.querySelector('[data-equipment-action="edit"]')).toBeNull();
   });
 });
 

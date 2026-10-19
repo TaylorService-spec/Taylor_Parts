@@ -157,6 +157,28 @@ export const REORDER_WORKFLOW_GATE = Object.freeze({
 });
 
 /**
+ * UI PERMISSION PARITY (PERM-UI, 2026-10-19): create / edit controls that were offered to everyone while the server refused
+ * non-holders. Each is offered only to a holder of the capability its governed command enforces; the server stays the
+ * authority and still decides on every call.
+ *
+ *   Part Master        New Part / Edit            -> inventory.catalog.manage   (postgresPartMasterWriter createPart / updatePart)
+ *                      Status                     -> inventory.catalog.activate (changePartStatus)
+ *   Customers          New Customer               -> customer.record.create
+ *   Equipment register Add Equipment tab / Edit   -> equipment.record.manage    (eosOps/equipmentOperations.ts)
+ *   Equipment models   the Equipment Models tab   -> equipment.model.manage     (postgresEquipmentModelWriter)
+ *
+ * (Finance Record / Apply / Reconcile are not here: that workspace reads the server's own per-company advice,
+ * readMyFinanceCompanyAccess.actions, which is already fail-closed and company-scoped.)
+ */
+export const PART_CATALOG_GATE = Object.freeze({
+  manage: "inventory.catalog.manage",
+  activate: "inventory.catalog.activate",
+});
+export const CUSTOMER_RECORD_GATE = Object.freeze({ create: "customer.record.create" });
+export const EQUIPMENT_REGISTER_GATE = Object.freeze({ manage: "equipment.record.manage" });
+export const EQUIPMENT_MODEL_GATE = Object.freeze({ manage: "equipment.model.manage" });
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -188,6 +210,11 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   reorderPurchaseOrderVoid: Object.freeze(Object.values(REORDER_PURCHASE_ORDER_VOID_GATE)),
   // modules/inventory/PartDetail.jsx Reorder workflow cards.
   reorderWorkflow: Object.freeze(Object.values(REORDER_WORKFLOW_GATE)),
+  // PERM-UI: PartMasterList, AccountsList, EquipmentWorkspace / EquipmentDetail.
+  partCatalog: Object.freeze(Object.values(PART_CATALOG_GATE)),
+  customerRecord: Object.freeze(Object.values(CUSTOMER_RECORD_GATE)),
+  equipmentRegister: Object.freeze(Object.values(EQUIPMENT_REGISTER_GATE)),
+  equipmentModel: Object.freeze(Object.values(EQUIPMENT_MODEL_GATE)),
 });
 
 /**

@@ -48,6 +48,7 @@ import {
 } from "../../domain/partsNorthStar.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
 import { CATALOG_MUTATION_HOLD, CATALOG_MUTATION_PAUSED_REASON } from "../../config/catalogMutationHold.js";
+import { PART_CATALOG_GATE } from "../../access/shellCapabilityGates.js";
 import ManagerQueuePanel from "../../shared/reorder/ManagerQueuePanel.jsx";
 import { RequestCards, AssignedRequestDetail } from "../../shared/reorder/AssociateRequestPanel.jsx";
 import AssignedWorkOversightTable from "../../shared/reorder/AssignedWorkOversightTable.jsx";
@@ -379,7 +380,9 @@ function catalogBlockedMessage(status) {
   return "The Parts catalog could not be verified against the canonical source, so no parts are shown (an incomplete catalog is never displayed). Try again later.";
 }
 
-export default function PartsList({ accessVersion, writeDeps } = {}) {
+export default function PartsList({ accessVersion, writeDeps, hasCapability } = {}) {
+  // UI PERMISSION PARITY (PERM-UI): New Part is offered only to a holder of inventory.catalog.manage (createPart).
+  const canCreatePart = hasCapability?.(PART_CATALOG_GATE.manage) === true;
   const { user } = useAuth();
   const { healthEntries, loading, error: healthError } = useInventoryLedger();
 
@@ -1027,7 +1030,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
           start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search part number, description, or category" />}
           primary={
             // DQ-034: no create is OFFERED while the Catalog mutation hold is on; the control stays, locked, with why.
-            CATALOG_MUTATION_HOLD.held !== false ? (
+            !canCreatePart ? null : CATALOG_MUTATION_HOLD.held !== false ? (
               <Button variant="protected" reason={CATALOG_MUTATION_PAUSED_REASON} id="parts-new-part">
                 New Part
               </Button>
