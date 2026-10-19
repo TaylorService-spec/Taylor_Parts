@@ -181,7 +181,9 @@ describe("ruling 4 — Recommended reorder qty and Risk left the RECORD, not the
     expect(Number.isFinite(recommendation.recommendedOrderQty)).toBe(true);
     expect(recommendation).toHaveProperty("urgency");
     // And the control is still handed the recommendation object itself, not a narrowed copy.
-    expect(RECORD_SRC).toContain("recommendation={health.recommendation}");
+    // (B3-x: the control moved into `reorderEntry(recommendation, ...)` so a Part with no history can reach it too; the stocked path still passes the object.)
+    expect(RECORD_SRC).toContain("reorderEntry(health.recommendation, false)");
+    expect(RECORD_SRC).toContain("recommendation={recommendation}");
   });
 });
 
