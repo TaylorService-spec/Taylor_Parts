@@ -923,3 +923,18 @@ functions/scripts/exportBinSnapshot.js
 functions/scripts/loadSupplierPoFixture.js
 functions/test/supplierPoFixtureLoaderPostgres.test.mjs
 functions/migrations/1764630000000_warehouse-receiving-bins-on-eos.sql
+# Firebase exit B4 (DECISIONS #B4): records and reporting off Firebase -- imported service history, Data Import of SERVICE_HISTORY, Report Builder / Saved Reports,
+# performance goals. The suites AND their subjects (the operations, the pure pipeline, the shared CSV parser the intake now imports, the migration).
+functions/test/reportPipeline.test.mjs
+functions/test/recordsReportingOffline.test.mjs
+functions/test/recordsReportingPostgres.test.mjs
+functions/src/eosOps/recordsSupport.ts
+functions/src/eosOps/importedServiceHistory.ts
+functions/src/eosOps/dataImportOperations.ts
+functions/src/eosOps/reportOperations.ts
+functions/src/eosOps/performanceGoalReads.ts
+functions/src/reporting/reportPipeline.ts
+functions/src/partMaster/csvParse.ts
+functions/src/partMaster/csvMigrationAnalysis.ts
+functions/src/dataImport/importIntake.ts
+functions/migrations/1764640000000_records-reporting-on-eos.sql

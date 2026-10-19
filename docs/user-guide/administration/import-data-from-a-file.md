@@ -10,9 +10,11 @@ a spreadsheet, instead of typing them in one at a time.
 > refuses before it even checks who is asking. If you open it somewhere it is not available, it says
 > so rather than showing you an empty screen.
 
+> **Service history on the EOS server.** Where this environment runs on the EOS server (no Firebase), **Service history is the one kind of import available**. Choosing any other kind stops before anything is staged, with "Import for ... is not available on EOS yet" - Parts, Customers, Equipment and stock counts are loaded through their own EOS screens, and the old Firebase copies of past service are not copied across here. Past service you import is kept **per operating company**: if you work for more than one company, the screen asks **Operating company for these records** before it lets you choose a file, and only people who work for that company can see those records on a customer afterwards. Everything below applies to Service history on both servers.
+
 ## Before you start
 
-- Your file must be a **.csv** or **.xlsx**, up to 2 MB and 5,000 rows.
+- Your file must be a **.csv** or **.xlsx**, up to 2 MB and 5,000 rows (about 1 MB when the import runs on the EOS server - split a larger file in two).
 - The **first row must be a header row** naming each column. That is how EOS works out which value
   is which, so a file that starts straight into data cannot be read.
 - Each column name must be different from the others. A header that repeats a name is refused,
@@ -150,6 +152,8 @@ records appear below the work orders, under their own heading **Imported histori
 with an `IMPORTED HISTORY` badge on every line. They are counted separately — your open and
 completed work order counts do not move — and the technician and serial are shown *as recorded*,
 because they are text from your old system rather than links to people and machines in EOS.
+
+**Importing the same file again is safe.** A record whose source reference (or customer, date and description, when there is no reference) is already imported for that company is refused as "already exists"; nothing is overwritten. The same file can be imported once for each company, because each company keeps its own history.
 
 A **future date is refused**. This imports what has already happened; work still to be done is a
 Work Order.

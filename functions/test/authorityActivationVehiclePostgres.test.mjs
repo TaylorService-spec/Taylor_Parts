@@ -235,7 +235,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, #B1): five finance.visibility.* keys, 15 grants to the current Firebase holders, a credit trigger.
     "1764620000000_finance-visibility-and-credit-immutability.sql",
     // Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive.
-    "1764630000000_warehouse-receiving-bins-on-eos.sql"],
+    "1764630000000_warehouse-receiving-bins-on-eos.sql",
+    // Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): 39 capabilities registered (the 38 report.* ids and performance.goal.read), granted to NOBODY, plus four empty eos_ops tables.
+    "1764640000000_records-reporting-on-eos.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -467,6 +469,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // Records and reporting (1764640000000, B4): -39 capabilities (the 38 report.* ids + performance.goal.read), NO grant; four empty tables are dropped; its down refuses while a decision, a Role grant, a direct grant or a row names them
+    assert.deepEqual(await counts(), { caps: 149, grants: 510, mine: 26 });
     runMigrate(url, "down", 1); // Warehouse and receiving (1764630000000, B3): -2 capabilities (inventory.location.bin.*), -7 grants; two empty tables and the empty archive are dropped; its down refuses while a decision, a direct grant or a row names them
     assert.deepEqual(await counts(), { caps: 147, grants: 503, mine: 26 });
     runMigrate(url, "down", 1); // Finance visibility mirror (1764620000000, B1): -5 capabilities, -15 grants; its down refuses while a decision or a direct grant names a finance.visibility.* key
@@ -604,7 +608,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Warehouse and receiving migration (1764630000000, B3) first -- 2 capabilities, 7 grants, three empty tables
+    runMigrate(url, "down", 1); // peel the Records and reporting migration (1764640000000, B4) first -- 39 capabilities, no grant, four empty tables
+    runMigrate(url, "down", 1); // then the Warehouse and receiving migration (1764630000000, B3) -- 2 capabilities, 7 grants, three empty tables
     runMigrate(url, "down", 1); // then the Finance visibility mirror (1764620000000, B1) -- 5 capabilities, 15 grants
     runMigrate(url, "down", 1); // then the Employee company-access grants (1764610000000) -- schema only
     runMigrate(url, "down", 1); // then the Role company-authority classification (1764600000000) -- schema only
