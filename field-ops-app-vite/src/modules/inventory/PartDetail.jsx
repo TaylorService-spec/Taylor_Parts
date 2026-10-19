@@ -1896,7 +1896,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                     ))}
                   </dl>
                   {balanceView.locations.length > 0 ? (
-                    <ul className="ns-band__list" aria-label="On hand by warehouse">
+                    <ul className="fo-list" aria-label="On hand by warehouse">
                       {balanceView.locations.map((l) => <li key={l.key}>{l.label} · {l.quantity}</li>)}
                     </ul>
                   ) : null}

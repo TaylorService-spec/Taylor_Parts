@@ -45,6 +45,9 @@ const OUTCOME_BY_FAILURE = Object.freeze({
   PRECONDITION_FAILED: RECEIVING_OUTCOME.CONFLICT,
 });
 
+/** The outcomes that are a COMMAND'S OWN refusal (and so may show its sentence), as opposed to a failure the platform did not govern. */
+const GOVERNED_REFUSAL = new Set([RECEIVING_OUTCOME.DENIED, RECEIVING_OUTCOME.NOT_FOUND, RECEIVING_OUTCOME.INVALID, RECEIVING_OUTCOME.CONFLICT]);
+
 /** A governed refusal -> the bounded, sanitized outcome. Pure; exported for tests. */
 export const supplierReceivingOutcomeForFailure = (res) =>
   Object.prototype.hasOwnProperty.call(OUTCOME_BY_FAILURE, res?.code) ? OUTCOME_BY_FAILURE[res.code] : RECEIVING_OUTCOME.UNAVAILABLE;
@@ -92,9 +95,15 @@ export function createSupplierReceivingClient({ call = callReorderApi } = {}) {
       // Refused CLIENT-SIDE without any call: a malformed request never reaches the server.
       if (built === null) return { status: RECEIVING_OUTCOME.INVALID, receipt: null };
       const res = await callOp(SUPPLIER_RECEIVING_OPERATIONS.receive, built, call);
-      // B3-x: the SERVER'S refusal wording travels with the bounded status. "conflict" alone hides the reason (a PRECONDITION_FAILED is not a
-      // conflict); the sentence is the command's own, e.g. "the purchase order is not in a receivable state".
-      if (!res.ok) return { status: supplierReceivingOutcomeForFailure(res), receipt: null, message: typeof res.message === "string" && res.message !== "" ? res.message : null };
+      // B3-x: a GOVERNED REFUSAL (denied / not found / invalid / conflict) carries the command's own sentence with the bounded status.
+      // "conflict" alone hides the reason (a PRECONDITION_FAILED is not a conflict): e.g. "purchase order is not in a receivable state".
+      // Anything else -- an internal error, an unreachable service, an unknown code -- stays the bounded word with NO text: a raw message
+      // from a failure the platform did not govern never reaches the screen.
+      if (!res.ok) {
+        const status = supplierReceivingOutcomeForFailure(res);
+        return GOVERNED_REFUSAL.has(status) && typeof res.message === "string" && res.message !== ""
+          ? { status, receipt: null, message: res.message } : { status, receipt: null };
+      }
       const receipt = validateCanonicalReceiveResponse(res.result);
       if (receipt === null) return { status: RECEIVING_OUTCOME.UNAVAILABLE, receipt: null };
       return { status: receipt.outcome === "replayed" ? RECEIVING_OUTCOME.REPLAYED : RECEIVING_OUTCOME.APPLIED, receipt };

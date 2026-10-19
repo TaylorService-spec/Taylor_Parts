@@ -380,7 +380,10 @@ test("FAMILY PIN: no surface renders a raw backend error message", () => {
   // Family error copy is sanitized vocabulary; the raw Error object's own text never reaches the
   // screen. (Codes/status tokens from the bounded transport vocabulary are permitted.)
   for (const path of FAMILY_SURFACES) {
-    const src = read(path);
+    // B3-x: ONE governed exception, spelled out so it cannot widen. The supplier receipt carries the COMMAND'S OWN refusal sentence
+    // (the transport's bounded `message`, e.g. "purchase order is not in a receivable state") instead of the word "conflict"; it is
+    // never an Error object's text. Any other `error?.message` read still fails.
+    const src = read(path).replace('typeof outcome?.error?.message === "string" ? outcome.error.message : null', "GOVERNED_REFUSAL_SENTENCE");
     assert.doesNotMatch(src, /\{\s*(err|error|e)\.message\s*\}|error\?\.message/, `${path} must not print err.message`);
     assert.doesNotMatch(src, /\.stack\b/, path);
   }
