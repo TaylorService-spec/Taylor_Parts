@@ -74,7 +74,7 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
   await warehouse("wh-closed", "sample-co", "INACTIVE");
   await warehouse("wh-v", "ventana-co");
   await q(`INSERT INTO eos_ops.bins (id, tenant_id, warehouse_id, area, aisle, bay, position, code, status, idempotency_key, created_by, updated_by)
-           VALUES ('bin-1','t1','wh-1','MAIN','A',1,1,'MAIN-A-1-1','ACTIVE','bin-fixture','fixture','fixture')`);
+           VALUES ('bin_1111111111111111111111111111111111111111','t1','wh-1','MAIN','A',1,1,'MAIN-A-1-1','ACTIVE','bin-fixture','fixture','fixture')`);
 
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at)
            VALUES ('e-r','t1','ACTIVE','taylor','2020-01-01T00:00:00Z'), ('e-r2','t1','ACTIVE','taylor','2020-01-01T00:00:00Z'),
@@ -160,7 +160,7 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
 
   await t.test("on hand: bins roll up to their warehouse, an INACTIVE warehouse is excluded, and each caller sees only their own scope and companies", async () => {
     await move("PART-A", "WAREHOUSE", "wh-1", 10);
-    await move("PART-A", "BIN", "bin-1", 5);
+    await move("PART-A", "BIN", "bin_1111111111111111111111111111111111111111", 5);
     await move("PART-A", "WAREHOUSE", "wh-1", -2, "sample-co", "ADJUSTED");
     await move("PART-A", "WAREHOUSE", "wh-2", 3);
     await move("PART-A", "WAREHOUSE", "wh-closed", 4);
