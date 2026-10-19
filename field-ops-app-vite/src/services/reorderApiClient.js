@@ -84,6 +84,8 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "setPreferredPartSupplierItem",
   // Firebase exit B3: the canonical PURCHASE_ORDER receipt (no fallback to or from receiveReorderStock).
   "receiveSupplierPurchaseOrder",
+  // Firebase exit B3-x: the supplier-PO receipt correction (VOID only).
+  "correctSupplierPurchaseOrderReceipt",
 ]);
 
 /** Reads that take no input. */

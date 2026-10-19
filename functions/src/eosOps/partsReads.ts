@@ -254,16 +254,31 @@ export async function readPartBalance(deps: { readonly pool: Pool }, actor: Reor
 
 const RECEIPT_COLUMNS = `r.id, r.receiving_order_number, r.status::text AS status, r.source_kind::text AS source_kind,
   r.source_reorder_request_id, r.source_purchase_order_id, r.receiving_location_type::text AS receiving_location_type,
-  r.receiving_location_id, r.received_at, r.created_by, r.operating_company_key`;
+  r.receiving_location_id, r.received_at, r.created_by, r.operating_company_key,
+  (SELECT count(*)::int FROM eos_ops.receiving_order_lines l WHERE l.tenant_id = r.tenant_id AND l.receiving_order_id = r.id) AS line_count,
+  (SELECT COALESCE(sum(l.received_quantity), 0)::int FROM eos_ops.receiving_order_lines l WHERE l.tenant_id = r.tenant_id AND l.receiving_order_id = r.id) AS total_quantity,
+  CASE r.source_kind::text
+    WHEN 'PURCHASE_ORDER' THEN (SELECT p.external_po_number FROM eos_ops.supplier_purchase_orders p WHERE p.tenant_id = r.tenant_id AND p.id = r.source_purchase_order_id)
+    ELSE (SELECT po.external_po_number FROM eos_ops.purchase_orders po WHERE po.tenant_id = r.tenant_id AND po.id = r.source_purchase_order_id)
+  END AS external_po_number,
+  EXISTS (SELECT 1 FROM eos_ops.receiving_corrections k WHERE k.tenant_id = r.tenant_id AND k.receiving_order_id = r.id) AS corrected`;
+
+/** The SQL condition (over alias `r`, company keys at `param`): a SUPPLIER-PO receipt belongs to one company and is visible only to callers who reach it. */
+const SUPPLIER_RECEIPT_COMPANY_SQL = (param: number) =>
+  `(r.source_kind::text <> 'PURCHASE_ORDER' OR r.operating_company_key = ANY($${param}::text[]))`;
 
 const receiptOf = (r: Record<string, unknown>) => ({
   receiptId: r.id, receivingOrderNumber: r.receiving_order_number, status: r.status, sourceKind: r.source_kind,
   reorderRequestId: r.source_reorder_request_id ?? null, purchaseOrderId: r.source_purchase_order_id ?? null,
+  // B3-x: the order's business number (external PO number), the size of the receipt and whether a correction was recorded against it.
+  orderNumber: (r.external_po_number as string | null) ?? null, lineCount: Number(r.line_count ?? 0), totalQuantity: Number(r.total_quantity ?? 0),
+  corrected: r.corrected === true,
   receivingLocation: { type: r.receiving_location_type, locationId: r.receiving_location_id },
   warehouseId: r.governing_warehouse_id, receivedAt: r.received_at instanceof Date ? r.received_at.toISOString() : r.received_at,
   receivedByPrincipalId: r.created_by,
 });
 
+/** Receipt history. Reorder receipts follow the caller's warehouse scope; SUPPLIER-PO receipts additionally follow the caller's operating companies (B3-x, #235/#237). */
 export async function listReceipts(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, RECEIPT_READ);
   const i = acceptOnly(input, ["reorderRequestId", "limit"]);
@@ -274,13 +289,14 @@ export async function listReceipts(deps: { readonly pool: Pool }, actor: Reorder
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await scopedWarehouseIds(c, actor);
     if (scope.length === 0) return { scopedWarehouseIds: scope, items: [] };
+    const companyKeys = [...(await resolveCompanyAuthority(c, actor.tenantId, actor.principalId)).companyKeys];
     const { rows } = await c.query(
       `SELECT * FROM (SELECT ${RECEIPT_COLUMNS}, ${GOVERNING_WAREHOUSE("r.tenant_id", "r.receiving_location_type", "r.receiving_location_id")} AS governing_warehouse_id
                         FROM eos_ops.receiving_orders r
-                       WHERE r.tenant_id = $1 AND ($2::text IS NULL OR r.source_reorder_request_id = $2)) x
+                       WHERE r.tenant_id = $1 AND ($2::text IS NULL OR r.source_reorder_request_id = $2) AND ${SUPPLIER_RECEIPT_COMPANY_SQL(5)}) x
         WHERE governing_warehouse_id = ANY($3::text[])
         ORDER BY received_at DESC, id DESC LIMIT $4`,
-      [actor.tenantId, reorderRequestId, scope, limit]);
+      [actor.tenantId, reorderRequestId, scope, limit, companyKeys]);
     return { scopedWarehouseIds: scope, items: rows.map(receiptOf) };
   });
 }
@@ -291,10 +307,11 @@ export async function readReceipt(deps: { readonly pool: Pool }, actor: ReorderA
   if (!ID(i.receiptId)) refuse("RECEIPT_ID_REQUIRED", "INVALID_INPUT", "receiptId is required");
   return withReadSnapshot(deps.pool, async (c) => {
     const scope = await scopedWarehouseIds(c, actor);
+    const companyKeys = [...(await resolveCompanyAuthority(c, actor.tenantId, actor.principalId)).companyKeys];
     const { rows } = await c.query(
       `SELECT ${RECEIPT_COLUMNS}, ${GOVERNING_WAREHOUSE("r.tenant_id", "r.receiving_location_type", "r.receiving_location_id")} AS governing_warehouse_id
-         FROM eos_ops.receiving_orders r WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, i.receiptId]);
-    // Outside scope answers exactly as missing: no existence oracle.
+         FROM eos_ops.receiving_orders r WHERE r.tenant_id = $1 AND r.id = $2 AND ${SUPPLIER_RECEIPT_COMPANY_SQL(3)}`, [actor.tenantId, i.receiptId, companyKeys]);
+    // Outside scope (warehouse, or -- for a supplier-PO receipt -- company) answers exactly as missing: no existence oracle.
     if (rows.length === 0 || !scope.includes(String(rows[0].governing_warehouse_id))) refuse("RECEIPT_NOT_FOUND", "NOT_FOUND", "no such receipt");
     const lines = await c.query(
       `SELECT line_id, part_id, expected_quantity, received_quantity, serial_numbers FROM eos_ops.receiving_order_lines

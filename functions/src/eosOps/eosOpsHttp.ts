@@ -46,6 +46,7 @@ import {
 } from "./supplierPurchaseOrderReceiving.js";
 import { listLegacyInventoryActionNotes } from "./legacyInventoryActionNotes.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
+import { correctSupplierPurchaseOrderReceipt } from "./supplierReceiptCorrection.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
 import { createPartSupplierItem, listPartSupplierItems, setPartSupplierItemStatus, setPreferredPartSupplierItem, updatePartSupplierItem } from "./partSupplierTerms.js";
 import { listReturnIntakeOptions, recordReturnIntake } from "./returnIntake.js";
@@ -181,6 +182,8 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // SUPPLIER PURCHASE ORDER RECEIVING (Firebase exit B3): dispatched by source type like its Reorder sibling, with NO fallback between the
   // two authorities. inventory.stock.receive + company authority + the WAREHOUSE scope over the destination.
   "receiveSupplierPurchaseOrder",
+  // B3-x: the supplier-PO receipt correction (VOID): inventory.receipt.correct + company authority + the WAREHOUSE scope. No fallback to or from correctReorderReceipt.
+  "correctSupplierPurchaseOrderReceipt",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -241,6 +244,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   listLegacyInventoryActionNotes: "/operations/inventory",
   readPartBalance: "/operations/inventory",
   receiveSupplierPurchaseOrder: "/operations/inventory",
+  correctSupplierPurchaseOrderReceipt: "/operations/inventory",
 });
 
 // ════════════════════ the Cycle Count command route (Controller rulings DQ-017 / DQ-018) ════════════════════
@@ -354,7 +358,7 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "listPartSupplierItems", "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
   // B3: supplier purchase order receiving and the archived notes sit behind the same boundary as the receiving they extend.
   "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "receiveSupplierPurchaseOrder",
-  "listLegacyInventoryActionNotes", "readPartBalance",
+  "listLegacyInventoryActionNotes", "readPartBalance", "correctSupplierPurchaseOrderReceipt",
 ]);
 
 export type OperationsApiFailureCode =
@@ -652,6 +656,10 @@ export async function executeOperation(
       case "recordReturnIntake": {
         const { actor, pool } = await supplierTermsActor();
         return ok(await recordReturnIntake({ pool }, actor, request.input ?? {}));
+      }
+      case "correctSupplierPurchaseOrderReceipt": {
+        const { actor, pool } = await reorderActor();
+        return ok(await correctSupplierPurchaseOrderReceipt({ pool }, actor, request.input ?? {}));
       }
       case "correctReorderReceipt": {
         const { actor, pool } = await reorderActor();

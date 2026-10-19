@@ -29,7 +29,7 @@ test("15 / 22. static: only the receipt command composes the Finance writer; no 
   const importers = walk(SRC).filter((f) => f.endsWith(".ts") && !f.includes(`${join("eosFinance", "")}`))
     .filter((f) => /eosFinance\/financeFoundation/.test(readFileSync(f, "utf8"))).map((f) => f.slice(SRC.length + 1).split("\\").join("/")).sort();
   // + eosOps/supplierPurchaseOrderReceiving.ts (Firebase exit B3): the canonical supplier-PO receipt is a receipt, so it projects the same cost-evidence consequence (UNKNOWN, never zero).
-  assert.deepEqual(importers, ["eosOps/costEvidenceSupplyCommand.ts", "eosOps/receiptCorrectionCommand.ts", "eosOps/receiveReorderStockCommand.ts", "eosOps/supplierPurchaseOrderReceiving.ts", "eosOps/workOrderScheduling.ts",
+  assert.deepEqual(importers, ["eosOps/costEvidenceSupplyCommand.ts", "eosOps/receiptCorrectionCommand.ts", "eosOps/receiveReorderStockCommand.ts", "eosOps/supplierPurchaseOrderReceiving.ts", "eosOps/supplierReceiptCorrection.ts", "eosOps/workOrderScheduling.ts",
     "eosRental/rental.ts", "eosRental/rentalBilling.ts"],
     "the Finance writer is reached only as a server-side consequence: the receipt, its governed correction (#193), the Work Order completion's billing package (#196), and a governed rental charge's package (#207)");
   const ops = [...http.OPERATIONS_READ_OPERATIONS, ...http.OPERATIONS_MUTATION_OPERATIONS];

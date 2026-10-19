@@ -7,6 +7,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import ReceiveAgainstPurchaseOrder from "../receiving/ReceiveAgainstPurchaseOrder";
 import MultiScanReceiving from "../receiving/MultiScanReceiving";
 import AcquireExistingUnit from "../receiving/AcquireExistingUnit";
+import RecentReceipts from "../receiving/RecentReceipts.jsx";
 import { fetchAcquireWarehouseOptions } from "../../services/inventoryLocationClient.js";
 import { useReorderRequestsByStatuses } from "../../hooks/useReorderRequests";
 import { usePurchaseOrdersByIds } from "../../hooks/usePurchaseOrdersByIds";
@@ -181,10 +182,16 @@ export default function Receiving({ deps }) {
                 never the document id (RCV-G2). */}
             <section aria-labelledby="recent-receipts-heading">
               <h3 id="recent-receipts-heading">Recent Receipts</h3>
-              <div className="fo-receiving-slot">
-                <strong>Not connected yet.</strong> Receipts are recorded by the platform, but no
-                governed read exists to show them back, so receipt history cannot honestly render today.
-              </div>
+              {/* B3-x: where an EOS API is declared the history is the governed listReceipts read (Reorder AND supplier-PO receipts), with
+                  the receipt correction for a holder of the permission. Elsewhere the slot keeps its honest unavailable state. */}
+              {EOS_SESSION_SOURCE ? (
+                <RecentReceipts deps={deps} />
+              ) : (
+                <div className="fo-receiving-slot">
+                  <strong>Not connected yet.</strong> Receipts are recorded by the platform, but no
+                  governed read exists to show them back, so receipt history cannot honestly render today.
+                </div>
+              )}
             </section>
           </div>
         </>

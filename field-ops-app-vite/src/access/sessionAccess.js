@@ -42,6 +42,8 @@ export const SESSION_GATE_KEYS = Object.freeze({
   reorderManual: Object.freeze(["reorder.request.create.manual"]),
   // G7 Scan > technician Work Order workflow: the capability the work-execution commands apply.
   workExecution: Object.freeze(["workOrder.execution.record"]),
+  // Receiving > Recent Receipts > Correct (B3-x): the capability both receipt-correction commands enforce. Registered, granted to nobody by default.
+  receiptCorrect: Object.freeze(["inventory.receipt.correct"]),
 });
 
 /**

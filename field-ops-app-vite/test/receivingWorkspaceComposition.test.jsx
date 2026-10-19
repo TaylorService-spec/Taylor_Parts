@@ -242,3 +242,152 @@ describe("responsive structure", () => {
     for (const td of cells) expect(td.getAttribute("data-label")).toBeTruthy();
   });
 });
+
+// ── Recent receipts and the receipt correction (Firebase exit B3-x) ─────────────────────
+//
+// The component is rendered directly with injected reads; in the workspace it is mounted only where an EOS API is declared (the slot above
+// keeps its honest "Not connected yet" elsewhere).
+import RecentReceipts from "../src/modules/receiving/RecentReceipts.jsx";
+import { buildCorrectionCall, correctReceipt, correctionKindsFor } from "../src/services/receiptCorrectionClient.js";
+
+const receipt = (over = {}) => ({
+  receiptId: "rcvc_1", receivingOrderNumber: "RO-2026-000001", status: "PUTAWAY_COMPLETE", sourceKind: "PURCHASE_ORDER",
+  reorderRequestId: null, purchaseOrderId: "po-1", orderNumber: "TP-88112", lineCount: 2, totalQuantity: 9, corrected: false,
+  receivingLocation: { type: "WAREHOUSE", locationId: "wh-1" }, warehouseId: "wh-1", receivedAt: "2026-10-18T15:00:00.000Z", receivedByPrincipalId: "p1", ...over,
+});
+const reorderReceipt = (over = {}) => receipt({ receiptId: "rcvc_2", receivingOrderNumber: "RO-2026-000002", sourceKind: "REORDER_PURCHASE_ORDER",
+  reorderRequestId: "rr-1", purchaseOrderId: "rr-1", orderNumber: null, lineCount: 1, totalQuantity: 6, ...over });
+const receiptDeps = (items, over = {}) => ({
+  fetchReceipts: vi.fn().mockResolvedValue({ items }),
+  fetchWarehouseLabels: vi.fn().mockResolvedValue({ status: "ready", options: [{ value: "wh-1", label: "Main warehouse" }] }),
+  canCorrect: true,
+  ...over,
+});
+
+describe("Recent receipts", () => {
+  it("lists both journeys by receipt number and order number, states absences, keeps a voided receipt visible", async () => {
+    const voided = receipt({ receiptId: "rcvc_3", receivingOrderNumber: null, orderNumber: null, status: "CANCELLED", corrected: true });
+    const d = receiptDeps([receipt(), reorderReceipt(), voided]);
+    render(<RecentReceipts deps={d} />);
+    const table = await screen.findByRole("table", { name: "Recent receipts" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("RO-2026-000001");
+    expect(rows[0].textContent).toContain("TP-88112");
+    expect(rows[0].textContent).toContain("Supplier PO");
+    expect(rows[0].textContent).toContain("Main warehouse");
+    expect(rows[0].textContent).toContain("2 · 9");
+    expect(rows[1].textContent).toContain("Reorder PO");
+    expect(rows[1].textContent).toContain("No order number recorded");
+    expect(rows[2].textContent).toContain("No receipt number recorded");
+    expect(rows[2].textContent).toContain("Voided (corrected)");
+    // No internal id ever stands in for a number.
+    expect(table.textContent).not.toContain("rcvc_");
+  });
+
+  it("a denied read and a failed read are two different sentences, and neither is an empty list", async () => {
+    const denied = Object.assign(new Error("no"), { code: "FORBIDDEN" });
+    render(<RecentReceipts deps={receiptDeps([], { fetchReceipts: vi.fn().mockRejectedValue(denied) })} />);
+    expect(await screen.findByText(/not authorized to read receipts/i)).toBeTruthy();
+    cleanup();
+    render(<RecentReceipts deps={receiptDeps([], { fetchReceipts: vi.fn().mockRejectedValue(new Error("down")) })} />);
+    expect(await screen.findByText(/This is not a statement that nothing was received/i)).toBeTruthy();
+    expect(screen.queryByText(/no receipts to show/i)).toBeNull();
+  });
+
+  it("a genuinely empty history is the one case that says so", async () => {
+    render(<RecentReceipts deps={receiptDeps([])} />);
+    expect(await screen.findByText("No receipts to show")).toBeTruthy();
+  });
+
+  it("Correct is offered only to a holder of the permission, and never on a voided receipt", async () => {
+    const items = [receipt(), receipt({ receiptId: "rcvc_3", receivingOrderNumber: "RO-2026-000003", status: "CANCELLED", corrected: true })];
+    render(<RecentReceipts deps={receiptDeps(items, { canCorrect: false })} />);
+    await screen.findByRole("table", { name: "Recent receipts" });
+    expect(screen.queryByRole("button", { name: /^correct receipt/i })).toBeNull();
+    cleanup();
+    render(<RecentReceipts deps={receiptDeps(items)} />);
+    await screen.findByRole("table", { name: "Recent receipts" });
+    expect(screen.getAllByRole("button", { name: /^correct receipt/i })).toHaveLength(1);
+  });
+
+  it("VOID: the reason is required, one key per opened correction, the server's answer is shown, and the list is re-read on success", async () => {
+    const correctReceiptFn = vi.fn().mockResolvedValue({ ok: true, result: { outcome: "applied" } });
+    const d = receiptDeps([receipt()], { correctReceipt: correctReceiptFn });
+    render(<RecentReceipts deps={d} />);
+    fireEvent.click(await screen.findByRole("button", { name: /correct receipt/i }));
+    const go = screen.getByRole("button", { name: "Void this receipt" });
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/why \(required\)/i), { target: { value: "counted the wrong pallet" } });
+    expect(go.disabled).toBe(false);
+    // A supplier-PO receipt has no "send it elsewhere" choice: a replacement is a new receipt.
+    expect(screen.queryByText(/wrong place/i)).toBeNull();
+    fireEvent.click(go);
+    await waitFor(() => expect(correctReceiptFn).toHaveBeenCalledTimes(1));
+    expect(correctReceiptFn.mock.calls[0][0]).toMatchObject({ sourceKind: "PURCHASE_ORDER", receivingId: "rcvc_1", kind: "VOID", reason: "counted the wrong pallet" });
+    expect(correctReceiptFn.mock.calls[0][0].idempotencyKey).toMatch(/^rcvfix-/);
+    await waitFor(() => expect(d.fetchReceipts).toHaveBeenCalledTimes(2));
+  });
+
+  it("a refusal shows the server's own sentence and says nothing was changed", async () => {
+    const correctReceiptFn = vi.fn().mockResolvedValue({ ok: false, status: "conflict", message: "only 1 of the 4 received remain at the receipt location" });
+    render(<RecentReceipts deps={receiptDeps([receipt()], { correctReceipt: correctReceiptFn })} />);
+    fireEvent.click(await screen.findByRole("button", { name: /correct receipt/i }));
+    fireEvent.change(screen.getByLabelText(/why \(required\)/i), { target: { value: "wrong" } });
+    fireEvent.click(screen.getByRole("button", { name: "Void this receipt" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/only 1 of the 4 received remain at the receipt location/);
+    expect(alert.textContent).toMatch(/Nothing was changed/);
+  });
+
+  it("a Reorder receipt can also be sent elsewhere: it names the new destination, and cannot proceed without one", async () => {
+    const correctReceiptFn = vi.fn().mockResolvedValue({ ok: true, result: {} });
+    const d = receiptDeps([reorderReceipt()], {
+      correctReceipt: correctReceiptFn,
+      fetchCorrectionLocations: vi.fn().mockResolvedValue({ options: [{ type: "WAREHOUSE", locationId: "wh-2", label: "Second warehouse" }] }),
+    });
+    render(<RecentReceipts deps={d} />);
+    fireEvent.click(await screen.findByRole("button", { name: /correct receipt/i }));
+    fireEvent.click(screen.getByLabelText(/wrong place/i));
+    fireEvent.change(screen.getByLabelText(/why \(required\)/i), { target: { value: "put into the wrong warehouse" } });
+    const go = screen.getByRole("button", { name: "Void and receive again" });
+    expect(go.disabled).toBe(true);
+    fireEvent.change(await screen.findByLabelText(/receive it again into/i), { target: { value: "wh-2" } });
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await waitFor(() => expect(correctReceiptFn).toHaveBeenCalled());
+    expect(correctReceiptFn.mock.calls[0][0]).toMatchObject({ sourceKind: "REORDER_PURCHASE_ORDER", kind: "CORRECTED", replacementLocation: { type: "WAREHOUSE", locationId: "wh-2" } });
+  });
+});
+
+describe("the receipt-correction transport", () => {
+  it("chooses the operation by the receipt's own source kind; a supplier receipt takes VOID only", () => {
+    expect(correctionKindsFor("PURCHASE_ORDER")).toEqual(["VOID"]);
+    expect(correctionKindsFor("REORDER_PURCHASE_ORDER")).toEqual(["VOID", "CORRECTED"]);
+    expect(correctionKindsFor("SOMETHING_ELSE")).toEqual([]);
+    const base = { receivingId: "r1", reason: " why ", idempotencyKey: "k1" };
+    expect(buildCorrectionCall({ ...base, sourceKind: "PURCHASE_ORDER", kind: "VOID" }))
+      .toEqual({ operation: "correctSupplierPurchaseOrderReceipt", input: { receivingId: "r1", reason: "why", idempotencyKey: "k1" } });
+    expect(buildCorrectionCall({ ...base, sourceKind: "REORDER_PURCHASE_ORDER", kind: "VOID" }))
+      .toEqual({ operation: "correctReorderReceipt", input: { receivingId: "r1", correction: "VOID", reason: "why", idempotencyKey: "k1" } });
+    expect(buildCorrectionCall({ ...base, sourceKind: "REORDER_PURCHASE_ORDER", kind: "CORRECTED", replacementLocation: { type: "WAREHOUSE", locationId: "wh-2" } }).input.replacement)
+      .toEqual({ receivingLocation: { type: "WAREHOUSE", locationId: "wh-2" } });
+    // Refused before any call: a supplier CORRECTED, a CORRECTED with no destination, a blank reason, a missing key.
+    for (const bad of [
+      { sourceKind: "PURCHASE_ORDER", kind: "CORRECTED", replacementLocation: { type: "WAREHOUSE", locationId: "wh-2" } },
+      { sourceKind: "REORDER_PURCHASE_ORDER", kind: "CORRECTED" },
+      { sourceKind: "PURCHASE_ORDER", kind: "VOID", reason: "  " },
+      { sourceKind: "PURCHASE_ORDER", kind: "VOID", idempotencyKey: "" },
+    ]) expect(buildCorrectionCall({ ...base, ...bad })).toBeNull();
+  });
+
+  it("returns the server's sentence on a refusal, a bounded status, and never throws", async () => {
+    const request = { sourceKind: "PURCHASE_ORDER", receivingId: "r1", kind: "VOID", reason: "why", idempotencyKey: "k1" };
+    const refused = await correctReceipt(request, { call: vi.fn().mockResolvedValue({ ok: false, code: "PRECONDITION_FAILED", message: "only 1 of the 4 received remain" }) });
+    expect(refused).toEqual({ ok: false, status: "conflict", message: "only 1 of the 4 received remain" });
+    expect((await correctReceipt(request, { call: vi.fn().mockResolvedValue({ ok: false, code: "FORBIDDEN", message: "x" }) })).status).toBe("denied");
+    expect((await correctReceipt(request, { call: vi.fn().mockRejectedValue(new Error("down")) })).status).toBe("unavailable");
+    expect((await correctReceipt({ ...request, reason: "" }, { call: vi.fn() })).status).toBe("invalid");
+    expect(await correctReceipt(request, { call: vi.fn().mockResolvedValue({ ok: true, result: { outcome: "applied" } }) })).toEqual({ ok: true, result: { outcome: "applied" } });
+  });
+});

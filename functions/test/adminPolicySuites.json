@@ -285,6 +285,7 @@
     "test/supplierPurchaseOrderReceivingPostgres.test.mjs",
     "test/rackingPlannerPostgres.test.mjs",
     "test/supplierPoFixtureLoaderPostgres.test.mjs",
-    "test/partBalancePostgres.test.mjs"
+    "test/partBalancePostgres.test.mjs",
+    "test/supplierReceiptHistoryAndCorrectionPostgres.test.mjs"
   ]
 }

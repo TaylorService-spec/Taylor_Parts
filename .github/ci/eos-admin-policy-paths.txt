@@ -926,3 +926,5 @@ functions/migrations/1764630000000_warehouse-receiving-bins-on-eos.sql
 # Firebase exit B3-x (DECISIONS #B3-x): inventory and purchasing gap closure -- the Part balance read, receipts, receipt correction, serial lookup.
 functions/test/partBalancePostgres.test.mjs
 functions/src/eosOps/partsReads.ts
+functions/test/supplierReceiptHistoryAndCorrectionPostgres.test.mjs
+functions/src/eosOps/supplierReceiptCorrection.ts
