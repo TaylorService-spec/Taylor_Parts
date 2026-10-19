@@ -22,12 +22,15 @@ export function equipmentModelWriteOutcome(res) {
   return OUTCOME_BY_CODE[res?.code] ?? { kind: "error", message: "The request could not be completed. Try again." };
 }
 
-/** The tenant's models: { ok:true, models } or { ok:false, denied }. Never throws. */
-export async function listEquipmentModelsForAdmin({ client = catalogApiClient } = {}) {
+/**
+ * One page of the tenant's models: { ok:true, models, nextCursor } or { ok:false, denied }. Never throws.
+ * `nextCursor` is the server's keyset cursor (null on the last page); pass it back as `cursor` for the next page.
+ */
+export async function listEquipmentModelsForAdmin({ client = catalogApiClient, cursor = null } = {}) {
   try {
-    const res = await client.call("listEquipmentModels", {});
+    const res = await client.call("listEquipmentModels", cursor ? { cursor } : {});
     if (!res?.ok || !Array.isArray(res.result?.models)) return { ok: false, denied: res?.code === "FORBIDDEN" };
-    return { ok: true, models: res.result.models, truncated: res.result.nextCursor != null };
+    return { ok: true, models: res.result.models, nextCursor: res.result.nextCursor ?? null };
   } catch {
     return { ok: false, denied: false };
   }

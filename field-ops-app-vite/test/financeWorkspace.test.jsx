@@ -98,8 +98,8 @@ describe("PERM-UI: Finance controls follow the server's per-company actions", ()
     expect(screen.queryByRole("button", { name: "Record Settlement" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Apply CHK-9" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
-    expect(screen.getByText(/needs finance.settlement.apply/)).toBeTruthy();
-    expect(screen.getByText(/needs finance.reconciliation.record/)).toBeTruthy();
+    expect(screen.getByText(/can’t apply payments for this company/)).toBeTruthy();
+    expect(screen.getByText(/can’t reconcile payments for this company/)).toBeTruthy();
   });
 
   it("each control is offered on its own capability", async () => {

@@ -260,7 +260,7 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
                       <td>{companyWords(s.operatingCompanyId)}</td><td>{statusLabel(s.kind, SETTLEMENT_WORDS)}</td><td>{s.sourceReference}</td><td>{s.businessDate}</td>
                       <td>{money(s.amountMinor, s.currency)}</td><td>{money(s.unappliedMinor, s.currency)}</td>
                       <td>
-                        {!can("apply", s.operatingCompanyId) ? <span className="fo-muted">Applying settlements needs finance.settlement.apply.</span> : (<>
+                        {!can("apply", s.operatingCompanyId) ? <span className="fo-muted">You can’t apply payments for this company.</span> : (<>
                         <input className="fo-input" aria-label={`Obligation for ${s.sourceReference}`} placeholder="Obligation record" value={applyDraft[s.id]?.obligationId ?? ""}
                           onChange={(e) => setApplyDraft({ ...applyDraft, [s.id]: { ...applyDraft[s.id], obligationId: e.target.value } })} />
                         <input className="fo-input" aria-label={`Amount to apply from ${s.sourceReference}`} placeholder="Amount" value={applyDraft[s.id]?.amount ?? ""}
@@ -311,7 +311,7 @@ export default function FinancialsWorkspace({ callApi = callFinanceApi, embedded
                       <td>{companyWords(r.operatingCompanyId)}</td><td>{statusLabel(r.kind, SETTLEMENT_WORDS)}</td><td>{money(r.amountMinor, r.currency)}</td>
                       <td>{r.status === "MISMATCH" ? `Mismatch — accounting shows ${money(r.externalAmountMinor, r.currency)}` : "Not yet reconciled"}</td>
                       <td>
-                        {!can("reconcile", r.operatingCompanyId) ? <span className="fo-muted">Reconciling needs finance.reconciliation.record.</span> : (<>
+                        {!can("reconcile", r.operatingCompanyId) ? <span className="fo-muted">You can’t reconcile payments for this company.</span> : (<>
                         <input className="fo-input" aria-label={`Accounting reference for ${r.settlementId}`} placeholder="Accounting reference" value={reconDraft[r.settlementId]?.reference ?? ""}
                           onChange={(e) => setReconDraft({ ...reconDraft, [r.settlementId]: { ...reconDraft[r.settlementId], reference: e.target.value } })} />
                         <input className="fo-input" aria-label={`Accounting amount for ${r.settlementId}`} placeholder="Amount" value={reconDraft[r.settlementId]?.amount ?? ""}

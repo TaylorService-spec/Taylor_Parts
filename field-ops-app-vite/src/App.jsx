@@ -640,7 +640,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // source; on the EOS source the `inventory.catalog` surface (R-1 Option A). Reads and writes go through the
   // EOS Catalog API (Firebase exit F5), authorized server-side.
   if (domain.key === "inventory" && item.key === "manufacturers") {
-    return <Manufacturers />;
+    return <Manufacturers hasCapability={operationalContext?.hasCapability} />;
   }
   // EI-P1d-1 workspace + EI-P1d-2-2b read wiring -- the visible Truck Inventory workspace
   // (replaces the placeholder at /inventory/truck-inventory). The workspace stays frozen and

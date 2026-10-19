@@ -35,10 +35,20 @@ export default function EquipmentModels({ hasCapability, client, commands = equi
     setState({ phase: "loading" });
     listEquipmentModelsForAdmin(client ? { client } : undefined).then((r) => {
       if (!live) return;
-      setState(r.ok ? { phase: "ready", models: r.models, truncated: r.truncated } : { phase: r.denied ? "denied" : "error" });
+      setState(r.ok ? { phase: "ready", models: r.models, nextCursor: r.nextCursor } : { phase: r.denied ? "denied" : "error" });
     });
     return () => { live = false; };
   }, [client]);
+  // The server pages by keyset cursor (200 per page); every model must be reachable to be edited, so "Load more" appends the next page.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
+  const loadMore = async () => {
+    setLoadingMore(true); setMoreFailed(false);
+    const r = await listEquipmentModelsForAdmin({ ...(client ? { client } : {}), cursor: state.nextCursor });
+    setLoadingMore(false);
+    if (!r.ok) { setMoreFailed(true); return; }
+    setState((s) => ({ ...s, models: [...s.models, ...r.models], nextCursor: r.nextCursor }));
+  };
   useEffect(() => (canManage ? load() : undefined), [canManage, load]);
 
   if (!canManage) return <p className="fo-muted" role="status">Equipment models are managed by people with the equipment model capability.</p>;
@@ -76,7 +86,6 @@ export default function EquipmentModels({ hasCapability, client, commands = equi
       {state.phase === "denied" && <p className="fo-muted" role="status">You do not have access to read equipment models.</p>}
       {state.phase === "error" && <p className="fo-muted" role="status">Equipment models are currently unavailable. <button type="button" onClick={load}>Retry</button></p>}
       {state.phase === "ready" && models.length === 0 && <p className="fo-muted">No equipment models are recorded yet. Use “New Equipment Model” to add the first.</p>}
-      {state.phase === "ready" && state.truncated && <p className="fo-muted">More models exist than this list shows.</p>}
       {models.length > 0 && (
         <table className="fo-table" aria-label="Equipment models list">
           <thead><tr><th>Model</th><th>Manufacturer</th><th>Model number</th><th>Revision</th><th>Status</th><th>Actions</th></tr></thead>
@@ -90,6 +99,13 @@ export default function EquipmentModels({ hasCapability, client, commands = equi
             ))}
           </tbody>
         </table>
+      )}
+
+      {state.phase === "ready" && state.nextCursor && (
+        <div>
+          <Button variant="secondary" disabled={loadingMore} onClick={loadMore}>{loadingMore ? "Loading…" : "Load more models"}</Button>
+          {moreFailed && <p role="alert" className="fo-muted">The next page could not be loaded. Try again.</p>}
+        </div>
       )}
 
       {panel && (

@@ -60,6 +60,7 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import { sortRows } from "../../shared/ui/sorting/useTableSort.js";
 import { statusLabel } from "../../shared/display/displayLabels.js";
+import { PART_CATALOG_GATE } from "../../access/shellCapabilityGates.js";
 
 // The status column's sort value. The cell itself renders through cellValue's ENUM branch, using
 // manufacturerEntity's declared enumLabels, same as every other migrated list's status column.
@@ -89,6 +90,7 @@ const MANUFACTURER_SORT_COLUMNS = Object.freeze({
 // per-state defaults (emptyMessageFor, listPresentation.js) -- overriding is the same
 // explicitly-supported "own copy" choice buildAccountRelatedListPresentation exercises.
 const EMPTY_MESSAGE = "No manufacturers are recorded yet. Use “New Manufacturer” to create the first governed record.";
+const EMPTY_MESSAGE_READ_ONLY = "No manufacturers are recorded yet.";
 const DENIED_MESSAGE = "You do not have access to Manufacturers. Contact an administrator if you believe this is an error.";
 const UNAVAILABLE_MESSAGE = "Manufacturers are currently unavailable. Try again later.";
 
@@ -97,7 +99,7 @@ const UNAVAILABLE_MESSAGE = "Manufacturers are currently unavailable. Try again 
  * second read. `state.manufacturers` (when phase === "ready") is the SAME
  * fetchManufacturerList() result the workspace already holds -- reused, not re-fetched.
  */
-export function buildManufacturersPresentation(state, sort = null) {
+export function buildManufacturersPresentation(state, sort = null, canCreate = true) {
   const loading = state.phase === "loading";
   const errorStatus = state.phase === "denied" ? "denied" : state.phase === "error" ? "unavailable" : null;
   const manufacturers = state.phase === "ready" ? state.manufacturers ?? [] : [];
@@ -119,14 +121,18 @@ export function buildManufacturersPresentation(state, sort = null) {
     filtersActive: false,
   });
   const emptyMessage =
-    presentation.state === "EMPTY" ? EMPTY_MESSAGE :
+    presentation.state === "EMPTY" ? (canCreate ? EMPTY_MESSAGE : EMPTY_MESSAGE_READ_ONLY) :
     presentation.state === "DENIED" ? DENIED_MESSAGE :
     presentation.state === "UNAVAILABLE" ? UNAVAILABLE_MESSAGE :
     presentation.emptyMessage;
   return { ...presentation, emptyMessage };
 }
 
-export default function Manufacturers({ commands = manufacturerCommands } = {}) {
+export default function Manufacturers({ commands = manufacturerCommands, hasCapability } = {}) {
+  // UI PERMISSION PARITY (PERM-UI): New / Rename need inventory.catalog.manage, Status needs inventory.catalog.activate --
+  // the capabilities the governed Manufacturer commands enforce. The server still decides on every call.
+  const canManage = hasCapability?.(PART_CATALOG_GATE.manage) === true;
+  const canActivate = hasCapability?.(PART_CATALOG_GATE.activate) === true;
   const [state, setState] = useState({ phase: "loading" });
 
   const load = useCallback(() => {
@@ -170,13 +176,13 @@ export default function Manufacturers({ commands = manufacturerCommands } = {}) 
 
   // MetadataListGrid hands a row action the row KEY only; the record is looked back up for the panel.
   const rowActions = [
-    { id: "rename", label: "Rename", denied: busy, onActivate: (key) => { const m = byId.get(key); if (m) open({ mode: "rename", m }, { name: m.name }); } },
-    { id: "status", label: "Status", denied: busy, onActivate: (key) => { const m = byId.get(key); if (m) open({ mode: "status", m }); } },
+    ...(canManage ? [{ id: "rename", label: "Rename", denied: busy, onActivate: (key) => { const m = byId.get(key); if (m) open({ mode: "rename", m }, { name: m.name }); } }] : []),
+    ...(canActivate ? [{ id: "status", label: "Status", denied: busy, onActivate: (key) => { const m = byId.get(key); if (m) open({ mode: "status", m }); } }] : []),
   ];
 
   // Header sort state ({ key, direction } | null = the catalog's default order), in the grid's criteria shape.
   const [headerSort, setHeaderSort] = useState(null);
-  const presentation = useMemo(() => buildManufacturersPresentation(state, headerSort), [state, headerSort]);
+  const presentation = useMemo(() => buildManufacturersPresentation(state, headerSort, canManage), [state, headerSort, canManage]);
   const sorting = useMemo(() => ({
     entity: manufacturerEntity,
     criteria: { sort: headerSort ? [{ fieldId: headerSort.key, direction: headerSort.direction === "desc" ? "DESC" : "ASC" }] : [] },
@@ -208,7 +214,7 @@ export default function Manufacturers({ commands = manufacturerCommands } = {}) 
           ? [{ key: "truncated", label: "More manufacturers exist than this list shows", tone: "attention" }]
           : []),
       ]}
-      action={<Button variant="primary" onClick={() => open({ mode: "create" })} disabled={busy}>New Manufacturer</Button>}
+      action={canManage ? <Button variant="primary" onClick={() => open({ mode: "create" })} disabled={busy}>New Manufacturer</Button> : null}
     >
       <p className="fo-mfr__hint">
         Governed manufacturer reference records that Parts link to. Create, rename, and activate or deactivate them

@@ -107,6 +107,43 @@ describe("Equipment Models: create and update send the governed operations", () 
     expect(screen.queryByText("Saved.")).toBeNull();
   });
 
+  it("follows nextCursor: Load more appends page two, and a model on page two can be edited", async () => {
+    const P2 = { ...MODEL, id: "ZENITH--Z-1", manufacturerId: "ZENITH", manufacturerName: "Zenith", modelNumber: "Z-1", displayName: "Zenith Z-1", version: 7 };
+    const calls = [];
+    const client = {
+      calls,
+      call: vi.fn(async (operation, input) => {
+        calls.push([operation, input]);
+        if (operation !== "listEquipmentModels") return { ok: true, result: { equipmentModelId: "ZENITH--Z-1", version: 8, replayed: false } };
+        return input?.cursor === "ACME--CW-100"
+          ? { ok: true, result: { models: [P2], nextCursor: null, limit: 200 } }
+          : { ok: true, result: { models: [MODEL], nextCursor: "ACME--CW-100", limit: 1 } };
+      }),
+    };
+    render(<EquipmentModels hasCapability={HOLDER} client={client} />);
+    await screen.findByText("Acme Refrigeration");
+    expect(screen.queryByText("Zenith")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Load more models" }));
+    await screen.findByText("Zenith");
+    expect(screen.getByText("Acme Refrigeration")).toBeTruthy(); // page one is kept
+    expect(screen.queryByRole("button", { name: "Load more models" })).toBeNull(); // last page
+    expect(calls.filter(([op]) => op === "listEquipmentModels").map(([, i]) => i)).toEqual([{}, { cursor: "ACME--CW-100" }]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Zenith Z-1" }));
+    fireEvent.change(screen.getByLabelText("Revision"), { target: { value: "C" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(calls.some(([op]) => op === "updateEquipmentModel")).toBe(true));
+    expect(calls.find(([op]) => op === "updateEquipmentModel")[1]).toEqual({ equipmentModelId: "ZENITH--Z-1", expectedVersion: 7, changes: { revision: "C" } });
+  });
+
+  it("a failed next page keeps what is shown and says so", async () => {
+    let n = 0;
+    const client = { call: vi.fn(async () => (n++ === 0 ? { ok: true, result: { models: [MODEL], nextCursor: "ACME--CW-100", limit: 1 } } : { ok: false, code: "INTERNAL" })) };
+    render(<EquipmentModels hasCapability={HOLDER} client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load more models" }));
+    await screen.findByText(/next page could not be loaded/i);
+    expect(screen.getByText("Acme Refrigeration")).toBeTruthy();
+  });
+
   it("a denied list read says so rather than showing an empty catalogue", async () => {
     const client = fakeClient({ listAnswer: { ok: false, code: "FORBIDDEN", message: "x" } });
     render(<EquipmentModels hasCapability={HOLDER} client={client} />);

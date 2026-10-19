@@ -31,6 +31,8 @@ const ROWS = [
   { manufacturerId: "doc-beta-456", name: "Beta Industrial", status: "INACTIVE", updatedAt: "2026-10-17T10:00:00.000002Z" },
 ];
 
+const rowOf = (name) => screen.getAllByRole("row").find((r) => r.textContent.includes(name));
+
 describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS)", () => {
   it("READY: renders rows through the metadata runtime (name, status columns) — no document id anywhere in the DOM", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
@@ -59,7 +61,7 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
   it("F5 CREATE: New Manufacturer sends the trimmed id and name, then reloads the list", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
     const commands = commandsStub();
-    render(<Manufacturers commands={commands} />);
+    render(<Manufacturers commands={commands} hasCapability={() => true} />);
     await screen.findByText("Alpha Mfg");
     fireEvent.click(screen.getByRole("button", { name: "New Manufacturer" }));
     fireEvent.change(screen.getByLabelText("Manufacturer ID"), { target: { value: " m-gamma " } });
@@ -73,7 +75,7 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
   it("F5 RENAME and STATUS send the row's updatedAt as the concurrency token; the dialog names, never the id", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
     const commands = commandsStub();
-    render(<Manufacturers commands={commands} />);
+    render(<Manufacturers commands={commands} hasCapability={() => true} />);
     await screen.findByText("Alpha Mfg");
     const rowOf = (name) => screen.getAllByRole("row").find((r) => r.textContent.includes(name));
     fireEvent.click(within(rowOf("Alpha Mfg")).getByRole("button", { name: /Rename/ }));
@@ -93,7 +95,7 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
   it("F5 REFUSAL: the server's refusal is shown in the open panel, and nothing claims success", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
     const commands = commandsStub({ kind: "denied", message: "You are not authorized to make this change." });
-    render(<Manufacturers commands={commands} />);
+    render(<Manufacturers commands={commands} hasCapability={() => true} />);
     await screen.findByText("Alpha Mfg");
     fireEvent.click(screen.getByRole("button", { name: "New Manufacturer" }));
     fireEvent.change(screen.getByLabelText("Manufacturer ID"), { target: { value: "m-x" } });
@@ -114,9 +116,45 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
 
   it("EMPTY: distinct from denied/unavailable, and points at the create action the page has", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: [], invalidCount: 0 });
-    render(<Manufacturers />);
+    render(<Manufacturers hasCapability={() => true} />);
     await screen.findByText(/No manufacturers are recorded yet/);
     expect(screen.getByRole("button", { name: "New Manufacturer" })).toBeTruthy();
+  });
+
+  // UI PERMISSION PARITY (PERM-UI round 2): New / Rename need inventory.catalog.manage; Status needs inventory.catalog.activate.
+  it("PERM-UI: a non-holder sees the list and no New Manufacturer, Rename or Status", async () => {
+    fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
+    render(<Manufacturers hasCapability={() => false} />);
+    await screen.findByText("Alpha Mfg");
+    expect(screen.queryByRole("button", { name: "New Manufacturer" })).toBeNull();
+    expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Rename/ })).toBeNull();
+    expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Status/ })).toBeNull();
+  });
+
+  it("PERM-UI: manage offers New and Rename only; activate offers Status only; no answer offers nothing", async () => {
+    fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
+    const view = render(<Manufacturers hasCapability={(c) => c === "inventory.catalog.manage"} />);
+    await screen.findByText("Alpha Mfg");
+    expect(screen.getByRole("button", { name: "New Manufacturer" })).toBeTruthy();
+    expect(within(rowOf("Alpha Mfg")).getByRole("button", { name: /Rename/ })).toBeTruthy();
+    expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Status/ })).toBeNull();
+    view.unmount();
+    const view2 = render(<Manufacturers hasCapability={(c) => c === "inventory.catalog.activate"} />);
+    await screen.findByText("Alpha Mfg");
+    expect(within(rowOf("Alpha Mfg")).getByRole("button", { name: /Status/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New Manufacturer" })).toBeNull();
+    expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Rename/ })).toBeNull();
+    view2.unmount();
+    render(<Manufacturers />);
+    await screen.findByText("Alpha Mfg");
+    expect(screen.queryByRole("button", { name: "New Manufacturer" })).toBeNull();
+  });
+
+  it("PERM-UI: an empty list for a non-holder does not point at a create action it does not have", async () => {
+    fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: [], invalidCount: 0 });
+    render(<Manufacturers hasCapability={() => false} />);
+    await screen.findByText(/No manufacturers are recorded yet/);
+    expect(screen.queryByText(/New Manufacturer/)).toBeNull();
   });
 
   it("DENIED: distinct wording from EMPTY and UNAVAILABLE", async () => {
