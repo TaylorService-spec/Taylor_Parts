@@ -24,7 +24,7 @@ import "./contracts/customerImportContract.js";
 import "./contracts/equipmentImportContract.js";
 import "./contracts/inventoryImportContract.js";
 import "./contracts/serviceHistoryImportContract.js";
-import { parseCsv } from "../partMaster/csvMigrationAnalysis.js";
+import { parseCsv } from "../partMaster/csvParse.js";
 import {
   PART_CANONICAL_FIELDS,
   PART_REQUIRED_FIELDS,
