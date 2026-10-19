@@ -17,11 +17,11 @@
 // word it renders is either a governed fact from those reads or presentation vocabulary mapped 1:1
 // from one. Where the authority is silent, the queue is silent too:
 //
-//   RCV-G5 — canonical purchase_orders carry NO business order number anywhere in the repository
-//            (procurementService.ts creates them at auto-generated doc ids; no poNumber field
-//            exists). The doc id is an opaque storage key and is NEVER promoted to a label —
-//            supplier rows state the absence instead. When a governed PO reference ships, only
-//            buildSupplierQueueRow changes.
+//   RCV-G5 — a canonical purchase order's business number is its externalPoNumber (EOS
+//            supplier_purchase_orders.external_po_number, returned by the list and progress reads;
+//            REVISED by Firebase exit B3-x -- on Firebase the document had none). Shown when the
+//            order has one; an order without one states the absence. The doc id is an opaque
+//            storage key and is NEVER promoted to a label.
 //   RCV-G6 — the list read carries NO per-row receipt progress (progress exists only per order,
 //            via fetchPurchaseOrderProgress, and is shown when a row is OPENED). The queue renders
 //            no progress column rather than fabricating "Not started" for orders it has not read.
@@ -134,9 +134,10 @@ export function buildSupplierQueueRow(po, supplierNamesById = {}) {
     key: `SUPPLIER:${po.purchaseOrderId}`,
     journey: RECEIVING_JOURNEY.SUPPLIER,
     journeyWords: JOURNEY_WORDS[RECEIVING_JOURNEY.SUPPLIER],
-    // RCV-G5 — no governed business reference exists for canonical POs. null means "state the
-    // absence"; the doc id is carried ONLY inside `open` as the opaque navigation argument.
-    orderReference: null,
+    // RCV-G5 (revised, Firebase exit B3-x) — the order's governed business number is externalPoNumber, which the EOS server states when
+    // the order has one. null means "state the absence"; the doc id is carried ONLY inside `open` as the opaque navigation argument and
+    // is never promoted to a reference.
+    orderReference: typeof po.externalPoNumber === "string" && po.externalPoNumber.trim().length > 0 ? po.externalPoNumber.trim() : null,
     // The two journeys' absences are DIFFERENT facts and carry different words (frame 1e): here no
     // order-number authority exists at all; a reorder row's external PO number is a real governed
     // field that happens to be absent on that record. Each surface says its own truth, and the

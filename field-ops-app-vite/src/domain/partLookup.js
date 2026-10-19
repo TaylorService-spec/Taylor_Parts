@@ -251,7 +251,7 @@ function stateForStatus(status) {
   return FIELD_STATE.READ_FAILED;
 }
 
-const NOT_SWITCHED_ON = "Built and governed, but not switched on in this environment yet.";
+const NOT_SWITCHED_ON = "Built and governed, but not switched on in this environment yet, or not available to your role.";
 const STILL_READING = "Reading…";
 
 /** The reason line for a read that has not produced a value, in that read's own terms. */

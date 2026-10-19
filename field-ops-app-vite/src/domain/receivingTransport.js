@@ -316,6 +316,8 @@ export function validatePurchaseOrderProgress(data) {
     purchaseOrderId: data.purchaseOrderId,
     supplierId: data.supplierId ?? null,
     supplierName: data.supplierName ?? null,
+    // B3-x (RCV-G5 revised): the order's governed business number when the server states one (externalPoNumber); null otherwise.
+    externalPoNumber: isNonBlankString(data.externalPoNumber) ? data.externalPoNumber.trim() : null,
     storedStatus: data.storedStatus ?? null,
     derivedState: data.derivedState,
     receivable: data.receivable,

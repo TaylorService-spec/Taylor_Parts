@@ -39,7 +39,7 @@ import {
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, REORDER_POSTGRES_ACTIVE, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
-import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSupplierOptions, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readReceipt, readTruckStock } from "./partsReads.js";
+import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSupplierOptions, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readPartBalance, readReceipt, readTruckStock } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import {
   listReceivableSupplierPurchaseOrders, listSupplierReceivingLocationOptions, readSupplierPurchaseOrderProgress, receiveSupplierPurchaseOrder,
@@ -137,6 +137,9 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "listSupplierReceivingLocationOptions",
   // THE FROZEN LEGACY NOTES, archived (B3, ruling 8): read only, inventory.action.read; empty until the held copy.
   "listLegacyInventoryActionNotes",
+  // THE PART BALANCE (Firebase exit B3-x): on-hand / reserved / available / on-order of ONE Part, three-valued, scoped to the caller's
+  // companies and warehouses -- inventory.transaction.read (the on-hand read's key).
+  "readPartBalance",
   // RECORDS AND REPORTING (Firebase exit B4, DECISIONS #B4). Each is its OWN authority -- not behind the Reorder activation boundary: the Account's imported
   // service history (customer.record.read + the caller's companies), the Data Import job history (admin.dataImport.execute), the saved report definitions
   // (reportDefinition.read, the caller's own), a report run (report.<object>.read + fields + the caller's companies) and the three performance-goal reads.
@@ -261,6 +264,7 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   readSupplierPurchaseOrderProgress: "/operations/inventory",
   listSupplierReceivingLocationOptions: "/operations/inventory",
   listLegacyInventoryActionNotes: "/operations/inventory",
+  readPartBalance: "/operations/inventory",
   receiveSupplierPurchaseOrder: "/operations/inventory",
   listImportedServiceHistory: "/operations/inventory",
   listDataImportJobs: "/operations/inventory",
@@ -389,7 +393,7 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "listPartSupplierItems", "createPartSupplierItem", "updatePartSupplierItem", "setPartSupplierItemStatus", "setPreferredPartSupplierItem",
   // B3: supplier purchase order receiving and the archived notes sit behind the same boundary as the receiving they extend.
   "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "receiveSupplierPurchaseOrder",
-  "listLegacyInventoryActionNotes",
+  "listLegacyInventoryActionNotes", "readPartBalance",
 ]);
 
 export type OperationsApiFailureCode =
@@ -528,6 +532,10 @@ export async function executeOperation(
       case "readInventoryMovements": {
         const { actor, pool } = await reorderActor();
         return ok(await readInventoryMovements({ pool }, actor, request.input ?? {}));
+      }
+      case "readPartBalance": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readPartBalance({ pool }, actor, request.input ?? {}));
       }
       case "listReceipts": {
         const { actor, pool } = await reorderActor();

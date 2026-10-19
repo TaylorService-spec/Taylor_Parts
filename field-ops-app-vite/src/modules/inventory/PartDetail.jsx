@@ -17,6 +17,7 @@ import {
   partDetailBlockedMessage,
 } from "../../domain/partDetailView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
+import { usePartBalance, BALANCE_STATUS } from "../../hooks/usePartBalance.js";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
@@ -74,6 +75,8 @@ import {
   partLocationSection,
   partUnitSection,
   partPurchasingSection,
+  partBalanceView,
+  partNoHistoryRecommendation,
   partActivityRows,
   partReorderPointDisplay,
   PART_SECTION_STATE,
@@ -1386,6 +1389,9 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // made about EVERY part. The two ledger bands below render an explicit unavailable state instead.
   const { transactions, healthEntries, loading, error: ledgerError } = useInventoryLedger();
   const ledgerUnavailable = !loading && Boolean(ledgerError);
+  // B3-x: the governed balance (on hand / reserved / available / on order, by warehouse). OFF where the environment has not switched the
+  // read on, in which case nothing is asked and the stated "not available" sentences below stand.
+  const partBalance = usePartBalance(resolvedPartId);
   // Wave 6 Owner Decision (2026-08-15) -- must be called unconditionally, before any early
   // return below, per the Rules of Hooks; the derived name-lookup map itself is computed
   // further down, after `canonicalPart` resolves.
@@ -1450,7 +1456,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // WORKSTREAM 2B: `warehouseId` is handed back by the control that was gated on it, so the
   // warehouse that enabled the button is the one written. The trusted command re-reads it and
   // derives the operating company; nothing here interprets or defaults it.
-  async function handleRequestReorder(manualQty, warehouseId) {
+  async function handleRequestReorder(manualQty, warehouseId, recommendation = health?.recommendation) {
     setReorderSubmitting(true);
     setReorderError(null);
     try {
@@ -1459,7 +1465,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       await requestReorderForRecommendation({
         partId: resolvedPartId,
         warehouseId,
-        recommendation: health.recommendation,
+        recommendation,
         manualQty,
       });
     } catch (err) {
@@ -1550,9 +1556,53 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const informationRows = partInformationRows(part, manufacturerName);
   const locationSection = partLocationSection();
   const unitSection = partUnitSection(part);
-  const purchasing = partPurchasingSection();
+  const balanceReady = partBalance.status === BALANCE_STATUS.READY;
+  const purchasing = partPurchasingSection(balanceReady ? partBalance.balance : null);
+  const warehouseLabel = (id) => reorderWarehouses.options?.find?.((o) => o.value === id)?.label ?? id;
+  const balanceView = balanceReady ? partBalanceView(partBalance.balance, warehouseLabel) : null;
   const activityRows = partActivityRows(partTransactions);
   const reorderPointDisplay = partReorderPointDisplay(health);
+
+  // Site-work r4 C, Fix 1: requestable when there is no request at all, OR the most-recent one has reached a terminal status. Withheld
+  // (fail-closed) while the read is loading or has failed, same as every other gate on this page. THE GATE IS UNCHANGED BY THE MOVE INTO A
+  // BAND (ND-28: sharing a card does not make the informational number above it the authority for the command). B3-x: one entry, used both
+  // under a forecast and -- for a Part the ledger has nothing on -- under the honest empty state.
+  const reorderEntry = (recommendation, noHistory) =>
+    !reorderRequestLoading && !reorderRequestError && (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) ? (
+      <>
+        {reorderError && <p className="ns-state--na">{reorderError}</p>}
+        {/* WORKSTREAM 2B. The request names a governed Warehouse, and the trusted command derives its operating company from that. A part
+            is not a place: nothing on this page knows where the shortage is, so it is asked, and it is asked ABOVE the button rather than
+            beside it -- the band's row is the command and its disclosure, and a governed input is neither. Empty until answered, which
+            leaves the button off. */}
+        <ReorderWarehouseSelect
+          id="part-detail-reorder-warehouse"
+          options={reorderWarehouses.options}
+          loading={reorderWarehouses.loading}
+          error={reorderWarehouses.error}
+          value={reorderWarehouseId}
+          onChange={setReorderWarehouseId}
+        />
+        <span className="ns-reorder-row">
+          <RequestReorderControl
+            recommendation={recommendation}
+            onSubmit={(manualQty, warehouseId) => handleRequestReorder(manualQty, warehouseId, recommendation)}
+            submitting={reorderSubmitting}
+            alreadyRequested={false}
+            warehouseId={reorderWarehouseId}
+          />
+          {/* ND-28, WHERE THE FRAME PUTS IT. The figures above are derived from this part's own ledger movements; the reorder request is
+              a governed command. The Owner's ruling is that the informational number does not become the authority for the command
+              merely because they share a card -- and the one place a reader is most likely to assume otherwise is the moment they reach
+              for the button directly beneath the numbers. */}
+          <PartsInfoDisclosure label="Request reorder — what these figures do and do not decide">
+            {noHistory
+              ? "This part has no movements in your warehouse scope, so there is no forecast to base a quantity on: you state the quantity. Raising a request starts the governed reorder workflow, which is reviewed and assigned by the people who hold that authority."
+              : "The figures above are derived from this part’s movements in the work-order and receiving ledger. They are informational: they do not authorise the reorder, and they do not set its quantity. Raising a request starts the governed reorder workflow, which is reviewed and assigned by the people who hold that authority."}
+          </PartsInfoDisclosure>
+        </span>
+      </>
+    ) : null;
 
   const reorderWorkflowCard =
     !reorderRequestLoading && !reorderRequestError && reorderRequest ? (
@@ -1773,58 +1823,22 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                       unconditionally enabled; a frame cannot loosen a gate, and ND-28 is explicit
                       that sharing a card does not make the informational number above it the
                       authority for the command. */}
-                  {!reorderRequestLoading &&
-                    !reorderRequestError &&
-                    (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) && (
-                      <>
-                        {reorderError && <p className="ns-state--na">{reorderError}</p>}
-                        {/* WORKSTREAM 2B. The request names a governed Warehouse, and the trusted
-                            command derives its operating company from that. A part is not a place:
-                            nothing on this page knows where the shortage is, so it is asked, and it
-                            is asked ABOVE the button rather than beside it -- the band's row is the
-                            command and its disclosure, and a governed input is neither. Empty until
-                            answered, which leaves the button off. */}
-                        <ReorderWarehouseSelect
-                          id="part-detail-reorder-warehouse"
-                          options={reorderWarehouses.options}
-                          loading={reorderWarehouses.loading}
-                          error={reorderWarehouses.error}
-                          value={reorderWarehouseId}
-                          onChange={setReorderWarehouseId}
-                        />
-                        <span className="ns-reorder-row">
-                          <RequestReorderControl
-                            recommendation={health.recommendation}
-                            onSubmit={handleRequestReorder}
-                            submitting={reorderSubmitting}
-                            alreadyRequested={false}
-                            warehouseId={reorderWarehouseId}
-                          />
-                          {/* ND-28, WHERE THE FRAME PUTS IT. The figures above are derived from this
-                              part's own ledger movements; the reorder request is a governed command.
-                              The Owner's ruling is that the informational number does not become the
-                              authority for the command merely because they share a card -- and the
-                              one place a reader is most likely to assume otherwise is the moment
-                              they reach for the button directly beneath the numbers. */}
-                          <PartsInfoDisclosure label="Request reorder — what these figures do and do not decide">
-                            The figures above are derived from this part&rsquo;s movements in the
-                            work-order and receiving ledger. They are informational: they do not
-                            authorise the reorder, and they do not set its quantity. Raising a
-                            request starts the governed reorder workflow, which is reviewed and
-                            assigned by the people who hold that authority.
-                          </PartsInfoDisclosure>
-                        </span>
-                      </>
-                    )}
+                  {reorderEntry(health.recommendation, false)}
                 </>
               ) : (
                 /* A part with no ledger activity is a VALID part. Saying "no forecast" is a
                    different statement from saying "no stock", and only the first is known. */
-                <HonestState
-                  state={HONEST_STATE.EMPTY}
-                  subject="this part"
-                  detail="No ledger movements have been recorded for this part, so no stock forecast can be made. That is not a statement about how many exist."
-                />
+                <>
+                  <HonestState
+                    state={HONEST_STATE.EMPTY}
+                    subject="this part"
+                    detail="No ledger movements have been recorded for this part, so no stock forecast can be made. That is not a statement about how many exist."
+                  />
+                  {/* B3-x. A Part with nothing in the ledger is exactly the Part that most needs ordering, and the request control used to
+                      live only under a forecast it could not have: the page offered no way to ask for it. The manual-quantity request is
+                      offered here, on the same gates (reorder.request.create.manual, a governed warehouse, no request already open). */}
+                  {reorderEntry(partNoHistoryRecommendation(resolvedPartId), true)}
+                </>
               )}
 
               {/* SERIALIZED / LOT UNITS — gated on the Part's own tracking mode through the governed
@@ -1870,10 +1884,38 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   availability. Both confusions are cheap to make and expensive to act on, so it
                   stays on the page at full length. */}
               <p className="ns-band__note">{locationSection.note}</p>
-              <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Location detail" detail={locationSection.detail} />
-              <PartsInfoDisclosure label="Where it is — why locations cannot be listed">
-                {locationSection.detailLong}
-              </PartsInfoDisclosure>
+              {balanceView ? (
+                /* B3-x: the governed balance answered. Each figure keeps its three-valued state -- UNKNOWN reads "Unknown", never 0. */
+                <>
+                  <dl className="ns-rail__dl" aria-label="Governed stock position">
+                    {balanceView.rows.map((row) => (
+                      <div key={row.key}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {balanceView.locations.length > 0 ? (
+                    <ul className="fo-list" aria-label="On hand by warehouse">
+                      {balanceView.locations.map((l) => <li key={l.key}>{l.label} · {l.quantity}</li>)}
+                    </ul>
+                  ) : null}
+                  <p className="ns-band__note">{balanceView.scopeNote}</p>
+                </>
+              ) : partBalance.status === BALANCE_STATUS.LOADING ? (
+                <HonestState state={HONEST_STATE.LOADING} subject="the governed stock position" />
+              ) : partBalance.status === BALANCE_STATUS.DENIED ? (
+                <HonestState state={HONEST_STATE.DENIED} subject="Stock position" detail="The governed stock position is not available to your role." />
+              ) : partBalance.status === BALANCE_STATUS.FAILED ? (
+                <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Stock position" detail="The governed stock position could not be read. This is not a statement about how much there is." />
+              ) : (
+                <>
+                  <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Location detail" detail={locationSection.detail} />
+                  <PartsInfoDisclosure label="Where it is — why locations cannot be listed">
+                    {locationSection.detailLong}
+                  </PartsInfoDisclosure>
+                </>
+              )}
             </div>
           </div>
         </RuledSection>
@@ -1905,12 +1947,16 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                 {purchasing.rows.map((row) => (
                   <div key={row.key}>
                     <dt>{row.label}</dt>
-                    <dd className="ns-state--na">
-                      {row.absence}
-                      <PartsInfoDisclosure label={`${row.label} — why this is not available`} align="end">
-                        {purchasing.detail}
-                      </PartsInfoDisclosure>
-                    </dd>
+                    {row.value != null ? (
+                      <dd>{row.value}</dd>
+                    ) : (
+                      <dd className="ns-state--na">
+                        {row.absence}
+                        <PartsInfoDisclosure label={`${row.label} — why this is not available`} align="end">
+                          {purchasing.detail}
+                        </PartsInfoDisclosure>
+                      </dd>
+                    )}
                   </div>
                 ))}
               </dl>

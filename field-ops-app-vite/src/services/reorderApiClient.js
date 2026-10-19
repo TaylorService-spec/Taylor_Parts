@@ -54,6 +54,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readSupplierPurchaseOrderProgress",
   "listSupplierReceivingLocationOptions",
   "listLegacyInventoryActionNotes",
+  // Firebase exit B3-x: one Part's on-hand / reserved / available / on-order.
+  "readPartBalance",
   // Firebase exit B4: records and reporting (services/eosRecordsClients.js) -- imported service history, Data Import history, Report Builder / Saved Reports and
   // the three performance-goal reads. Each is its own authority on the server (not behind the Reorder boundary).
   "listImportedServiceHistory",

@@ -220,6 +220,42 @@ export function partLocationSection() {
 }
 
 /**
+ * The recommendation for a Part the stock ledger has nothing on (no on-hand, no movement in the caller's scope): NEEDS_PLANNING, the analytics
+ * engine's own "nothing to compute" state, so the manual-quantity request control -- gated by reorder.request.create.manual -- is reachable for
+ * exactly the Part that most needs ordering. A literal (the engine's zero-usage result) rather than an engine call, so this module stays
+ * import-light; it derives no quantity and no urgency.
+ */
+export function partNoHistoryRecommendation(partId) {
+  return {
+    partId, availableStock: 0, reorderPoint: 0, daysRemaining: Infinity, recommendedOrderQty: 0,
+    recommendationStatus: "NEEDS_PLANNING", urgency: null, modelVersion: "EPIC3_LINEAR_V1",
+  };
+}
+
+/**
+ * The governed balance (readPartBalance), as rows. Each figure keeps its three-valued state: UNKNOWN is the word "Unknown" and is never a 0,
+ * and a serial-tracked Part's quantity figures are "Counted by unit" (its units are individually tracked, not summed).
+ * `locations` is on-hand by warehouse, labelled through `labelOf` (an id that will not resolve stays an id rather than a made-up name).
+ */
+export function partBalanceView(balance, labelOf = (id) => id) {
+  const word = (f) => {
+    if (f?.state === "KNOWN" && Number.isFinite(f.value)) return String(f.value);
+    if (f?.state === "NOT_COUNTED_BY_QUANTITY") return "Counted by unit";
+    return "Unknown";
+  };
+  return {
+    rows: [
+      { key: "onHand", label: "On Hand", value: word(balance?.onHand) },
+      { key: "reserved", label: "Reserved", value: word(balance?.reserved) },
+      { key: "available", label: "Available", value: word(balance?.available) },
+    ],
+    locations: (Array.isArray(balance?.byLocation) ? balance.byLocation : [])
+      .map((l) => ({ key: l.warehouseId, label: labelOf(l.warehouseId), quantity: l.quantity })),
+    scopeNote: "Counted in your warehouses and companies only; a truck is not warehouse stock.",
+  };
+}
+
+/**
  * Serialized or lot units.
  *
  * Gated on the Part's own tracking mode, resolved through the governed boundary translator rather
@@ -270,17 +306,17 @@ export function partUnitSection(part) {
  * export together, so that the field cannot reach the same person by a longer route. On-order is a
  * governed fact behind an inactive capability, which is a different sentence from a missing one.
  */
-export function partPurchasingSection() {
+export function partPurchasingSection(balance = null) {
+  // B3-x: where the governed balance read answered, On Order is its figure (UNKNOWN is a stated absence, never 0).
+  const onOrder = balance?.onOrder;
+  const onOrderRow = onOrder?.state === "KNOWN" && Number.isFinite(onOrder.value)
+    ? { key: "onOrder", label: "On Order", value: String(onOrder.value), absence: null }
+    : onOrder?.state === "UNKNOWN"
+      ? { key: "onOrder", label: "On Order", value: null, absence: "Unknown — no purchase order mentions this part" }
+      : { key: "onOrder", label: "On Order", value: null, absence: "Not available in this environment" };
   return {
     heading: "Purchasing context",
-    rows: [
-      {
-        key: "onOrder",
-        label: "On Order",
-        value: null,
-        absence: "Not available in this environment",
-      },
-    ],
+    rows: [onOrderRow],
     detail:
       "Outstanding inbound quantity is a governed fact from the balance read, which is not switched " +
       "on here. Unit cost and sell price are refused on this record: the Part carries no cost or " +

@@ -116,8 +116,9 @@ async function main() {
     // text and thereby FAILED a legitimate governed externalPoNumber (`PO-LIVE-1788220473108`) —
     // the gate inventing a defect. The live gate does not reverse-engineer field provenance from
     // string shape. What it CAN prove live is journey-conditional:
-    //   Supplier PO rows have NO governed business number (RCV-G5) → the primary reference MUST be
-    //   the stated absence. Reorder rows may carry their governed external PO reference, or state
+    //   Supplier PO rows carry their governed externalPoNumber when the order has one (RCV-G5, revised
+    //   by Firebase exit B3-x) and otherwise state the absence -- never an empty reference. Reorder rows
+    //   may carry their governed external PO reference, or state
     //   its own absence. WHICH field supplied a visible reference is the source contract's job
     //   (receivingWorkspaceQueue.test.mjs: orderReference ← externalPoNumber only; ids only
     //   inside `open`).
@@ -131,9 +132,7 @@ async function main() {
       const orderPrimary = (await row.locator("td[data-label='Order']").innerText()).trim().split("\n")[0].trim();
       if (journey === "Supplier PO · multi-scan") {
         suppliers += 1;
-        if (orderPrimary !== "No order number recorded") {
-          violations.push(`supplier row shows '${orderPrimary}' instead of the stated absence`);
-        }
+        if (orderPrimary.length === 0) violations.push("supplier row has an empty Order reference");
       } else if (journey === "Reorder PO · full quantity") {
         reorders += 1;
         if (orderPrimary.length === 0) violations.push("reorder row has an empty Order reference");
@@ -141,13 +140,13 @@ async function main() {
         violations.push(`unknown journey words '${journey}'`);
       }
     }
-    record("supplier rows state the RCV-G5 absence; reorder rows carry a reference or state theirs",
+    record("supplier rows carry their order number or state its absence; reorder rows carry a reference or state theirs",
       violations.length === 0,
       violations.slice(0, 2).join(" · ") || `${suppliers} supplier, ${reorders} reorder rows inspected`);
     record("every row names its journey in the governed words", suppliers + reorders === rows,
       `${rows} rows`);
   } else {
-    skip("supplier rows state the RCV-G5 absence; reorder rows carry a reference or state theirs", "no queue rows in this dataset");
+    skip("supplier rows carry their order number or state its absence; reorder rows carry a reference or state theirs", "no queue rows in this dataset");
     skip("every row names its journey in the governed words", "no queue rows in this dataset");
   }
 

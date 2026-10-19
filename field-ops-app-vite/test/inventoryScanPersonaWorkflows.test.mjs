@@ -50,7 +50,9 @@ const PERSONA_SCAN_CAPABILITIES = Object.freeze({
 const { LOOKUP, TRANSFER, CYCLE_COUNT, PUT_AWAY, PICK, MOVE_STOCK, SUPPLIER_RECEIVING, RETURN_INTAKE } = SCAN_WORKFLOW;
 const FLOOR = [LOOKUP, TRANSFER, CYCLE_COUNT, PUT_AWAY, PICK, MOVE_STOCK];
 
-// What each persona is OFFERED (receiving transport is not switched on in nonprod: RECEIVING_TRANSPORT_READY=false).
+// What each persona is OFFERED while the receiving transport is NOT ready (the fail-closed arm, stated explicitly as receivingReady=false
+// below). Nonprod's platform-sandbox now has RECEIVING_TRANSPORT_READY=true (Firebase exit B3-x; DQ-034 predated B3): the ready arm is
+// pinned by the next block, and production stays false (scripts/environmentArchitecture.test.mjs).
 const EXPECTED_AVAILABLE = Object.freeze({
   administrator: FLOOR,
   ownerExecutive: [LOOKUP],
@@ -119,6 +121,13 @@ test("receivers (administrator, dispatcher, partsAssociate) see receiving as NOT
   for (const persona of ["administrator", "dispatcher", "partsAssociate"]) {
     const r = workflowsFor(PERSONA_SCAN_CAPABILITIES[persona]);
     assert.equal(reasonOf(r, SUPPLIER_RECEIVING), UNAVAILABLE_REASON.NOT_READY, persona);
+  }
+});
+
+test("B3-x: once the transport is ready (nonprod's platform-sandbox), the receivers are OFFERED supplier receiving and nobody else is", () => {
+  for (const [persona, held] of Object.entries(PERSONA_SCAN_CAPABILITIES)) {
+    const offered = available(workflowsFor(held, true)).includes(SUPPLIER_RECEIVING);
+    assert.equal(offered, held.includes("inventory.stock.receive"), persona);
   }
 });
 

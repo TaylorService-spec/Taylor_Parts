@@ -923,6 +923,9 @@ functions/scripts/exportBinSnapshot.js
 functions/scripts/loadSupplierPoFixture.js
 functions/test/supplierPoFixtureLoaderPostgres.test.mjs
 functions/migrations/1764630000000_warehouse-receiving-bins-on-eos.sql
+# Firebase exit B3-x (DECISIONS #B3-x): inventory and purchasing gap closure -- the Part balance read, receipts, receipt correction, serial lookup.
+functions/test/partBalancePostgres.test.mjs
+functions/src/eosOps/partsReads.ts
 # Firebase exit B4 (DECISIONS #B4): records and reporting off Firebase -- imported service history, Data Import of SERVICE_HISTORY, Report Builder / Saved Reports,
 # performance goals. The suites AND their subjects (the operations, the pure pipeline, the shared CSV parser the intake now imports, the migration).
 functions/test/reportPipeline.test.mjs

@@ -113,8 +113,15 @@ test("a governed refusal is a bounded outcome, never a raw message; a thrown tra
     assert.equal(supplierReceivingOutcomeForFailure({ ok: false, code }), outcome, code);
     const s = server({ receiveSupplierPurchaseOrder: { ok: false, code, message: "secret detail /internal/path" } });
     const r = await createSupplierReceivingClient({ call: s.call }).submitCanonicalReceive(REQUEST);
-    assert.deepEqual(Object.keys(r).sort(), ["receipt", "status"]);
-    assert.equal(JSON.stringify(r).includes("secret"), false);
+    if (outcome === RECEIVING_OUTCOME.UNAVAILABLE || outcome === RECEIVING_OUTCOME.UNAUTHENTICATED) {
+      // A failure the platform did not govern: the bounded word only, NEVER text.
+      assert.deepEqual(Object.keys(r).sort(), ["receipt", "status"]);
+      assert.equal(JSON.stringify(r).includes("secret"), false, code);
+    } else {
+      // B3-x: a GOVERNED refusal carries the command's own sentence beside the bounded status (so "conflict" is not all the screen can say).
+      assert.deepEqual(Object.keys(r).sort(), ["message", "receipt", "status"], code);
+      assert.equal(r.message, "secret detail /internal/path");
+    }
   }
   const throwing = createSupplierReceivingClient({ call: async () => { throw new Error("boom"); } });
   assert.equal((await throwing.submitCanonicalReceive(REQUEST)).status, RECEIVING_OUTCOME.UNAVAILABLE);
