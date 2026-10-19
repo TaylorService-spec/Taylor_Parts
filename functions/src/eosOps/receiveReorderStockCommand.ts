@@ -92,7 +92,7 @@ import { authorizeObjectAction, postgresContextualReader } from "./contextualAut
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import type { OpsLocationType } from "./operatingCompanyCustody.js";
 import { withActorAuthority } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 // Named SCHEMA, matching every other eos_ops repository -- and matching the form the Reorder
 // runtime census recognizes as a SCHEMA-QUALIFIED PostgreSQL name. An unrecognized qualifier
@@ -561,7 +561,7 @@ export async function receiveReorderStockWithin(
   {
 
     // ---- 0. CAPABILITY FIRST (requireActor), THEN COMPANY (#235 / #237): none at all is refused before any row is read ----
-    const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
+    const authority = await resolveInventoryCompanyAuthority(client, actor.tenantId, actor.principalId);
     if (authority.companyKeys.length === 0) {
       refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "receiving stock requires operating-company authority; this principal has none");
     }

@@ -31,7 +31,7 @@ import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./synth
 import { currentMobileLocationIds } from "./mobileStockAuthority.js";
 import { listTruckViews } from "./truckRegistryAdministration.js";
 import { administrationReachTargets } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -97,7 +97,7 @@ export async function scopedWarehouseIds(
 
 /** CAPABILITY FIRST (the caller's requireCapability), THEN COMPANY (#235 / #237): the operating-company KEYS the caller reaches; none at all is a refusal, not an empty answer. */
 async function reachableCompanyKeys(c: Pick<PoolClient, "query">, actor: ReorderActor, what: string): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
+  const authority = await resolveInventoryCompanyAuthority(c, actor.tenantId, actor.principalId);
   if (authority.companyKeys.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", `${what} requires operating-company authority; this principal has none`);
   return authority.companyKeys;
 }
@@ -201,11 +201,7 @@ export async function readPartBalance(deps: { readonly pool: Pool }, actor: Reor
   if (!ID(i.partId)) refuse("PART_ID_REQUIRED", "INVALID_INPUT", "partId is required");
   const partId = i.partId as string;
   return withReadSnapshot(deps.pool, async (c) => {
-    const authority = await resolveCompanyAuthority(c, actor.tenantId, actor.principalId);
-    if (authority.companyKeys.length === 0) {
-      refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "reading stock balances requires operating-company authority; this principal has none");
-    }
-    const keys = [...authority.companyKeys];
+    const keys = [...(await reachableCompanyKeys(c, actor, "reading stock balances"))];
     const part = await c.query(`SELECT control_type::text AS control_type FROM eos_ops.parts WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, partId]);
     if (part.rows.length === 0) refuse("PART_NOT_FOUND", "NOT_FOUND", "no such Part");
     const serialTracked = SERIAL_CONTROL_TYPES.includes(String(part.rows[0].control_type));

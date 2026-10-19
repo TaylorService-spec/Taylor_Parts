@@ -51,7 +51,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import { EOS_PLACEMENT_RECORD_CAPABILITY, insertPlacements, planPlacements, readPlacements } from "./binPlacementOperations.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -246,7 +246,7 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
     }
 
     // ---- 2b. COMPANY AUTHORITY (#235 / #237): capability first, then company -- none at all is refused before any row is read ----
-    const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+    const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
     if (authority.companyKeys.length === 0) {
       refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "relocating stock requires operating-company authority; this principal has none");
     }

@@ -41,8 +41,8 @@ import { authorizeObjectAction, postgresContextualReader } from "./contextualAut
 import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAuthority.js";
 import { lockStockLocation } from "./stockLocationLock.js";
 import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
-import { administrationReachTargets, principalHasProtectedAdministratorStanding, withActorAuthority } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { principalHasProtectedAdministratorStanding, withActorAuthority } from "./administrationReach.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 const SCHEMA = "eos_ops";
 
@@ -112,12 +112,9 @@ export async function correctReorderReceipt(
   try {
     await client.query("BEGIN");
     // CAPABILITY FIRST (above), THEN COMPANY (#235 / #237): none at all is refused before any row is read.
-    // G2 (Owner 2026-10-09, DECISIONS #227) is PRESERVED: a protected Administrator's audited VOID reaches every AUTHORIZED company by standing, so its company
-    // filter is that reach. Everyone else -- and every CORRECTED -- is held to the caller's own company authority.
-    const byStanding = kind === "VOID" && await principalHasProtectedAdministratorStanding(client, actor.tenantId, actor.principalId);
-    const companyKeys = byStanding
-      ? await administrationReachTargets(client, actor.tenantId, actor.principalId, "REORDER_QUEUE")
-      : (await resolveCompanyAuthority(client, actor.tenantId, actor.principalId)).companyKeys;
+    // The ONE resolver: a protected Administrator holds every governed company (Owner ruling OD-ISO-2, so G2's audited VOID is unchanged); everyone else is held
+    // to their own company authority. CORRECTED by an Administrator still reaches the unchanged scope refusal (a re-receive is the worker's act).
+    const companyKeys = (await resolveInventoryCompanyAuthority(client, actor.tenantId, actor.principalId)).companyKeys;
     if (companyKeys.length === 0) {
       refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "correcting a receipt requires operating-company authority; this principal has none");
     }

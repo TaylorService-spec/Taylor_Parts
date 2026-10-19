@@ -54,7 +54,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { PostgresTransferWriterState } from "../inventoryTransfer/transferWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -135,7 +135,7 @@ function requireCapability(actor: TransferOperationActor, act: keyof typeof EOS_
 
 /** CAPABILITY FIRST, THEN COMPANY (#235 / #237): the operating-company KEYS the caller reaches; none at all is refused before any row is read. */
 async function requireCompanyKeys(db: Queryable, actor: TransferOperationActor): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+  const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
   if (authority.companyKeys.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "transfers require operating-company authority; this principal has none");
   }
@@ -430,7 +430,8 @@ export async function createEosTransfer(deps: TransferOperationDeps, actor: Tran
           serialNumbers: serials, status: "REQUESTED", transferOrderNumber, idempotencyKey: value.idempotencyKey });
     } catch (err) {
       // The key belongs to a transfer of a company the caller does not reach (the replay lookup above is company-filtered): the ordinary key conflict.
-      if ((err as { code?: string }).code === "23505") refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a different transfer");
+      const e = err as { code?: string; constraint?: string };
+      if (e.code === "23505" && e.constraint === "transfer_orders_idempotency") refuse("IDEMPOTENCY_CONFLICT", "CONFLICT", "this idempotency key was already used for a different transfer");
       throw err;
     }
     await audit(db, actor, "transfer.create", created);

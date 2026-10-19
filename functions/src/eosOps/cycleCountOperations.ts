@@ -79,7 +79,7 @@ import { InventoryScopeError, resolveScopeLocation } from "./inventoryScopeAutho
 import type { PostgresCycleCountWriterState } from "../cycleCount/cycleCountWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 // ════════════════════ vocabulary ════════════════════
 
@@ -204,7 +204,7 @@ async function requireCompanyKeys(db: Queryable, actor: CycleCountActor, capabil
   } else if (!actor.capabilities.has(capabilityKey)) {
     refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${capabilityKey}`);
   }
-  const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+  const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
   if (authority.companyKeys.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "cycle counting requires operating-company authority; this principal has none");
   }

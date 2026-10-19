@@ -35,7 +35,7 @@ import { isSafeIdSegment, normalizeBinCode } from "../inventoryLocation/binRegis
 import type { PostgresPlacementWriterState } from "../inventoryLocation/placementWriterState.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
 import { withActorAuthority } from "./administrationReach.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -277,7 +277,7 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
     if (!actor.capabilities.has(EOS_PLACEMENT_RECORD_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_PLACEMENT_RECORD_CAPABILITY}`);
     // COMPANY AUTHORITY (#235 / #237): capability first, then company -- none at all is refused before any row is read, and a warehouse of a
     // company outside the caller's reads EXACTLY as a nonexistent one (a warehouse scope never reaches into another company's warehouse).
-    const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
+    const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
     if (authority.companyKeys.length === 0) {
       refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "recording a placement requires operating-company authority; this principal has none");
     }
