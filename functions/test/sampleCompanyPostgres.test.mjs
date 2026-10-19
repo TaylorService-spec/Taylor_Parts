@@ -285,8 +285,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 104 -> 105: 1764630000000 -- Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive. No Sample Company data.
 // 105 -> 106: 1764640000000 -- Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): the 38 report.* ids and performance.goal.read REGISTERED (39 capabilities, granted to nobody -- the mirrored grants are a separate change), plus eos_ops.imported_service_history, data_import_jobs, report_definitions and performance_goals. No Sample Company data.
 // 106 -> 107: 1764650000000 -- B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored role-capability grants for the 39 registered B4 keys; no capability, no schema. No Sample Company data.
-const PINNED_LAST_MIGRATION = "1764650000000_b4-report-goal-grant-parity";
-const PINNED_MIGRATION_COUNT = 107;
+// 107 -> 108: 1764660000000 -- P-1 governed supplier purchase order authoring (DECISIONS #P-1): five supplier.purchaseOrder.* capabilities and 27 grants plus authoring tables / columns. No Sample Company data.
+const PINNED_LAST_MIGRATION = "1764660000000_supplier-po-authoring";
+const PINNED_MIGRATION_COUNT = 108;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

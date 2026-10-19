@@ -770,7 +770,7 @@ export async function recordReorderPurchaseOrder(
   // The repository's governed refusals ARE answers (XLF 2026-09-30): a replay onto an ORDERED request, a second PO, or an
   // unknown request keep the repository's own code and are reported in the lifecycle's categories -- never a 500.
   const REPOSITORY_CATEGORY: Readonly<Record<string, ReorderLifecycleCategory>> = Object.freeze({
-    REQUEST_STATE_INVALID: "PRECONDITION_FAILED", PO_ALREADY_EXISTS: "CONFLICT", REQUEST_NOT_FOUND: "NOT_FOUND",
+    REQUEST_STATE_INVALID: "PRECONDITION_FAILED", PO_ALREADY_EXISTS: "CONFLICT", REQUEST_ON_SUPPLIER_PO: "CONFLICT", REQUEST_NOT_FOUND: "NOT_FOUND",
     SUPPLIER_NOT_FOUND: "NOT_FOUND", SUPPLIER_INACTIVE: "PRECONDITION_FAILED", SUPPLIER_COMPANY_UNRESOLVED: "PRECONDITION_FAILED",
     SELF_PURCHASE_REFUSED: "PRECONDITION_FAILED", PURCHASING_COMPANY_UNRESOLVED: "PRECONDITION_FAILED",
   });
@@ -912,6 +912,9 @@ export interface ReorderQueueItem {
   readonly cancellationReason: string | null;
   readonly receivedAt: string | null;
   readonly assignedEmployeeId: string | null;
+  /** P-1: the supplier purchase order this request is on (it is ORDERED there, not through a recorded Reorder PO), or null. */
+  readonly supplierPurchaseOrderId: string | null;
+  readonly supplierPurchaseOrderNumber: string | null;
   readonly currentOwner: string | null;
   /**
    * Is the CALLER the assigned Employee?
@@ -931,10 +934,16 @@ const QUEUE_SELECT = `
          r.purchasing_started_at, r.purchasing_notes, r.vendor_contacted,
          r.expected_availability_date, r.last_purchasing_update_at,
          r.cancelled_at, r.cancellation_reason, r.received_at,
-         r.operating_company_key, a.assigned_employee_id, a.assigned_by_principal_id
+         r.operating_company_key, a.assigned_employee_id, a.assigned_by_principal_id,
+         sp.purchase_order_id AS supplier_purchase_order_id, sp.external_po_number AS supplier_po_number
     FROM eos_ops.reorder_requests r
     LEFT JOIN eos_ops.reorder_request_assignments a
-      ON a.tenant_id = r.tenant_id AND a.reorder_request_id = r.id AND a.effective_to IS NULL`;
+      ON a.tenant_id = r.tenant_id AND a.reorder_request_id = r.id AND a.effective_to IS NULL
+    -- P-1: the supplier purchase order this request is ACTIVELY on (at most one: supplier_purchase_order_lines_one_active_request).
+    LEFT JOIN LATERAL (
+      SELECT l.purchase_order_id, p.external_po_number FROM eos_ops.supplier_purchase_order_lines l
+        JOIN eos_ops.supplier_purchase_orders p ON p.tenant_id = l.tenant_id AND p.id = l.purchase_order_id
+       WHERE l.tenant_id = r.tenant_id AND l.source_request_id = r.id AND l.link_released_at IS NULL LIMIT 1) sp ON TRUE`;
 
 const iso = (v: unknown): string | null =>
   v instanceof Date ? v.toISOString() : (v === null || v === undefined ? null : String(v));
@@ -972,6 +981,8 @@ const toItem = (
   cancellationReason: (r.cancellation_reason as string | null) ?? null,
   receivedAt: iso(r.received_at),
   assignedEmployeeId: (r.assigned_employee_id as string | null) ?? null,
+  supplierPurchaseOrderId: (r.supplier_purchase_order_id as string | null) ?? null,
+  supplierPurchaseOrderNumber: (r.supplier_po_number as string | null) ?? null,
   currentOwner,
   // Employee compared to Employee. A null caller Employee (an unlinked Principal) is never the
   // assignee, and a null assignment is nobody's.

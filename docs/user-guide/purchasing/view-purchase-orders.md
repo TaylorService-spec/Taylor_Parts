@@ -35,7 +35,10 @@
 - **"Purchase Orders unavailable" message:** this means the screen couldn't load the data — usually a permissions or connection issue. Try again, and if it persists, report it.
 - **List is empty:** no purchase orders exist yet, or none match your current filter — try switching to **All**.
 
+- **Two kinds of purchase order.** If you can see supplier purchase orders, a switcher at the top offers **Recorded orders** (this page) and **Supplier purchase orders** (multi-line orders raised, approved and sent in the app — see [Raise, approve and send a supplier purchase order](raise-a-supplier-purchase-order.md)). A request is on one kind, never both, and a request ordered on a supplier purchase order does not appear in the recorded list.
+
 ## Related
+- [Raise, approve and send a supplier purchase order](raise-a-supplier-purchase-order.md)
 - [Place the order and track purchasing](../inventory/place-the-order.md)
 - [Mark a reorder request received](../inventory/mark-reorder-received.md)
 - [Cancel or void a reorder request](../inventory/cancel-or-void-a-reorder.md)

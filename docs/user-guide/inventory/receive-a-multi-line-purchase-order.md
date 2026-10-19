@@ -13,10 +13,11 @@ system. In an environment that has not moved yet, the screen says that receiving
 switched on, rather than showing an empty list of orders — an empty list would claim there is nothing
 awaiting receipt, which is not something it can know there.
 
-**Where the orders come from.** There is no screen yet for raising a supplier purchase order in EOS.
-The old system had no screen for it either: its test orders were put there by operator seed scripts, not
-raised by a person. An order appears here only when an operator has loaded it for your company (in a
-test environment, the governed synthetic loader puts in two labelled SYNTHETIC/UAT orders). **If the
+**Where the orders come from.** A buyer raises a supplier purchase order under **Purchasing > Purchase
+Orders > Supplier purchase orders**, and once it is approved it appears here — see
+[Raise, approve and send a supplier purchase order](../purchasing/raise-a-supplier-purchase-order.md).
+Receiving a line in full also completes the request behind it. (In a test environment an operator can
+also load two labelled SYNTHETIC/UAT orders with the governed synthetic loader.) **If the
 list is empty, it says so: "No supplier purchase orders have been loaded in this environment." That is
 not the same as nothing being on order** — it means EOS holds none yet. Ask your administrator to load
 them; it does not mean something is broken.

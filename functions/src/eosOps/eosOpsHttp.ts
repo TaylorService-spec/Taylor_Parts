@@ -44,6 +44,9 @@ import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCom
 import {
   listReceivableSupplierPurchaseOrders, listSupplierReceivingLocationOptions, readSupplierPurchaseOrderProgress, receiveSupplierPurchaseOrder,
 } from "./supplierPurchaseOrderReceiving.js";
+import {
+  createSupplierPurchaseOrder, listPurchasableReorderRequests, listSupplierPurchaseOrders, readSupplierPurchaseOrder, transitionSupplierPurchaseOrder,
+} from "./supplierPurchaseOrderAuthoring.js";
 import { listLegacyInventoryActionNotes } from "./legacyInventoryActionNotes.js";
 import { listImportedServiceHistory } from "./importedServiceHistory.js";
 import { executeDataImport, listDataImportJobs, stageDataImport } from "./dataImportOperations.js";
@@ -134,6 +137,10 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   // THE CANONICAL SUPPLIER PURCHASE ORDER (Firebase exit B3, DECISIONS #B3): the orders awaiting receipt, one order's derived progress,
   // and the destinations it may be received into -- inventory.stock.receive + the caller's operating companies.
   "listReceivableSupplierPurchaseOrders",
+  // SUPPLIER PURCHASE ORDER AUTHORING (P-1): the reads. supplier.purchaseOrder.read (the picker: .create) + company authority; nothing here writes.
+  "listSupplierPurchaseOrders",
+  "readSupplierPurchaseOrder",
+  "listPurchasableReorderRequests",
   "readSupplierPurchaseOrderProgress",
   "listSupplierReceivingLocationOptions",
   // THE FROZEN LEGACY NOTES, archived (B3, ruling 8): read only, inventory.action.read; empty until the held copy.
@@ -200,6 +207,9 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // SUPPLIER PURCHASE ORDER RECEIVING (Firebase exit B3): dispatched by source type like its Reorder sibling, with NO fallback between the
   // two authorities. inventory.stock.receive + company authority + the WAREHOUSE scope over the destination.
   "receiveSupplierPurchaseOrder",
+  // P-1: supplier purchase order authoring -- the capability of the ACTION (create / approve / send / cancel) + company authority (+ the WAREHOUSE scope to create).
+  "createSupplierPurchaseOrder",
+  "transitionSupplierPurchaseOrder",
   // B3-x: the supplier-PO receipt correction (VOID): inventory.receipt.correct + company authority + the WAREHOUSE scope. No fallback to or from correctReorderReceipt.
   "correctSupplierPurchaseOrderReceipt",
   // RECORDS AND REPORTING (B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
@@ -264,6 +274,11 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   listReturnIntakeOptions: "/operations/inventory",
   recordReturnIntake: "/operations/inventory",
   listReceivableSupplierPurchaseOrders: "/operations/inventory",
+  listSupplierPurchaseOrders: "/operations/inventory",
+  readSupplierPurchaseOrder: "/operations/inventory",
+  listPurchasableReorderRequests: "/operations/inventory",
+  createSupplierPurchaseOrder: "/operations/inventory",
+  transitionSupplierPurchaseOrder: "/operations/inventory",
   readSupplierPurchaseOrderProgress: "/operations/inventory",
   listSupplierReceivingLocationOptions: "/operations/inventory",
   listLegacyInventoryActionNotes: "/operations/inventory",
@@ -398,6 +413,8 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   // B3: supplier purchase order receiving and the archived notes sit behind the same boundary as the receiving they extend.
   "listReceivableSupplierPurchaseOrders", "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "receiveSupplierPurchaseOrder",
   "listLegacyInventoryActionNotes", "readPartBalance", "correctSupplierPurchaseOrderReceipt",
+  // P-1: supplier purchase order authoring.
+  "listSupplierPurchaseOrders", "readSupplierPurchaseOrder", "listPurchasableReorderRequests", "createSupplierPurchaseOrder", "transitionSupplierPurchaseOrder",
 ]);
 
 export type OperationsApiFailureCode =
@@ -643,6 +660,26 @@ export async function executeOperation(
         // Employee the purchasing work happens to be assigned to.
         const { actor, pool } = await reorderActor();
         return ok(await receiveReorderStock({ pool }, actor, request.input ?? {}));
+      }
+      case "listSupplierPurchaseOrders": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listSupplierPurchaseOrders({ pool }, actor, request.input ?? {}));
+      }
+      case "readSupplierPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readSupplierPurchaseOrder({ pool }, actor, request.input ?? {}));
+      }
+      case "listPurchasableReorderRequests": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listPurchasableReorderRequests({ pool }, actor, request.input ?? {}));
+      }
+      case "createSupplierPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await createSupplierPurchaseOrder({ pool }, actor, request.input ?? {}));
+      }
+      case "transitionSupplierPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await transitionSupplierPurchaseOrder({ pool }, actor, request.input ?? {}));
       }
       case "receiveSupplierPurchaseOrder": {
         // The SAME resolved Principal context. The receipt's actor is an EOS Principal holding inventory.stock.receive; the command

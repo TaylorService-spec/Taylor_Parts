@@ -369,6 +369,16 @@ export async function recordPurchaseOrder(
       throw new PurchasingRepositoryError("REQUEST_NOT_FOUND", `no reorder request ${reorderRequestId}`);
     }
     const request = rows[0] as { operating_company_key: string; part_id: string; status: string; warehouse_id: string | null };
+    // ONE ACTIVE PO PER REQUEST, OF EITHER KIND (P-1, Owner ruling A): a request already on a supplier purchase order is committed there. Decided
+    // under the request's row lock, BEFORE the status gate so the refusal names the real reason; On Order can never count the same demand twice.
+    const onSupplierPo = await client.query(
+      `SELECT p.external_po_number FROM ${SCHEMA}.supplier_purchase_order_lines l
+         JOIN ${SCHEMA}.supplier_purchase_orders p ON p.tenant_id = l.tenant_id AND p.id = l.purchase_order_id
+        WHERE l.tenant_id = $1 AND l.source_request_id = $2 AND l.link_released_at IS NULL`, [tenantId, reorderRequestId]);
+    if (onSupplierPo.rowCount !== 0) {
+      throw new PurchasingRepositoryError("REQUEST_ON_SUPPLIER_PO",
+        `this reorder request is already on supplier purchase order ${onSupplierPo.rows[0].external_po_number ?? "(unnumbered)"}`);
+    }
     if (request.status !== PO_RECORDABLE_STATUS) {
       throw new PurchasingRepositoryError(
         "REQUEST_STATE_INVALID",

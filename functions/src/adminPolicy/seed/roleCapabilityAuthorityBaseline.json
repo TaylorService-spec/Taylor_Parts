@@ -13,9 +13,9 @@
   "environment": "nonprod",
   "tenantId": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
   "tenantKey": "taylor-nonprod",
-  "totalGrants": 632,
+  "totalGrants": 659,
   "countsBySource": {
-    "MIGRATION_BACKED": 574,
+    "MIGRATION_BACKED": 601,
     "CANONICAL_CATALOG": 53,
     "NONPROD_ACTIVATION": 5,
     "FIXTURE_ONLY": 0,
@@ -39,12 +39,13 @@
     "migration:1764590000000",
     "migration:1764620000000",
     "migration:1764630000000",
-    "migration:1764650000000"
+    "migration:1764650000000",
+    "migration:1764660000000"
   ],
   "seedBoundaryMigration": "1761523200000",
   "deployment": {
     "$comment": "WHAT THIS FILE MEASURES, AFTER RULING E. It is the authority a DETERMINISTIC REBUILD of this repository produces -- the five-phase pipeline above -- and the rebuild guard proves expected == actual with ZERO unexplained. Ruling E requires a grant-bearing migration and the baseline that explains it to land in ONE change, so the moment migration 1762300800000 entered migrations/ this number moved with it. It is therefore AHEAD of the live nonprod row count until that migration is deployed, and saying so here is the point: 'what the repository produces' and 'what nonprod holds right now' are two questions and both stay answerable. This is NOT blessed live drift (AN2). Drift is a row in the database that nothing in the repository explains; this is a row in the repository that the database has not run yet, and it is named, counted and attributable to one migration.",
-    "rebuildTotal": 632,
+    "rebuildTotal": 659,
     "measuredInNonprodAt": "2026-09-24",
     "measuredInNonprodTotal": 387,
     "notYetAppliedToNonprod": [
@@ -58,7 +59,8 @@
       "migration:1764590000000",
       "migration:1764620000000",
       "migration:1764630000000",
-      "migration:1764650000000"
+      "migration:1764650000000",
+      "migration:1764660000000"
     ],
     "appliedToNonprodBy": "the ordinary deploy (functions migrate:up); lane BO did not and may not apply it"
   },
@@ -359,6 +361,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "migration:1761523200000"
+    },
+    {
+      "roleKey": "accountingManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "accountingManager",
@@ -1160,6 +1169,41 @@
     },
     {
       "roleKey": "admin",
+      "capabilityKey": "supplier.purchaseOrder.approve",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "supplier.purchaseOrder.cancel",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "supplier.purchaseOrder.create",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "supplier.purchaseOrder.send",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "admin",
       "capabilityKey": "warehouse.record.read",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -1384,6 +1428,13 @@
     },
     {
       "roleKey": "controller",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "controller",
       "capabilityKey": "warehouse.transferOrder.read",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -1584,6 +1635,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "dispatcher",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "dispatcher",
@@ -1941,6 +1999,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "migration:1761523200000"
+    },
+    {
+      "roleKey": "financeManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "financeManager",
@@ -2252,6 +2317,27 @@
     },
     {
       "roleKey": "generalManager",
+      "capabilityKey": "supplier.purchaseOrder.approve",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "supplier.purchaseOrder.cancel",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "generalManager",
       "capabilityKey": "warehouse.transferOrder.read",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -2557,6 +2643,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
       "observedGrantedBy": "migration:1761696000000"
+    },
+    {
+      "roleKey": "operationsManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "operationsManager",
@@ -3337,6 +3430,27 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "supplier.purchaseOrder.approve",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "supplier.purchaseOrder.cancel",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "warehouse.record.read",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -3439,6 +3553,27 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "partsAssociate",
+      "capabilityKey": "supplier.purchaseOrder.create",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "partsAssociate",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "partsAssociate",
+      "capabilityKey": "supplier.purchaseOrder.send",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "partsAssociate",
@@ -3575,6 +3710,27 @@
     },
     {
       "roleKey": "partsManager",
+      "capabilityKey": "supplier.purchaseOrder.approve",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "partsManager",
+      "capabilityKey": "supplier.purchaseOrder.cancel",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "partsManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "partsManager",
       "capabilityKey": "workOrder.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -3684,6 +3840,27 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "purchasingManager",
+      "capabilityKey": "supplier.purchaseOrder.create",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "purchasingManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "purchasingManager",
+      "capabilityKey": "supplier.purchaseOrder.send",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "purchasingManager",
@@ -4478,6 +4655,13 @@
     },
     {
       "roleKey": "warehouseAssociate",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
+    },
+    {
+      "roleKey": "warehouseAssociate",
       "capabilityKey": "warehouse.record.read",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1762300800000",
@@ -4594,6 +4778,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "warehouseManager",
+      "capabilityKey": "supplier.purchaseOrder.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1764660000000",
+      "observedGrantedBy": "migration:1764660000000"
     },
     {
       "roleKey": "warehouseManager",

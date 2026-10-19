@@ -99,7 +99,7 @@ const IntegrationsFaq = lazy(() => import("./modules/administration/Integrations
 const AdminEmailCommunications = lazy(() => import("./modules/administration/AdminEmailCommunications.jsx"));
 const CustomerSchedulingPage = lazy(() => import("./modules/selfScheduling/CustomerSchedulingPage.jsx"));
 const InboundWorkWorkspace = lazy(() => import("./modules/service/InboundWorkWorkspace.jsx"));
-const PurchaseOrders = lazy(() => import("./modules/purchasing/PurchaseOrders"));
+const PurchaseOrders = lazy(() => import("./modules/purchasing/PurchaseOrdersWorkspace"));
 const Receipts = lazy(() => import("./modules/purchasing/Receipts"));
 const Suppliers = lazy(() => import("./modules/purchasing/Suppliers"));
 const Receiving = lazy(() => import("./modules/inventory/Receiving"));
@@ -794,7 +794,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // wired below (the received/result launch point); Suppliers/Quotes/Demand
   // Planning remain placeholders.
   if (domain.key === "purchasing" && item.key === "purchaseOrders") {
-    return <PurchaseOrders />;
+    return <PurchaseOrders hasCapability={operationalContext?.hasCapability} />;
   }
   // Purchasing > Receipts -- NOT a separate capability: the received/result side of the ONE
   // governed Receiving capability, rendered as a reuse-only launch point into the CANONICAL PO

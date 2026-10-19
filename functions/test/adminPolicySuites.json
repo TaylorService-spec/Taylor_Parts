@@ -119,7 +119,8 @@
     "test/rackingPlannerOffline.test.mjs",
     "test/reportPipeline.test.mjs",
     "test/recordsReportingOffline.test.mjs",
-    "test/b4ReportGoalGrantParity.test.mjs"
+    "test/b4ReportGoalGrantParity.test.mjs",
+    "test/supplierPurchaseOrderAuthoringOffline.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -295,6 +296,7 @@
     "test/supplierReceiptHistoryAndCorrectionPostgres.test.mjs",
     "test/offlinePrecheckReadsPostgres.test.mjs",
     "test/recordsReportingPostgres.test.mjs",
-    "test/b4ReportGoalGrantParityPostgres.test.mjs"
+    "test/b4ReportGoalGrantParityPostgres.test.mjs",
+    "test/supplierPurchaseOrderAuthoringPostgres.test.mjs"
   ]
 }
