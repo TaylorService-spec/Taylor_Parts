@@ -938,3 +938,8 @@ functions/src/partMaster/csvParse.ts
 functions/src/partMaster/csvMigrationAnalysis.ts
 functions/src/dataImport/importIntake.ts
 functions/migrations/1764640000000_records-reporting-on-eos.sql
+# Firebase exit B4 grant parity (DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored report / performance-goal grants (nonprod). The suites, the migration and the parity evidence they read.
+functions/test/b4ReportGoalGrantParity.test.mjs
+functions/test/b4ReportGoalGrantParityPostgres.test.mjs
+functions/migrations/1764650000000_b4-report-goal-grant-parity.sql
+docs/architecture/b4-report-goal-grant-parity.json

@@ -676,10 +676,6 @@ function sampleCompanyCapabilityKeys(manifest = MANIFEST) {
         continue;
       }
       for (const permission of role.permissions ?? []) {
-        // Firebase exit B4 (DECISIONS #B4): the report.* object/field ids and performance.goal.read are REGISTERED in eos_policy but have NO baseline grant -- the grant change that mirrors the
-        // Firebase holders is a separate Owner-authorized change (OD-B4-1). This reconcile must not become that grant path, so it leaves them alone. Delete this filter in the SAME change that
-        // adds those grants to the baseline.
-        if (permission.startsWith("report.") || permission === "performance.goal.read") continue;
         keys.add(permission);
       }
     }

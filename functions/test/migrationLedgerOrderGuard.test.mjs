@@ -216,8 +216,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 103 -> 104: 1764620000000 -- Finance visibility mirror + Sales Order credit immutability (Firebase exit B1, DECISIONS #B1): five finance.visibility.* keys mirrored to the current Firebase holders (15 grants), and a store trigger that refuses any change of a Sales Order's credited salesperson. APPENDED, an EXPLAINED pending migration.
 // 104 -> 105: 1764630000000 -- Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive. APPENDED, an EXPLAINED pending migration.
 // 105 -> 106: 1764640000000 -- Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): the 38 report.* ids and performance.goal.read REGISTERED (39 capabilities, granted to nobody), plus eos_ops.imported_service_history, data_import_jobs, report_definitions and performance_goals. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 106;
-const TRACKED_MIGRATION_COUNT = 107; // the 106 runnable + the one deferred file
+// 106 -> 107: 1764650000000 -- B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored role-capability grants for the 39 registered B4 keys; no capability, no schema. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 107;
+const TRACKED_MIGRATION_COUNT = 108; // the 107 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -275,6 +276,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764620000000_finance-visibility-and-credit-immutability",
   "1764630000000_warehouse-receiving-bins-on-eos",
   "1764640000000_records-reporting-on-eos",
+  "1764650000000_b4-report-goal-grant-parity",
 ]);
 
 const repoMigrations = () =>

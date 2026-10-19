@@ -237,7 +237,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // Warehouse and receiving off Firebase (Firebase exit B3, DECISIONS #B3): inventory.location.bin.read / .manage registered and mirrored to the current Firebase holders (2 capabilities, 7 grants), plus eos_ops.supplier_purchase_orders (+ lines) and the read-only legacy_inventory_action_notes archive.
     "1764630000000_warehouse-receiving-bins-on-eos.sql",
     // Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): 39 capabilities registered (the 38 report.* ids and performance.goal.read), granted to NOBODY, plus four empty eos_ops tables.
-    "1764640000000_records-reporting-on-eos.sql"],
+    "1764640000000_records-reporting-on-eos.sql",
+    // B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored grants for the 39 keys 1764640000000 registered. No capability, no schema.
+    "1764650000000_b4-report-goal-grant-parity.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -322,8 +324,10 @@ test("the GOVERNED authority, asked directly, has ZERO edit-without-read on the 
     // ONE row survives, and it is the one the manifest names: officeManager holds workOrder.create
     // and no transition, so it is a CREATE-without-read that ruling B's thirteen rows -- scoped to
     // workOrder.transition holders -- deliberately did not cover. Recorded rather than closed.
-    assert.deepEqual(await governedEditWithoutRead(pool, scoped), ["workOrder/officeManager"],
-      "every row ruling B scoped is closed, and the one outside it is the one the manifest classifies");
+    // + reportDefinition/reportAuthor (Firebase exit B4 grants, 1764650000000): reportAuthor holds report.definition.create / .rename / .duplicate and NOT reportDefinition.read,
+    // exactly as in Firebase (an author who cannot list definitions; every saved-definition command re-decides its own capability and ownership). Recorded parity, not a defect.
+    assert.deepEqual(await governedEditWithoutRead(pool, scoped), ["reportDefinition/reportAuthor", "workOrder/officeManager"],
+      "every row ruling B scoped is closed; the two outside it are the one the manifest classifies and the Firebase-parity reportAuthor");
     assert.ok(RESIDUAL_EDIT_WITHOUT_READ.some((r) => r.objectKey === "workOrder" && r.roleKey === "officeManager"));
 
     // AND THE OTHER RESIDUAL workOrder ROW IS ABSENT HERE, which is the proof that its disposition is
@@ -411,7 +415,7 @@ test("REPORTING SLICE 1 resolves through the PostgreSQL authority the runtime ga
     }
 
     // Slice 1 registered exactly ONE reporting capability. Firebase exit B4 (migration 1764640000000) later REGISTERED the 38 `report.*` ids under the Firebase
-    // names -- registered, NOT granted (no Role holds one; the 122 mirrored grants are a separate Owner-authorized change). `reportDefinition.read` stays the
+    // names; migration 1764650000000 (OD-B4-1) then granted the 122 Firebase-mirrored pairs (see b4ReportGoalGrantParity.test.mjs). `reportDefinition.read` stays the
     // only `reportDefinition.*` read, and `report.definition.read` stays UNREGISTERED (its EOS twin is `reportDefinition.read`).
     const all = await pool.query("SELECT key FROM eos_policy.capabilities WHERE key LIKE 'report%' ORDER BY 1");
     const keys = all.rows.map((r) => r.key);
@@ -422,7 +426,7 @@ test("REPORTING SLICE 1 resolves through the PostgreSQL authority the runtime ga
     const grantedB4 = await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
         WHERE c.key LIKE 'report.%' OR c.key = 'performance.goal.read'`);
-    assert.equal(grantedB4.rows[0].n, 0, "B4 registers the reporting and goal capabilities and grants NOTHING");
+    assert.equal(grantedB4.rows[0].n, 122, "B4 registers the reporting and goal capabilities (1764640000000) and mirrors exactly the 122 Firebase pairs (1764650000000)");
 
     // The Object is projectable, so the grant is administrable rather than stranded.
     const object = await pool.query(
@@ -478,6 +482,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // B4 report / goal parity (1764650000000): -122 grants, no capability, no schema; its down refuses while an Administration decision names a report.* / performance.goal.read key
+    assert.deepEqual(await counts(), { caps: 188, grants: 510, mine: 26 });
     runMigrate(url, "down", 1); // Records and reporting (1764640000000, B4): -39 capabilities (the 38 report.* ids + performance.goal.read), NO grant; four empty tables are dropped; its down refuses while a decision, a Role grant, a direct grant or a row names them
     assert.deepEqual(await counts(), { caps: 149, grants: 510, mine: 26 });
     runMigrate(url, "down", 1); // Warehouse and receiving (1764630000000, B3): -2 capabilities (inventory.location.bin.*), -7 grants; two empty tables and the empty archive are dropped; its down refuses while a decision, a direct grant or a row names them
@@ -617,7 +623,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the Records and reporting migration (1764640000000, B4) first -- 39 capabilities, no grant, four empty tables
+    runMigrate(url, "down", 1); // peel the B4 report / goal parity grants (1764650000000) first -- 122 grants, no capability
+    runMigrate(url, "down", 1); // then the Records and reporting migration (1764640000000, B4) -- 39 capabilities, no grant, four empty tables
     runMigrate(url, "down", 1); // then the Warehouse and receiving migration (1764630000000, B3) -- 2 capabilities, 7 grants, three empty tables
     runMigrate(url, "down", 1); // then the Finance visibility mirror (1764620000000, B1) -- 5 capabilities, 15 grants
     runMigrate(url, "down", 1); // then the Employee company-access grants (1764610000000) -- schema only

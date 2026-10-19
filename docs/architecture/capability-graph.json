@@ -2272,14 +2272,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2299,13 +2298,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2325,13 +2323,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2351,13 +2348,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2377,13 +2373,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2403,13 +2398,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2429,13 +2423,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2455,11 +2448,10 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts"
         ],
         "clientReferences": [],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 0,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2477,13 +2469,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2503,13 +2494,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2529,13 +2519,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2555,13 +2544,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2581,13 +2569,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2607,11 +2594,10 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts"
         ],
         "clientReferences": [],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 0,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2630,14 +2616,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2657,13 +2642,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2683,13 +2667,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2709,13 +2692,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2735,13 +2717,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2761,13 +2742,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2788,14 +2768,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2815,13 +2794,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2841,13 +2819,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2867,11 +2844,10 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts"
         ],
         "clientReferences": [],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 0,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2889,13 +2865,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2916,14 +2891,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/experienceAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2943,13 +2917,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2969,13 +2942,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2995,13 +2967,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3021,13 +2992,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3047,13 +3017,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3073,13 +3042,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3099,13 +3067,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3125,13 +3092,12 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+          "functions/src/access/governedBusinessRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3152,7 +3118,6 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts",
           "functions/src/reporting/savedDefinitionCommands.ts"
         ],
@@ -3160,7 +3125,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3209,7 +3174,6 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts",
           "functions/src/reporting/savedDefinitionCommands.ts"
         ],
@@ -3217,7 +3181,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3238,7 +3202,6 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts",
           "functions/src/reporting/savedDefinitionCommands.ts"
         ],
@@ -3246,7 +3209,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3266,14 +3229,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/reportOperations.ts",
           "functions/src/reporting/savedDefinitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/reportAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4677,14 +4639,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/eosOps/performanceGoalReads.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },

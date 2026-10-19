@@ -159,12 +159,14 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // 488 -> 503 (MIGRATION_BACKED 430 -> 445): migration 1764620000000, Finance visibility mirror (Firebase exit B1, DECISIONS #B1) -- the five
   // finance.visibility.* keys mirrored to exactly the current Firebase holders (admin and owner: all five; salesperson: self; salesManager:
   // team; generalManager, financeManager, accountingManager: consolidated); no new holder.
+  // 510 -> 632 (MIGRATION_BACKED 452 -> 574): migration 1764650000000, B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1) -- the 39 B4 keys mirrored to exactly the
+  // Firebase holders (122 pairs, 15 Roles); no new holder.
   // 503 -> 510 (MIGRATION_BACKED 445 -> 452): migration 1764630000000, Warehouse racking (Firebase exit B3, DECISIONS #B3) -- inventory.location.bin.read /
   // .manage mirrored to exactly the current Firebase holders (admin and inventoryBinAdministrator: both; owner, inventoryPutAwayOperator,
   // inventoryStockRelocationOperator: read); no new holder.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 510);
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 632);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 452, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 574, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);
