@@ -25,14 +25,14 @@
 // the correction refuses when the received quantity is no longer where the receipt put it.
 //
 // AUTHORITY: inventory.receipt.correct (the Reorder correction's key; registered, granted to nobody) + the caller's operating companies
-// (the receipt's company: another company's receipt reads EXACTLY as a nonexistent one) + the WAREHOUSE scope over the receipt location.
+// (resolveInventoryCompanyAuthority: the receipt's company -- another company's receipt reads EXACTLY as a nonexistent one; a protected Administrator holds every governed company, OD-ISO-2) + the WAREHOUSE scope over the receipt location.
 // Administration reach (G2) is NOT extended to this act: it was ruled for the Reorder receipt's VOID only.
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { ReceiveStockError, type ReceiveFailureCategory, type ReceivingPrincipalActor } from "./receiveReorderStockCommand.js";
 import { RECEIPT_CORRECT_CAPABILITY, RECEIPT_CORRECTION_MOVEMENT_SOURCE_KIND } from "./receiptCorrectionCommand.js";
 import { SUPPLIER_PO_SOURCE_KIND } from "./supplierPurchaseOrderReceiving.js";
-import { resolveCompanyAuthority } from "./companyAuthority.js";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
 import { FinanceFoundationError, resolveReceiptCostExceptionsOn, reverseReceiptFinancialConsequenceOn } from "../eosFinance/financeFoundation.js";
 import { retireIntercompanyCorrelationForReceiptOn } from "../eosFinance/intercompany.js";
 import { retireReceiptPayableOn } from "../eosFinance/vendorPayable.js";
@@ -91,7 +91,7 @@ export async function correctSupplierPurchaseOrderReceipt(
   try {
     await client.query("BEGIN");
     // CAPABILITY FIRST, THEN COMPANY: none at all is refused before any row is read.
-    const authority = await resolveCompanyAuthority(client, actor.tenantId, actor.principalId);
+    const authority = await resolveInventoryCompanyAuthority(client, actor.tenantId, actor.principalId);
     if (authority.companyKeys.length === 0) {
       refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "correcting a receipt requires operating-company authority; this principal has none");
     }
@@ -142,7 +142,7 @@ async function voidWithin(
   const where = { type: String(receipt.location_type), locationId: String(receipt.receiving_location_id) };
   let scopeWarehouseId: string;
   try {
-    scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where)).scopeWarehouseId;
+    scopeWarehouseId = (await resolveScopeLocation(client, actor.tenantId, where, c.companyKeys)).scopeWarehouseId;
   } catch (err) {
     if (err instanceof InventoryScopeError) refuse(err.code, "PRECONDITION_FAILED", `the receipt location has no governing warehouse (${err.code})`);
     throw err;

@@ -76,9 +76,10 @@ async function withReadSnapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>
  */
 export async function scopedWarehouseIds(
   c: Pick<PoolClient, "query">, actor: ReorderActor,
-  /** `companyKeys` (ISO inventory): keep only the warehouses OF those operating companies -- a warehouse scope never reaches into another company's warehouse. */
-  options: { readonly administrationReach?: boolean; readonly companyKeys?: readonly string[] } = {},
+  /** `companyKeys` (ISO inventory; REQUIRED by ISO-2): keep only the warehouses OF those operating companies -- a warehouse scope never reaches into another company's warehouse. */
+  options: { readonly administrationReach?: boolean; readonly companyKeys: readonly string[] },
 ): Promise<string[]> {
+  if (!Array.isArray(options?.companyKeys)) throw new TypeError("scopedWarehouseIds requires the caller's reachable company keys");
   const reader = postgresPrincipalDimensionReader(c);
   const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
   const own = employeeId === null ? [] : (await reader.listOperationalScopes(actor.tenantId, employeeId))
@@ -87,7 +88,7 @@ export async function scopedWarehouseIds(
   const administered = options.administrationReach === false ? []
     : await administrationReachTargets(c, actor.tenantId, actor.principalId, "WAREHOUSE");
   const all = [...new Set([...own, ...administered])].sort();
-  if (options.companyKeys === undefined || all.length === 0) return all;
+  if (all.length === 0) return all;
   const { rows } = await c.query(
     `SELECT id FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = ANY($2::text[]) AND operating_company_key = ANY($3::text[])`,
     [actor.tenantId, all, [...options.companyKeys]]);

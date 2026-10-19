@@ -230,7 +230,7 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
     const one = ok(await call("config-a", "readMobileLocationScopeBinding", { locationId: "truck-1" }));
     assert.equal(one.state, "NO_BINDING");
     assert.match(one.explanation, /fails closed/);
-    await assert.rejects(resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING");
+    await assert.rejects(resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }, ["key-a"]), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING");
   });
 
   await t.test("refusals: reason, unknown/inactive truck, unknown/foreign/inactive warehouse, ungoverned and cross company", async () => {
@@ -256,7 +256,7 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
     const created = ok(await call("config-a", "setMobileLocationScopeBinding", { locationId: "truck-1", warehouseId: "WH-A1", reason: "based at A1" }));
     assert.equal(created.outcome, "CREATED");
     assert.equal(created.previousWarehouseId, null);
-    assert.equal((await resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" })).scopeWarehouseId, "WH-A1");
+    assert.equal((await resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }, ["key-a"])).scopeWarehouseId, "WH-A1");
 
     const same = ok(await call("config-a", "setMobileLocationScopeBinding", { locationId: "truck-1", warehouseId: "WH-A1", reason: "again" }));
     assert.equal(same.outcome, "NO_CHANGE");
@@ -264,11 +264,11 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
 
     const changed = ok(await call("config-a", "setMobileLocationScopeBinding", { locationId: "truck-1", warehouseId: "WH-A2", reason: "moved to A2" }));
     assert.deepEqual([changed.outcome, changed.previousWarehouseId, changed.warehouseId], ["CHANGED", "WH-A1", "WH-A2"]);
-    assert.equal((await resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" })).scopeWarehouseId, "WH-A2");
+    assert.equal((await resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }, ["key-a"])).scopeWarehouseId, "WH-A2");
 
     const removed = ok(await call("config-a", "removeMobileLocationScopeBinding", { locationId: "truck-1", reason: "truck retired from A2" }));
     assert.deepEqual([removed.outcome, removed.previousWarehouseId, removed.warehouseId], ["REMOVED", "WH-A2", null]);
-    await assert.rejects(resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING",
+    await assert.rejects(resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }, ["key-a"]), (e) => e.code === "MOBILE_SCOPE_BINDING_MISSING",
       "after remove, truck operations refuse until a new valid binding exists");
 
     const audits = await bindingAudits(T.a);
@@ -288,7 +288,7 @@ test("DQ-029: truck scope binding Administration", { skip: SKIP, concurrency: 1 
 
     // A new valid binding restores truck operations.
     ok(await call("config-a", "setMobileLocationScopeBinding", { locationId: "truck-1", warehouseId: "WH-A1", reason: "back at A1" }));
-    assert.equal((await resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" })).scopeWarehouseId, "WH-A1");
+    assert.equal((await resolveScopeLocation(pool, T.a, { type: "MOBILE", locationId: "truck-1" }, ["key-a"])).scopeWarehouseId, "WH-A1");
   });
 
   await t.test("revoking the grant takes effect: the configurator is FORBIDDEN again", async () => {

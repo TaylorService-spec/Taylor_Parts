@@ -29,7 +29,7 @@ import { authorizeWorkOrderRecordRead } from "./workOrderRecordRead";
 import { EQUIPMENT_COLUMNS, equipmentColumns, equipmentRow, readInstalledUnit, type EquipmentRecord, OPS_EQUIPMENT_STATUSES } from "./equipmentCustody";
 import { EQUIPMENT_WRITER_AUTHORITY, type PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding";
-import { resolveCompanyAuthority } from "./companyAuthority";
+import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority";
 import { scopedWarehouseIds } from "./partsReads";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "./workOrderOperationTypes";
@@ -250,11 +250,11 @@ async function listAvailableEquipmentUnits(deps: Deps, caller: WorkOrderCaller, 
   // COMPANY ISOLATION (#235 / #237; Firebase exit B3-x). Capability first, then company: a caller with no operating-company authority is
   // refused before any row is read, and and the WAREHOUSE operational scope (an Administrator's reach counts, as for every read): a unit held by another company, or in a warehouse outside the caller's scope, is absent from the list AND from a serial-number lookup -- the filter is
   // in the WHERE, so it is never fetched, counted or disclosed. (Before B3-x this read was tenant-wide for any holder of the key.)
-  const authority = await resolveCompanyAuthority(deps.pool, tenantId, caller.actor.principalId);
+  const authority = await resolveInventoryCompanyAuthority(deps.pool, tenantId, caller.actor.principalId);
   if (authority.companyKeys.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "listing available units requires operating-company authority; this principal has none");
   }
-  const scope = await scopedWarehouseIds(deps.pool, caller.actor);
+  const scope = await scopedWarehouseIds(deps.pool, caller.actor, { companyKeys: authority.companyKeys });
   if (scope.length === 0) return Object.freeze({ units: Object.freeze([]), truncated: false }); // no WAREHOUSE operational scope: nothing is listed, and nothing is disclosed
   const { rows } = await deps.pool.query(
     `SELECT c.part_id, c.serial_number, c.status::text AS status, c.location_type::text AS location_type, c.location_id,

@@ -196,7 +196,7 @@ async function withGoalContext<T>(deps: { readonly pool: Pool }, actor: RecordsA
     let population: ReturnType<typeof loadPopulation> | null = null;
     return fn({
       actor, reach, db: c,
-      warehouseScope: () => (warehouses ??= scopedWarehouseIds(c, actor)),
+      warehouseScope: () => (warehouses ??= scopedWarehouseIds(c, actor, { companyKeys: reach.keys })),
       population: () => (population ??= loadPopulation(c, actor)),
     });
   });

@@ -64,7 +64,10 @@ test("only administering call sites opt in to reach: the experience surfaces and
     "eosOps/authorityChangePreview.ts",
     // Supplier PO receiving (Firebase exit B3): its location picker passes the explicit OPT-OUT `administrationReach: false` (an execution picker offers only
     // where the caller can act). The line scan above still holds: no `administrationReach: true` appears in it.
-    "eosOps/supplierPurchaseOrderReceiving.ts"]);
+    "eosOps/supplierPurchaseOrderReceiving.ts",
+    // Returns intake (ISO-2): the WRITE passes the explicit OPT-OUT `administrationReach: false` (it needs the caller's own Employee and warehouse scope);
+    // only the OPTIONS read keeps the default inspect-only reach. No `administrationReach: true` appears in it.
+    "eosOps/returnIntake.ts"]);
   const users = files.filter((f) => /\badministrationReach\b(?![A-Za-z])/.test(readFileSync(f, "utf8").replace(/from "[^"]*administrationReach[^"]*"/g, "")))
     .map((f) => f.slice(SRC.length + 1));
   assert.deepEqual(users.filter((f) => !KNOWN.has(f)), [], "a new administrationReach opt-in site needs review");
@@ -114,7 +117,7 @@ test("protected Administrator reach over queues and warehouses -- administering,
   });
 
   await t.test("warehouses: every ACTIVE warehouse of an authorized company -- not INACTIVE, not unbound, not another tenant's", async () => {
-    assert.deepEqual(await scopedWarehouseIds(pool, admin), ["WH-T", "WH-V"]);
+    assert.deepEqual(await scopedWarehouseIds(pool, admin, { companyKeys: ["taylor", "ventana"] }), ["WH-T", "WH-V"]);
     // ISO inventory: the on-hand READ decides company authority first, and a PROTECTED Administrator holds EVERY governed company for the inventory domains
     // (Owner ruling OD-ISO-2, 2026-10-19: "admin should have all access"), so this Administrator -- no Employee, no company of its own -- reads as before.
     const onHand = await call({ subject: ADMIN_SUBJECT }, "/operations/inventory", "readInventoryOnHand", {});
@@ -205,7 +208,7 @@ test("protected Administrator reach over queues and warehouses -- administering,
     await q(`INSERT INTO eos_workforce.employee_operational_scopes (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by,reason)
              VALUES ('os-preach-wa',$1,'e-preach-wa','WAREHOUSE','WH-T',now(),'fixture','fixture')`, [T]);
     const w = await actorOf("uid-preach-wa");
-    assert.deepEqual(await scopedWarehouseIds(pool, w), ["WH-T"]);
+    assert.deepEqual(await scopedWarehouseIds(pool, w, { companyKeys: ["taylor", "ventana"] }), ["WH-T"]);
     assert.deepEqual(await queueReachKeys(pool, w), []);
     if (w.capabilities.has("inventory.placement.record")) {
       assert.equal((await decide("uid-preach-wa", "inventory.placement.record", "WAREHOUSE", "WH-T")).allowed, true, "own scope still works");
@@ -214,7 +217,7 @@ test("protected Administrator reach over queues and warehouses -- administering,
     for (const subject of ["uid-preach-wa"]) assert.deepEqual(await reach.administrationReachTargets(pool, T, (await actorOf(subject)).principalId, "WAREHOUSE"), []);
     const tech = await person("uid-preach-tech", ["technician"], { id: "e-preach-tech", name: "Tess Tech", technician: true });
     const tActor = await actorOf("uid-preach-tech");
-    assert.deepEqual([await scopedWarehouseIds(pool, tActor), await queueReachKeys(pool, tActor)], [[], []]);
+    assert.deepEqual([await scopedWarehouseIds(pool, tActor, { companyKeys: ["taylor", "ventana"] }), await queueReachKeys(pool, tActor)], [[], []]);
     void tech;
   });
 

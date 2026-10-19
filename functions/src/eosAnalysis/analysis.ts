@@ -190,7 +190,7 @@ async function rowsFor(db: Queryable, actor: AnalysisActor, m: MeasureDefinition
     companyKeys = companyKeys.filter((k) => reach.includes(k));
     if (companyKeys.length === 0) return { refused: "requires the REORDER_QUEUE Operational Scope over the company in view" };
   } else if (m.reach === "WAREHOUSE") {
-    warehouses = await scopedWarehouseIds(db, actor);
+    warehouses = await scopedWarehouseIds(db, actor, { companyKeys });
     if (warehouses.length === 0) return { refused: "requires a WAREHOUSE Operational Scope" };
   }
   const companyIds = companyKeys.map((k) => scope.keyToId.get(k)).filter((x): x is string => !!x);
