@@ -423,6 +423,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // it is peeled first and this proof still runs against ITS OWN migration, which the final `up` below restores along with it.
     const newest = async () => (await q(`SELECT name FROM public.pgmigrations ORDER BY id DESC LIMIT 1`)).rows[0].name;
     // Firebase exit B3 appended 1764630000000 (warehouse receiving + bins on EOS): its down is guarded and clean when nothing was written to it, so it is peeled first too.
+    // Firebase exit B4 appended 1764640000000 (records and reporting on EOS): its down refuses only if a row was written to its tables, and nothing here wrote one, so it is peeled first.
+    if ((await newest()) === "1764640000000_records-reporting-on-eos") migrate("down", 1);
     if ((await newest()) === "1764630000000_warehouse-receiving-bins-on-eos") migrate("down", 1);
     if ((await newest()) === "1764620000000_finance-visibility-and-credit-immutability") migrate("down", 1);
     const last = await newest();

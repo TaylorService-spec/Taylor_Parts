@@ -16,7 +16,8 @@
 --    has a field or a CRED verb.
 --
 -- 2. IMPORTED SERVICE HISTORY (F7f-1): eos_ops.imported_service_history -- the records an Administration > Data Import of SERVICE_HISTORY writes,
---    account-scoped (a composite foreign key to eos_crm.accounts) and operating-company-scoped (a record belongs to the company its import was
+--    account-scoped (account_id is an opaque id the writer resolves against eos_crm.accounts; there is deliberately NO foreign key between eos_ops and
+--    eos_crm in either direction, crmCustomerPostgres) and operating-company-scoped (a record belongs to the company its import was
 --    staged for; a reader reaches only the companies it is authorized for). The copy of the existing Firebase history is HELD.
 --
 -- 3. THE IMPORT JOB STORE (F7f-2): eos_ops.data_import_jobs -- the staged-then-approved job of the shared import pipeline (parse, map, validate,
@@ -177,7 +178,6 @@ CREATE TABLE imported_service_history (
     imported_by             TEXT        NOT NULL,
     imported_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT imported_service_history_pkey PRIMARY KEY (tenant_id, id),
-    CONSTRAINT imported_service_history_account FOREIGN KEY (tenant_id, account_id) REFERENCES eos_crm.accounts (tenant_id, id),
     CONSTRAINT imported_service_history_identity_unique UNIQUE (tenant_id, operating_company_key, identity_key),
     CONSTRAINT imported_service_history_company_stated CHECK (btrim(operating_company_key) <> ''),
     CONSTRAINT imported_service_history_summary_stated CHECK (btrim(summary) <> '' AND length(summary) <= 5000),

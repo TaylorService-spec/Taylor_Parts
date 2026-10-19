@@ -410,10 +410,19 @@ test("REPORTING SLICE 1 resolves through the PostgreSQL authority the runtime ga
       assert.equal([...held].filter((c) => c.startsWith("reportDefinition.")).length, 0);
     }
 
-    // The legacy Firebase-era ids are NOT the governed authority and must not have leaked into it.
+    // Slice 1 registered exactly ONE reporting capability. Firebase exit B4 (migration 1764640000000) later REGISTERED the 38 `report.*` ids under the Firebase
+    // names -- registered, NOT granted (no Role holds one; the 122 mirrored grants are a separate Owner-authorized change). `reportDefinition.read` stays the
+    // only `reportDefinition.*` read, and `report.definition.read` stays UNREGISTERED (its EOS twin is `reportDefinition.read`).
     const all = await pool.query("SELECT key FROM eos_policy.capabilities WHERE key LIKE 'report%' ORDER BY 1");
-    assert.deepEqual(all.rows.map((r) => r.key), ["reportDefinition.read"],
-      "exactly ONE reporting capability is registered; the 34 field-level report ids are not capability rows");
+    const keys = all.rows.map((r) => r.key);
+    assert.equal(keys.length, 39, "reportDefinition.read plus the 38 report.* ids B4 registered");
+    assert.ok(keys.includes("reportDefinition.read"));
+    assert.equal(keys.includes("report.definition.read"), false, "report.definition.read stays unregistered: its twin is reportDefinition.read");
+    assert.equal(keys.includes("reportDefinition.delete"), false);
+    const grantedB4 = await pool.query(
+      `SELECT count(*)::int n FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+        WHERE c.key LIKE 'report.%' OR c.key = 'performance.goal.read'`);
+    assert.equal(grantedB4.rows[0].n, 0, "B4 registers the reporting and goal capabilities and grants NOTHING");
 
     // The Object is projectable, so the grant is administrable rather than stranded.
     const object = await pool.query(

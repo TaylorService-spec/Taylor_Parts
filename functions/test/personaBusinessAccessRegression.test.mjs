@@ -1024,8 +1024,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // NOT GRANTABLE THE OTHER WAY EITHER: the delete is UNREGISTERED, so it is ungrantable rather
     // than merely ungranted, and the field-level report ids are deliberately outside the vocabulary.
     assert.equal(capabilityCatalog.some((c) => c.key === "reportDefinition.delete"), false);
-    assert.deepEqual(capabilityCatalog.filter((c) => c.key.startsWith("report")).map((c) => c.key).sort(),
-      ["reportDefinition.read"]);
+    // Firebase exit B4 REGISTERED the 38 report.* ids (migration 1764640000000) -- registered, held by no Role -- so the catalog now carries 39 report ids, and the viewer still holds ONE.
+    const reportKeys = capabilityCatalog.filter((c) => c.key.startsWith("report")).map((c) => c.key);
+    assert.equal(reportKeys.length, 39);
+    assert.ok(reportKeys.includes("reportDefinition.read"));
+    assert.equal(reportKeys.filter((k) => k.startsWith("report.")).length, 38);
     // Granted to the three Roles the ruling names and to no job-title Role.
     assert.deepEqual(await holdersOf("reportDefinition.read"), ["admin", "owner", "reportViewer"]);
 
@@ -1176,8 +1179,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const resolved = await resolve(["reportViewer"], NO_DIMENSIONS);
     // ONE door, from reportDefinition.read (the report catalog), not from the binding: the Analysis workspace, where the
     // Reporting Analyst reads the measure catalog and no business figure (each needs its own domain read).
-    assert.deepEqual([...resolved.surfaces], ["analysis.workspace"]);
-    assert.deepEqual(resolved.destinations, ["analysis/analysis"]);
+    // Firebase exit B4 added the Saved Reports door (`reporting.savedReports`, gated by the SAME reportDefinition.read), so the viewer now resolves exactly those two doors and no other
+    // (`reporting.builder` is gated by the report.* object reads, which no Role holds until the Owner-authorized grant change).
+    assert.deepEqual([...resolved.surfaces].sort(), ["analysis.workspace", "reporting.savedReports"]);
+    assert.ok(resolved.destinations.includes("analysis/analysis"));
+    assert.deepEqual(resolved.destinations.filter((d) => !["analysis/analysis", "reporting/savedReports"].includes(d)), []);
     // The workOrder Object capabilities exist and reportViewer holds none of them.
     const workOrderKeys = capabilityCatalog.filter((c) => c.objectKey === "workOrder").map((c) => c.key);
     assert.ok(workOrderKeys.length > 0);
@@ -1236,12 +1242,14 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // the baseline.
     // `purchasing.suppliers` joins it BY DESIGN (Parts / Purchasing / Receiving, 2026-10-01): supplier.record.read is
     // registered ungranted, and its holders are the LIVE Administration delta (partsPurchasingReceivingDelta.ts).
+    // `reporting.builder` joins it BY DESIGN (Firebase exit B4, DECISIONS #B4): it is earned by the report.* object reads, which are REGISTERED but not granted -- the 122 mirrored
+    // grants are a separate Owner-authorized change (OD-B4-1), so no baseline Role holds one yet.
     // `finance.policy` joins it BY DESIGN (Financial Policy Phase 2, DECISIONS #232): finance.policy.* are registered with no
     // baseline grant; the owner Role's read/approve/activate and the custom financialPolicyPreparer Role are LIVE
     // Administration decisions (nonprod 2026-10-14), never the baseline. Protected-Administrator standing is not a baseline
     // Role grant either.
     assert.deepEqual(EXPERIENCE_SURFACE_KEYS.filter((k) => !granted.has(k)).sort(),
-      ["administration.emailCommunications", "finance.policy", "purchasing.suppliers", "service.inboundWork", "warehouse.picking"]);
+      ["administration.emailCommunications", "finance.policy", "purchasing.suppliers", "reporting.builder", "service.inboundWork", "warehouse.picking"]);
 
     // ── THE EOS NAVIGATION SOURCE HAS NO FIREBASE FALLBACK ──
     // When the EOS authority is answering, the LEGACY path must not run at all. Measured through the

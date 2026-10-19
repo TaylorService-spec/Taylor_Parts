@@ -103,7 +103,7 @@ test("the governed seed no longer declares either retired Object", () => {
   // correct at 9fa82e94, 2026-09-24) that drifted unseen because no workflow ran this file. Nine decided registrations
   // followed: inboundMailbox + inboundWorkRequest (bca7aa5f, Work Order activation), financeConfiguration (#203),
   // salesDiscountAuthority + systemConfiguration (#204), settlement (#206), rentalAgreement + rentalEquipment (#207),
-  // financialPolicy (#232); then inventoryReturn (#242, Firebase exit F7a) and crmActivity (#243, F7b) -- 51. Pinned as the
+  // financialPolicy (#232); then inventoryReturn (#242, Firebase exit F7a) and crmActivity (#243, F7b) -- 51; then report + performanceGoal (Firebase exit B4) -- 53. Pinned as the
   // exact key list, so a registration is a named change here, never a silent count.
   // The retirement this file guards is unaffected: registering a later Object does not un-retire dispatchSchedule or
   // notifications, and the assertions below still name them.
@@ -111,8 +111,8 @@ test("the governed seed no longer declares either retired Object", () => {
     "account", "auditLog", "commissions", "contact", "crmActivity", "cycleCount", "dataImport", "employee", "equipment", "equipmentModel",
     "financeConfiguration", "financialPolicy", "inboundMailbox", "inboundWorkRequest", "inventoryAction", "inventoryReturn", "inventoryTransaction",
     "invoice", "location", "manufacturer", "marketingInitiatives", "mobileLocation", "opportunity", "part", "partAlias", "payment",
-    "principal", "purchaseOrder", "purchaseOrderVoid", "receivingOrder", "rentalAgreement", "rentalEquipment", "reorderRequest",
-    "reportDefinition", "rolesPermissions", "salesAgreement", "salesDiscountAuthority", "salesOrder", "salesTerritory",
+    "performanceGoal", "principal", "purchaseOrder", "purchaseOrderVoid", "receivingOrder", "rentalAgreement", "rentalEquipment", "reorderRequest",
+    "report", "reportDefinition", "rolesPermissions", "salesAgreement", "salesDiscountAuthority", "salesOrder", "salesTerritory",
     "serializedAssets", "settlement", "supplier", "supplierCatalogItem", "systemConfiguration", "technicianTimeNonWork",
     "transferOrder", "truck", "warehouse", "workOrder", "workflowDefinition", "workflowInstance",
   ]);
