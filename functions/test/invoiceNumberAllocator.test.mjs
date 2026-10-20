@@ -43,13 +43,13 @@ test("the counter is keyed exactly like the invoice uniqueness constraint: (tena
   assert.match(mig, /UNIQUE \(tenant_id, operating_company_key, invoice_number\)/, "the per-company invoice constraint the counter mirrors");
 });
 
-test("NOT WIRED: no source module imports the allocator, and no migration creates its counter yet (activation is a separate ruling)", () => {
+test("WIRED ONCE (F-1a): exactly one source module imports the allocator (the issuing command), and exactly one migration creates its counter", () => {
   const src = new URL("../src/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
   const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
   const importers = walk(src).filter((p) => /\.ts$/.test(p) && !p.endsWith("invoiceNumberAllocator.ts"))
     .filter((p) => /invoiceNumberAllocator/.test(readFileSync(p, "utf8")));
-  assert.deepEqual(importers, []);
+  assert.deepEqual(importers.map((p) => p.replace(/\\/g, "/").split("/src/")[1]), ["eosFinance/invoiceIssue.ts"]);
   const migs = readdirSync(new URL("../migrations/", import.meta.url)).filter((f) => f.endsWith(".sql"))
     .filter((f) => /invoice_number_counters/.test(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8")));
-  assert.deepEqual(migs, [], "the counter table arrives with the activation migration, not before");
+  assert.deepEqual(migs, ["1764700000000_invoice-issue.sql"], "the counter table is created by the F-1a issue migration, and by no other");
 });

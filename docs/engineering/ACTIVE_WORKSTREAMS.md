@@ -497,3 +497,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 | Inventory → Transfers first-class workspace (read-only; reuses canonical view-model) | MERGED (repo-only) | DECISIONS #71 |
 | Inventory → Warehouses first-class workspace (read-only; registry + governed status/eligibility) | MERGED (repo-only) | DECISIONS #74 |
 | Purchasing → Receipts launch point into canonical PO projection (+ Cycle Counts deferral) | MERGED (repo-only) | DECISIONS #76 |
+
+- Capability:          Finance F-1a — issue an invoice on EOS (Firebase parity, no approval flow): `issueInvoice` on `/operations/finance`, the invoice number and issue date on the existing reads, the Billing Queue Issue control. Not adjustments, write-offs, refunds or void.
+- Agent/session:       Claude Code lane F-1a · Role: builder; controller merges and writes the migration
+- Branch / worktree:   `lane-f/f1a-invoice-issue` · `D:/Taylor_Parts/.claude/worktrees/agent-ab4d7f115c519306e`
+- Base commit:         `ec66b089`
+- Owned paths:         `functions/src/eosFinance/invoiceIssue.ts` · `functions/src/eosFinance/financeOperations.ts` (issueInvoice, the `invoice` field, `invoiced` filter, `actions.issue`) · `field-ops-app-vite/src/modules/financials/{InvoiceIssueQueue,FinancialsBillingQueue}.jsx` · `functions/test/f1aInvoiceIssue*.test.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/architecture/SYSTEM_AUTHORITIES.md` · `functions/test/adminPolicySuites.json` · the migration-count pin tests · `field-ops-app-vite/src/access/shellCapabilityGates.js`
+- Dependencies:        migration `1764700000000_invoice-issue` (SQL reviewed, written by the controller); F-2 (#2168), F-1 spec (#2175)
+- Expected outcome:    a READY package's receivable gets exactly one invoice with an `INV-YYYY-######` number; issuing is one step for an authorized person
+- Protected boundaries:none reached (no capability, grant, Rules, deploy or production change)
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)

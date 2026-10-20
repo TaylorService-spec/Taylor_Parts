@@ -7,7 +7,8 @@
 //   apply       finance.settlement.apply
 //   correct     finance.settlement.correct          (reverse an application, void a settlement)
 //   reconcile   finance.reconciliation.record
-//   cost        inventory.receipt.correct + WAREHOUSE scope (late cost evidence -- costEvidenceSupplyCommand.ts)
+//   invoice     finance.invoice.issue               (F-1a: issueInvoice -- the invoice document over a READY package's receivable; invoiceIssue.ts)
+//   cost       inventory.receipt.correct + WAREHOUSE scope (late cost evidence -- costEvidenceSupplyCommand.ts)
 //   relief      inventory.transfer.dispatch + WAREHOUSE scope (intercompany inventory relief -- intercompanyInventoryRelief.ts)
 //   balance     finance.accountBalance.read         (A6: readAccountBalanceSummary -- five numbers per company and currency for ONE customer; no ids, no rows)
 //   policy      finance.policy.read / .prepare / .approve / .activate -- the Financial Policy lifecycle (financialPolicy.ts, #232),
@@ -35,6 +36,7 @@ import { FinanceFoundationError } from "./financeFoundation";
 import {
   applyFinancialSettlement, readSettlement, reconcileFinancialSettlement, recordFinancialSettlement, reverseSettlementApplication, voidFinancialSettlement,
 } from "./settlement";
+import { INVOICE_ISSUE_CAPABILITY, issueFinancialInvoice } from "./invoiceIssue";
 import { supplyReceiptCostEvidence } from "../eosOps/costEvidenceSupplyCommand";
 import { relieveIntercompanySaleInventory } from "../eosOps/intercompanyInventoryRelief";
 import { defineFieldGroups, projectForCaller } from "../eosOps/governedFieldGroups";
@@ -54,6 +56,8 @@ export const SETTLEMENT_RECORD_CAPABILITY = "finance.settlement.record";
 export const SETTLEMENT_APPLY_CAPABILITY = "finance.settlement.apply";
 export const SETTLEMENT_CORRECT_CAPABILITY = "finance.settlement.correct";
 export const RECONCILIATION_RECORD_CAPABILITY = "finance.reconciliation.record";
+/** F-1a: issue an invoice against a READY billing package's receivable (invoiceIssue.ts). The Firebase key, already registered and granted (migration 1761609600000). */
+export { INVOICE_ISSUE_CAPABILITY };
 /**
  * A6: the customer-balance SUMMARY key (migration 1764680000000, PostgreSQL-native). It opens ONE operation, readAccountBalanceSummary, and nothing else: no
  * obligation, settlement, handoff or package row, no payable / funding / intercompany section, and no write path. The full receivable detail stays on
@@ -213,13 +217,14 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     `SELECT o.id, o.operating_company_id, o.kind, o.currency, o.status, o.source_domain, o.source_record_id, o.due_on, o.created_at,
             b.originated_minor, b.settled_minor, b.outstanding_minor, cp.kind AS counterparty_kind, cp.crm_account_id, cp.operating_company_id AS counterparty_company,
             a.name AS counterparty_name,
-            (${OVERDUE_SQL}) AS overdue${withSource ? ", bp.sales_order_id AS source_sales_order_id, so.sales_order_number AS source_sales_order_number" : ""}
+            (${OVERDUE_SQL}) AS overdue${withSource ? ", bp.sales_order_id AS source_sales_order_id, so.sales_order_number AS source_sales_order_number, inv.id AS invoice_id, inv.invoice_number, inv.issued_at AS invoice_issued_at, inv.accounting_reference AS invoice_accounting_reference" : ""}
        FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
        JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
        LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id${withSource ? `
        LEFT JOIN eos_finance.billing_packages bp ON bp.tenant_id = o.tenant_id AND bp.id = o.source_record_id AND o.source_domain = 'BILLING_PACKAGE' AND bp.source_kind = 'SALES_ORDER'
          AND bp.operating_company_id = o.operating_company_id
-       LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = bp.tenant_id AND so.id = bp.sales_order_id` : ""}
+       LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = bp.tenant_id AND so.id = bp.sales_order_id
+       LEFT JOIN eos_finance.invoices inv ON inv.tenant_id = o.tenant_id AND inv.obligation_id = o.id` : ""}
       WHERE o.tenant_id = $1 AND ${visible} AND ${where}
       ORDER BY o.due_on NULLS LAST, o.created_at DESC, o.id LIMIT ${Number(limit)}`, params);
   return rows.map((r) => Object.freeze({
@@ -233,6 +238,10 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     // of a DIFFERENT operating company than the receivable is no source (the attribution rule readObligation applies): a reader never gets another
     // company's Sales Order number through a mismatched package.
     ...(withSource ? { sourceSalesOrder: r.source_sales_order_id ? Object.freeze({ id: String(r.source_sales_order_id), salesOrderNumber: r.source_sales_order_number ?? null }) : null } : {}),
+    // F-1a: the invoice issued against this receivable (1:1), or null while none has been. Its number and issue date are the invoice's own; what is
+    // outstanding is, and stays, this row's balance. Asked for only by listObligations (same join set as the Sales Order source).
+    ...(withSource ? { invoice: r.invoice_id ? Object.freeze({ id: String(r.invoice_id), invoiceNumber: String(r.invoice_number), issuedAt: new Date(r.invoice_issued_at).toISOString(),
+      accountingReference: r.invoice_accounting_reference ?? null }) : null } : {}),
   }));
 }
 
@@ -370,10 +379,13 @@ async function listObligations(deps: WorkOrderOperationDeps, caller: WorkOrderCa
   // One customer's obligations (an Account's receivables), still only inside the companies the caller reaches: a Taylor-only
   // caller never sees the same Account's Ventana obligations. A narrowing filter on the same gate -- it grants nothing.
   if (input.crmAccountId !== undefined && (typeof input.crmAccountId !== "string" || input.crmAccountId.trim() === "")) refuse("ACCOUNT_INVALID", "INVALID_INPUT", "crmAccountId is a non-empty account id");
+  // F-1a: `invoiced: false` is the BILLING QUEUE -- Sales Order receivables with no invoice yet (the ones issueInvoice can act on); `true` the ones with one.
+  if (input.invoiced !== undefined && typeof input.invoiced !== "boolean") refuse("INVOICED_INVALID", "INVALID_INPUT", "invoiced is true or false");
   const recorded = recordedWindow(input);
   const vis = await visibilityOver(deps, caller, scope.companies);
   return Object.freeze({ scope: scope.consolidated ? "consolidated" : scope.companies[0],
     items: await obligationRows(deps.pool, caller.actor.tenantId, vis, (bind) => [
+      input.invoiced === false ? "inv.id IS NULL AND bp.id IS NOT NULL" : input.invoiced === true ? "inv.id IS NOT NULL" : null,
       input.kind !== undefined ? `o.kind = ${bind(input.kind)}` : null,
       input.status !== undefined ? `o.status = ${bind(input.status)}` : null,
       input.crmAccountId !== undefined ? `cp.crm_account_id = ${bind(input.crmAccountId)}` : null,
@@ -448,7 +460,12 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
     WHERE a.tenant_id = $1 AND a.obligation_id = $2 ORDER BY a.applied_at, a.id`, appParams);
   const { rows: hs } = await deps.pool.query(`SELECT id, status, payload_kind, provider_document_reference FROM eos_finance.accounting_handoffs
     WHERE tenant_id = $1 AND obligation_id = $2 ORDER BY created_at`, [t, input.obligationId]);
-  return Object.freeze({ ...o, recordedAt: src.recorded_at ? new Date(src.recorded_at).toISOString() : null, sourceSalesOrder, attribution,
+  // F-1a: the invoice issued against this receivable, if any (its number and dates; the money stays the obligation's).
+  const { rows: invRows } = await deps.pool.query(`SELECT id, invoice_number, issued_at, due_date, due_basis, due_reason, accounting_reference FROM eos_finance.invoices WHERE tenant_id = $1 AND obligation_id = $2`, [t, input.obligationId]);
+  const invoice = invRows[0] ? Object.freeze({ id: String(invRows[0].id), invoiceNumber: String(invRows[0].invoice_number), issuedAt: new Date(invRows[0].issued_at).toISOString(),
+    dueOn: new Date(invRows[0].due_date).toISOString().slice(0, 10), dueBasis: String(invRows[0].due_basis), dueReason: invRows[0].due_reason ?? null,
+    accountingReference: invRows[0].accounting_reference ?? null }) : null;
+  return Object.freeze({ ...o, recordedAt: src.recorded_at ? new Date(src.recorded_at).toISOString() : null, sourceSalesOrder, invoice, attribution,
     facts: facts.map((f) => hiddenFact(f)
       ? { id: String(f.id), factClass: String(f.fact_class), factType: String(f.fact_type), amountMinor: String(f.amount_minor),
           effectiveAt: new Date(f.created_at).toISOString(), sourceDomain: String(f.source_domain), sourceRecordId: null, settlementVisible: false,
@@ -507,7 +524,7 @@ async function readMyFinanceCompanyAccess(deps: WorkOrderOperationDeps, caller: 
       operatingCompanyId: c, name: operatingCompanyDisplayName(c) ?? c,
       visibility: full ? "FULL" : mode === "EMPTY" ? "RESTRICTED_EMPTY" : "RESTRICTED",
       actions: Object.freeze({ view: true, record: full && reaches(SETTLEMENT_RECORD_CAPABILITY, c), apply: full && reaches(SETTLEMENT_APPLY_CAPABILITY, c),
-        correct: full && reaches(SETTLEMENT_CORRECT_CAPABILITY, c), reconcile: full && reaches(RECONCILIATION_RECORD_CAPABILITY, c) }),
+        correct: full && reaches(SETTLEMENT_CORRECT_CAPABILITY, c), reconcile: full && reaches(RECONCILIATION_RECORD_CAPABILITY, c), issue: full && reaches(INVOICE_ISSUE_CAPABILITY, c) }),
     });
   });
   return Object.freeze({ principalId: caller.actor.principalId, companies: Object.freeze(companies),
@@ -694,6 +711,18 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
     requireCapability(caller, RECONCILIATION_RECORD_CAPABILITY);
     await requireSettlementInFullReach(deps, caller, RECONCILIATION_RECORD_CAPABILITY, input.settlementId);
     return reconcileFinancialSettlement(deps.pool, actorOf(caller), input as never);
+  },
+  // F-1a: issue the invoice over a READY billing package's receivable. Capability first, then the PACKAGE's company against the caller's Finance company
+  // assignment (and a FULL inner reach there), both before any write; a package outside the caller's companies answers exactly like a missing one.
+  issueInvoice: async (deps, caller, input) => {
+    requireCapability(caller, INVOICE_ISSUE_CAPABILITY);
+    if (typeof input.billingPackageId === "string" && input.billingPackageId.trim() !== "") {
+      const { rows } = await deps.pool.query(`SELECT operating_company_id FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [caller.actor.tenantId, input.billingPackageId]);
+      if (rows[0] && !(await fullReachedCompanies(deps, caller, INVOICE_ISSUE_CAPABILITY)).includes(String(rows[0].operating_company_id))) {
+        refuse("BILLING_PACKAGE_NOT_FOUND", "NOT_FOUND", "no billing package with that id");
+      }
+    }
+    return issueFinancialInvoice(deps.pool, actorOf(caller), input as never);
   },
   supplyReceiptCostEvidence: async (deps, caller, input) => supplyReceiptCostEvidence({ pool: deps.pool }, caller.actor, input),
   relieveIntercompanySaleInventory: async (deps, caller, input) => relieveIntercompanySaleInventory({ pool: deps.pool }, caller.actor, input),

@@ -233,6 +233,13 @@ export const PERFORMANCE_GOAL_GATE = Object.freeze({
 });
 
 /**
+ * Financials > Billing Queue > Issue invoice (F-1a, DECISIONS #F-1a). The Firebase catalog's own id, held in EOS by the Firebase holders (migration
+ * 1761609600000). A holder is shown the receivables that have no invoice and the Issue control (modules/financials/InvoiceIssueQueue.jsx); the server's
+ * per-company advice (readMyFinanceCompanyAccess `actions.issue`) then narrows the companies, and the command re-decides on every call.
+ */
+export const INVOICE_ISSUE_GATE = Object.freeze({ issue: "finance.invoice.issue" });
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -275,6 +282,8 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   performanceGoal: Object.freeze(Object.values(PERFORMANCE_GOAL_GATE)),
   // A6: modules/accounts/AccountDetail.jsx (the Accounts Receivable summary).
   accountBalance: Object.freeze(Object.values(ACCOUNT_BALANCE_GATE)),
+  // F-1a: modules/financials/FinancialsBillingQueue.jsx (the Issue invoice control).
+  invoiceIssue: Object.freeze(Object.values(INVOICE_ISSUE_GATE)),
 });
 
 /**

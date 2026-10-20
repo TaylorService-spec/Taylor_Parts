@@ -198,7 +198,7 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
   // + DECISIONS #206 (migration 1764510000000): settlements, their applications and reconciliations, and governed late cost evidence.
   // + DECISIONS #232 (migration 1764560000000): the versioned, lockable Financial Policy profiles.
   const FINANCIAL_TABLES = ["accounting_destinations", "accounting_handoff_attempts", "accounting_handoff_exceptions", "accounting_handoffs", "billing_package_lines", "billing_packages", "cost_evidence_exception_resolutions", "cost_evidence_exceptions", "cost_evidence_supplies", "counterparty_company_profiles", "financial_counterparties",
-    "financial_facts", "financial_policy_versions", "intercompany_transactions", "inventory_acquisition_costs", "invoice_lines", "invoices", "obligations", "payment_applications", "payments",
+    "financial_facts", "financial_policy_versions", "intercompany_transactions", "inventory_acquisition_costs", "invoice_lines", "invoice_number_counters", "invoices", "obligations", "payment_applications", "payments",
     "settlement_applications", "settlement_reconciliations", "settlements"];
   const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "obligation_balances", "payment_balances", "settlement_balances"];
 
@@ -274,7 +274,8 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
       ORDER BY 1`,
   );
   // + billing_packages (DECISIONS #196): the package states its company key beside the resolved company id.
-  assert.deepEqual(company.rows.map((r) => r.table_name), ["billing_packages", "invoices", "payments"]);
+  // + invoice_number_counters (F-1a, 1764700000000): the counter is per operating-company KEY, as the invoice number is.
+  assert.deepEqual(company.rows.map((r) => r.table_name), ["billing_packages", "invoice_number_counters", "invoices", "payments"]);
   for (const row of company.rows) {
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key must be NOT NULL`);
     assert.equal(row.column_default, null, `${row.table_name}.operating_company_key must have no default`);

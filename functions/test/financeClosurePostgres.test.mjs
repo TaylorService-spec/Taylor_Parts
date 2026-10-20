@@ -685,7 +685,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     // The row is the obligation register's own shape: amounts and references only -- no part, quantity or unit cost (the
     // cost INPUTS #2084 withholds on the workspace rows never appear on an obligation row at all).
     for (const o of cons) {
-      assert.deepEqual(Object.keys(o).sort(), ["counterparty", "currency", "dueOn", "id", "kind", "operatingCompanyId", "originatedMinor",
+      assert.deepEqual(Object.keys(o).sort(), ["counterparty", "currency", "dueOn", "id", "invoice", "kind", "operatingCompanyId", "originatedMinor",
         "outstandingMinor", "overdue", "settledMinor", "sourceDomain", "sourceRecordId", "sourceSalesOrder", "status"]);
       // F-2: the Sales Order the receivable was billed from -- a reference (id and number), never an amount, part or cost.
       assert.deepEqual(Object.keys(o.sourceSalesOrder).sort(), ["id", "salesOrderNumber"]);
@@ -741,7 +741,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlT], ["taylor"]);
     const access = ok(await fn(ctrlT, "readMyFinanceCompanyAccess", {}));
     assert.deepEqual([access.consolidated, access.companies.map((c) => [c.operatingCompanyId, c.actions])],
-      [false, [["taylor", { view: true, record: true, apply: true, correct: true, reconcile: true }]]]);
+      [false, [["taylor", { view: true, record: true, apply: true, correct: true, reconcile: true, issue: true }]]]);
     assert.equal(ok(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: "taylor" })).scope.companies.join(), "taylor");
     const outside = refused(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: "ventana" }), 403, OUT);
     for (const c of ["consolidated", "saratoga", "no-such-company"]) {

@@ -247,7 +247,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // A6 customer-balance summary (2026-10-19): one capability (finance.accountBalance.read, a READ key) and 8 Owner-ruled grants. No schema.
     "1764680000000_account-balance-summary.sql",
     // G-1 performance goal authoring (2026-10-20): performance_goal_commands (the authoring idempotency record), four performance.goal.* capabilities (create / approve / supersede / retire) and 32 Firebase-mirrored grants.
-    "1764690000000_performance-goal-authoring.sql"],
+    "1764690000000_performance-goal-authoring.sql",
+    // F-1a issue invoice on EOS (2026-10-20): the invoice number counter, the invoice's receivable / package / idempotency columns, invoice_totals and two triggers. No capability, no grant.
+    "1764700000000_invoice-issue.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -490,6 +492,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // F-1a issue invoice (1764700000000): schema only (counter table, invoice columns, triggers, the totals view) -- nothing moves; its down refuses only while an issued invoice or a counter row exists
+    assert.deepEqual(await counts(), { caps: 199, grants: 729, mine: 26 });
     runMigrate(url, "down", 1); // G-1 performance goal authoring (1764690000000): -4 capabilities (performance.goal.create / .approve / .supersede / .retire), -32 grants, one table dropped; its down refuses while a command record, an authored goal, a decision or a direct grant exists
     assert.deepEqual(await counts(), { caps: 195, grants: 697, mine: 26 });
     runMigrate(url, "down", 1); // A6 customer-balance summary (1764680000000): -1 capability (finance.accountBalance.read), -8 grants, no schema; its down refuses while an Administration decision or a direct grant names the new key or one of its pairs
@@ -639,7 +643,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the G-1 performance goal authoring migration (1764690000000) first -- 4 capabilities, 32 grants, one table
+    runMigrate(url, "down", 1); // peel the F-1a issue invoice migration (1764700000000) first -- schema only
+    runMigrate(url, "down", 1); // then the G-1 performance goal authoring migration (1764690000000) -- 4 capabilities, 32 grants, one table
     runMigrate(url, "down", 1); // then the A6 customer-balance summary (1764680000000) -- 1 capability, 8 grants
     runMigrate(url, "down", 1); // then the GRANT-1 Owner policy grants (1764670000000) -- 1 capability, 30 grants
     runMigrate(url, "down", 1); // then the P-1 supplier PO authoring migration (1764660000000) -- 5 capabilities, 27 grants, two tables

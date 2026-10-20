@@ -1001,6 +1001,12 @@ functions/src/eosOps/performanceGoalReads.ts
 functions/test/q1CommandAuditInventory.test.mjs
 functions/test/q1CommercialCrmAuditPostgres.test.mjs
 functions/src/eosAudit/commandAuditEvent.ts
+# F-1a issue invoice on EOS (2026-10-20): the suites, the migration and the client suites it touches; functions/src/eosFinance/** and the Finance client files are covered above.
+functions/test/f1aInvoiceIssue.test.mjs
+functions/test/f1aInvoiceIssuePostgres.test.mjs
+functions/migrations/1764700000000_invoice-issue.sql
+functions/src/eosFinance/invoiceIssue.ts
+field-ops-app-vite/src/modules/financials/InvoiceIssueQueue.jsx
 # S1b (2026-10-20): hard stock reservations per company and warehouse.
 functions/test/stockReservationPostgres.test.mjs
 functions/test/support/stockReservationMigration.mjs

@@ -21,6 +21,8 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { unwiredReadHonestState } from "../../domain/financialsSurface.js";
+import { INVOICE_ISSUE_GATE } from "../../access/shellCapabilityGates.js";
+import InvoiceIssueQueue from "./InvoiceIssueQueue.jsx";
 
 const VIEW_OPTIONS = [
   { key: "eligible", label: "Eligible" },
@@ -29,7 +31,10 @@ const VIEW_OPTIONS = [
   { key: "all", label: "All" },
 ];
 
-export default function FinancialsBillingQueue() {
+// F-1a: a holder of finance.invoice.issue (INVOICE_ISSUE_GATE) is shown the receivables that have no invoice and the Issue control; the server still decides every
+// company and every command. Everyone else sees the queue as before, with the issue action off.
+export default function FinancialsBillingQueue({ hasCapability, callApi }) {
+  const canIssue = typeof hasCapability === "function" && hasCapability(INVOICE_ISSUE_GATE.issue) === true;
   const [company, setCompany] = useState("consolidated");
   const [businessUnit, setBusinessUnit] = useState("all");
   const [view, setView] = useState("eligible");
@@ -40,17 +45,17 @@ export default function FinancialsBillingQueue() {
       crumb="Billing Queue"
       custody="Work financially eligible or potentially eligible to invoice. Billing readiness is a governed fact — never inferred from Work Order COMPLETE."
       custodyTip="Eligibility is a governed billing-readiness fact. Commercial Sales Order eligibility logic exists; SERVICE billing readiness (Work Order COMPLETE ≠ billed) is an open Owner decision (FIN-BLOCK-002) — the two readiness models stay separate, and no universal model is implied."
-      action={
+      action={canIssue ? undefined : (
         <span className="fin-action-slot">
           <button type="button" className="fin-primary-action" disabled>
             Create Invoices
           </button>
           <span className="fin-inact">
-            Issuing isn&rsquo;t wired to this queue yet, and no items are listed to issue
-            <FinAnnotation tip="The invoice command core (issueInvoice) exists, but this page has no governed command path wired to it and no readiness read to select items from — so the action stays disabled. Blocked items would never expose the action regardless of capability. This one-liner deliberately does not assert whether any capability is active: the page has not resolved that, and the server decides at execution time." />
+            Issuing invoices is limited to Finance roles that can issue them, so no items are listed to you
+            <FinAnnotation tip="Issuing an invoice is offered only to a person whose role can issue invoices, for the companies their Finance access covers. This one-liner does not diagnose a capability: the server decides at execution time." />
           </span>
         </span>
-      }
+      )}
     >
       <FinancialsFilterRail
         company={company}
@@ -75,6 +80,7 @@ export default function FinancialsBillingQueue() {
 
       <FilterBar variant="views" label="Queue Views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
+      {canIssue ? <InvoiceIssueQueue {...(callApi ? { callApi } : {})} /> : (
       <FinancialsHonestSection
         id="fin-billing-queue"
         title="Queue"
@@ -103,6 +109,7 @@ export default function FinancialsBillingQueue() {
           </table>
         </div>
       </FinancialsHonestSection>
+      )}
     </FinancialsPageFrame>
   );
 }
