@@ -216,10 +216,12 @@ test("(3) no Commercial capability is activated, and no read capability id is in
     .filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"), "capabilities"));
   // S1c (2026-10-20, Owner S1a OD-12): 1764714000000 registers salesOrder.fulfill (the allocation authority; migration 023 deliberately left it unregistered) and grants it to admin, dispatcher, owner. It is the ONE named exception.
   const S1C_ALLOCATION_MIGRATION = "1764714000000_sales-order-allocation-capability.sql";
+  // ...and its holders follow-up (Owner ruling 2026-10-20) grants the same key to four more Roles: a GRANT only, so it appears in the granting list and not the registering one.
+  const S1C_HOLDERS_MIGRATION = "1764717000000_sales-order-allocation-owner-holders.sql";
   assert.deepEqual(naming, ["1759536000000_commercial-capability-vocabulary.sql", S1C_ALLOCATION_MIGRATION], "a Commercial capability was registered or granted outside migration 023 and the S1c allocation migration");
   const granting = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
     .filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"), "role_capabilities"));
-  assert.deepEqual(granting, [...PRESERVATION_MIGRATIONS, S1C_ALLOCATION_MIGRATION], "a Commercial capability was granted outside the named preservation migrations and the S1c allocation migration");
+  assert.deepEqual(granting, [...PRESERVATION_MIGRATIONS, S1C_ALLOCATION_MIGRATION, S1C_HOLDERS_MIGRATION], "a Commercial capability was granted outside the named preservation migrations and the S1c allocation migration");
   assert.ok(registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", "1759536000000_commercial-capability-vocabulary.sql"), "utf8"), "capabilities"),
     "the scan stopped recognising migration 023 and would now pass for the wrong reason");
   assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "migrations", naming[0]), "utf8").split("-- Down Migration")[0].replace(/^\s*--.*$/gm, ""), /role_capabilities/, "migration 023 grants a Commercial capability");

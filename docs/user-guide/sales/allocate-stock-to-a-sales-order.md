@@ -1,6 +1,6 @@
 # Allocate stock to a Sales Order
 
-**Status: built, not yet switched on** (admin, dispatcher, owner, once the permission is granted and the company's stock reservation is activated) · Sales > Sales Orders > open an order > **Allocation**
+**Status: built, not yet switched on** (owner, admin, general manager, warehouse manager, service manager, parts manager and dispatcher, once the company's stock reservation is activated) · Sales > Sales Orders > open an order > **Allocation**
 
 Allocating sets aside stock for one line of a Sales Order, at a warehouse **you choose**. While it is
 set aside, nobody else can allocate it to another order, so the same bin of parts is never promised
@@ -9,9 +9,12 @@ terms.
 
 ## Who can do this
 
-You need three things, checked in this order:
+The people who can allocate are the **Owner, Administrator, General Manager, Warehouse Manager,
+Service Manager and Parts Manager**, plus the **Dispatcher**. Having the role is only the first of
+three things, and **a warehouse scope is still required**: holding the permission does not let you
+allocate from a warehouse that is not yours. You need, checked in this order:
 
-1. The **Sales Order fulfillment** permission (`salesOrder.fulfill`).
+1. The **Sales Order fulfillment** permission (`salesOrder.fulfill`), which the roles above hold.
 2. Authority over the order's **company** (Taylor or Ventana). You never pick the company: it is the
    order's own, and the page sends it along with the warehouse you chose. A warehouse of a different
    company is refused.
