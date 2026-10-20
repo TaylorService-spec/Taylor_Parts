@@ -23,18 +23,11 @@ const holder = Object.freeze({ tenantId: TENANT, uid: ACTOR, heldRoleKeys: [], c
 const denied = Object.freeze({ tenantId: TENANT, uid: ACTOR, heldRoleKeys: [], capabilities: new Set(["admin.principalAccess.read"]) });
 
 /** A store that records what it was asked, so a refusal that happens BEFORE the store can be proved. */
-function stubRepo({ link = null, employee = { employeeId: "e-1", homeOperatingCompanyId: "taylor" }, grants = [], companies = ["taylor", "ventana"], owner = false } = {}) {
+function stubRepo({ link = null, employee = { employeeId: "e-1", homeOperatingCompanyId: "taylor" }, grants = [], companies = ["taylor", "ventana"] } = {}) {
   const calls = [];
   const note = (name, value) => async (...args) => { calls.push(name); return typeof value === "function" ? value(...args) : value; };
   const repo = {
     calls,
-    // The central seam's reads (DECISIONS #SAE): the protected Owner's waiver of SELF_ADMINISTRATION. Not recorded in `calls`: they are not the grant's own reads.
-    getMembership: async () => ({ status: "active" }),
-    getPrincipal: async () => ({ id: ACTOR, status: "active" }),
-    getAccessVersion: async () => ({ accessVersion: 1 }),
-    listObjects: async () => [],
-    listRoles: async () => [{ id: "r-owner", key: owner ? "owner" : "someRole", protected: owner ? true : false }],
-    listAssignmentsForPrincipal: async () => [{ id: "a-1", roleId: "r-owner", status: "active", scopeType: "global", accessVersionAtGrant: 1 }],
     getLinkedEmployeeAccessFact: note("getLinkedEmployeeAccessFact", link),
     readCompanyGrantEmployee: note("readCompanyGrantEmployee", employee),
     readCompanyAuthorityGrant: note("readCompanyAuthorityGrant", null),
@@ -78,13 +71,8 @@ test("effective dates: an offset is required, the end must follow the start and 
 test("nobody staffs themselves: a grant to the actor's OWN linked Employee is SELF_ADMINISTRATION, before any other read", async () => {
   const repo = stubRepo({ link: { employeeId: "e-1", employmentStatus: "ACTIVE" } });
   await assert.rejects(() => commands.grantCompanyAuthority(repo, holder, base), refusal("SELF_ADMINISTRATION"));
-  assert.ok(!repo.calls.some((c) => c !== "getLinkedEmployeeAccessFact"), "refused on the link alone (and the seam's re-read of it): no Employee, company or grant was read");
-  // DECISIONS #SAE: ONLY the governed protected Owner is waived this refusal (the seam); an Administrator, or a role merely NAMED like it, is not.
-  const unprotectedOwnerName = stubRepo({ link: { employeeId: "e-1", employmentStatus: "ACTIVE" }, owner: false });
-  await assert.rejects(() => commands.grantCompanyAuthority(unprotectedOwnerName, holder, base), refusal("SELF_ADMINISTRATION"));
-  const protectedOwner = stubRepo({ link: { employeeId: "e-1", employmentStatus: "ACTIVE" }, owner: true });
-  await assert.rejects(() => commands.grantCompanyAuthority(protectedOwner, holder, base), /the stub never opens a transaction/);
-  assert.ok(protectedOwner.calls.includes("readCompanyGrantEmployee"), "the protected Owner proceeds to the ordinary checks (company, Employee, window, capability) -- the waiver removes only the self refusal");  // An ambiguous link carries every employee id; the actor is any of them.
+  assert.deepEqual(repo.calls, ["getLinkedEmployeeAccessFact"], "refused on the link alone: no Employee, company or grant was read");
+  // An ambiguous link carries every employee id; the actor is any of them.
   const ambiguous = stubRepo({ link: { employeeId: "e-0,e-1", employmentStatus: null, ambiguous: true } });
   await assert.rejects(() => commands.grantCompanyAuthority(ambiguous, holder, base), refusal("SELF_ADMINISTRATION"));
   // A different Employee is not the actor's own: the command moves on to the Employee lookup (and stops at the stub's transaction).

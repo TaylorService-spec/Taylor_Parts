@@ -39,7 +39,6 @@ export const SELF_APPROVAL_SITES = Object.freeze({
   "goals.performanceGoal": "GOALS", // G-1 author is not approver
   "purchasing.supplierPurchaseOrder": "PURCHASING", // P-1 raiser is not approver
   "inventory.cycleCount": "INVENTORY", // material variance: counter is not reconciler
-  "admin.selfAdministration": null, // SELF_ADMINISTRATION / PRIVILEGE_ESCALATION: the protected Owner only, never delegated
 } as const satisfies Readonly<Record<string, SelfApprovalScope | null>>);
 export type SelfApprovalSite = keyof typeof SELF_APPROVAL_SITES;
 

@@ -404,7 +404,7 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
       // FIN-007's record, built for its INVARIANTS (self-approval refusal, mandatory reason). amountMinor is null: approving a target is not a monetary action.
       approval = buildApprovalRecord({
         actionType: "PLAN_APPROVAL", targetRecordId: goalId, amountMinor: null, requestedByUid: draft.createdByUid, decidedByUid: actor.principalId,
-        decision: "APPROVED", reason, decidedAtMillis, exemption: exemptionOut.resolution,
+        decision: "APPROVED", reason, decidedAtMillis, exemption: exemptionOut.resolution, tenantId: actor.tenantId, site: GOAL_APPROVAL_SITE,
       });
     } catch (err) {
       if (err instanceof ApprovalError) return refuse(err.code === "SELF_APPROVAL_FORBIDDEN" ? "SELF_APPROVAL_FORBIDDEN" : "GOAL_INVALID", err.code === "SELF_APPROVAL_FORBIDDEN" ? "FORBIDDEN" : "INVALID_INPUT", err.message);

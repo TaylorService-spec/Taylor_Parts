@@ -13,7 +13,7 @@
 //     (assertActionApproved refuses).
 // Integer minor units; pure; no I/O; capability activation and threshold values stay Owner-gated.
 
-import { exemptionRecord, type ApprovalBasis } from "../access/secondaryApprovalExemptionCore";
+import { exemptionRecord, type ApprovalBasis, type SelfApprovalSite } from "../access/secondaryApprovalExemptionCore";
 
 export const APPROVABLE_ACTION_TYPES = Object.freeze([
   "INVOICE_ADJUSTMENT", // credit memo / debit charge (adjustmentCommands)
@@ -82,9 +82,12 @@ export interface ApprovalRecordInput {
    * module did not receive from the seam is ignored. Absent: self-approval is refused exactly as before.
    */
   exemption?: unknown;
+  /** The tenant and the declared site the exemption must have been issued for; an exemption is never honoured without both (a resolution for another tenant or site is refused). */
+  tenantId?: string;
+  site?: SelfApprovalSite;
 }
 
-export interface ApprovalRecord extends Omit<ApprovalRecordInput, "actionType" | "decision" | "exemption"> {
+export interface ApprovalRecord extends Omit<ApprovalRecordInput, "actionType" | "decision" | "exemption" | "tenantId" | "site"> {
   actionType: ApprovableActionType;
   decision: ApprovalDecision;
   /** Present ONLY when the seam's exemption admitted a same-person decision: why, and from where. */
@@ -105,7 +108,7 @@ export function buildApprovalRecord(input: ApprovalRecordInput): ApprovalRecord 
   if (input.amountMinor !== null && (!isInt(input.amountMinor) || input.amountMinor < 0)) throw new ApprovalError("AMOUNT_INVALID", "amountMinor must be a non-negative integer or null");
   if (!isInt(input.decidedAtMillis) || input.decidedAtMillis <= 0) throw new ApprovalError("DECIDED_AT_REQUIRED", "decidedAtMillis (ms epoch) is required");
   const same = input.requestedByUid.trim() === input.decidedByUid.trim();
-  const exempt = same ? exemptionRecord(input.exemption, input.decidedByUid.trim()) : null;
+  const exempt = same && nonEmpty(input.tenantId) && nonEmpty(input.site) ? exemptionRecord(input.exemption, input.decidedByUid.trim(), input.tenantId, input.site) : null;
   if (same && !exempt) {
     throw new ApprovalError("SELF_APPROVAL_FORBIDDEN", "the requester may not decide their own request — unless the governed protected Owner (DECISIONS #SAE)");
   }

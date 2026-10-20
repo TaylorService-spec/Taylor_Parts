@@ -30,12 +30,10 @@ const ENGINE = "src/eosOps/authorityChangePreview.ts";
 
 const PINNED_CLOSURE = [
   "src/access/compatibilityRoles.ts", "src/access/governedBusinessRoles.ts", "src/access/permissionCatalog.ts",
-  // DECISIONS #SAE: the pure protected-Owner exemption (no I/O, an immutable symbol brand) and its repository adapter, imported by policyCommands for the SELF_ADMINISTRATION / PRIVILEGE_ESCALATION waiver.
-  "src/access/secondaryApprovalExemptionCore.ts",
   "src/adminPolicy/administrationAuthority.ts", "src/adminPolicy/administrationCapabilityGate.ts",
   "src/adminPolicy/administrationSurfaceAuthority.ts", "src/adminPolicy/assignmentScope.ts", "src/adminPolicy/assignmentScopeRuntime.ts",
   "src/adminPolicy/authorityChangePreviewPort.ts", "src/adminPolicy/effectiveObjectAccess.ts", "src/adminPolicy/employmentAccessEligibility.ts",
-  "src/adminPolicy/objectSecurityAuthority.ts", "src/adminPolicy/ownerAdministrationExemption.ts", "src/adminPolicy/policyCommands.ts", "src/adminPolicy/policyDatabase.ts",
+  "src/adminPolicy/objectSecurityAuthority.ts", "src/adminPolicy/policyCommands.ts", "src/adminPolicy/policyDatabase.ts",
   "src/adminPolicy/policyRepository.ts", "src/adminPolicy/postgresPolicyRepository.ts", "src/adminPolicy/principalContext.ts",
   "src/adminPolicy/protectedAdministrator.ts", "src/adminPolicy/roleCapabilityAdministration.ts", "src/adminPolicy/types.ts",
   // DECISIONS #248: the pure Role company-authority vocabulary + the finance.* guard (no I/O), imported by policyCommands.

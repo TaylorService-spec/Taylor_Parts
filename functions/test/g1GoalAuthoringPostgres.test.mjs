@@ -950,5 +950,19 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.equal((await refusal(() => approve(revoked, W, gr))).code, "SELF_APPROVAL_FORBIDDEN", "an ended Owner membership is not exempt");
     assert.deepEqual(await counts(), mark, "every refusal left no trace (goal rows, command records, audit rows)");
     assert.equal((await row(gl)).status, "DRAFT");
+
+    // D2 (Owner ruling, PR #2190 integrity guards): the exemption removes ONLY the second person. The Owner may draft AND approve a goal that targets ANOTHER Employee ...
+    const forRep = await create(ownerP, W, EMP("e-rep", { effectiveFrom: "2070-01-01" }));
+    const forRepDone = await approve(ownerP, W, forRep.goalId);
+    assert.deepEqual([forRepDone.status, forRepDone.approvalBasis], ["APPROVED", "PROTECTED_OWNER"], "an Owner-authored, Owner-approved target for another Employee");
+    // ... but NOT an Employee-specific target for their OWN Employee: SELF_TARGETING_FORBIDDEN is unchanged (author, approver and retirer alike)
+    const guardState = await counts();
+    assert.equal((await refusal(() => create(ownerP, W, EMP("e-sae-owner", { effectiveFrom: "2071-01-01" })))).code, "SELF_TARGETING_FORBIDDEN");
+    const ownTarget = await seed({ metric: "technician.workOrder.open.count", scope: "EMPLOYEE", scopeId: "e-sae-owner", unit: "COUNT", from: "2072-01-01", author: ownerP });
+    assert.equal((await refusal(() => approve(ownerP, W, ownTarget))).code, "SELF_TARGETING_FORBIDDEN", "the Owner cannot approve a target on their own Employee, even one they authored");
+    const approvedOwn = await seed({ metric: "technician.workOrder.open.count", scope: "EMPLOYEE", scopeId: "e-sae-owner", unit: "COUNT", from: "2020-01-01", status: "APPROVED", author: mgr });
+    assert.equal((await refusal(() => retire(ownerP, W, approvedOwn))).code, "SELF_TARGETING_FORBIDDEN");
+    const after2 = await counts();
+    assert.deepEqual([after2.g, after2.c, after2.a], [guardState.g + 2, guardState.c, guardState.a], "only the two seeded fixture rows; the refusals wrote no command record and no audit row");
   });
 });

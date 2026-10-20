@@ -20,7 +20,6 @@ const core = require("../lib/access/secondaryApprovalExemptionCore.js");
 const seam = require("../lib/access/secondaryApprovalExemption.js");
 const approvals = require("../lib/finance/financialApprovals.js");
 const corr = require("../lib/eosFinance/invoiceCorrection.js");
-const adminExemption = require("../lib/adminPolicy/ownerAdministrationExemption.js");
 const cycleRepo = require("../lib/eosOps/cycleCountRepository.js");
 const fp = require("../lib/eosFinance/financialPolicy.js");
 
@@ -73,20 +72,20 @@ test("SEAM: a resolution is an object the seam ISSUED; a boolean, a copy, a clie
   assert.equal(core.exemptionRecord(r, "p-own", T, "finance.invoiceCorrection"), null, "an exemption resolved for one site never admits another");
 });
 
-test("SCOPE MAP: every site declares its workflow scope once; an undeclared site throws; the Administration site is never delegable", () => {
+test("SCOPE MAP: every site declares its workflow scope once; an undeclared site throws; there is NO Administration site (D1: identity and administration guards are not exempted)", () => {
   assert.deepEqual({ ...core.SELF_APPROVAL_SITES }, {
     "finance.invoiceCorrection": "FINANCIALS", "finance.policy": "FINANCIALS", "goals.performanceGoal": "GOALS",
-    "purchasing.supplierPurchaseOrder": "PURCHASING", "inventory.cycleCount": "INVENTORY", "admin.selfAdministration": null,
+    "purchasing.supplierPurchaseOrder": "PURCHASING", "inventory.cycleCount": "INVENTORY",
   });
   assert.deepEqual([...core.SELF_APPROVAL_SCOPES], ["FINANCIALS", "PURCHASING", "SALES", "INVENTORY", "SERVICE", "GOALS"]);
   assert.throws(() => core.decideSecondaryApprovalExemption(T, "p", "sales.discount", facts()), /declares no workflow scope/);
   assert.throws(() => core.scopeOfSite("__proto__"), /declares no workflow scope/);
-  assert.equal(core.scopeOfSite("admin.selfAdministration"), null);
+  assert.throws(() => core.scopeOfSite("admin.selfAdministration"), /declares no workflow scope/, "Administration has no exemption site");
   // Every site named in the source is in the map (so a new two-person rule cannot silently skip the seam).
   const named = new Set();
   for (const f of walk(join(ROOT, "src")).filter((p) => p.endsWith(".ts"))) {
     const src = readFileSync(f, "utf8");
-    for (const m of src.matchAll(/(?:resolveSecondaryApprovalExemption|resolveOwnerAdministrationExemption)\([^)]*?"([a-z]+\.[A-Za-z]+)"/g)) named.add(m[1]);
+    for (const m of src.matchAll(/(?:resolveSecondaryApprovalExemption)\([^)]*?"([a-z]+\.[A-Za-z]+)"/g)) named.add(m[1]);
     for (const m of src.matchAll(/_APPROVAL_SITE = "([a-z]+\.[A-Za-z]+)" as const/g)) named.add(m[1]);
   }
   for (const s of named) assert.ok(Object.prototype.hasOwnProperty.call(core.SELF_APPROVAL_SITES, s), `${s} is declared in SELF_APPROVAL_SITES`);
@@ -100,7 +99,6 @@ test("SEAM (Rule 2 shape): a delegated exemption admits only its scope; the all-
   assert.equal(at("purchasing.supplierPurchaseOrder", delegated("FINANCIALS")).exempt, false, "a Finance-only grantee cannot self-approve a Purchasing action");
   assert.equal(at("goals.performanceGoal", delegated("ALL")).exempt, true);
   assert.equal(at("inventory.cycleCount", delegated("ALL")).scopeKey, "INVENTORY");
-  assert.equal(at("admin.selfAdministration", delegated("ALL")).exempt, false, "Administration is never delegable");
   assert.equal(at("finance.policy", facts({ heldRoles: [], delegated: undefined })).exempt, false);
   assert.equal(at("finance.policy", facts({ heldRoles: [], employeeLinks: [], delegated: [{ scopeKey: "ALL", source: "x" }] })).exempt, false, "a grant without an Employee is nothing");
   assert.equal(at("finance.invoiceCorrection", facts({ delegated: [{ scopeKey: "FINANCIALS", source: "x" }] })).basis, "PROTECTED_OWNER", "the Owner is resolved first");
@@ -109,7 +107,7 @@ test("SEAM (Rule 2 shape): a delegated exemption admits only its scope; the all-
 // ════════════════════ FIN-007's record builder ════════════════════
 
 test("buildApprovalRecord: self-approval is refused for everyone but a VERIFIED exemption; the record then carries approvalBasis and provenance; a different approver's record has none", () => {
-  const input = { actionType: "PLAN_APPROVAL", targetRecordId: "g1", amountMinor: null, requestedByUid: "p-own", decidedByUid: "p-own", decision: "APPROVED", reason: "ok", decidedAtMillis: 1 };
+  const input = { actionType: "PLAN_APPROVAL", targetRecordId: "g1", amountMinor: null, requestedByUid: "p-own", decidedByUid: "p-own", decision: "APPROVED", reason: "ok", decidedAtMillis: 1, tenantId: T, site: "goals.performanceGoal" };
   const refuse = (extra) => { try { approvals.buildApprovalRecord({ ...input, ...extra }); } catch (e) { return e.code; } return null; };
   assert.equal(refuse({}), "SELF_APPROVAL_FORBIDDEN");
   for (const forged of [true, "PROTECTED_OWNER", { exempt: true, basis: "PROTECTED_OWNER" }, { exempt: false }]) assert.equal(refuse({ exemption: forged }), "SELF_APPROVAL_FORBIDDEN", JSON.stringify(forged));
@@ -256,13 +254,12 @@ test("CYCLE COUNT: the repository refuses a counter reconciling their own varian
   assert.equal((await failure(cycleRepo.reconcileLineInTransaction(db, T, "p-else", "l1", "APPROVE", "r")))?.message, "STOP_AFTER_SELF_CHECK");
 });
 
-test("P-1, G-1, FINANCIAL POLICY and ADMINISTRATION call the seam with their declared site; none keeps its own Owner test", () => {
+test("P-1, G-1 and FINANCIAL POLICY call the seam with their declared site; none keeps its own Owner test", () => {
   const read = (f) => readFileSync(join(ROOT, "src", f), "utf8");
   assert.match(read("eosOps/supplierPurchaseOrderAuthoring.ts"), /resolveSecondaryApprovalExemption\(c, actor\.tenantId, actor\.principalId, PO_APPROVAL_SITE\)/);
   assert.match(read("eosOps/performanceGoalAuthoring.ts"), /resolveSecondaryApprovalExemption\(ctx\.db, ctx\.actor\.tenantId, ctx\.actor\.principalId, GOAL_APPROVAL_SITE\)/);
   assert.match(read("eosOps/performanceGoalAuthoring.ts"), /exemption: exemptionOut\.resolution/, "FIN-007's record builder receives the verified resolution");
   assert.match(read("eosFinance/financialPolicy.ts"), /resolveSecondaryApprovalExemption\(db, actor\.tenantId, actor\.principalId, FINANCIAL_POLICY_APPROVAL_SITE\)/);
-  assert.match(read("adminPolicy/policyCommands.ts"), /resolveOwnerAdministrationExemption\(repo, actor\.tenantId, actor\.uid\)/);
   for (const f of ["eosOps/supplierPurchaseOrderAuthoring.ts", "eosOps/performanceGoalAuthoring.ts", "eosOps/cycleCountOperations.ts", "eosFinance/financialPolicy.ts"]) {
     const code = read(f).replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
     assert.doesNotMatch(code, /isProtectedOwnerRole|=== ?"owner"|includes\("owner"\)|PROTECTED_OWNER_ROLE_KEY/, `${f}: no Owner test of its own`);
@@ -272,27 +269,28 @@ test("P-1, G-1, FINANCIAL POLICY and ADMINISTRATION call the seam with their dec
   assert.equal(fp.independentDeciderRefusal("p-2", { submittedBy: "p-1", contentAuthors: ["p-1"] }), null);
 });
 
-test("ADMINISTRATION: the repository adapter exempts only a protected Owner with an active Employee link; the Administrator, a custom role named owner, a stale assignment and a scoped assignment are not", async () => {
-  const repo = ({ roles, assignments, version = 5, link = { employeeId: "e-own", employmentStatus: "ACTIVE" }, principal = "active", membership = "active" }) => ({
-    getMembership: async () => ({ status: membership }), getPrincipal: async () => ({ id: "p-own", status: principal }), getAccessVersion: async () => ({ accessVersion: version }),
-    listAssignmentsForPrincipal: async () => assignments, listRoles: async () => roles, getLinkedEmployeeAccessFact: async () => link,
-  });
-  const ownerRole = { id: "r-own", key: "owner", protected: true };
-  const asg = (over = {}) => [{ id: "a1", roleId: "r-own", status: "active", scopeType: "global", accessVersionAtGrant: 5, ...over }];
-  const at = (r) => adminExemption.resolveOwnerAdministrationExemption(r, T, "p-own");
-  assert.equal((await at(repo({ roles: [ownerRole], assignments: asg() }))).exempt, true);
-  assert.equal((await at(repo({ roles: [ownerRole], assignments: asg() }))).scopeKey, null, "the Administration site is not delegable");
-  const no = async (label, r) => assert.deepEqual(await at(r), { exempt: false }, label);
-  await no("a role named owner without the protected flag", repo({ roles: [{ id: "r-own", key: "owner", protected: false }], assignments: asg() }));
-  await no("the Administrator", repo({ roles: [{ id: "r-own", key: "admin", protected: true }], assignments: asg() }));
-  await no("a revoked assignment", repo({ roles: [ownerRole], assignments: asg({ status: "revoked" }) }));
-  await no("a stale assignment (granted at a later access version)", repo({ roles: [ownerRole], assignments: asg({ accessVersionAtGrant: 9 }) }));
-  await no("a scoped assignment", repo({ roles: [ownerRole], assignments: asg({ scopeType: "operatingCompany" }) }));
-  await no("no Employee link", repo({ roles: [ownerRole], assignments: asg(), link: null }));
-  await no("an ambiguous link", repo({ roles: [ownerRole], assignments: asg(), link: { employeeId: "e1,e2", employmentStatus: null, ambiguous: true } }));
-  await no("a terminated Employee", repo({ roles: [ownerRole], assignments: asg(), link: { employeeId: "e-own", employmentStatus: "TERMINATED" } }));
-  await no("a disabled Principal", repo({ roles: [ownerRole], assignments: asg(), principal: "disabled" }));
-  await no("an ended membership", repo({ roles: [ownerRole], assignments: asg(), membership: "revoked" }));
+test("D1 (Owner ruling, PR #2190 integrity guards): Administration is untouched -- no waiver of SELF_ADMINISTRATION or PRIVILEGE_ESCALATION and no use of the seam in the commands or the API", () => {
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  for (const f of ["adminPolicy/policyCommands.ts", "adminPolicy/adminPolicyApi.ts", "eosAuth/eosLoginService.ts"]) {
+    assert.doesNotMatch(strip(readFileSync(join(ROOT, "src", f), "utf8")), /secondaryApprovalExemption|ownerAdministration|waiver|Waiver|exemptionRecord/, f);
+  }
+  const code = readFileSync(join(ROOT, "src/adminPolicy/policyCommands.ts"), "utf8");
+  assert.match(code, /throw new AdministrationRefusal\("SELF_ADMINISTRATION", "a principal may not assign a Role to itself"\)/, "the self-assignment refusal is unconditional");
+  assert.match(code, /throw new AdministrationRefusal\("PRIVILEGE_ESCALATION",/, "PRIVILEGE_ESCALATION applies to the Owner exactly as before");
+  assert.throws(() => readFileSync(join(ROOT, "src/adminPolicy/ownerAdministrationExemption.ts")), /ENOENT/, "the Administration adapter is gone");
+});
+
+test("M1: buildApprovalRecord honours an exemption only for the SAME tenant and SITE it was issued for", () => {
+  const input = { actionType: "PLAN_APPROVAL", targetRecordId: "g1", amountMinor: null, requestedByUid: "p-own", decidedByUid: "p-own", decision: "APPROVED", reason: "ok", decidedAtMillis: 1 };
+  const code = (extra) => { try { approvals.buildApprovalRecord({ ...input, ...extra }); return null; } catch (e) { return e.code; } };
+  const goals = core.decideSecondaryApprovalExemption(T, "p-own", "goals.performanceGoal", facts());
+  assert.equal(code({ exemption: goals, tenantId: T, site: "goals.performanceGoal" }), null);
+  assert.equal(code({ exemption: goals, tenantId: "t-other", site: "goals.performanceGoal" }), "SELF_APPROVAL_FORBIDDEN", "a resolution issued for another tenant");
+  assert.equal(code({ exemption: goals, tenantId: T, site: "finance.invoiceCorrection" }), "SELF_APPROVAL_FORBIDDEN", "a resolution issued for another site");
+  assert.equal(code({ exemption: goals }), "SELF_APPROVAL_FORBIDDEN", "an exemption without the tenant and site it is claimed for is never honoured");
+  const rec = approvals.buildApprovalRecord({ ...input, exemption: goals, tenantId: T, site: "goals.performanceGoal" });
+  assert.equal(rec.approvalBasis, "PROTECTED_OWNER");
+  assert.equal("tenantId" in rec || "site" in rec, false);
 });
 
 test("the DB adapter asks the governed tables only: no client input, and the Owner Role is selected by KEY (the protected flag is then checked by the pure rule)", async () => {

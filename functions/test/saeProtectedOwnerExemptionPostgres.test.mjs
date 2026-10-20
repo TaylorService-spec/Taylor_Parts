@@ -1,12 +1,12 @@
-// SAE, over real PostgreSQL -- the protected-Owner exemption from secondary approval, for the Financial Policy lifecycle and for Administration (DECISIONS #SAE; Owner policy override
+// SAE, over real PostgreSQL -- the protected-Owner exemption from secondary approval, for the Financial Policy lifecycle, and the proof that Administration is NOT exempted (DECISIONS #SAE; Owner policy override
 // 2026-10-20; briefs SAE2 + SAE3 Rule 1). The other workflows' Owner proofs live beside their own fixtures: F-1b corrections and voids (f1bInvoiceCorrectionPostgres), G-1 goals
 // (g1GoalAuthoringPostgres), P-1 purchase orders (supplierPurchaseOrderAuthoringPostgres), cycle count (eosCycleCountOperationsPostgres).
 //
 //   FINANCIAL POLICY   the Owner prepares, submits, approves and activates their own version (the audit rows record the basis; history still rebuilds); an Administrator who prepared a
 //                      version is refused approve / reject / activate (SEPARATION_OF_DUTIES) and the database refuses the same on a direct write; a direct write by the Owner is accepted
 //                      only while the seam proves the Owner at that moment (a revoked Owner is refused).
-//   ADMINISTRATION     SELF_ADMINISTRATION is waived for the governed protected Owner ONLY and the audit event says so; the Administrator, an Owner with no Employee link and a look-alike
-//                      keep it; the protected Owner Role is still never appointed through ordinary administration.
+//   ADMINISTRATION     (Owner ruling D1, PR #2190 integrity guards) the exemption removes ONLY the second-person approval requirement. SELF_ADMINISTRATION and PRIVILEGE_ESCALATION apply to
+//                      the protected Owner exactly as before; so do the protected-Owner membership invariant, the last-Owner guard and anti-lockout. The Owner still administers OTHER principals.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -121,69 +121,58 @@ test("SAE: the protected Owner over PostgreSQL -- Financial Policy and Administr
     refused(await fn(ownerDual, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id, effectiveDate: await businessDate("ventana", 7) }), 403, "CAPABILITY_REQUIRED");
   });
 
-  // ── Administration ──
+  // ── Administration: NOT exempted (Owner ruling D1) ──
   const adminAs = (subject, operation, input) => executeAdminOperation({ repo }, { caller: { externalSubject: subject, identityProvider: "firebase" }, operation, input, requestId: `r-${operation}-${Math.random()}` });
-  const auditAfter = async (action, target) => (await one(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = $2 AND target_id = $3 ORDER BY occurred_at DESC LIMIT 1`, [TENANT, action, target])).after;
+  const assignmentRows = async () => (await one(`SELECT count(*)::int n, md5(coalesce(string_agg(x::text, '|' ORDER BY x.id), '')) h FROM eos_policy.user_role_assignments x WHERE x.tenant_id = $1`, [TENANT]));
+  const refusedWith = (r, pattern, what) => { assert.deepEqual([r.ok, r.code], [false, "FORBIDDEN"], `${what} ${JSON.stringify(r).slice(0, 300)}`); assert.match(String(r.message), pattern, what); };
 
-  await t.test("SAE-ADM-1: SELF_ADMINISTRATION is waived for the governed protected Owner ONLY: the Owner assigns a Role to themselves (audited with the basis); the Administrator, an Owner with no Employee link and a look-alike keep the refusal", async () => {
+  await t.test("SAE-ADM-1: the protected Owner (with an Employee link) is STILL refused every self-administration case; the Administrator likewise; nothing is written", async () => {
     assert.equal((await admin("createRole", { key: "saeProbe", name: "SAE probe", reason: "local test tenant only (SAE)" })).ok, true);
     const roleId = await roleIdOf("saeProbe");
     const owner = await person("uid-sae-adm-owner", ["owner"], { id: "e-sae-adm-owner", name: "Odin Owner" });
-    const done = await adminAs(owner.subject, "assignRole", { principalId: owner.principalId, roleId, reason: "Owner staffs themselves" });
-    assert.equal(done.ok, true, JSON.stringify(done).slice(0, 400));
-    const assignmentId = (await one(`SELECT id FROM eos_policy.user_role_assignments WHERE principal_id = $1 AND role_id = $2 AND status = 'active'`, [owner.principalId, roleId])).id;
-    const after = await auditAfter("assignRole", assignmentId);
-    assert.deepEqual([after.approvalBasis, after.approvalScope, after.approvalGrantSource], ["PROTECTED_OWNER", null, "PROTECTED_OWNER_MEMBERSHIP"], "the audit event records why the self-refusal did not apply");
-    // the Administrator: still refused (and nothing written)
     const administrator = await person("uid-sae-adm-admin", ["admin"], { id: "e-sae-adm-admin", name: "Ari Administrator" });
-    const rows0 = await one(`SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE tenant_id = $1`, [TENANT]);
-    const denied = await adminAs(administrator.subject, "assignRole", { principalId: administrator.principalId, roleId, reason: "self" });
-    assert.deepEqual([denied.ok, denied.code], [false, "FORBIDDEN"]);
-    assert.match(String(denied.message), /SELF_ADMINISTRATION/);
-    // an Owner with NO Employee link cannot be resolved: not exempt
-    const noLink = await person("uid-sae-adm-nolink", ["owner"]);
-    const nl = await adminAs(noLink.subject, "assignRole", { principalId: noLink.principalId, roleId, reason: "self" });
-    assert.deepEqual([nl.ok, nl.code], [false, "FORBIDDEN"]);
-    assert.match(String(nl.message), /SELF_ADMINISTRATION/);
-    // a look-alike (a custom role merely NAMED like the Owner, not the protected one) holding the assignment capability is not exempt
-    assert.equal((await admin("createRole", { key: "ownerLookalike", name: "Owner", reason: "local test tenant only (SAE)" })).ok, true);
-    const look = await person("uid-sae-adm-look", ["ownerLookalike", "admin"], { id: "e-sae-adm-look", name: "Lou Lookalike" });
-    const lk = await adminAs(look.subject, "assignRole", { principalId: look.principalId, roleId, reason: "self" });
-    assert.deepEqual([lk.ok, lk.code], [false, "FORBIDDEN"]);
-    assert.equal((await one(`SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE tenant_id = $1`, [TENANT])).n, rows0.n, "no refusal wrote an assignment");
-    // what the waiver does NOT touch: the protected Owner Role is never appointed through ordinary administration, whoever asks and whoever the target
-    const ownerRoleId = await roleIdOf("owner");
-    const appoint = await adminAs(owner.subject, "assignRole", { principalId: administrator.principalId, roleId: ownerRoleId, reason: "appoint" });
-    assert.deepEqual([appoint.ok, appoint.code], [false, "FORBIDDEN"]);
-    assert.match(String(appoint.message), /PROTECTED_OWNER_MEMBERSHIP|not appointed/);
-    const reappoint = await adminAs(owner.subject, "assignRole", { principalId: owner.principalId, roleId: ownerRoleId, reason: "self" });
-    assert.equal(reappoint.ok, false);
+    const before = await assignmentRows();
+    // assigning a Role to yourself
+    refusedWith(await adminAs(owner.subject, "assignRole", { principalId: owner.principalId, roleId, reason: "Owner staffs themselves" }), /SELF_ADMINISTRATION/, "Owner assigns self");
+    refusedWith(await adminAs(administrator.subject, "assignRole", { principalId: administrator.principalId, roleId, reason: "self" }), /SELF_ADMINISTRATION/, "Administrator assigns self");
+    // granting company access to your OWN Employee
+    const grantOwn = (employeeId) => ({ employeeId, operatingCompanyId: "ventana", reason: "cover both companies" });
+    refusedWith(await adminAs(owner.subject, "grantCompanyAuthority", grantOwn("e-sae-adm-owner")), /SELF_ADMINISTRATION/, "Owner grants own Employee company access");
+    refusedWith(await adminAs(administrator.subject, "grantCompanyAuthority", grantOwn("e-sae-adm-admin")), /SELF_ADMINISTRATION/, "Administrator grants own Employee company access");
+    // the designated Administrator Role to yourself
+    const adminRoleId = await roleIdOf("admin");
+    assert.equal((await adminAs(owner.subject, "assignRole", { principalId: owner.principalId, roleId: adminRoleId, reason: "self" })).ok, false);
+    assert.equal(await one(`SELECT count(*)::int n FROM eos_policy.employee_company_authority_grants WHERE tenant_id = $1`, [TENANT]).then((r) => r.n), 0, "no grant written");
+    assert.deepEqual(await assignmentRows(), before, "zero trace: no refusal wrote an assignment");
+    // the Owner still administers OTHER principals: staffing another person with a plain Role is as before
+    const other = await person("uid-sae-adm-other", [], { id: "e-sae-adm-other", name: "Olly Other" });
+    const ok1 = await adminAs(owner.subject, "assignRole", { principalId: other.principalId, roleId, reason: "Owner staffs another principal" });
+    assert.equal(ok1.ok, true, JSON.stringify(ok1).slice(0, 300));
+    const noBasis = (await one(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1 AND after ? 'approvalBasis'`, [TENANT])).n;
+    assert.equal(noBasis, 0, "no Administration audit event carries an exemption basis: there is no exemption in Administration");
   });
 
-  await t.test("SAE-ADM-2: the Owner may grant company access to their OWN Employee (waived, audited with the basis); the Administrator keeps the refusal; the capability gate, the company rules and the window rules still apply", async () => {
+  await t.test("SAE-ADM-2: PRIVILEGE_ESCALATION, the protected-Owner membership invariant, the last-Owner guard and anti-lockout still refuse the Owner", async () => {
     const owner = await person("uid-sae-adm-owner2", ["owner"], { id: "e-sae-adm-owner2", name: "Orla Owner" });
-    const input = (employeeId, over = {}) => ({ employeeId, operatingCompanyId: "ventana", reason: "Owner covers both companies", ...over });
-    const g = await adminAs(owner.subject, "grantCompanyAuthority", input("e-sae-adm-owner2"));
-    assert.equal(g.ok, true, JSON.stringify(g).slice(0, 400));
-    const grantId = (await one(`SELECT id FROM eos_policy.employee_company_authority_grants WHERE tenant_id = $1 AND employee_id = 'e-sae-adm-owner2' AND status = 'active'`, [TENANT])).id;
-    const after = await auditAfter("grantCompanyAuthority", grantId);
-    assert.deepEqual([after.approvalBasis, after.approvalGrantSource, after.employeeId], ["PROTECTED_OWNER", "PROTECTED_OWNER_MEMBERSHIP", "e-sae-adm-owner2"]);
-    // the waiver removes ONLY the self refusal: the company must still be another company, the reason is still required
-    const home = await adminAs(owner.subject, "grantCompanyAuthority", input("e-sae-adm-owner2", { operatingCompanyId: "taylor" }));
-    assert.deepEqual([home.ok, home.code], [false, "INVALID_INPUT"]);
-    const noReason = await adminAs(owner.subject, "grantCompanyAuthority", input("e-sae-adm-owner2", { reason: " " }));
-    assert.equal(noReason.ok, false);
-    // the Administrator granting their OWN Employee company access: refused SELF_ADMINISTRATION, nothing written
-    const administrator = await person("uid-sae-adm-admin2", ["admin"], { id: "e-sae-adm-admin2", name: "Abe Administrator" });
-    const before = (await one(`SELECT count(*)::int n FROM eos_policy.employee_company_authority_grants WHERE tenant_id = $1`, [TENANT])).n;
-    const no = await adminAs(administrator.subject, "grantCompanyAuthority", input("e-sae-adm-admin2"));
-    assert.deepEqual([no.ok, no.code], [false, "FORBIDDEN"]);
-    assert.match(String(no.message), /SELF_ADMINISTRATION/);
-    assert.equal((await one(`SELECT count(*)::int n FROM eos_policy.employee_company_authority_grants WHERE tenant_id = $1`, [TENANT])).n, before, "zero trace");
-    // granting ANOTHER Employee company access is ordinary and records no basis
-    const other = await adminAs(owner.subject, "grantCompanyAuthority", input("e-sae-adm-admin2"));
-    assert.equal(other.ok, true, JSON.stringify(other).slice(0, 300));
-    const otherId = (await one(`SELECT id FROM eos_policy.employee_company_authority_grants WHERE tenant_id = $1 AND employee_id = 'e-sae-adm-admin2' AND status = 'active'`, [TENANT])).id;
-    assert.equal((await auditAfter("grantCompanyAuthority", otherId)).approvalBasis, undefined);
+    const target = await person("uid-sae-adm-target", [], { id: "e-sae-adm-target", name: "Tal Target" });
+    // PRIVILEGE_ESCALATION: a Role carrying admin.securityPolicy.write may be assigned only by a holder of it. The Owner holds admin.roleAssignment.write, not securityPolicy.write.
+    const sp = await one(`SELECT object_key, action_key FROM eos_policy.capabilities WHERE key = 'admin.securityPolicy.write'`);
+    assert.equal((await admin("createRole", { key: "saeSecurityRole", name: "SAE security", reason: "local test tenant only (SAE)" })).ok, true);
+    const granted = await admin("grantObjectActionToRole", { roleKey: "saeSecurityRole", objectKey: sp.object_key, actionKey: sp.action_key, reason: "local test tenant only (SAE)" });
+    assert.equal(granted.ok, true, JSON.stringify(granted).slice(0, 300));
+    const before = await assignmentRows();
+    refusedWith(await adminAs(owner.subject, "assignRole", { principalId: target.principalId, roleId: await roleIdOf("saeSecurityRole"), reason: "hand out security-policy authority" }),
+      /PRIVILEGE_ESCALATION|securityPolicy\.write/, "PRIVILEGE_ESCALATION still refuses the Owner");
+    // the protected Owner Role is never appointed or removed through ordinary administration
+    const ownerRoleId = await roleIdOf("owner");
+    refusedWith(await adminAs(owner.subject, "assignRole", { principalId: target.principalId, roleId: ownerRoleId, reason: "appoint" }), /PROTECTED_OWNER_MEMBERSHIP|not appointed/, "appoint an Owner");
+    const ownerAssignment = (await one(`SELECT id FROM eos_policy.user_role_assignments WHERE principal_id = $1 AND role_id = $2 AND status = 'active'`, [owner.principalId, ownerRoleId])).id;
+    refusedWith(await adminAs(owner.subject, "revokeRole", { assignmentId: ownerAssignment, reason: "step down" }), /PROTECTED_OWNER_MEMBERSHIP|not removed|LAST_PROTECTED_OWNER/, "the last / protected Owner assignment is not revoked");
+    assert.deepEqual(await assignmentRows(), before, "zero trace");
+    // anti-lockout: the Owner cannot remove the tenant's last Administrator
+    const admins = (await q(`SELECT a.id, a.principal_id FROM eos_policy.user_role_assignments a WHERE a.tenant_id = $1 AND a.role_id = $2 AND a.status = 'active' ORDER BY a.id`, [TENANT, await roleIdOf("admin")])).rows;
+    for (const a of admins.slice(1)) assert.equal((await adminAs(owner.subject, "revokeRole", { assignmentId: a.id, reason: "reduce to one Administrator" })).ok, true);
+    const last = await adminAs(owner.subject, "revokeRole", { assignmentId: admins[0].id, reason: "remove the last Administrator" });
+    assert.equal(last.ok, false, "anti-lockout: the last Administrator is not removed: " + JSON.stringify(last).slice(0, 300));
   });
 });
