@@ -125,7 +125,7 @@ BEGIN
     IF NOT FOUND OR c.status <> 'APPLIED' OR c.fact_id IS NOT NULL OR c.kind <> v_kind OR c.obligation_id IS DISTINCT FROM NEW.obligation_id
        OR NEW.amount_minor <> (CASE WHEN v_kind = 'DEBIT_CHARGE' THEN c.amount_minor ELSE -c.amount_minor END)
        OR NOT ((c.decided_by <> c.requested_by AND c.decided_by_employee_id <> c.requested_by_employee_id AND c.approval_basis IS NULL)
-               OR (c.approval_basis = 'PROTECTED_OWNER' AND eos_policy.is_protected_owner_employee(c.tenant_id, c.decided_by, c.decided_by_employee_id))) THEN
+               OR (c.approval_basis IS NOT DISTINCT FROM 'PROTECTED_OWNER' AND eos_policy.is_protected_owner_employee(c.tenant_id, c.decided_by, c.decided_by_employee_id))) THEN
         RAISE EXCEPTION 'ADJUSTMENT_NOT_APPROVED: a receivable is credited, charged or written off only by an APPLIED invoice correction decided by a separate Employee, or by the protected Owner';
     END IF;
     -- A credit or write-off never takes the receivable below what has been settled against it (outstanding never goes negative). The receivable's row is locked HERE, so the
@@ -160,7 +160,7 @@ BEGIN
                         WHERE c.tenant_id = OLD.tenant_id AND c.invoice_id = OLD.id AND c.kind = 'VOID' AND c.status = 'APPLIED'
                           AND c.reason = NEW.void_reason AND c.decided_by = NEW.voided_by
                           AND ((c.decided_by <> c.requested_by AND c.decided_by_employee_id <> c.requested_by_employee_id AND c.approval_basis IS NULL)
-                               OR (c.approval_basis = 'PROTECTED_OWNER' AND eos_policy.is_protected_owner_employee(c.tenant_id, c.decided_by, c.decided_by_employee_id))))
+                               OR (c.approval_basis IS NOT DISTINCT FROM 'PROTECTED_OWNER' AND eos_policy.is_protected_owner_employee(c.tenant_id, c.decided_by, c.decided_by_employee_id))))
            AND NOT EXISTS (SELECT 1 FROM eos_finance.settlement_applications a WHERE a.tenant_id = OLD.tenant_id AND a.obligation_id = OLD.obligation_id)
            AND NOT EXISTS (SELECT 1 FROM eos_finance.financial_facts f WHERE f.tenant_id = OLD.tenant_id AND f.obligation_id = OLD.obligation_id AND f.fact_class = 'SETTLEMENT')
            AND NOT EXISTS (SELECT 1 FROM eos_finance.invoice_corrections x WHERE x.tenant_id = OLD.tenant_id AND x.invoice_id = OLD.id AND x.status = 'APPLIED' AND x.kind <> 'VOID') THEN
