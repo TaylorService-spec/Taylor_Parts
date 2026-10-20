@@ -84,14 +84,14 @@ test("every CRM mutation function writes exactly one audit row of its own action
 test("an audit row never carries free text or contact details: the CRM views and the Commercial helpers record a length or a flag", () => {
   const account = code("eosCrm/accountAuthority.ts");
   assert.match(account, /notesLength: textLength\(notes\), billingAddressPresent: billingAddress !== null/);
-  assert.match(code("eosCrm/contactAuthority.ts"), /emailPresent: email !== null, phonePresent: phone !== null/);
+  assert.match(code("eosCrm/contactAuthority.ts"), /emailPresent: email !== null, phonePresent: phone !== null, contactRoleLength: textLength\(contactRole\)/);
   assert.match(code("eosCrm/accountLocationAuthority.ts"), /addressPresent: .*accessNotesLength: textLength\(accessNotes\)/);
   // No CRM audit call spreads a raw projection.
   for (const file of ["accountAuthority.ts", "contactAuthority.ts", "accountLocationAuthority.ts"]) {
     assert.doesNotMatch(code(`eosCrm/${file}`), /(before|after): \{ \.\.\.(created|was|updated|project\()/, `${file}: a raw projection is spread into an audit row`);
   }
   assert.match(code("eosCommercial/commands/opportunityCommandService.ts"), /FREE_TEXT = \["need", "nextAction"\]/);
-  assert.match(code("eosCommercial/commands/salesAgreementCommandService.ts"), /FREE_TEXT = \["shippingInstructions", "specialInstructions"\]/);
+  assert.match(code("eosCommercial/commands/salesAgreementCommandService.ts"), /FREE_TEXT = \["shippingInstructions", "specialInstructions", "shipVia"\]/);
 });
 
 test("wellFormed, pickFields and lineFacts: lone surrogates become U+FFFD; free text becomes a length; lines lose their text", () => {

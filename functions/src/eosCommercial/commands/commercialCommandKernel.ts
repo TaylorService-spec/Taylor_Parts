@@ -23,7 +23,7 @@ import { createPostgresEmployeeAuthority } from "../../employeeIdentity/postgres
 import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
 import { RESERVED_CAPABILITY_HOLDERS } from "../../adminPolicy/roleCapabilityAdministration";
 import { qualifyingGlobalRoles } from "../../eosOps/administrationReach";
-import { recordCommandAudit, type CommandAuditSpec } from "../../eosAudit/commandAuditEvent";
+import { recordCommandAudit, wellFormed, type CommandAuditSpec } from "../../eosAudit/commandAuditEvent";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
 
@@ -344,7 +344,7 @@ export async function runCommercialCommand<R extends object>(
          (id, tenant_id, principal_id, operation, idempotency_key_hash, target_family, target_id, result)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [`rcpt_${randomUUID()}`, actor.tenantId, actor.principalId, operation, keyHash,
-        outcome.target?.family ?? null, outcome.target?.id ?? null, JSON.stringify(outcome.result)],
+        outcome.target?.family ?? null, outcome.target?.id ?? null, JSON.stringify(wellFormed(outcome.result))],
     );
     await client.query("COMMIT");
     return { ...outcome.result, replayed: false };

@@ -30,7 +30,7 @@
 //
 // A Contact is not a login: nothing here references eos_policy.principals except as the acting writer.
 import { randomUUID } from "node:crypto";
-import { recordCommandAudit } from "../eosAudit/commandAuditEvent.js";
+import { recordCommandAudit, textLength } from "../eosAudit/commandAuditEvent.js";
 import { inheritOwnerFromAccount } from "../crm/customerIdentity.js";
 import {
   CRM_CAPABILITIES,
@@ -86,10 +86,10 @@ interface ContactRow {
   updated_at: Date;
 }
 
-/** Q-1 audit view of a Contact: the name identifies it; the email and phone are recorded as presence, never as values (audit_events is append-only). */
+/** Q-1 audit view of a Contact: the name identifies it; the email and phone are recorded as presence and the free-text role as a length, never as values (audit_events is append-only). */
 const auditView = (p: ContactProjection): Record<string, unknown> => {
-  const { email, phone, ...rest } = p;
-  return { ...rest, emailPresent: email !== null, phonePresent: phone !== null };
+  const { email, phone, contactRole, ...rest } = p;
+  return { ...rest, emailPresent: email !== null, phonePresent: phone !== null, contactRoleLength: textLength(contactRole) };
 };
 
 const COLUMNS = "id, account_id, name, email, phone, contact_role, is_primary, owner_employee_id, created_by, created_at, updated_by, updated_at";
@@ -270,6 +270,7 @@ export function updateContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
         action: "crm.updateContact", targetKind: "crm_contact", targetId: contactId, before: auditView(project(prior.rows[0])),
         after: {
           ...auditView(project(rows[0])), emailChanged: prior.rows[0].email !== rows[0].email, phoneChanged: prior.rows[0].phone !== rows[0].phone,
+          contactRoleChanged: prior.rows[0].contact_role !== rows[0].contact_role,
         },
       });
       return project(rows[0]);

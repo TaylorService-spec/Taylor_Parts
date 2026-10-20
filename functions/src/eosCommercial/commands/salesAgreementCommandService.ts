@@ -388,7 +388,7 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
       const was: Record<string, unknown> = { ...current.charges, locationId: current.locationId, creditedSalespersonId: current.creditedSalespersonId,
         customerPO: current.customerPO, isLease: current.isLease, fulfillmentIntent: current.fulfillmentIntent,
         shippingInstructions: current.shippingInstructions, shipVia: current.shipVia, specialInstructions: current.specialInstructions, lines: lineFacts(current.lines) };
-      const FREE_TEXT = ["shippingInstructions", "specialInstructions"]; // recorded as <field>Length, never the text
+      const FREE_TEXT = ["shippingInstructions", "specialInstructions", "shipVia"]; // recorded as <field>Length, never the text
       const draftKeys = Object.keys(DRAFT_COLUMNS).filter((f) => f in patch);
       // The charges AFTER the whole command: syncApprovedTradeInCredit can move trade_in_minor after the UPDATE wrote the patch's value.
       const chargesChanged = totals !== undefined || tradeIns !== undefined;
@@ -409,6 +409,7 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
           },
           after: {
             ...pickFields(patchView, [...draftKeys, ...lineKeys], FREE_TEXT), ...pickFields(chargesAfter, chargeKeys),
+            ...("shipVia" in patch ? { shipViaChanged: current.shipVia !== patch.shipVia } : {}),
             ...(discountChange !== undefined ? { customerDiscount: discountChange } : {}),
             ...(tradeIns !== undefined ? { tradeIns: await tradeInFacts(db, actor.tenantId, current.id) } : {}), changed,
           },

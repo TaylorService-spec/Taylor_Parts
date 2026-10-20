@@ -221,12 +221,12 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     await refused("agreement already exists", () => sa.createSalesAgreement(deps, SELLER, agreementInput(won.opportunityId)), "AGREEMENT_ALREADY_EXISTS");
 
     const instructions = "Call Pat on 555-0100 before delivery";
-    const draftIn = { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerPO: "PO-77", specialInstructions: instructions,
+    const draftIn = { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerPO: "PO-77", specialInstructions: instructions, shipVia: "Will-call Dock 9",
       customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } };
     await applied("draft update", () => sa.updateSalesAgreementDraft(deps, SELLER, draftIn), {
       action: "salesAgreement.updateDraft", kind: "sales_agreement", id: agreement.salesAgreementId,
-      before: { customerPO: null, specialInstructionsLength: null, customerDiscount: { kind: "PERCENT", percentBasisPoints: 500 } },
-      after: { customerPO: "PO-77", specialInstructionsLength: instructions.length, customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } },
+      before: { customerPO: null, specialInstructionsLength: null, shipViaLength: null, customerDiscount: { kind: "PERCENT", percentBasisPoints: 500 } },
+      after: { customerPO: "PO-77", specialInstructionsLength: instructions.length, shipViaLength: "Will-call Dock 9".length, shipViaChanged: true, customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } },
     });
     const draftRow = (await q(`SELECT before, after FROM eos_policy.audit_events WHERE action = 'salesAgreement.updateDraft' AND target_id = $1`, [agreement.salesAgreementId])).rows[0];
     assert.ok(!JSON.stringify(draftRow).includes("555-0100"), "special instructions are recorded as a length");
@@ -369,7 +369,15 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
       after: (r) => ({ accountId: r.accountId, name: "Audit Co", status: "ACTIVE", ownerEmployeeId: "e-retail" }),
     });
     await replayed("createAccount replay", () => accounts.createAccount(crmDeps, CRM, accIn));
-    await refused("createAccount without an owner", () => accounts.createAccount(crmDeps, CRM, { idempotencyKey: key(), name: "No Owner", status: "ACTIVE" }), "OWNER_REQUIRED");
+    // A lone surrogate in a NAME must not fail the create: the receipt result goes to jsonb, which refuses it (HARDEN item 2).
+    const loneIn = { idempotencyKey: key(), name: "Lone \uD800 Co", status: "ACTIVE", ownerEmployeeId: "e-retail" };
+    const lone = await applied("createAccount with a lone surrogate in the name", () => accounts.createAccount(crmDeps, CRM, loneIn), {
+      action: "crm.createAccount", kind: "crm_account", id: (r) => r.accountId, before: null, after: { name: "Lone � Co" },
+    });
+    const loneReplay = await accounts.createAccount(crmDeps, CRM, loneIn);
+    assert.equal(loneReplay.replayed, true);
+    assert.equal(loneReplay.accountId, lone.accountId, "the receipt written with the well-formed projection replays the same Account");
+    await refused("createAccount without an owner",() => accounts.createAccount(crmDeps, CRM, { idempotencyKey: key(), name: "No Owner", status: "ACTIVE" }), "OWNER_REQUIRED");
     await refused("createAccount without the capability", () => accounts.createAccount(crmDeps, { ...CRM, capabilities: new Set(["customer.record.read"]) }, { ...accIn, idempotencyKey: key() }), "CAPABILITY_REQUIRED");
 
     await applied("updateAccount", () => accounts.updateAccount(crmDeps, CRM, { accountId: account.accountId, name: "Audit Co Renamed" }), {
@@ -389,13 +397,13 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     await refused("updateAccount with nothing to change", () => accounts.updateAccount(crmDeps, CRM, { accountId: account.accountId }), "NO_CHANGES_REQUESTED");
     await refused("updateAccount on an unknown Account", () => accounts.updateAccount(crmDeps, CRM, { accountId: "acct-nope", name: "x" }), "ACCOUNT_NOT_FOUND");
 
-    const contactIn = { idempotencyKey: key(), accountId: account.accountId, name: "Pat Doe", email: "pat@example.com" };
+    const contactIn = { idempotencyKey: key(), accountId: account.accountId, name: "Pat Doe", email: "pat@example.com", contactRole: "Purchasing manager" };
     contact = await applied("createContact", () => contacts.createContact(crmDeps, CRM, contactIn), {
-      action: "crm.createContact", kind: "crm_contact", id: (r) => r.contactId, before: null, after: { accountId: account.accountId, name: "Pat Doe", emailPresent: true, phonePresent: false },
+      action: "crm.createContact", kind: "crm_contact", id: (r) => r.contactId, before: null, after: { accountId: account.accountId, name: "Pat Doe", emailPresent: true, phonePresent: false, contactRoleLength: "Purchasing manager".length },
     });
     await replayed("createContact replay", () => contacts.createContact(crmDeps, CRM, contactIn));
-    await applied("updateContact", () => contacts.updateContact(crmDeps, CRM, { contactId: contact.contactId, phone: "555-0100" }), {
-      action: "crm.updateContact", kind: "crm_contact", id: contact.contactId, before: { phonePresent: false }, after: { phonePresent: true, phoneChanged: true, emailChanged: false },
+    await applied("updateContact", () => contacts.updateContact(crmDeps, CRM, { contactId: contact.contactId, phone: "555-0100", contactRole: "Plant buyer" }), {
+      action: "crm.updateContact", kind: "crm_contact", id: contact.contactId, before: { phonePresent: false, contactRoleLength: "Purchasing manager".length }, after: { phonePresent: true, phoneChanged: true, emailChanged: false, contactRoleLength: "Plant buyer".length, contactRoleChanged: true },
     });
     await refused("updateContact on an unknown Contact", () => contacts.updateContact(crmDeps, CRM, { contactId: "cont-nope", phone: "1" }), "CONTACT_NOT_FOUND");
 
@@ -446,7 +454,7 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
   await t.test("audit_events is append-only: no free text and no contact detail reached it anywhere in the run", async () => {
     const everything = JSON.stringify((await q(`SELECT action, target_id, before, after, reason FROM eos_policy.audit_events WHERE tenant_id = 't1'`)).rows);
     for (const secret of ["Send revised quote", "pat@example.com", "555-0100", "Gate code", "Phoenix", "Prefers calls", "1 Main St", "Tempe", "85281",
-      "Call Pat", "Used reach-in", "Used cooler", "Walk-in freezer"]) {
+      "Call Pat", "Will-call Dock 9", "Purchasing manager", "Plant buyer", "Used reach-in", "Used cooler", "Walk-in freezer"]) {
       assert.ok(!everything.includes(secret), `"${secret}" must be recorded as a length or a flag, never as text`);
     }
   });
