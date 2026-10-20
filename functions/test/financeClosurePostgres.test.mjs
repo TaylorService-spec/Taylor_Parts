@@ -741,7 +741,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrlT], ["taylor"]);
     const access = ok(await fn(ctrlT, "readMyFinanceCompanyAccess", {}));
     assert.deepEqual([access.consolidated, access.companies.map((c) => [c.operatingCompanyId, c.actions])],
-      [false, [["taylor", { view: true, record: true, apply: true, correct: true, reconcile: true }]]]);
+      [false, [["taylor", { view: true, record: true, apply: true, correct: true, reconcile: true, issue: true }]]]);
     assert.equal(ok(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: "taylor" })).scope.companies.join(), "taylor");
     const outside = refused(await fn(ctrlT, "readFinanceWorkspace", { operatingCompanyId: "ventana" }), 403, OUT);
     for (const c of ["consolidated", "saratoga", "no-such-company"]) {
