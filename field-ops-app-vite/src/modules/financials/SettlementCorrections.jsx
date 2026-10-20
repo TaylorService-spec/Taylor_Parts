@@ -20,7 +20,7 @@ import { operatingCompanyLabel, statusLabel } from "../../shared/display/display
 
 const money = (minor, currency = "USD") => (minor === null || minor === undefined ? "—" : formatMinorUnits(Number(minor), currency));
 const SETTLEMENT_WORDS = Object.freeze({ CUSTOMER_PAYMENT: "Customer Payment", PROVIDER_FUNDING: "Provider Funding", VENDOR_PAYMENT: "Vendor Payment",
-  INTERCOMPANY_PAYMENT: "Intercompany Payment", INTERCOMPANY_RECEIPT: "Intercompany Receipt" });
+  INTERCOMPANY_PAYMENT: "Intercompany Payment", INTERCOMPANY_RECEIPT: "Intercompany Receipt", CUSTOMER_REFUND: "Customer Refund (Record)" });
 const SETTLEMENT_STATUS_WORDS = Object.freeze({ RECORDED: "Recorded", VOID: "Void" });
 const RECONCILIATION_WORDS = Object.freeze({ UNRECONCILED: "Not yet reconciled", RECONCILED: "Reconciled", MISMATCH: "Mismatch", NOT_APPLICABLE: "—" });
 

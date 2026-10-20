@@ -8,6 +8,9 @@
 //   correct     finance.settlement.correct          (reverse an application, void a settlement)
 //   reconcile   finance.reconciliation.record
 //   invoice     finance.invoice.issue               (F-1a: issueInvoice -- the invoice document over a READY package's receivable; invoiceIssue.ts)
+//   correction  F-1b: requestInvoiceCorrection -- finance.adjustment.record (credit, write-off, debit, void) or finance.refund.record (refund); decideInvoiceCorrection --
+//               finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve by kind (WITHDRAW: the requester, with the request key). A SEPARATE
+//               Employee approves, at a $0 threshold (invoiceCorrection.ts). Reads: listInvoiceCorrections, readInvoiceCorrection (finance.payment.read, FULL reach).
 //   cost       inventory.receipt.correct + WAREHOUSE scope (late cost evidence -- costEvidenceSupplyCommand.ts)
 //   relief      inventory.transfer.dispatch + WAREHOUSE scope (intercompany inventory relief -- intercompanyInventoryRelief.ts)
 //   balance     finance.accountBalance.read         (A6: readAccountBalanceSummary -- five numbers per company and currency for ONE customer; no ids, no rows)
@@ -32,11 +35,15 @@
 // nowhere else decides it. A restricted reader sees funding / payable / intercompany sections as WITHHELD (named, never zero),
 // sees a settlement only when every application ever recorded on it is to a visible receivable, and is refused every command.
 import type { Pool } from "pg";
-import { FinanceFoundationError } from "./financeFoundation";
+import { FinanceFoundationError, readObligationBalance } from "./financeFoundation";
 import {
   applyFinancialSettlement, readSettlement, reconcileFinancialSettlement, recordFinancialSettlement, reverseSettlementApplication, voidFinancialSettlement,
 } from "./settlement";
 import { INVOICE_ISSUE_CAPABILITY, issueFinancialInvoice } from "./invoiceIssue";
+import {
+  CORRECTION_APPROVAL_CAPABILITIES, CORRECTION_APPROVE_CAPABILITY, CORRECTION_REQUEST_CAPABILITIES, CORRECTION_REQUEST_CAPABILITY, INVOICE_CORRECTION_KINDS,
+  correctionScope, decideInvoiceCorrection, invoiceCompany, listInvoiceCorrections, readInvoiceCorrectionOn, requestInvoiceCorrection, type InvoiceCorrectionKind,
+} from "./invoiceCorrection";
 import { supplyReceiptCostEvidence } from "../eosOps/costEvidenceSupplyCommand";
 import { relieveIntercompanySaleInventory } from "../eosOps/intercompanyInventoryRelief";
 import { defineFieldGroups, projectForCaller } from "../eosOps/governedFieldGroups";
@@ -58,6 +65,11 @@ export const SETTLEMENT_CORRECT_CAPABILITY = "finance.settlement.correct";
 export const RECONCILIATION_RECORD_CAPABILITY = "finance.reconciliation.record";
 /** F-1a: issue an invoice against a READY billing package's receivable (invoiceIssue.ts). The Firebase key, already registered and granted (migration 1761609600000). */
 export { INVOICE_ISSUE_CAPABILITY };
+/**
+ * F-1b: request / decide a credit, write-off, debit, refund or void of an ISSUED invoice (invoiceCorrection.ts). The request keys are the existing Firebase keys; the
+ * three APPROVAL keys are new (migration 1764712000000) and are held by a different Employee than the requester.
+ */
+export { CORRECTION_APPROVE_CAPABILITY, CORRECTION_REQUEST_CAPABILITY };
 /**
  * A6: the customer-balance SUMMARY key (migration 1764680000000, PostgreSQL-native). It opens ONE operation, readAccountBalanceSummary, and nothing else: no
  * obligation, settlement, handoff or package row, no payable / funding / intercompany section, and no write path. The full receivable detail stays on
@@ -723,6 +735,67 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
       }
     }
     return issueFinancialInvoice(deps.pool, actorOf(caller), input as never);
+  },
+  // F-1b: REQUEST a credit, write-off, debit, refund or void of an ISSUED invoice. The kind decides the key (existing record keys); the INVOICE's company is then decided
+  // against the caller's Finance company assignment at FULL reach, both before any write; an invoice outside the caller's companies answers exactly like a missing one.
+  // Nothing takes effect on a request: a SEPARATE Employee approves (decideInvoiceCorrection). There is no cash-out operation anywhere in this table.
+  requestInvoiceCorrection: async (deps, caller, input) => {
+    if (!CORRECTION_REQUEST_CAPABILITIES.some((k) => caller.actor.capabilities.has(k))) {
+      refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${CORRECTION_REQUEST_CAPABILITIES.join(" or ")}`);
+    }
+    if (typeof input.kind !== "string" || !(INVOICE_CORRECTION_KINDS as readonly string[]).includes(input.kind)) {
+      refuse("CORRECTION_KIND_INVALID", "INVALID_INPUT", `kind is one of ${INVOICE_CORRECTION_KINDS.join(", ")}`);
+    }
+    const key = CORRECTION_REQUEST_CAPABILITY[input.kind as InvoiceCorrectionKind];
+    requireCapability(caller, key);
+    const company = await invoiceCompany(deps.pool, caller.actor.tenantId, input.invoiceId);
+    if (company !== null && !(await fullReachedCompanies(deps, caller, key)).includes(company)) refuse("INVOICE_NOT_FOUND", "NOT_FOUND", "no issued invoice with that id");
+    return requestInvoiceCorrection(deps.pool, actorOf(caller), input as never);
+  },
+  // F-1b: DECIDE a pending correction. APPROVE / REJECT need the kind's approval key; WITHDRAW is the requester's own, with the request key. A correction outside every company the
+  // caller reaches with the keys they hold answers exactly like a missing one (before its kind or state is revealed); the approving Employee must differ from the requester (re-decided in the command).
+  decideInvoiceCorrection: async (deps, caller, input) => {
+    const withdraw = input.decision === "WITHDRAW";
+    const family = withdraw ? CORRECTION_REQUEST_CAPABILITIES : CORRECTION_APPROVAL_CAPABILITIES;
+    const held = family.filter((k) => caller.actor.capabilities.has(k));
+    if (held.length === 0) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${family.join(" or ")}`);
+    const scope = await correctionScope(deps.pool, caller.actor.tenantId, input.correctionId);
+    const reach = new Set<string>();
+    for (const k of held) for (const c of await fullReachedCompanies(deps, caller, k)) reach.add(c);
+    if (scope !== null && !reach.has(scope.company)) refuse("CORRECTION_NOT_FOUND", "NOT_FOUND", "no invoice correction with that id");
+    if (scope !== null) requireCapability(caller, (withdraw ? CORRECTION_REQUEST_CAPABILITY : CORRECTION_APPROVE_CAPABILITY)[scope.kind]);
+    return decideInvoiceCorrection(deps.pool, actorOf(caller), input as never);
+  },
+  // F-1b reads: the register of corrections (finance.payment.read at FULL reach; a restricted reader sees none) and one correction with its invoice and receivable.
+  listInvoiceCorrections: async (deps, caller, input) => {
+    requireView(caller);
+    const extra = Object.keys(input ?? {}).filter((k) => !["operatingCompanyId", "invoiceId", "status", "kind"].includes(k));
+    if (extra.length > 0) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+    consolidatedRefused(input);
+    let companies = await fullReachedCompanies(deps, caller, FINANCE_VIEW_CAPABILITY);
+    if (typeof input.operatingCompanyId === "string") {
+      const scope = await companyScope(deps.pool, caller, FINANCE_VIEW_CAPABILITY, input.operatingCompanyId);
+      companies = companies.filter((c) => scope.companies.includes(c));
+    }
+    const { operatingCompanyId: _company, ...filter } = input;
+    return Object.freeze({ items: await listInvoiceCorrections(deps.pool, caller.actor.tenantId, companies, filter) });
+  },
+  readInvoiceCorrection: async (deps, caller, input) => {
+    requireView(caller);
+    const extra = Object.keys(input ?? {}).filter((k) => k !== "correctionId");
+    if (extra.length > 0) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+    const scope = await correctionScope(deps.pool, caller.actor.tenantId, input.correctionId);
+    if (scope === null || !(await fullReachedCompanies(deps, caller, FINANCE_VIEW_CAPABILITY)).includes(scope.company)) refuse("CORRECTION_NOT_FOUND", "NOT_FOUND", "no invoice correction with that id");
+    const correction = await readInvoiceCorrectionOn(deps.pool, caller.actor.tenantId, String(input.correctionId));
+    const balance = await readObligationBalance(deps.pool, caller.actor.tenantId, correction.obligationId);
+    const { rows } = await deps.pool.query(`SELECT amount_due_minor, is_void FROM eos_finance.invoice_totals WHERE tenant_id = $1 AND invoice_id = $2`, [caller.actor.tenantId, correction.invoiceId]);
+    return Object.freeze({
+      correction,
+      // The invoice is the ORIGINAL document and never changes; what is owed is the receivable's balance (OD-F1-2).
+      invoice: Object.freeze({ id: correction.invoiceId, invoiceNumber: correction.invoiceNumber, originalAmountDueMinor: String(rows[0]?.amount_due_minor ?? "0"), void: rows[0]?.is_void === true }),
+      receivable: balance && Object.freeze({ obligationId: balance.obligationId, status: balance.status, originatedMinor: balance.originatedMinor.toString(),
+        settledMinor: balance.settledMinor.toString(), outstandingMinor: balance.outstandingMinor.toString() }),
+    });
   },
   supplyReceiptCostEvidence: async (deps, caller, input) => supplyReceiptCostEvidence({ pool: deps.pool }, caller.actor, input),
   relieveIntercompanySaleInventory: async (deps, caller, input) => relieveIntercompanySaleInventory({ pool: deps.pool }, caller.actor, input),
