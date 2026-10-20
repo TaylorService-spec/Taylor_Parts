@@ -458,6 +458,16 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        the controller writes migration `1764710000000_stock-reservation-company-warehouse` (SQL ships as `.sql.txt`); S1c (SO allocation command, UI, grants) follows
 - Expected outcome:    a hard reservation cannot lack a company or a warehouse, cannot oversell, replays safely and is governed end to end
 - Protected boundaries:none reached — no capability, grant, Firebase or production change; activation is an operator row
+
+- Capability:          Lane DOC (overnight 2026-10-20) — Service Work Order invoicing policy requirements (B5 gap; prepare only) + fresh Firebase dependency reconciliation against the Owner baseline (no deletion)
+- Agent/session:       Claude Code lane DOC · Role: builder (docs and read-only); controller reviews and merges
+- Branch / worktree:   `worktree-agent-a96482df91bab3cf0` · `.claude/worktrees/agent-a96482df91bab3cf0`
+- Base commit:         `e19dc610`
+- Owned paths:         `docs/architecture/service-wo-invoicing-policy-requirements.md` · `docs/firebase-exit/firebase-dependency-reconciliation-2026-10-20.md` · `docs/firebase-exit/reconcile-firebase-deps.mjs` (read-only Node script, standard library only)
+- Shared paths req'd:  this registry
+- Dependencies:        none (cites open specs F-1 #2175, S1a #2167, T-1 #2173, REC #2174, W-1 #2171 by number only)
+- Expected outcome:    the Owner can answer the service-billing policy questions and approve or refuse each Firebase deletion tier against measured counts
+- Protected boundaries:none reached (no rate, grant, migration, code, deletion, deploy or production change; DECISIONS.md untouched)
 - Lifecycle stage:     INTEGRATION (PR open; not merged)
 
 ## Ready for assignment
