@@ -68,6 +68,10 @@ export function receivableRecord(row) {
     invoiceId: row.id,
     // F-1a: the number of the invoice issued against this receivable (1:1); null while none has been (NOT_SUPPLIED.invoiceNumber then states why).
     invoiceNumber: row.invoice?.invoiceNumber ?? null,
+    // F-1a-UI: what the Receivables register needs to offer Issue (the server still decides): the record's kind and the billing package it came from.
+    kind: row.kind ?? null,
+    sourceDomain: row.sourceDomain ?? null,
+    sourceRecordId: row.sourceRecordId ?? null,
     accountId: row.counterparty?.crmAccountId ?? null,
     counterpartyName: row.counterparty?.name ?? null,
     companyId: typeof row.operatingCompanyId === "string" ? row.operatingCompanyId : null,
