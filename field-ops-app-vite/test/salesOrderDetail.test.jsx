@@ -34,7 +34,7 @@ function renderAt(salesOrderId, props = {}) {
 }
 
 // A CONFIRMED Sales Order with one PART line, no Service Work Orders yet -- every one of the four
-// actions (Advance, Cancel, Allocate, Create Service) is offered from this state.
+// actions (Advance, Cancel, Create Service) is offered from this state. Allocation is its own section (SalesOrderAllocation), not a rail action.
 function readySalesOrder(overrides = {}) {
   return {
     loading: false,
@@ -220,13 +220,13 @@ describe("SalesOrderDetail", () => {
 });
 
 describe("SalesOrderDetail -- operational actions (Item 4)", () => {
-  it("an allowed actor on a CONFIRMED order sees all four action affordances", () => {
+  it("an allowed actor on a CONFIRMED order sees the three rail action affordances (allocation is its own section)", () => {
     useSalesOrder.mockReturnValue(readySalesOrder());
     const client = mockCommandClient();
     renderAt("SO-42", { actionDeps: { client } });
     expect(screen.getByRole("button", { name: /Move to In Fulfillment/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Cancel order/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Allocate$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Allocate$/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Create Service/i })).toBeTruthy();
   });
 
@@ -257,9 +257,8 @@ describe("SalesOrderDetail -- operational actions (Item 4)", () => {
     const client = mockCommandClient();
     renderAt("SO-42", { actionDeps: { client } });
     expect(screen.queryByRole("button", { name: /Mark Fulfilled/i })).toBeNull();
-    // Cancel and Allocate remain valid from IN_FULFILLMENT.
+    // Cancel remains valid from IN_FULFILLMENT.
     expect(screen.getByRole("button", { name: /Cancel order/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Allocate$/i })).toBeTruthy();
   });
 
   it("a successful Advance calls transitionSalesOrder once and refreshes the projection via refetch -- never fabricates the new state itself", async () => {
@@ -321,10 +320,6 @@ describe("SalesOrderDetail -- operational actions (Item 4)", () => {
     expect(await screen.findByText(/This cancels Sales Order SO-2026-000042\. It cannot be resumed from here\./)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Keep order/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /^Allocate$/i }));
-    expect(await screen.findByText(/This computes and records current availability against Sales Order SO-2026-000042's lines\./)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
-
     fireEvent.click(screen.getByRole("button", { name: /Create Service/i }));
     expect(await screen.findByText(/This creates a Work Order to fulfill Sales Order SO-2026-000042/)).toBeTruthy();
 
@@ -344,10 +339,6 @@ describe("SalesOrderDetail -- operational actions (Item 4)", () => {
     expect(await screen.findByText(/This cancels Sales Order — Reference unavailable\. It cannot be resumed from here\./)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Keep order/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /^Allocate$/i }));
-    expect(await screen.findByText(/This computes and records current availability against Sales Order — Reference unavailable's lines\./)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
-
     fireEvent.click(screen.getByRole("button", { name: /Create Service/i }));
     expect(await screen.findByText(/This creates a Work Order to fulfill Sales Order — Reference unavailable/)).toBeTruthy();
 
@@ -359,12 +350,12 @@ describe("SalesOrderDetail -- operational actions (Item 4)", () => {
     useSalesOrder.mockReturnValue(state);
     const client = mockCommandClient();
     const deniedErr = new Error("permission-denied");
-    client.allocateSalesOrder.mockResolvedValue({ errorStatus: "permission-denied" });
+    client.createServiceForSalesOrder.mockResolvedValue({ errorStatus: "permission-denied" });
     void deniedErr;
     renderAt("SO-42", { actionDeps: { client } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^Allocate$/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Confirm allocate$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create Service/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Confirm create service$/i }));
 
     await screen.findByText(/not authorized to perform this action/i);
     expect(state.refetch).not.toHaveBeenCalled();
@@ -394,19 +385,16 @@ describe("SalesOrderDetail -- write-capability gating (regression: read-only pri
 
     const advanceBtn = screen.getByRole("button", { name: /Move to In Fulfillment/i });
     const cancelBtn = screen.getByRole("button", { name: /Cancel order/i });
-    const allocateBtn = screen.getByRole("button", { name: /^Allocate$/i });
     const serviceBtn = screen.getByRole("button", { name: /Create Service/i });
 
-    for (const btn of [advanceBtn, cancelBtn, allocateBtn, serviceBtn]) {
+    for (const btn of [advanceBtn, cancelBtn, serviceBtn]) {
       expect(btn.disabled).toBe(true);
     }
-    expect(screen.getAllByText(/You are not authorized to perform this action on this Sales Order\./i).length).toBe(4);
+    expect(screen.getAllByText(/You are not authorized to perform this action on this Sales Order\./i).length).toBe(3);
 
     // Clicking a disabled/protected action button must never open its confirm dialog.
     fireEvent.click(advanceBtn);
     expect(screen.queryByText(/This moves Sales Order/)).toBeNull();
-    fireEvent.click(allocateBtn);
-    expect(screen.queryByText(/This computes and records current availability/)).toBeNull();
 
     expect(client.transitionSalesOrder).not.toHaveBeenCalled();
     expect(client.allocateSalesOrder).not.toHaveBeenCalled();
@@ -425,17 +413,16 @@ describe("SalesOrderDetail -- write-capability gating (regression: read-only pri
 
     expect(screen.getByRole("button", { name: /Move to In Fulfillment/i }).disabled).toBe(true);
     expect(screen.getByRole("button", { name: /Cancel order/i }).disabled).toBe(true);
-    expect(screen.getByRole("button", { name: /^Allocate$/i }).disabled).toBe(true);
     expect(screen.getByRole("button", { name: /Create Service/i }).disabled).toBe(true);
   });
 
-  it("a principal granted ONLY salesOrder.fulfill sees Allocate live but Advance/Cancel/Create Service still protected", () => {
+  it("holding ONLY salesOrder.fulfill offers no rail button for it: allocation is its own section, and Advance/Cancel/Create Service stay protected", () => {
     useSalesOrder.mockReturnValue(readySalesOrder());
     const client = mockCommandClient();
     const hasCapability = (id) => id === "salesOrder.fulfill";
     renderAt("SO-42", { actionDeps: { client }, hasCapability });
 
-    expect(screen.getByRole("button", { name: /^Allocate$/i }).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: /^Allocate$/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Move to In Fulfillment/i }).disabled).toBe(true);
     expect(screen.getByRole("button", { name: /Cancel order/i }).disabled).toBe(true);
     expect(screen.getByRole("button", { name: /Create Service/i }).disabled).toBe(true);

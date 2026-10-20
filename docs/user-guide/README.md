@@ -47,6 +47,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   the top, searching and filtering, what each column means, and opening a deal.
 - [Edit an opportunity](./sales/edit-an-opportunity.md)
 - [Mark an opportunity won](./sales/mark-an-opportunity-won.md)
+- [Allocate stock to a Sales Order](./sales/allocate-stock-to-a-sales-order.md) — set aside a line's
+  stock at a warehouse you choose, give it back, and what the system refuses.
 
 ## Administration
 

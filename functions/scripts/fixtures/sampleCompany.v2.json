@@ -1359,6 +1359,7 @@
       "salesAgreement.read",
       "salesAgreement.tradeIn.approve",
       "salesAgreement.updateDraft",
+      "salesOrder.fulfill",
       "salesOrder.read",
       "salesOrder.write",
       "supplier.purchaseOrder.approve",

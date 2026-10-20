@@ -224,9 +224,10 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 111 -> 112: 1764700000000 -- F-1a issue invoice on EOS (2026-10-20): the invoice number counter, the invoice's receivable / package / idempotency columns, invoice_totals and two triggers; no capability, no grant. APPENDED, an EXPLAINED pending migration.
 // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
 // 112 -> 114: 1764712000000 -- F-1b governed invoice corrections (2026-10-20): invoice_corrections, three approval capabilities (no grants), settlement CUSTOMER_REFUND (S1b 1764710000000 is the 113th). APPENDED, an EXPLAINED pending migration.
-// 114 -> 115: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam (eos_policy.protected_owner_employee), the invoice-correction people trigger, the adjustment / void gates and the Financial Policy decider trigger; no capability, no grant. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 115;
-const TRACKED_MIGRATION_COUNT = 116; // the 115 runnable + the one deferred file
+// 114 -> 115: 1764714000000 -- S1c Sales Order allocation (2026-10-20): salesOrder.fulfill registered and granted to admin, dispatcher, owner (3 grants); no schema. APPENDED, an EXPLAINED pending migration.
+// 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam (eos_policy.protected_owner_employee), the invoice-correction people trigger, the adjustment / void gates and the Financial Policy decider trigger; no capability, no grant. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 116;
+const TRACKED_MIGRATION_COUNT = 117; // the 116 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -292,6 +293,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764700000000_invoice-issue",
   "1764710000000_stock-reservation-company-warehouse",
   "1764712000000_invoice-corrections",
+  "1764714000000_sales-order-allocation-capability",
   "1764716000000_protected-owner-secondary-approval-exemption",
 ]);
 

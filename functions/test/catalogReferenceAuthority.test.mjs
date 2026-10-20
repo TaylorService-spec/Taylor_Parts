@@ -89,6 +89,9 @@ test("the catalog authority is composed ONLY by the Work Order/ops commands that
     // disagrees with the installed unit's catalog Part (parts.equipment_model_id) -- the catalog's fact, never the caller's.
     "eosOps/equipmentOperations.ts",
     "eosOps/inventoryCommitmentRepository.ts",
+    // S1c (2026-10-20): the Sales Order allocation command reads the Part's status (ACTIVE) from the catalog, never the caller -- an allocation of a
+    // Part that is not ACTIVE is refused (the S1b wiring condition). The tracking mode is the repository's (above).
+    "eosOps/salesOrderAllocation.ts",
     // Controller ruling DQ-036(b): acquire-existing-unit reads Catalog identity (ACTIVE + SERIAL) from the catalog,
     // never the caller. INACTIVE until activation (serializedAsset/acquireWriterState.ts).
     "eosOps/serializedAssetAcquireOperations.ts",
@@ -114,7 +117,7 @@ test("every composer uses it as a REPOSITORY, on its own client, never over HTTP
   // one transaction and acted on in another, with nothing making the two agree.
   const SRC = join(FUNCTIONS_DIR, "src");
   for (const rel of ["eosOps/cycleCountOperations.ts", "eosOps/equipmentCustody.ts", "eosOps/inventoryCommitmentRepository.ts",
-                     "eosOps/serviceFromSalesOrderBoundary.ts", "eosOps/workOrderPartsPlanAuthority.ts"]) {
+                     "eosOps/serviceFromSalesOrderBoundary.ts", "eosOps/workOrderPartsPlanAuthority.ts", "eosOps/salesOrderAllocation.ts"]) {
     const src = strip(readFileSync(join(SRC, rel), "utf8"));
     assert.doesNotMatch(src, /fetch\(/, `${rel} calls out over HTTP`);
     assert.doesNotMatch(src, /\/operations\//, `${rel} names a Render route`);

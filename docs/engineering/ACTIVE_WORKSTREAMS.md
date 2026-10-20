@@ -459,6 +459,16 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    a hard reservation cannot lack a company or a warehouse, cannot oversell, replays safely and is governed end to end
 - Protected boundaries:none reached — no capability, grant, Firebase or production change; activation is an operator row
 
+- Capability:          Lane S1c (2026-10-20) — Sales Order allocation on EOS: `allocateSalesOrderLine` / `releaseSalesOrderAllocation` / `readSalesOrderAllocations` on `/operations/inventory` (a hard reservation of a PART line at a company AND warehouse the caller states; capability -> company -> warehouse scope; Part and quantity bound to the line; non-terminal order; releases on cancel / fulfil / close in the order's own transaction); the Sales Order allocation control
+- Agent/session:       Claude Code Lane S1c · Role: builder; controller reviews, writes the migration and merges
+- Branch / worktree:   `worktree-agent-a5bac7040d1f407d4` · `.claude/worktrees/agent-a5bac7040d1f407d4`
+- Base commit:         `0ee9188a`
+- Owned paths:         `functions/src/eosOps/salesOrderAllocation.ts` · `functions/test/salesOrderAllocation{Offline,Postgres}.test.mjs` · `field-ops-app-vite/src/modules/sales/SalesOrderAllocation.jsx` · `field-ops-app-vite/src/services/salesOrderCommandClient.js` · `field-ops-app-vite/test/salesOrderAllocation{,Client}.test.*`
+- Shared paths req'd:  this registry · DECISIONS.md · SYSTEM_AUTHORITIES.md · `functions/src/eosOps/eosOpsHttp.ts` · `inventoryCommitmentRepository.ts` (additive: joins a caller's transaction) · `functions/src/eosCommercial/commands/salesOrderCommandService.ts` (one release call in `transitionSalesOrder`; Q-1a may touch this file) · `SalesOrderDetail.jsx` (one section) · `reorderApiClient.js` (three names) · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` · `.github/workflows/sales-opportunity-tests.yml`
+- Dependencies:        S1b (merged, `0ee9188a`); migration `1764714000000_sales-order-allocation-capability` (controller-authored from a `.sql.txt`: registers `salesOrder.fulfill`, grants admin / dispatcher / owner)
+- Expected outcome:    a Sales Order line's stock can be set aside at a warehouse the caller chooses, and cannot be set aside for anything else
+- Protected boundaries:none reached by this branch — the capability and its grants are the controller's migration; Work Order dispatch is not wired; no production or Firebase change
+
 - Capability:          Lane DOC (overnight 2026-10-20) — Service Work Order invoicing policy requirements (B5 gap; prepare only) + fresh Firebase dependency reconciliation against the Owner baseline (no deletion)
 - Agent/session:       Claude Code lane DOC · Role: builder (docs and read-only); controller reviews and merges
 - Branch / worktree:   `worktree-agent-a96482df91bab3cf0` · `.claude/worktrees/agent-a96482df91bab3cf0`

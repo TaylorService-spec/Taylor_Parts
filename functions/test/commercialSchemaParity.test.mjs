@@ -113,8 +113,12 @@ test("(19) every Commercial capability is still registered inactive", () => {
 });
 
 test("(20) the Render Commercial surface is only the separate C4 transport, never an Administration or Operations operation", () => {
+  // S1c (DECISIONS #S1c; Controller brief 2026-10-20): Sales Order ALLOCATION is a STOCK operation (a hard reservation in the inventory commitment
+  // ledger, S1b) served on the inventory route, not a Commercial document operation: exactly these three operation names and their one module
+  // are exempt. Anything else Commercial in eosOpsHttp.ts still fails this test.
+  const S1C_STOCK_ALLOCATION = /allocateSalesOrderLine|releaseSalesOrderAllocation|readSalesOrderAllocations|\.\/salesOrderAllocation\.js/g;
   for (const file of [join(SRC, "eosOps", "eosOpsHttp.ts"), join(SRC, "adminPolicy", "adminPolicyHttp.ts")]) {
-    assert.doesNotMatch(strip(readFileSync(file, "utf8")), /commercial|opportunit|salesAgreement|salesOrder/i, `${relative(FUNCTIONS_DIR, file)} gained a Commercial surface`);
+    assert.doesNotMatch(strip(readFileSync(file, "utf8")).replace(S1C_STOCK_ALLOCATION, ""), /commercial|opportunit|salesAgreement|salesOrder/i, `${relative(FUNCTIONS_DIR, file)} gained a Commercial surface`);
   }
   const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
   assert.doesNotMatch(server, /opportunit|salesAgreement|salesOrder|commercialNumbering/i, "server.ts names Commercial business directly");

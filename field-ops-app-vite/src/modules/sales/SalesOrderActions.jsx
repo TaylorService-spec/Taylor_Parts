@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { useSalesOrderActions } from "../../hooks/useSalesOrderActions.js";
-import { canAdvance, canCancel, canAllocate, canCreateService, nextAdvanceState } from "../../domain/salesOrderActions.js";
+import { canAdvance, canCancel, canCreateService, nextAdvanceState } from "../../domain/salesOrderActions.js";
 import { salesOrderStateWords } from "../../domain/salesOrderNorthStar.js";
 import {
   SALES_ORDER_WRITE_CAPABILITY,
-  SALES_ORDER_FULFILL_CAPABILITY,
   SALES_ORDER_SERVICE_CAPABILITY,
   SALES_ORDER_WRITE_DISABLED_REASON,
 } from "../../access/salesOrderCapabilityAccess.js";
@@ -13,7 +12,7 @@ import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import { Button } from "../../shared/ui/primitives/index.js";
 
 // Sales Order operational actions -- wires the three trusted, already sandbox-activated write
-// commands (transitionSalesOrder / allocateSalesOrder / createServiceForSalesOrder) onto the
+// commands (transitionSalesOrder / createServiceForSalesOrder) onto the
 // read-only Sales Order workspace. Deliberately narrow: it exposes lifecycle + fulfillment +
 // service-creation actions ONLY. It exposes NO field that edits pricing, discount, tax, or quote
 // terms -- `unitPrice` was stripped from the trusted read projection in PR #991 and nothing here
@@ -36,12 +35,11 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // A successful action calls `onChanged()` (the caller's useSalesOrder().refetch) so the page shows
 // the SERVER's new state -- this component never fabricates the post-action state itself.
 export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapability }) {
-  const { pending, runTransition, runAllocate, runCreateService, discardTransitionIntent } = useSalesOrderActions(view.id, actionDeps);
-  const [openDialog, setOpenDialog] = useState(null); // null | "ADVANCE" | "CANCEL" | "ALLOCATE" | "SERVICE"
+  const { pending, runTransition, runCreateService, discardTransitionIntent } = useSalesOrderActions(view.id, actionDeps);
+  const [openDialog, setOpenDialog] = useState(null); // null | "ADVANCE" | "CANCEL" | "SERVICE"
 
   const checkCapability = hasCapability ?? (() => false); // fail-closed default -- see header
   const writeGranted = checkCapability(SALES_ORDER_WRITE_CAPABILITY); // Advance + Cancel (transitionSalesOrder)
-  const fulfillGranted = checkCapability(SALES_ORDER_FULFILL_CAPABILITY); // Allocate
   const serviceGranted = checkCapability(SALES_ORDER_SERVICE_CAPABILITY); // Create Service
 
   const hasPartLine = view.lines.some((l) => l.kind === "PART");
@@ -50,7 +48,6 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
   // Allocation and service creation are the HELD downstream boundary for a governed (PostgreSQL) Sales Order: they are
   // not offered while the order's downstream execution is not tracked (Owner ruling D2).
   const downstreamTracked = view.downstreamTracked !== false;
-  const allocateAllowed = downstreamTracked && canAllocate(view.state);
   const serviceAllowed = downstreamTracked && canCreateService(view.state, { serviceWorkOrderIds: view.serviceWorkOrderIds });
   const nextState = nextAdvanceState(view.state);
 
@@ -69,24 +66,13 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
     onChanged?.();
   }
 
-  const anyBusy = pending.advance || pending.cancel || pending.allocate || pending.service;
+  const anyBusy = pending.advance || pending.cancel || pending.service;
 
   return (
     <>
       <ActionRail
         secondary={
           <>
-            {allocateAllowed && (
-              <Button
-                type="button"
-                variant={fulfillGranted ? "secondary" : "protected"}
-                reason={fulfillGranted ? undefined : SALES_ORDER_WRITE_DISABLED_REASON}
-                disabled={anyBusy}
-                onClick={fulfillGranted ? () => setOpenDialog("ALLOCATE") : undefined}
-              >
-                Allocate
-              </Button>
-            )}
             {serviceAllowed && (
               <Button
                 type="button"
@@ -158,26 +144,11 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
         />
       )}
 
-      {openDialog === "ALLOCATE" && (
-        <ConfirmDialog
-          title="Allocate Sales Order"
-          destructive={false}
-          consequence={`This computes and records current availability against ${orderLabel}'s lines. It does not change pricing or quote terms.`}
-          confirmLabel="Confirm Allocate"
-          onConfirm={async () => {
-            await runAllocate();
-            await handleChanged();
-          }}
-          onClose={() => setOpenDialog(null)}
-          mapError={(err) => err?.outcome?.message ?? "The request could not be completed. Try again."}
-        />
-      )}
-
       {openDialog === "SERVICE" && (
         <ConfirmDialog
           title="Create Service"
           destructive={false}
-          consequence={`This creates a Work Order to fulfill ${orderLabel}${hasPartLine ? " (run Allocate first if PART lines have not yet been allocated)" : ""}.`}
+          consequence={`This creates a Work Order to fulfill ${orderLabel}${hasPartLine ? " (allocate the PART lines in the Allocation section first)" : ""}.`}
           confirmLabel="Confirm create Service"
           onConfirm={async () => {
             await runCreateService();
@@ -188,7 +159,7 @@ export default function SalesOrderActions({ view, onChanged, actionDeps, hasCapa
         />
       )}
 
-      {!advanceAllowed && !cancelAllowed && !allocateAllowed && !serviceAllowed && (
+      {!advanceAllowed && !cancelAllowed && !serviceAllowed && (
         // THE STATE IN WORDS, NEVER THE MACHINE VALUE (NS R04). This printed `{view.state}`
         // verbatim, so a closed order told the reader "no further actions are available for a
         // CLOSED Sales Order" — a raw enum in user-facing copy, on the one sentence a reader sees

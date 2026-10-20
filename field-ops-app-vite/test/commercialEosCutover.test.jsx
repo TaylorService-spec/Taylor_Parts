@@ -107,9 +107,11 @@ describe("commands", () => {
     expect(httpsCallableMock).not.toHaveBeenCalled();
   });
 
-  it("allocate and create-service are the held boundary: refused without calling anything", async () => {
-    expect(await so.allocateSalesOrder({ salesOrderId: "sor_1" })).toEqual({ errorStatus: "failed-precondition" });
+  it("create-service is the held boundary (refused without calling anything); allocate is the EOS operation and refuses an unstated line without a request (S1c)", async () => {
     expect(await so.createServiceForSalesOrder({ salesOrderId: "sor_1" })).toEqual({ errorStatus: "failed-precondition" });
+    const call = vi.fn();
+    expect(await so.allocateSalesOrder({ salesOrderId: "sor_1" }, { call })).toEqual({ errorStatus: "invalid-argument" });
+    expect(call).not.toHaveBeenCalled();
     expect(httpsCallableMock).not.toHaveBeenCalled();
   });
 
