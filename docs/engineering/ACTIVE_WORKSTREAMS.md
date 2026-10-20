@@ -170,6 +170,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:no role/grant/authority change, no Firebase dependency, no merge or deploy without Owner authorization; server query validation is security-sensitive (Owner approves the contract first)
 - Lifecycle stage:     Phase 1a MERGED `fbe58115` (#2110) incl. availability-read isolation; nonprod deployed and verified 2026-10-17
 
+- Capability:          T-1 Territories and sales coverage (commercial item 6; Owner 2026-10-19 "Build in EOS") — decision document first; build only Firebase-parity pieces with one governed answer
+- Agent/session:       Claude Code Lane T-1 · Role: builder (spec); controller merges
+- Branch / worktree:   `worktree-agent-a5ef6915b1b4607d4` · `D:/Taylor_Parts/.claude/worktrees/agent-a5ef6915b1b4607d4`
+- Base commit:         `b3d09dc3`
+- Owned paths:         `docs/architecture/t1-territory-coverage-spec.md`
+- Shared paths req'd:  this registry
+- Dependencies:        Owner decisions OD-T1-1 .. OD-T1-18 in the spec gate any build
+- Expected outcome:    numbered Owner decisions for territory, geography, coverage assignment, resolver, My Book, administration, reads and audit; Firebase-parity holders derived
+- Protected boundaries:no migration, grant, Rules, deploy, production or Firebase change; `coverage.write` / `coverage.read` are `active:false` in Firebase (no active holders)
+- Lifecycle stage:     DESIGNED (spec PR open; PR 2 not started: no single governed answer yet)
+
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
 - Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`
