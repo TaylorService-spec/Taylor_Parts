@@ -38,6 +38,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
 - Lifecycle stage:     INTEGRATION (PR open; not merged)
 
+- Capability:          Lane HARDEN-2 — display-batch review follow-ups (#2176): "Name unavailable" vs "Not recorded", warehouse join tenant key, negative tests, myWork/MultiScan/job-card tests
+- Agent/session:       Claude Code Lane HARDEN-2 · Role: builder; controller merges
+- Branch / worktree:   `ux/display-batch-followups` · `.claude/worktrees/agent-a86a52d7a6334b958`
+- Base commit:         `20485b9f` (#2176 head, merged with `bfeb6dd8`)
+- Owned paths:         `functions/src/eosOps/{reorderLifecycleCommands,supplierPurchaseOrderAuthoring}.ts` · `functions/src/eosExperience/myWork.ts` · their tests · `PartDetail`/`AssociateRequestPanel`/`SupplierPurchaseOrders`/`MultiScanReceiving` display
+- Shared paths req'd:  this registry
+- Dependencies:        #2176 (stacked on its head until it merges)
+- Expected outcome:    a former member's recorded actor reads "Name unavailable", never "Not recorded"; no cross-tenant warehouse name
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 - Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
 - Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
 - Branch / worktree:   `docs/r1-production-recovery-release` · `.claude/worktrees/agent-ad1865bb5a1b23704`
