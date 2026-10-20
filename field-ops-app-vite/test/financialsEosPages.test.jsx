@@ -8,7 +8,7 @@
 //
 // Run: npx vitest run test/financialsEosPages.test.jsx
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 const fb = vi.hoisted(() => ({ callables: [], firestore: [], ops: [] }));
@@ -100,13 +100,17 @@ const assertBlockedFirebaseAndReadsOnly = () => {
 };
 
 describe("Receivables — /financials/invoices on EOS", () => {
-  test("the register's records with the server's totals; invoice number, issue date and business unit NAMED as not supplied; no Firebase", async () => {
+  test("the register's records with the server's totals; un-invoiced receivables say Not invoiced, the business unit is NAMED as not supplied; no Firebase", async () => {
     server();
     const { container } = at("/financials/invoices", "/financials/invoices", <FinancialsReceivablesEos />);
     await settled(container, /Harbor Grill/);
     expect(screen.getAllByRole("heading", { name: "Receivables" }).length).toBeGreaterThanOrEqual(1);
     expect(container.textContent).toMatch(/240\.00/); // the server's consolidated outstanding, not added here
-    expect(container.textContent).toMatch(/MD-B1-1, MD-B1-2 and MD-B1-3 are named model decisions/);
+    expect(container.textContent).toMatch(/shows Not invoiced/);
+    expect(container.textContent).toMatch(/MD-B1-3 is a named model decision/);
+    expect(container.textContent).not.toMatch(/MD-B1-1, MD-B1-2/);
+    expect(screen.getByRole("cell", { name: "Not invoiced" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull(); // no gate answer given: nothing to issue
     expect(container.textContent).toMatch(/Original/);
     expect(container.textContent).not.toMatch(/Invoice number: INV/);
     const link = screen.getByRole("link", { name: "AAAAAAAA" });
@@ -140,6 +144,115 @@ describe("Receivables — /financials/invoices on EOS", () => {
     const { container } = at("/financials/invoices", "/financials/invoices", <FinancialsReceivablesEos />);
     await settled(container, /did not return a complete result/);
     expect(screen.queryByRole("link", { name: "AAAAAAAA" })).toBeNull();
+  });
+});
+
+// F-1a-UI: the Issue invoice action on the reachable Receivables register (the Billing Queue is an ungoverned placeholder on the EOS build).
+describe("Receivables — Issue invoice (F-1a-UI)", () => {
+  const holder = (id) => id === "finance.invoice.issue";
+  const issueAdvice = (issue = true) => ({ ok: true, result: { principalId: "p", consolidated: true, companies: [{ operatingCompanyId: "taylor", name: "Taylor", actions: { view: true, issue } }] } });
+  const stub = (over = {}) => vi.fn(async (op) => {
+    if (op === "readMyFinanceCompanyAccess") return over.access ?? issueAdvice();
+    if (op === "issueInvoice") return over.issue ?? { ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000001" } } };
+    throw new Error(`unexpected ${op}`);
+  });
+  const page = (props) => at("/financials/invoices", "/financials/invoices", <FinancialsReceivablesEos {...props} />);
+
+  test("a holder sees Issue on an un-invoiced receivable and issues it: the package id, one key, no due date; the register is re-read", async () => {
+    server();
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await screen.findByRole("button", { name: "Issue invoice" });
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await screen.findByText(/Invoice INV-2026-000001 issued/);
+    const call = callApi.mock.calls.find(([op]) => op === "issueInvoice");
+    expect(call[1]).toEqual({ billingPackageId: "bp-1", idempotencyKey: expect.stringMatching(/^inv-issue-/) });
+    await waitFor(() => expect(fb.ops.filter(([op]) => op === "listObligations").length).toBe(2));
+  });
+
+  test("a non-holder sees no Issue and the server is never asked for issue advice or an issue", async () => {
+    server();
+    const callApi = stub();
+    const { container } = page({ hasCapability: () => false, callApi });
+    await settled(container, /Harbor Grill/);
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+    expect(callApi).not.toHaveBeenCalled();
+  });
+
+  test("a holder whose company the server does not offer sees no Issue", async () => {
+    server();
+    const callApi = stub({ access: issueAdvice(false) });
+    const { container } = page({ hasCapability: holder, callApi });
+    await settled(container, /Harbor Grill/);
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+  });
+
+  test("an issued receivable shows its number and issue date and has no Issue", async () => {
+    server({ listObligations: { scope: "consolidated", items: [row({ invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null } })] } });
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await settled(container, /INV-2026-000007/);
+    expect(screen.queryByRole("cell", { name: "Not invoiced" })).toBeNull();
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+  });
+
+  test("every body row has as many cells as the header has columns, for a holder and a non-holder", async () => {
+    server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null } })] } });
+    for (const props of [{ hasCapability: holder, callApi: stub() }, { hasCapability: () => false, callApi: stub() }, {}]) {
+      const { container, unmount } = page(props);
+      await settled(container, /INV-2026-000007/);
+      const table = container.querySelector("table.ns-table");
+      const headers = table.querySelectorAll("thead th");
+      expect(new Set([...headers].map((h) => h.textContent)).size).toBe(headers.length);
+      for (const tr of table.querySelectorAll("tbody tr")) expect(tr.querySelectorAll("td").length).toBe(headers.length);
+      expect(headers.length).toBe(props.hasCapability === holder ? 10 : 9);
+      unmount();
+    }
+  });
+
+  test("a void row, a non-billing-package source and a non-RECEIVABLE kind each show no Issue", async () => {
+    server({ listObligations: { scope: "consolidated", items: [
+      row({ id: "obl_00000001", status: "VOID" }),
+      row({ id: "obl_00000002", sourceDomain: "MANUAL" }),
+      row({ id: "obl_00000003", kind: "FUNDING_RECEIVABLE" }),
+    ] } });
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await settled(container, /00000003/);
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+  });
+
+  test("while an issue is in flight no other row can start one", async () => {
+    server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", sourceRecordId: "bp-2" })] } });
+    let release;
+    const callApi = vi.fn(async (op) => {
+      if (op === "readMyFinanceCompanyAccess") return issueAdvice();
+      return new Promise((resolve) => { release = () => resolve({ ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000001" } } }); });
+    });
+    page({ hasCapability: holder, callApi });
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole("button", { name: "Issue invoice" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).every((b) => b.disabled)).toBe(true));
+    release();
+    await screen.findByText(/Invoice INV-2026-000001 issued/);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).every((b) => !b.disabled)).toBe(true));
+  });
+
+  test("a refusal is the server's own words and nothing is reported as issued", async () => {
+    server();
+    const callApi = stub({ issue: { ok: false, code: "PRECONDITION_FAILED", message: "the billing package's tax is not determined; it cannot be invoiced" } });
+    const { container } = page({ hasCapability: holder, callApi });
+    await screen.findByRole("button", { name: "Issue invoice" });
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await screen.findByText(/tax is not determined/);
+    expect(container.textContent).not.toMatch(/ issued\./);
+    expect(fb.ops.filter(([op]) => op === "listObligations").length).toBe(1);
   });
 });
 

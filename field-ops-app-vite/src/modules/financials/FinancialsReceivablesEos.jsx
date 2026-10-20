@@ -5,10 +5,12 @@
 // (filter rail, views, honest states), the EOS vocabulary (Receivable), and the server's own figures. The company boundary AND the
 // credited-person / team reach are decided by the server; a restricted reader sees a part of the book and the page says so.
 //
-// NOTHING IS INVENTED. The register carries no invoice number, no issue date and no business unit: each is named as a model decision
-// (domain/financialsEos.js NOT_SUPPLIED) instead of being shown as a blank or fabricated. No amount is totalled here: the scorecard
+// NOTHING IS INVENTED. The invoice number and issue date are supplied once an invoice has been issued against the receivable (F-1a) and are
+// shown as "Not invoiced" before; the business unit is not carried: it is named as a model decision (domain/financialsEos.js NOT_SUPPLIED)
+// instead of being shown as a blank or fabricated. F-1a-UI: a holder of finance.invoice.issue is offered Issue invoice on an un-invoiced Sales
+// Order receivable (the Billing Queue is not reachable on the EOS build); the server's per-company advice narrows it and every command re-decides. No amount is totalled here: the scorecard
 // and the aging buckets are the server's, per currency.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { FinancialsPageFrame, FinancialsFilterRail, FinancialsHonestSection, FinSortableHeader, FinAnnotation } from "./FinancialsPrimitives.jsx";
 import { companyWords, labelWords } from "./financialsDisplay.js";
@@ -20,6 +22,10 @@ import { useEosFinanceRead } from "../../hooks/useEosFinanceRead.js";
 import { fetchFinancialFactsFromEos, OBLIGATION_PAGE_LIMIT } from "../../services/eosFinancialsClient.js";
 import { AR_AGING_BUCKETS } from "../../domain/financialsSurface.js";
 import { NOT_SUPPLIED } from "../../domain/financialsEos.js";
+import { Button } from "../../shared/ui/primitives";
+import { INVOICE_ISSUE_GATE } from "../../access/shellCapabilityGates.js";
+import { callFinanceApi } from "../../services/financeApiClient.js";
+import { IssuePanel, useIssuableCompanies } from "./InvoiceIssueQueue.jsx";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, invoiceRow, agingSlots, unagedNote, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
@@ -40,15 +46,30 @@ const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateStr
 /** The EOS record reference: the register's own id, shortened. Not an invoice number (MD-B1-1). */
 export const recordRef = (id) => String(id).replace(/^obl_/, "").slice(0, 8).toUpperCase();
 
-/** @param {{ mode?: "invoices" | "ar" }} props  invoices = the whole collection with views; ar = the open exposure with aging. */
-export default function FinancialsReceivablesEos({ mode = "invoices" }) {
+/** An un-invoiced Sales Order package receivable that is not void: the only kind issueInvoice acts on. */
+const issuable = (r) => r.raw.kind === "RECEIVABLE" && r.raw.sourceDomain === "BILLING_PACKAGE" && !r.raw.invoiceNumber && r.raw.arPosition !== "VOID" && r.raw.state !== "VOID";
+
+/**
+ * @param {{ mode?: "invoices" | "ar", hasCapability?: (id: string) => boolean, callApi?: typeof callFinanceApi }} props
+ *   invoices = the whole collection with views; ar = the open exposure with aging. `hasCapability` is the shell's gate answer (App.jsx); without it nothing
+ *   can be issued and the server is never asked.
+ */
+export default function FinancialsReceivablesEos({ mode = "invoices", hasCapability, callApi = callFinanceApi }) {
+  const canIssue = typeof hasCapability === "function" && hasCapability(INVOICE_ISSUE_GATE.issue) === true;
+  const issueAccess = useIssuableCompanies(callApi, canIssue);
+  const issueCompanies = new Set(issueAccess.companies.map((c) => c.operatingCompanyId));
+  const [issuing, setIssuing] = useState(null); // the row whose issue panel is open
+  const [issuedNotice, setIssuedNotice] = useState(null);
+  const [reload, setReload] = useState(0);
+  const [busy, setBusy] = useState(false); // an issue is in flight: no other row may start one
+  const openRow = useRef(null); // the row whose panel is the open one; a callback from any other panel is stale
   const [company, setCompany] = useState("consolidated");
   const [view, setView] = useState(mode === "ar" ? "open" : "all");
   const period = useFinancialsPeriod();
   const isAr = mode === "ar";
 
   const filters = { companyId: company === "consolidated" ? null : company, factTypes: ["INVOICE"], ...period.requestFields };
-  const read = useEosFinanceRead(() => fetchFinancialFactsFromEos(filters), JSON.stringify(filters), { enabled: !period.blocked });
+  const read = useEosFinanceRead(() => fetchFinancialFactsFromEos(filters), JSON.stringify({ filters, reload }), { enabled: !period.blocked });
   const { state, result } = financialFactsState(read);
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
   const all = answered ? result.invoices.map((i) => ({ ...invoiceRow(i), raw: i })) : [];
@@ -59,6 +80,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
 
   const columns = {
     record: { value: (r) => r.invoiceId },
+    invoice: { value: (r) => r.raw.invoiceNumber ?? null },
     customer: { value: (r) => (r.accountId ? (names.get(r.accountId) ?? null) : null) },
     company: { value: (r) => companyWords(r.companyId) },
     due: { value: (r) => (typeof r.dueDate === "number" ? r.dueDate : null) },
@@ -83,7 +105,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
       custody={isAr
         ? "Open receivables from the Finance register. Operational actual — not an accounting-reconciled balance; the formal invoice belongs to the accounting authority."
         : "The Finance register's receivables. EOS operational truth that money is owed — not the accounting invoice. Corrections are separate governed events, never edits here."}
-      custodyTip="A Receivable is the register's record that a customer owes money, with its settlement applications and history. The formal invoice number and issue date belong to the accounting authority (DECISIONS #191, #197) and are named as not supplied, never invented. Company reach and credited-person / team reach are decided by the server."
+      custodyTip="A Receivable is the register's record that a customer owes money, with its settlement applications and history. The invoice number and issue date are those of the invoice issued against the receivable (DECISIONS #F-1a); where none has been issued the page says so, never inventing one. Company reach and credited-person / team reach are decided by the server."
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} period={period.controlProps} />
       {!isAr ? <FilterBar variant="views" label="Receivable Views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} /> : null}
@@ -133,7 +155,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
         subject="Receivable reads"
         footer={answered ? (
           <p className="fin-section-note">
-            Invoice number, issue date and business unit are <strong>not supplied</strong> by the Finance register: {NOT_SUPPLIED.invoiceNumber.id}, {NOT_SUPPLIED.issueDate.id} and {NOT_SUPPLIED.businessUnit.id} are named model decisions.
+            The invoice number and issue date are supplied once an invoice has been issued against a receivable; until then it shows <strong>Not invoiced</strong>. The business unit is <strong>not supplied</strong> by the Finance register: {NOT_SUPPLIED.businessUnit.id} is a named model decision.
             {result.truncated ? ` Showing the first ${OBLIGATION_PAGE_LIMIT} per company; narrow the company or period to see the rest.` : ""}
           </p>
         ) : null}
@@ -144,6 +166,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
             <thead>
               <tr>
                 {th("record", "Record", { tip: "The Finance register's own reference (not an invoice number: MD-B1-1)." })}
+                {th("invoice", "Invoice", { tip: "The invoice issued against this receivable, with its issue date. Not invoiced: none has been issued yet." })}
                 {th("customer", "Customer")}
                 {th("company", "Company")}
                 {th("due", "Due")}
@@ -151,6 +174,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
                 {th("applied", "Settled", { className: "ns-num" })}
                 {th("outstanding", "Outstanding", { className: "ns-num" })}
                 {th("status", "Status")}
+                {canIssue ? <th scope="col">Action</th> : null}
               </tr>
             </thead>
             {rows.length > 0 ? (
@@ -158,6 +182,9 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
                 {sorted.map((row) => (
                   <tr key={row.invoiceId}>
                     <td className="fin-nowrap"><Link to={`/financials/invoices/${row.invoiceId}`}>{recordRef(row.invoiceId)}</Link></td>
+                    <td className="fin-nowrap">
+                      {row.raw.invoiceNumber ? <>{row.raw.invoiceNumber}{typeof row.raw.issuedAtMillis === "number" ? <span className="fo-muted"> · {dateWords(row.raw.issuedAtMillis)}</span> : null}</> : "Not invoiced"}
+                    </td>
                     <td>
                       {row.accountId ? <Link to={`/customers/${row.accountId}`}>{names.get(row.accountId) ?? row.counterpartyName ?? "Customer name not resolved"}</Link> : "—"}
                     </td>
@@ -167,12 +194,29 @@ export default function FinancialsReceivablesEos({ mode = "invoices" }) {
                     <td className="ns-num">{row.applied}</td>
                     <td className="ns-num">{row.outstanding}</td>
                     <td>{row.position}</td>
+                    {canIssue ? (
+                      <td>
+                        {issuable(row) && issueCompanies.has(row.companyId)
+                          ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setIssuedNotice(null); openRow.current = row.invoiceId; setIssuing(row); }}>Issue invoice</Button>
+                          : null}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
             ) : null}
           </table>
         </div>
+        {issuedNotice ? <p className="fin-section-note" role="status">{issuedNotice}</p> : null}
+        {issuing ? (
+          <IssuePanel key={issuing.invoiceId} callApi={callApi} billingPackageId={issuing.raw.sourceRecordId} subject={issuing.raw.salesOrderNumber ?? "this receivable"}
+            amountText={issuing.total} onBusyChange={setBusy} onCancel={() => { openRow.current = null; setIssuing(null); }}
+            onIssued={(invoice) => {
+              setReload((n) => n + 1); // it was issued either way: re-read
+              if (openRow.current !== issuing.invoiceId) return; // a superseded panel never closes the one now open
+              openRow.current = null; setIssuedNotice(`Invoice ${invoice.invoiceNumber} issued.`); setIssuing(null);
+            }} />
+        ) : null}
         <FinAnnotation tip="Original is what the receivable originated for; Settled is the sum of applied settlements net of reversals; Outstanding is what remains. All three are the server's figures." />
       </FinancialsHonestSection>
     </FinancialsPageFrame>
