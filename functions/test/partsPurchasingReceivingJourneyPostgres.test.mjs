@@ -273,7 +273,9 @@ test("Parts / Purchasing / Receiving over the Operations transport", { skip: SKI
     refused(await inv(pa, "receiveReorderStock", receipt(r, "PRT-PROBE", 4, { idempotencyKey: `d-${r}`, receivingLocation: { type: "WAREHOUSE", locationId: "wh-closed" } })), 412, "PRECONDITION_FAILED", "an inactive warehouse");
     refused(await inv(pa, "receiveReorderStock", receipt(r, "PRT-PROBE", 4, { idempotencyKey: `t-${r}`, receivingLocation: { type: "WAREHOUSE", locationId: "wh-tuc" } })), 412, "PRECONDITION_FAILED", "a warehouse other than the Reorder's");
     refused(await inv(pa, "receiveReorderStock", receipt(r, "PRT-PROBE", 4, { idempotencyKey: `b-${r}`, receivingLocation: { type: "BIN", locationId: "bin-nowhere" } })), 412, "PRECONDITION_FAILED", "an unknown bin");
-    refused(await inv(wa, "receiveReorderStock", receipt(r, "PRT-PROBE", 4)), 403, "FORBIDDEN", "WAREHOUSE scope alone is not receiving authority");
+    // GRANT-1 A2 (Owner 2026-10-19, migration 1764670000000): the Warehouse Associate now HOLDS inventory.stock.receive, so WAREHOUSE scope + the job Role is receiving authority.
+    // The command is reached: an over-receipt is refused on its own rule, not as FORBIDDEN. The Parts Manager below still holds no receive grant.
+    refused(await inv(wa, "receiveReorderStock", receipt(r, "PRT-PROBE", 5, { idempotencyKey: `wa-${r}` })), 412, "PRECONDITION_FAILED", "a Warehouse Associate holds receive; the over-receipt is refused by the command");
     refused(await inv(pm, "receiveReorderStock", receipt(r, "PRT-PROBE", 4)), 403, "FORBIDDEN", "the Parts Manager does not receive merely as Manager");
     refused(await inv(pa, "receiveReorderStock", receipt(r, "PRT-PROBE", 5, { idempotencyKey: `o-${r}` })), 412, "PRECONDITION_FAILED", "over-receipt");
     refused(await inv(pa, "receiveReorderStock", receipt(r, "PRT-PROBE", 3, { idempotencyKey: `p-${r}` })), 412, "PRECONDITION_FAILED", "partial / short receipt (unsupported)");
@@ -334,7 +336,9 @@ test("Parts / Purchasing / Receiving over the Operations transport", { skip: SKI
       refused(await inv(who, "reviewReorderRequest", { reorderRequestId: r, decision: "APPROVED" }), 403, "FORBIDDEN", `${what} approve`);
       refused(await inv(who, "assignReorderRequest", { reorderRequestId: r, employeeId: "e-pa" }), 403, "FORBIDDEN", `${what} assign`);
       refused(await inv(who, "recordReorderPurchaseOrder", { reorderRequestId: r, supplier: { kind: "EXTERNAL_ORGANIZATION", supplierId: "SUP-DESERT" }, externalPoNumber: "x", orderedQuantity: 1, orderedDate: "2026-10-01" }), 403, "FORBIDDEN", `${what} record PO`);
-      assert.equal((await inv(who, "receiveReorderStock", receipt(r, "PRT-COIL", 6))).status, 403, `${what} receive`);
+      const received = (await inv(who, "receiveReorderStock", receipt(r, "PRT-COIL", 6))).status;
+      // GRANT-1 A2: the Warehouse Associate holds receive now, so it reaches the command (this request is not ordered, so the command refuses it on its own rule, never as FORBIDDEN).
+      if (who === wa) assert.notEqual(received, 403, `${what} receive reaches the command`); else assert.equal(received, 403, `${what} receive`);
     }
     for (const who of [tech, retail, national, nobody, wa, config]) {
       refused(await inv(who, "createReorderRequest", need({ partId: "PRT-HINGE" })), 403, "FORBIDDEN", `${who.subject} create`);

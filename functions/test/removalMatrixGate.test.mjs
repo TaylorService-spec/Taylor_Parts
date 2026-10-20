@@ -35,8 +35,8 @@ const require = createRequire(import.meta.url);
 const baseline = require("../lib/adminPolicy/roleCapabilityAuthorityBaseline.js");
 const pa = require("../lib/adminPolicy/protectedAdministrator.js");
 
-/** sha256 of test/fixtures/removalMatrix.pinned.json (origin/main a360020d). Move ONLY with a deliberate re-pin. */
-export const REMOVAL_MATRIX_PIN_DIGEST = "99719d0b1976d88169fa70a64711cabe2dd0059ad7058e5a603cfb1a46d4515a";
+/** sha256 of test/fixtures/removalMatrix.pinned.json (origin/main a360020d; GRANT-1 re-pin 2026-10-19: serviceInboundWorkReviewer now holds workOrder.record.read, a removal-spec key). Move ONLY with a deliberate re-pin. */
+export const REMOVAL_MATRIX_PIN_DIGEST = "bb45a3eb0d9fab215287eb6479cb6c01a900ccc06e554485b4119e4144e9e578";
 
 const onDisk = readFileSync(PIN_PATH, "utf8");
 const real = { baseline, pa, deltas: loadRecordedDeltas() };

@@ -152,7 +152,7 @@ describe("DQ-034 hold -- no Part change is OFFERED while Catalog changes are pau
 });
 
 // UI PERMISSION PARITY (PERM-UI, 2026-10-19): New Part / Edit part need inventory.catalog.manage and Change status needs
-// inventory.catalog.activate -- the capabilities the governed commands enforce. A non-holder sees no control; the server still decides.
+// inventory.catalog.part.activate -- the capabilities the governed commands enforce. A non-holder sees no control; the server still decides.
 describe("PERM-UI: Part controls are offered only to their capability holders", () => {
   it("PartsList: a non-holder sees no New Part; a manage holder does", async () => {
     searchParts.mockResolvedValue(READY);
@@ -174,7 +174,7 @@ describe("PERM-UI: Part controls are offered only to their capability holders", 
     await screen.findByRole("button", { name: /^edit part$/i });
     expect(screen.queryByRole("button", { name: /change status/i })).toBeNull();
     cleanup();
-    render(<PartDetail hasCapability={(c) => c === "inventory.catalog.activate"} />);
+    render(<PartDetail hasCapability={(c) => c === "inventory.catalog.part.activate"} />);
     await screen.findByRole("button", { name: /change status/i });
     expect(screen.queryByRole("button", { name: /^edit part$/i })).toBeNull();
   });

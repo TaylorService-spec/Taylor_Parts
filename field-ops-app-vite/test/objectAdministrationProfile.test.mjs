@@ -482,11 +482,12 @@ test("the three governed commands are the only write path, each with its own aud
     assert.ok(command.auditAction, `${command.id} records an audit action`);
   }
   // Status is a DIFFERENT authority from detail edits, and that separation is the point.
+  // GRANT-1 A1 split: Part status has its own key; inventory.catalog.activate is now the Supplier status key.
   assert.deepEqual(declaredCommandCapabilities(partAdministrationProfile), [
-    "inventory.catalog.activate",
     "inventory.catalog.manage",
+    "inventory.catalog.part.activate",
   ]);
-  assert.equal(findCommand(partAdministrationProfile, "changePartStatus").capability, "inventory.catalog.activate");
+  assert.equal(findCommand(partAdministrationProfile, "changePartStatus").capability, "inventory.catalog.part.activate");
 });
 
 test("reads are gated by role, not by a capability — stated, not invented", () => {

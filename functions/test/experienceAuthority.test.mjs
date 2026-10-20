@@ -888,3 +888,14 @@ test("P1-1 (f): flat-only actors are byte-identical -- every manifest persona, w
     .some((k) => roleFlat(p.securityRoles ?? []).has(k))).map(([k]) => k).sort();
   assert.deepEqual(commercialHolders, flatReaders);
 });
+
+// P-1 follow-up (live walk, 2026-10-19): the Supplier purchase order buyers and approvers (Parts Associate, Parts Manager) hold supplier.purchaseOrder.read and NOT
+// reorder.purchaseOrder.read, so the Purchase Orders door never opened for them. It is now earned by EITHER read, and by nothing else.
+test("purchasing.purchaseOrders is earned by supplier.purchaseOrder.read alone, by reorder.purchaseOrder.read alone, and by neither of the write keys", async () => {
+  const has = async (...caps) => (await grantedSurfaceKeys(actorWith(caps), NO_DIMENSIONS)).includes("purchasing.purchaseOrders");
+  assert.equal(await has("supplier.purchaseOrder.read"), true, "a supplier-only holder reaches the door");
+  assert.equal(await has("reorder.purchaseOrder.read"), true, "the recorded-orders reader still does");
+  for (const caps of [[], ["supplier.purchaseOrder.create"], ["supplier.purchaseOrder.approve"], ["reorder.purchaseOrder.create"], ["supplier.record.read"]]) {
+    assert.equal(await has(...caps), false, `${caps.join(",") || "nothing"} does not open Purchase Orders`);
+  }
+});

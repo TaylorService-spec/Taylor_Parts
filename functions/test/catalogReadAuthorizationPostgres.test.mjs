@@ -93,7 +93,7 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
     return { principalId, token: `tok-${subject}` };
   };
 
-  const writer = await makeActor("t1", "fb-writer", ["inventory.catalog.manage", "inventory.catalog.activate", "equipment.model.manage"]);
+  const writer = await makeActor("t1", "fb-writer", ["inventory.catalog.manage", "inventory.catalog.part.activate", "equipment.model.manage"]);
   const writerT2 = await makeActor("t2", "fb-writer-t2", ["inventory.catalog.manage", "equipment.model.manage"]);
   const readerT1 = await makeActor("t1", "fb-reader", [READ]);
   const memberOnly = await makeActor("t1", "fb-member", []);
@@ -101,11 +101,11 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
   const aliasAdmin = await makeActor("t1", "fb-alias-admin", [READ, "inventory.catalog.manage"]);
   const MFR_READ = "inventory.manufacturer.read";
   const mfrReader = await makeActor("t1", "fb-mfr-reader", [READ, MFR_READ]);
-  const mfrAdmin = await makeActor("t1", "fb-mfr-admin", [READ, MFR_READ, "inventory.catalog.manage", "inventory.catalog.activate"]);
+  const mfrAdmin = await makeActor("t1", "fb-mfr-admin", [READ, MFR_READ, "inventory.catalog.manage", "inventory.catalog.part.activate"]);
   const mfrReaderT2 = await makeActor("t2", "fb-mfr-reader-t2", [READ, MFR_READ]);
 
   // Fixture data, written through the governed writers (their own capability checks, not the transport's).
-  const W_CAPS = new Set(["inventory.catalog.manage", "inventory.catalog.activate", "equipment.model.manage"]);
+  const W_CAPS = new Set(["inventory.catalog.manage", "inventory.catalog.part.activate", "equipment.model.manage"]);
   const wdeps = { pool };
   const MODEL = { manufacturerId: "acme", manufacturerName: "Acme Refrigeration", modelNumber: "cw 100", displayName: "Acme CW-100", status: "ACTIVE", sourceAuthority: "MANUFACTURER_CATALOG" };
   await eqWriter.createEquipmentModel(wdeps, { tenantId: "t1", principalId: writer.principalId, capabilities: W_CAPS }, { model: MODEL });
@@ -133,7 +133,7 @@ test("Catalog reads are capability-gated server-side, in PostgreSQL", { skip: SK
   };
 
   await t.test("F5: the Manufacturer list and its writes, through the Catalog API, under their own capabilities", async () => {
-    // Writes: inventory.catalog.manage creates and renames; inventory.catalog.activate changes status. A reader is refused.
+    // Writes: inventory.catalog.manage creates and renames; inventory.catalog.part.activate (GRANT-1 A1 split) changes Part and Manufacturer status. A reader is refused.
     const denied = await call(mfrReader, "createManufacturer", { manufacturer: { manufacturerId: "m-taylor", name: "Taylor" } });
     assert.deepEqual([denied.status, denied.body.code], [403, "FORBIDDEN"]);
     const created = await call(mfrAdmin, "createManufacturer", { manufacturer: { manufacturerId: "m-taylor", name: "Taylor" } });

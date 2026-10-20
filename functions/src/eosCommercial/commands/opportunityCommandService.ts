@@ -109,6 +109,26 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
     // Replacement lines are NEW product references: they pass the catalog authority before anything is written.
     if ("lines" in patch) await requireCatalogReferences(deps, db, actor.tenantId, patch.lines as { kind: string; ref: string }[]);
 
+    // The handoff's terms are decided BEFORE any write. DQ-022: stating an administrative source is itself governed -- held globally, never
+    // inferred from the edit grant. GRANT-1 A3-REASON: an administrative correction is an accountable act, so it states WHY.
+    let handoffSource = "DIRECT_HANDOFF";
+    let handoffReason: string | null = null;
+    if ("ownerEmployeeId" in patch) {
+      const handoff = (ownershipHandoff ?? {}) as { source?: unknown; reason?: unknown };
+      const source = handoff.source ?? "DIRECT_HANDOFF";
+      if (!isCommercialHandoffSource(source)) fail("HANDOFF_SOURCE_INVALID", "INVALID_INPUT", "ownershipHandoff.source is not a governed handoff source");
+      handoffSource = source as string;
+      handoffReason = typeof handoff.reason === "string" ? handoff.reason : null;
+      if (ADMINISTRATIVE_HANDOFF_SOURCES.has(handoffSource)) {
+        if (!actor.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
+          fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${handoffSource} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+        }
+        if (handoffReason === null || handoffReason.trim() === "") {
+          fail("REASON_REQUIRED", "INVALID_INPUT", `an ${handoffSource} handoff states its reason`);
+        }
+      }
+    }
+
     const sets: string[] = [];
     const values: unknown[] = [actor.tenantId, current.id, expected, actor.principalId];
     for (const [field, column] of Object.entries(UPDATE_COLUMNS)) {
@@ -132,16 +152,9 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
     let ownershipHandoffId: string | null = null;
     if ("ownerEmployeeId" in patch) {
       const newOwner = await requireTenantEmployee(db, actor.tenantId, patch.ownerEmployeeId as string, "OWNER");
-      const handoff = (ownershipHandoff ?? {}) as { source?: unknown; reason?: unknown };
-      const source = handoff.source ?? "DIRECT_HANDOFF";
-      if (!isCommercialHandoffSource(source)) fail("HANDOFF_SOURCE_INVALID", "INVALID_INPUT", "ownershipHandoff.source is not a governed handoff source");
-      // DQ-022: stating an administrative source is itself governed -- held globally, never inferred from the edit grant.
-      if (ADMINISTRATIVE_HANDOFF_SOURCES.has(source as string) && !actor.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
-        fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${source as string} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
-      }
       const recorded = await stageCommercialOwnershipTransfer(db, actor.tenantId, actor.principalId, {
-        kind: "OPPORTUNITY", recordId: current.id, newOwnerEmployeeId: newOwner, source: source as never,
-        reason: typeof handoff.reason === "string" ? handoff.reason : null,
+        kind: "OPPORTUNITY", recordId: current.id, newOwnerEmployeeId: newOwner, source: handoffSource as never,
+        reason: handoffReason,
       });
       ownershipHandoffId = recorded.id;
     }

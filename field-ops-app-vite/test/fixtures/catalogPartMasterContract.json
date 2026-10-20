@@ -215,7 +215,7 @@
         "ok": false,
         "operation": "changePartStatus",
         "code": "FORBIDDEN",
-        "message": "this command requires inventory.catalog.activate"
+        "message": "this command requires inventory.catalog.part.activate"
       }
     },
     "statusApplied": {

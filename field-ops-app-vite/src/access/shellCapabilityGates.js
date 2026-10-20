@@ -162,7 +162,8 @@ export const REORDER_WORKFLOW_GATE = Object.freeze({
  * authority and still decides on every call.
  *
  *   Part Master        New Part / Edit            -> inventory.catalog.manage   (postgresPartMasterWriter createPart / updatePart)
- *                      Status                     -> inventory.catalog.activate (changePartStatus)
+ *                      Status                     -> inventory.catalog.part.activate (changePartStatus; GRANT-1 A1 split)
+ *   Manufacturers      Status                     -> inventory.catalog.part.activate (changeManufacturerStatus; the same split key)
  *   Customers          New Customer               -> customer.record.create
  *   Equipment register Add Equipment tab / Edit   -> equipment.record.manage    (eosOps/equipmentOperations.ts)
  *   Equipment models   the Equipment Models tab   -> equipment.model.manage     (postgresEquipmentModelWriter)
@@ -172,7 +173,9 @@ export const REORDER_WORKFLOW_GATE = Object.freeze({
  */
 export const PART_CATALOG_GATE = Object.freeze({
   manage: "inventory.catalog.manage",
-  activate: "inventory.catalog.activate",
+  // GRANT-1 A1 SPLIT (Owner 2026-10-19): Part AND Manufacturer status run under their own EOS-only key (migration 1764670000000, asked under its own name
+  // of the caller's EOS capability set); `inventory.catalog.activate` is now the Supplier status key only (SupplierAdministration), not asked by these screens.
+  activate: "inventory.catalog.part.activate",
 });
 export const CUSTOMER_RECORD_GATE = Object.freeze({ create: "customer.record.create" });
 export const EQUIPMENT_REGISTER_GATE = Object.freeze({ manage: "equipment.record.manage" });
@@ -196,6 +199,9 @@ export const SUPPLIER_PURCHASE_ORDER_GATE = Object.freeze({
   approve: "supplier.purchaseOrder.approve",
   send: "supplier.purchaseOrder.send",
   cancel: "supplier.purchaseOrder.cancel",
+  // Not a supplier key: the OTHER view on the same page (the Reorder purchase orders a buyer records). A supplier-only holder (Parts Associate, Parts Manager: they hold
+  // supplier.purchaseOrder.read, not reorder.purchaseOrder.read) is shown the supplier view alone, never the recorded list the server would refuse.
+  recordedRead: "reorder.purchaseOrder.read",
 });
 
 /**

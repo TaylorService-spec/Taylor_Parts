@@ -121,7 +121,7 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
     expect(screen.getByRole("button", { name: "New Manufacturer" })).toBeTruthy();
   });
 
-  // UI PERMISSION PARITY (PERM-UI round 2): New / Rename need inventory.catalog.manage; Status needs inventory.catalog.activate.
+  // UI PERMISSION PARITY (PERM-UI round 2): New / Rename need inventory.catalog.manage; Status needs inventory.catalog.part.activate (GRANT-1 A1 split).
   it("PERM-UI: a non-holder sees the list and no New Manufacturer, Rename or Status", async () => {
     fetchManufacturerList.mockResolvedValue({ ok: true, manufacturers: ROWS, invalidCount: 0 });
     render(<Manufacturers hasCapability={() => false} />);
@@ -139,12 +139,17 @@ describe("Manufacturers — metadata list runtime migration (S-INV-MANUFACTURERS
     expect(within(rowOf("Alpha Mfg")).getByRole("button", { name: /Rename/ })).toBeTruthy();
     expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Status/ })).toBeNull();
     view.unmount();
-    const view2 = render(<Manufacturers hasCapability={(c) => c === "inventory.catalog.activate"} />);
+    const view2 = render(<Manufacturers hasCapability={(c) => c === "inventory.catalog.part.activate"} />);
     await screen.findByText("Alpha Mfg");
     expect(within(rowOf("Alpha Mfg")).getByRole("button", { name: /Status/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "New Manufacturer" })).toBeNull();
     expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Rename/ })).toBeNull();
     view2.unmount();
+    // GRANT-1 A1: the old key (now the Supplier status key) no longer opens Manufacturer Status.
+    const view3 = render(<Manufacturers hasCapability={(c) => c === "inventory.catalog.activate"} />);
+    await screen.findByText("Alpha Mfg");
+    expect(within(rowOf("Alpha Mfg")).queryByRole("button", { name: /Status/ })).toBeNull();
+    view3.unmount();
     render(<Manufacturers />);
     await screen.findByText("Alpha Mfg");
     expect(screen.queryByRole("button", { name: "New Manufacturer" })).toBeNull();

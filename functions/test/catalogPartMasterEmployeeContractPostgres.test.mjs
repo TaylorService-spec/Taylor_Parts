@@ -87,7 +87,7 @@ test("the Part Master employee workflows answer the contract the screens read", 
   // The holders the business actually has: manage (Parts Manager & co.), activate (the catalog administrator),
   // and a reader who holds neither.
   const manager = await makeActor("fb-parts-manager", ["inventory.catalog.read", "inventory.catalog.manage"]);
-  const activator = await makeActor("fb-catalog-admin", ["inventory.catalog.read", "inventory.catalog.manage", "inventory.catalog.activate"]);
+  const activator = await makeActor("fb-catalog-admin", ["inventory.catalog.read", "inventory.catalog.manage", "inventory.catalog.part.activate"]); // GRANT-1 A1 split key
   const reader = await makeActor("fb-reader", ["inventory.catalog.read"]);
 
   const call = async (actor, operation, input) => {

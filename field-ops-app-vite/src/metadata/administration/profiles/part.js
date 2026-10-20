@@ -347,7 +347,8 @@ export const partAdministrationProfile = makeObjectAdministrationProfile({
       implementation: cite("functions/src/catalogMaster/postgresPartMasterWriter.ts", "export async function changePartStatus("),
       // A DIFFERENT capability from the detail edits, deliberately: activating or discontinuing a
       // catalog line is not the same authority as correcting its description.
-      capability: "inventory.catalog.activate",
+      // GRANT-1 A1 split: Part (and Manufacturer) status has its own key; inventory.catalog.activate is the Supplier status key.
+      capability: "inventory.catalog.part.activate",
       auditAction: "catalog.part.changeStatus",
       versionChecked: true,
       idempotent: true,

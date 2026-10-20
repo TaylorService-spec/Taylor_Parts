@@ -241,7 +241,7 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // catalog reconcile writes none of them and no persona moves.
 // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability) -- seven appended migrations (vocabulary 90 -> 97,
 // reconciled in the manifest); none writes a grant the seed would carry, so no persona moves:
-// 1763683200000 (DQ-022, L1): ownership.handoff.correct, granted to nobody.
+// 1763683200000 (DQ-022, L1): ownership.handoff.correct, granted to nobody. (1764670000000, GRANT-1, later grants it to salesManager and generalManager.)
 // 1763856000000 (DQ-010 / DQ-011, L2): workOrder.lifecycle.ready / .schedule / .close, workOrder.parts.plan, granted to
 // NO Role (workOrder.parts.plan FENCED Administration-grant-only).
 // 1764115200000 (DQ-024, L3): the MOBILE location -> warehouse scope binding -- one eos_ops table, EMPTY.
@@ -286,8 +286,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 105 -> 106: 1764640000000 -- Records and reporting off Firebase (Firebase exit B4, DECISIONS #B4): the 38 report.* ids and performance.goal.read REGISTERED (39 capabilities, granted to nobody -- the mirrored grants are a separate change), plus eos_ops.imported_service_history, data_import_jobs, report_definitions and performance_goals. No Sample Company data.
 // 106 -> 107: 1764650000000 -- B4 report / performance-goal parity (Firebase exit B4, DECISIONS #B4, OD-B4-1): the 122 Firebase-mirrored role-capability grants for the 39 registered B4 keys; no capability, no schema. No Sample Company data.
 // 107 -> 108: 1764660000000 -- P-1 governed supplier purchase order authoring (DECISIONS #P-1): five supplier.purchaseOrder.* capabilities and 27 grants plus authoring tables / columns. No Sample Company data.
-const PINNED_LAST_MIGRATION = "1764660000000_supplier-po-authoring";
-const PINNED_MIGRATION_COUNT = 108;
+// 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): one capability and 30 grants. No schema, no Sample Company data.
+const PINNED_LAST_MIGRATION = "1764670000000_owner-policy-grants";
+const PINNED_MIGRATION_COUNT = 109;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

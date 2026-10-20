@@ -1981,10 +1981,11 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts"
+          "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
         "serverReferenceCount": 9,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3692,7 +3693,6 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/catalogMaster/catalogMasterKernel.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/supplierAdministration.ts",
           "functions/src/partMaster/partMasterCommands.ts"
@@ -3700,12 +3700,10 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/shellCapabilityGates.js",
-          "field-ops-app-vite/src/metadata/administration/profiles/part.js"
+          "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3952,14 +3950,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/truckInventoryActivationDelta.ts",
           "functions/src/catalogMaster/catalogHttp.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },

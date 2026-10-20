@@ -1565,10 +1565,11 @@
       "entryPoint": "Inventory > Catalog Admin (/inventory/part-master), Parts list 'New Part', Part Detail 'Edit part' / 'Change status'",
       "postgresImplementation": "functions/src/catalogMaster/postgresPartMasterWriter.ts changePartStatus (runCatalogCommand)",
       "personas": [
-        "admin"
+        "admin",
+        "partsManager (GRANT-1 A1, 2026-10-19)"
       ],
       "requiredCapabilities": [
-        "inventory.catalog.activate"
+        "inventory.catalog.part.activate"
       ],
       "ownerDecision": null,
       "gates": {
@@ -1595,7 +1596,7 @@
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
-              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "contains": "part writer: status transitions under inventory.catalog.part.activate (GRANT-1 A1), replay, terminal states",
               "polarity": "positive"
             }
           ]
@@ -1618,7 +1619,7 @@
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
-              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "contains": "part writer: status transitions under inventory.catalog.part.activate (GRANT-1 A1), replay, terminal states",
               "polarity": "negative"
             }
           ],
@@ -1630,7 +1631,7 @@
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
-              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "contains": "part writer: status transitions under inventory.catalog.part.activate (GRANT-1 A1), replay, terminal states",
               "polarity": "positive"
             }
           ]
@@ -1659,7 +1660,7 @@
             {
               "kind": "test",
               "path": "functions/test/catalogCutoverPostgres.test.mjs",
-              "contains": "part writer: status transitions under inventory.catalog.activate, replay, terminal states",
+              "contains": "part writer: status transitions under inventory.catalog.part.activate (GRANT-1 A1), replay, terminal states",
               "polarity": "positive"
             }
           ]
@@ -1678,7 +1679,7 @@
       },
       "gaps": [
         "CAT-1 fixed in #2059 (screen reads the real EOS answer); proven by the PG contract + screen workflow tests.",
-        "inventory.catalog.activate has no business holder (Administration grant needed)."
+        "GRANT-1 A1 (2026-10-19, DECISIONS #GRANT-1): part and manufacturer status moved to inventory.catalog.part.activate, held by admin and partsManager; inventory.catalog.activate is the Supplier status key only."
       ]
     },
     {

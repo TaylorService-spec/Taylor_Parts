@@ -6,7 +6,7 @@
 - **Opening the page:** anyone whose access includes reading the parts catalog (the same access that opens **Inventory > Parts**).
 - **Seeing the list:** you also need manufacturer read access. Without it the page opens but says **"You do not have access to Manufacturers."**
 - **Adding a manufacturer or correcting a name:** you also need catalog management access.
-- **Making a manufacturer Active or Inactive:** you also need catalog activation access.
+- **Making a manufacturer Active or Inactive:** you also need part and manufacturer status access. Parts Managers and administrators hold it. It is a separate permission from supplier status, so it does not let you activate or deactivate a supplier.
 
 Every change is checked by the server. If your access does not include it, the page tells you, and nothing changes.
 

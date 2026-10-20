@@ -279,7 +279,12 @@ check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 20 admin-only keys 
   // supplier.purchaseOrder.create / .send (migration 1764660000000, P-1, Owner ruling D 2026-10-19: "Create + send: Parts Associate and Purchasing Manager ... Admin has
   // all") are held by admin and the two buyer Roles and NOT by Owner -- by the RULED HOLDER LIST, exactly like admin.securityPolicy.write above, not by Owner ruling A. They
   // are deliberately NOT added to the Owner exclusions: that would make "no administrator can ever grant create or send to Owner" a system invariant no ruling decided.
-  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write", "supplier.purchaseOrder.create", "supplier.purchaseOrder.send"];
+  // GRANT-1 (migration 1764670000000, Owner policy grants 2026-10-19): admin gains five keys the Owner Role does not hold -- inventory.catalog.part.activate (A1 split key;
+  // admin and Parts Manager) and the Firebase purchasing-parity keys reorder.request.startPurchasing / .postPurchasingUpdate / .recordPurchaseOrder and
+  // inventory.catalog.alias.read (A7; Firebase holds them for admin, never for owner). Owner ruled holder lists, not an Owner exclusion: adding them to the Owner exclusions would make
+  // "no administrator can ever grant these to Owner" a system invariant no ruling decided.
+  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write", "supplier.purchaseOrder.create", "supplier.purchaseOrder.send",
+    "inventory.catalog.part.activate", "reorder.request.startPurchasing", "reorder.request.postPurchasingUpdate", "reorder.request.recordPurchaseOrder", "inventory.catalog.alias.read"];
   const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id) && !PARITY_ADMIN_ONLY.includes(id)).sort();
   // 19 -> 20: inventory.location.bin.manage (Firebase exit B3, 1764630000000) -- admin and the memberless bin administrator hold it, owner does not.
   assert.equal(measuredAdminOnly.length, 20);
@@ -426,7 +431,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 147 -> 149: inventory.location.bin.read / .manage (Firebase exit B3, 1764630000000), mirrored to admin, inventoryBinAdministrator (both), owner and the two bin-reading operator Roles (read).
   // 149 -> 188: the 38 report.* ids and performance.goal.read (Firebase exit B4, 1764640000000), REGISTERED; mirrored to the Firebase holders by 1764650000000 (no new capability).
   // 188 -> 193: the five supplier.purchaseOrder.* keys (P-1, 1764660000000), granted to the Owner-ruled Roles.
-  assert.equal(VOCABULARY.size, 193);
+  // 193 -> 194: inventory.catalog.part.activate (GRANT-1 A1 split, 1764670000000), granted to admin and partsManager.
+  assert.equal(VOCABULARY.size, 194);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

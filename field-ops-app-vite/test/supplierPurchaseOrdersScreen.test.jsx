@@ -80,9 +80,18 @@ describe("the workspace offers the supplier view only to a reader", () => {
     expect(screen.queryByRole("button", { name: "Recorded orders" })).toBeNull();
   });
 
-  it("with it, the switcher appears and the supplier view lists the orders", async () => {
+  it("a supplier-only holder (Parts Associate / Parts Manager: no reorder.purchaseOrder.read) sees the supplier view alone: no switcher, no recorded list", async () => {
+    render(<MemoryRouter><PurchaseOrdersWorkspace hasCapability={has(GATE.read)} client={fakeClient()} /></MemoryRouter>);
+    const table = await screen.findByRole("table", { name: "Supplier purchase orders" });
+    expect(within(table).getByText("SPO-2026-000001")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Recorded orders" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Supplier purchase orders" })).toBeNull();
+    expect(screen.queryByText("No purchase orders yet")).toBeNull();
+  });
+
+  it("with both reads, the switcher appears and the supplier view lists the orders", async () => {
     const client = fakeClient();
-    render(<MemoryRouter><PurchaseOrdersWorkspace hasCapability={has(GATE.read)} client={client} /></MemoryRouter>);
+    render(<MemoryRouter><PurchaseOrdersWorkspace hasCapability={has(GATE.read, GATE.recordedRead)} client={client} /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "Supplier purchase orders" }));
     const table = await screen.findByRole("table", { name: "Supplier purchase orders" });
     expect(within(table).getByText("SPO-2026-000001")).toBeTruthy();

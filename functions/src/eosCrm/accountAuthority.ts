@@ -546,8 +546,12 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
           if (terms.named) fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "the Account is already owned by that Employee; there is no ownership change to record");
         } else {
           // DQ-022: an ADMINISTRATIVE handoff source is itself governed (a handoff, i.e. a previous owner exists).
-          if (previous !== null && ADMINISTRATIVE_ACCOUNT_HANDOFF_SOURCES.has(terms.source) && !principal.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
-            fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${terms.source} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+          if (previous !== null && ADMINISTRATIVE_ACCOUNT_HANDOFF_SOURCES.has(terms.source)) {
+            if (!principal.capabilities.has(OWNERSHIP_HANDOFF_CORRECT_CAPABILITY)) {
+              fail("CAPABILITY_REQUIRED", "FORBIDDEN", `an ${terms.source} handoff requires ${OWNERSHIP_HANDOFF_CORRECT_CAPABILITY}`);
+            }
+            // GRANT-1 A3-REASON: an administrative correction is an accountable act, so it states WHY. Refused before any write.
+            if (terms.reason === null) fail("REASON_REQUIRED", "INVALID_INPUT", `an ${terms.source} handoff states its reason`);
           }
           const newOwner = await requireOwnerEmployee(db, tenantId, owner);
           await stageAccountOwnershipChange(db, tenantId, principalId, accountId, previous, newOwner, terms);

@@ -1655,7 +1655,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   never had; responsive layout may restack these, it may not reverse them. */}
               {/* DQ-034: while the Catalog mutation hold is on, neither change is OFFERED -- both stay, disabled, with why. */}
               {/* UI PERMISSION PARITY (PERM-UI): Edit Part needs inventory.catalog.manage, Change Status needs
-                  inventory.catalog.activate -- the capabilities the governed commands enforce. */}
+                  inventory.catalog.part.activate -- the capabilities the governed commands enforce. */}
               {holds(hasCapability, PART_CATALOG_GATE.manage) && (
                 <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")} disabled={catalogMutationHeld} title={catalogMutationHeld ? CATALOG_MUTATION_PAUSED_REASON : undefined}>
                   Edit Part

@@ -37,8 +37,14 @@ import { withActorAuthority } from "../eosOps/administrationReach";
 export const CATALOG_CAPABILITIES = Object.freeze({
   /** partMasterCommands.ts CAP_CATALOG_MANAGE: createPart / updatePart. */
   PART_MANAGE: "inventory.catalog.manage",
-  /** partMasterCommands.ts CAP_CATALOG_ACTIVATE: changePartStatus. */
-  PART_ACTIVATE: "inventory.catalog.activate",
+  /**
+   * changePartStatus. GRANT-1 A1 SPLIT (Owner 2026-10-19): part AND manufacturer status changes run under their OWN key, so a Parts Manager
+   * can hold them without also holding Supplier status (which stays on `inventory.catalog.activate`, eosOps/supplierAdministration.ts).
+   * POSTGRESQL-NATIVE: absent from the in-repo PERMISSION_CATALOG (the in-repo admin Role composes it whole and would be granted the key
+   * by default); registered and granted by migration 1764670000000. The Firestore commands still check `inventory.catalog.activate`
+   * (partMasterCommands.ts CAP_CATALOG_ACTIVATE) until the Firebase writers retire.
+   */
+  PART_ACTIVATE: "inventory.catalog.part.activate",
   /** equipmentCompatibility/commands.ts COMMAND_CAPABILITIES.importEquipmentModel. */
   EQUIPMENT_MODEL_MANAGE: "equipment.model.manage",
   // MANUFACTURER REUSES THE PART CATALOG KEYS, because that is what the legacy commands actually check --
@@ -49,8 +55,8 @@ export const CATALOG_CAPABILITIES = Object.freeze({
   // capability, on the measured ground that the CRED evidence for Manufacturer is READ only.
   /** partMasterCommands.ts CAP_CATALOG_MANAGE: createManufacturer / updateManufacturer. */
   MANUFACTURER_MANAGE: "inventory.catalog.manage",
-  /** partMasterCommands.ts CAP_CATALOG_ACTIVATE: changeManufacturerStatus. */
-  MANUFACTURER_ACTIVATE: "inventory.catalog.activate",
+  /** changeManufacturerStatus -- the same split key as PART_ACTIVATE (GRANT-1 A1). */
+  MANUFACTURER_ACTIVATE: "inventory.catalog.part.activate",
 } as const);
 
 export interface CatalogActorContext {

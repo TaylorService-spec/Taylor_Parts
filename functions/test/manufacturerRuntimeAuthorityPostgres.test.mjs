@@ -49,10 +49,14 @@ test("the writer requires exactly the capabilities the Firestore Manufacturer co
 
   // The PROOF, not the assumption: the legacy commands' own constants.
   assert.equal(kernel.CATALOG_CAPABILITIES.MANUFACTURER_MANAGE, pm.CAP_CATALOG_MANAGE);
-  assert.equal(kernel.CATALOG_CAPABILITIES.MANUFACTURER_ACTIVATE, pm.CAP_CATALOG_ACTIVATE);
   assert.equal(kernel.CATALOG_CAPABILITIES.MANUFACTURER_MANAGE, "inventory.catalog.manage");
-  assert.equal(kernel.CATALOG_CAPABILITIES.MANUFACTURER_ACTIVATE, "inventory.catalog.activate");
-  for (const id of Object.values(kernel.CATALOG_CAPABILITIES)) assert.equal(isValidPermissionId(id), true, `${id} must be registered`);
+  // GRANT-1 A1 SPLIT: the PostgreSQL writer's status key is its own (migration 1764670000000, PostgreSQL-native); the Firestore command keeps inventory.catalog.activate.
+  assert.equal(kernel.CATALOG_CAPABILITIES.MANUFACTURER_ACTIVATE, "inventory.catalog.part.activate");
+  assert.equal(pm.CAP_CATALOG_ACTIVATE, "inventory.catalog.activate");
+  for (const id of Object.values(kernel.CATALOG_CAPABILITIES)) {
+    if (id === "inventory.catalog.part.activate") continue; // PostgreSQL-native: deliberately absent from the in-repo catalog
+    assert.equal(isValidPermissionId(id), true, `${id} must be registered`);
+  }
 
   // And the source says which command uses which -- create/update on manage, status on activate. Collapsing the
   // two would widen the deactivate authority to everyone who may correct a spelling.
@@ -352,7 +356,7 @@ test("Manufacturer runtime authority, in PostgreSQL", { skip: SKIP, concurrency:
       (e) => e.code === "CAPABILITY_REQUIRED");
     // changeStatus needs ACTIVATE; holding only MANAGE is not enough.
     await assert.rejects(() => writer.changeManufacturerStatus(deps, manager, { manufacturerId: "m-taylor", expectedUpdatedAt: token, newStatus: "INACTIVE" }),
-      (e) => e.code === "CAPABILITY_REQUIRED" && /inventory\.catalog\.activate/.test(e.message));
+      (e) => e.code === "CAPABILITY_REQUIRED" && /inventory\.catalog\.part\.activate/.test(e.message));
     // A caller with no resolved actor context at all gets nowhere.
     await assert.rejects(() => writer.createManufacturer(deps, { tenantId: T, principalId: "p-manage", capabilities: [MANAGE] },
       { manufacturer: { manufacturerId: "m-x", name: "X" } }), (e) => e.code === "ACTOR_CONTEXT_REQUIRED");

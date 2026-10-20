@@ -20,6 +20,8 @@ export default function PurchaseOrdersWorkspace({ hasCapability, client }) {
   const [view, setView] = useState("recorded");
   const canSeeSupplierOrders = typeof hasCapability === "function" && hasCapability(SUPPLIER_PURCHASE_ORDER_GATE.read) === true;
   if (!canSeeSupplierOrders) return <PurchaseOrders />;
+  // A holder of supplier.purchaseOrder.read WITHOUT reorder.purchaseOrder.read (the buyers and approvers) sees the supplier view alone: no switcher, no recorded list.
+  if (hasCapability(SUPPLIER_PURCHASE_ORDER_GATE.recordedRead) !== true) return <SupplierPurchaseOrders hasCapability={hasCapability} client={client} />;
   return (
     <>
       <FilterBar options={VIEWS} activeKey={view} onChange={setView} label="Purchase order views" variant="chips" />

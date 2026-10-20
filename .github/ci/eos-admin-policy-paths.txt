@@ -971,3 +971,13 @@ functions/src/eosOps/supplierReceiptCorrection.ts
 functions/src/eosOps/purchasingRepository.ts
 functions/src/eosOps/reorderLifecycleCommands.ts
 functions/migrations/1764660000000_supplier-po-authoring.sql
+# GRANT-1 Owner policy grants (A1 split, A2, A3, A4, A7; 2026-10-19): the suites, the migration, the evidence they read, and the subjects of the A1 split and the A3 reason rule.
+functions/test/grant1OwnerPolicyGrants.test.mjs
+functions/test/grant1OwnerPolicyGrantsPostgres.test.mjs
+functions/migrations/1764670000000_owner-policy-grants.sql
+docs/architecture/grant1-owner-policy-grants.json
+functions/src/catalogMaster/catalogMasterKernel.ts
+functions/src/catalogMaster/postgresPartMasterWriter.ts
+functions/src/catalogMaster/postgresManufacturerWriter.ts
+functions/src/eosCrm/accountAuthority.ts
+functions/src/eosCommercial/commands/opportunityCommandService.ts

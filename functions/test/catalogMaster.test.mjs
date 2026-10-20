@@ -26,7 +26,7 @@ const { CATALOG_CAPABILITIES } = require("../lib/catalogMaster/catalogMasterKern
 const { PART_STATUS_TRANSITIONS, PART_UPDATABLE_FIELDS } = require("../lib/catalogMaster/postgresPartMasterWriter.js");
 const writerState = require("../lib/catalogMaster/catalogWriterState.js");
 const { parseCatalogSnapshot, censusCatalogSnapshot, timestampToIsoMicros, CatalogSnapshotError } = require("../lib/catalogMaster/catalogSnapshot.js");
-const { isValidPermissionId } = require("../lib/access/permissionCatalog.js");
+const { isValidPermissionId, findPermission } = require("../lib/access/permissionCatalog.js");
 
 const CATALOG_DIR = "src/catalogMaster";
 const sources = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? sources(join(dir, f)) : f.endsWith(".ts") ? [join(dir, f)] : []));
@@ -34,12 +34,25 @@ const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filt
 
 // ════════════════════ capabilities and rule parity ════════════════════
 
+// Registered in PostgreSQL only (migration 1764670000000, GRANT-1 A1): the Part / Manufacturer status key split from inventory.catalog.activate.
+const POSTGRES_NATIVE = new Set(["inventory.catalog.part.activate"]);
+
 test("catalog writers require exactly the capability ids the permission catalog registers and the Firestore commands check", () => {
-  for (const id of Object.values(CATALOG_CAPABILITIES)) assert.equal(isValidPermissionId(id), true, `${id} must be registered in permissionCatalog.ts`);
+  for (const id of Object.values(CATALOG_CAPABILITIES)) {
+    if (POSTGRES_NATIVE.has(id)) continue; // GRANT-1 A1: asserted just below
+    assert.equal(isValidPermissionId(id), true, `${id} must be registered in permissionCatalog.ts`);
+  }
   const pm = require("../lib/partMaster/partMasterCommands.js");
   const eq = require("../lib/equipmentCompatibility/commands.js");
   assert.equal(CATALOG_CAPABILITIES.PART_MANAGE, pm.CAP_CATALOG_MANAGE);
-  assert.equal(CATALOG_CAPABILITIES.PART_ACTIVATE, pm.CAP_CATALOG_ACTIVATE);
+  // GRANT-1 A1 SPLIT (Owner 2026-10-19): the PostgreSQL writers check their OWN status key (registered by migration 1764670000000, deliberately absent from the
+  // Firebase PERMISSION_CATALOG so the compiled admin Role cannot be granted it by default); the Firestore command keeps inventory.catalog.activate, which
+  // stays the Supplier status key (eosOps/supplierAdministration.ts).
+  assert.equal(CATALOG_CAPABILITIES.PART_ACTIVATE, "inventory.catalog.part.activate");
+  assert.equal(CATALOG_CAPABILITIES.MANUFACTURER_ACTIVATE, CATALOG_CAPABILITIES.PART_ACTIVATE);
+  assert.equal(findPermission(CATALOG_CAPABILITIES.PART_ACTIVATE), undefined, "PostgreSQL-native: absent from the in-repo catalog");
+  assert.equal(pm.CAP_CATALOG_ACTIVATE, "inventory.catalog.activate");
+  assert.notEqual(CATALOG_CAPABILITIES.PART_ACTIVATE, pm.CAP_CATALOG_ACTIVATE);
   assert.equal(CATALOG_CAPABILITIES.EQUIPMENT_MODEL_MANAGE, eq.COMMAND_CAPABILITIES.importEquipmentModel);
 });
 
@@ -485,7 +498,10 @@ test("migration 027 is applied, pinned by name, after 026, and extends 026's eos
   assert.doesNotMatch(up, /CREATE\s+TABLE/i, "027 creates no table: the Part identity table is 026's");
   assert.match(up, /ALTER TABLE parts/);
   assert.match(up, /FOREIGN KEY \(tenant_id, equipment_model_id\)\s+REFERENCES equipment_models \(tenant_id, id\)/);
-  for (const key of Object.values(CATALOG_CAPABILITIES)) assert.match(up, new RegExp(`'${key.replace(/\./g, "\\.")}'`));
+  for (const key of Object.values(CATALOG_CAPABILITIES)) {
+    if (POSTGRES_NATIVE.has(key)) continue; // registered by 1764670000000, not by 027
+    assert.match(up, new RegExp(`'${key.replace(/\./g, "\\.")}'`));
+  }
   assert.doesNotMatch(up, /role_capabilities/, "vocabulary only, never a grant");
 });
 

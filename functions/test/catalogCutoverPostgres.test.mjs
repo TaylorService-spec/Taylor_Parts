@@ -49,7 +49,7 @@ const runner = (args) => execFileSync(process.execPath, ["node_modules/node-pg-m
 });
 
 const EQ_CAPS = new Set(["equipment.model.manage"]);
-const PART_CAPS = new Set(["inventory.catalog.manage", "inventory.catalog.activate"]);
+const PART_CAPS = new Set(["inventory.catalog.manage", "inventory.catalog.part.activate"]); // GRANT-1 A1: part status has its own key
 const ALL_CAPS = new Set([...EQ_CAPS, ...PART_CAPS]);
 const actor = (tenantId, principalId, capabilities = ALL_CAPS) => Object.freeze({ tenantId, principalId, capabilities });
 const code = (c) => (e) => { assert.equal(e.code, c, `expected ${c}, got ${e.code}: ${e.message}`); return true; };
@@ -183,9 +183,11 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     await assert.rejects(partWriter.updatePart(deps, a, { ...change, expectedVersion: 2 }), code("NO_CHANGES"));
   });
 
-  await t.test("part writer: status transitions under inventory.catalog.activate, replay, terminal states", async () => {
+  await t.test("part writer: status transitions under inventory.catalog.part.activate (GRANT-1 A1), replay, terminal states", async () => {
     const manage = actor("t1", "p1", new Set(["inventory.catalog.manage"]));
-    const activate = actor("t1", "p1", new Set(["inventory.catalog.activate"]));
+    const activate = actor("t1", "p1", new Set(["inventory.catalog.part.activate"]));
+    // GRANT-1 A1: the Supplier status key no longer opens a Part status change.
+    await assert.rejects(partWriter.changePartStatus(deps, actor("t1", "p1", new Set(["inventory.catalog.activate"])), { partId: "UNIT-CW-100", expectedVersion: 2, newStatus: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(partWriter.changePartStatus(deps, manage, { partId: "UNIT-CW-100", expectedVersion: 2, newStatus: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(partWriter.changePartStatus(deps, activate, { partId: "UNIT-CW-100", expectedVersion: 2, newStatus: "INACTIVE" }), code("ILLEGAL_TRANSITION"));
     assert.deepEqual(await partWriter.changePartStatus(deps, activate, { partId: "UNIT-CW-100", expectedVersion: 2, newStatus: "ACTIVE" }), { partId: "UNIT-CW-100", version: 3, replayed: false });

@@ -116,13 +116,13 @@ test("b. nothing else yields a B4 key to another Role: catalog sync, default wri
   for (const g of inBaseline) {
     assert.deepEqual([g.source, g.evidence, g.observedGrantedBy], ["MIGRATION_BACKED", STAMP, STAMP], pairId(g.roleKey, g.capabilityKey));
   }
-  // 632 -> 659: the 27 P-1 supplier purchase order grants (migration 1764660000000) were appended to the baseline after the B4 parity; B4's own 122 are asserted exactly above.
-  assert.equal(BASELINE.grants.length, 659);
-  assert.equal(BASELINE.totalGrants, 659);
-  assert.equal(BASELINE.deployment.rebuildTotal, 659);
+  // 632 -> 659 -> 689: the 27 P-1 supplier purchase order grants (migration 1764660000000) and the 30 GRANT-1 owner policy grants (migration 1764670000000) were appended to the baseline after the B4 parity; B4's own 122 are asserted exactly above.
+  assert.equal(BASELINE.grants.length, 689);
+  assert.equal(BASELINE.totalGrants, 689);
+  assert.equal(BASELINE.deployment.rebuildTotal, 689);
   assert.ok(BASELINE.grantBearingMigrations.includes(STAMP));
   assert.ok(BASELINE.deployment.notYetAppliedToNonprod.includes(STAMP));
-  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 659, "no duplicate baseline pair");
+  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 689, "no duplicate baseline pair");
   // The default writer's rule: with no decision a declared pair may be inserted; a CURRENT Administration revoke always wins; a Role that does not declare the key is never a
   // default (callers pass isSystemDefault only for declared pairs).
   for (const pair of allowed) {
@@ -142,11 +142,11 @@ test("b. nothing else yields a B4 key to another Role: catalog sync, default wri
 test("b. the fence for the 39 is gone (the explicit grant replaces it) and no other fenced key changed", () => {
   for (const key of B4_KEYS) assert.equal(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(key), false, `${key} left the fence`);
   assert.deepEqual([...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].sort(), [
-    "inventory.catalog.alias.read", "inventory.serializedAsset.acquire",
-    "reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.cancel", "reorder.request.markReceived", "reorder.request.postPurchasingUpdate",
-    "reorder.request.recordPurchaseOrder", "reorder.request.reject", "reorder.request.startPurchasing",
+    "inventory.serializedAsset.acquire",
+    "reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.cancel", "reorder.request.markReceived",
+    "reorder.request.reject",
     "workOrder.parts.plan",
-  ].sort(), "the 11 keys fenced before B4 (8 Reorder lifecycle + workOrder.parts.plan + inventory.serializedAsset.acquire + inventory.catalog.alias.read), nothing else");
+  ].sort(), "the 11 keys fenced before B4 (8 Reorder lifecycle + workOrder.parts.plan + inventory.serializedAsset.acquire + inventory.catalog.alias.read), less the four GRANT-1 A7 keys (migration 1764670000000: startPurchasing, postPurchasingUpdate, recordPurchaseOrder, inventory.catalog.alias.read) that left the fence for explicit grants = 7, nothing else");
   assert.doesNotMatch(read(join(FUNCTIONS_DIR, "src", "adminPolicy", "roleCapabilityAdministration.ts")), /report\.customer\.read|performance\.goal\.read/);
 });
 

@@ -44,6 +44,9 @@ const REGISTERED = Object.freeze([
   ["reorder.purchaseOrder.void", "purchaseOrder", "void"],
 ]);
 const KEYS = REGISTERED.map(([k]) => k);
+// GRANT-1 A7 (migration 1764670000000): these three left the fence for explicit grants (admin, dispatcher, purchasingManager; generalManager for postPurchasingUpdate); technicians stay excluded pair-level.
+const UNFENCED = new Set(["reorder.request.startPurchasing", "reorder.request.postPurchasingUpdate", "reorder.request.recordPurchaseOrder"]);
+const FENCED = KEYS.filter((k) => !UNFENCED.has(k));
 
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
@@ -58,13 +61,14 @@ test("the eight fence constants are the eight the runtime requires and the migra
   // and DQ-036(b): inventory.serializedAsset.acquire (migration 1764129600000, lane L3), both declared on legacy Roles
   // and granted only through Administration -- and TRUCK INVENTORY OD-T6: inventory.catalog.alias.read (migration
   // 1764410000000), whose holders are the inventoryLookupReader composition. An unexpected member fails here.
-  for (const k of KEYS) assert.ok(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(k), `${k} must be fenced`);
+  for (const k of FENCED) assert.ok(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(k), `${k} must be fenced`);
+  for (const k of UNFENCED) assert.equal(ADMINISTRATION_GRANT_ONLY_CAPABILITIES.has(k), false, `${k} left the fence (GRANT-1 A7)`);
   // Firebase exit B4 (migration 1764640000000) fenced the 38 report.* ids and performance.goal.read the same way until the Owner-authorized grants (migration 1764650000000, OD-B4-1)
   // replaced the fence with explicit grants: none of the 39 is fenced any more (b4ReportGoalGrantParity.test.mjs).
   const b4 = [...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].filter((k) => k.startsWith("report.") || k === "performance.goal.read");
   assert.equal(b4.length, 0);
   assert.deepEqual([...ADMINISTRATION_GRANT_ONLY_CAPABILITIES].sort(),
-    [...KEYS, "workOrder.parts.plan", "inventory.serializedAsset.acquire", "inventory.catalog.alias.read"].sort());
+    [...FENCED, "workOrder.parts.plan", "inventory.serializedAsset.acquire"].sort());
   assert.deepEqual([
     life.REORDER_APPROVE, life.REORDER_REJECT, life.REORDER_START_PURCHASING, life.REORDER_POST_UPDATE,
     life.REORDER_MARK_RECEIVED, life.REORDER_CANCEL, life.REORDER_RECORD_PO,
@@ -119,7 +123,7 @@ test("registration without grants; no legacy holder is imported", { skip: SKIP, 
     // Precondition that makes the proof mean something: the legacy catalog DOES declare these keys.
     const declared = deriveLegacyRoleGrants(KEYS);
     assert.ok(declared.length >= 8, `the legacy catalog declares ${declared.length} pairs -- the fence has something to stop`);
-    const report = await reconcileInventoryCapabilityGrants(pool, { tenantId: tenant.id, apply: true, actor: OP, capabilityKeys: KEYS });
+    const report = await reconcileInventoryCapabilityGrants(pool, { tenantId: tenant.id, apply: true, actor: OP, capabilityKeys: FENCED });
     assert.equal(report.appliedAdditions, 0);
     assert.equal(report.proposedAdditions, 0);
     const resolvedRoles = report.rows.filter((r) => r.status !== "UNRESOLVED_ROLE");
@@ -172,7 +176,7 @@ test("registration without grants; no legacy holder is imported", { skip: SKIP, 
 
   await t.test("after the ruled grants, a catalog reconcile still imports nothing and disputes nothing", async () => {
     const heldBefore = await heldCount();
-    const report = await reconcileInventoryCapabilityGrants(pool, { tenantId: tenant.id, apply: true, actor: OP, capabilityKeys: KEYS });
+    const report = await reconcileInventoryCapabilityGrants(pool, { tenantId: tenant.id, apply: true, actor: OP, capabilityKeys: FENCED });
     assert.equal(report.appliedAdditions, 0);
     assert.equal(await heldCount(), heldBefore);
     const pmApprove = report.rows.find((r) => r.roleKey === "partsManager" && r.capabilityKey === "reorder.request.approve");

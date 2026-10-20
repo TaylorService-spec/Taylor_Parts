@@ -1,0 +1,72 @@
+{
+  "$comment": "GRANT-1 Owner policy grants (A1 split, A2, A3a, A3b, A4, A7), 2026-10-19, nonprod. Evidence for migration 1764670000000_owner-policy-grants.sql, proved by functions/test/grant1OwnerPolicyGrants.test.mjs (offline) and grant1OwnerPolicyGrantsPostgres.test.mjs (real PostgreSQL). A7 derives from the Firebase catalogs (functions/src/access/{compatibilityRoles,governedBusinessRoles,permissionCatalog}.ts) read-only.",
+  "decision": "Owner policy decisions 2026-10-19 (A1 Parts Managers activate and deactivate Parts and Manufacturers without Supplier status; A2 receiving through job roles; A3 ownership correction and service intake; A4 equipment model management plus catalog read; A7 the verified historical purchasing-parity objective). No production permission change is authorized.",
+  "migration": {
+    "file": "functions/migrations/1764670000000_owner-policy-grants.sql",
+    "stamp": "migration:1764670000000",
+    "idPrefix": "rc_g1_",
+    "capabilitiesRegistered": 1,
+    "newGrantsWritten": 30,
+    "pairsNamedInValues": 34,
+    "pairsAlreadyHeld": 4
+  },
+  "newCapability": {
+    "key": "inventory.catalog.part.activate",
+    "id": "cap_inventory_catalog_part_activate",
+    "objectKey": "part",
+    "actionKey": "changeStatus",
+    "actionKind": "BUSINESS_ACTION",
+    "postgresNative": true,
+    "enforcedBy": ["changePartStatus (functions/src/catalogMaster/postgresPartMasterWriter.ts)", "changeManufacturerStatus (functions/src/catalogMaster/postgresManufacturerWriter.ts)"],
+    "keptOnInventoryCatalogActivate": ["Supplier setSupplierStatus (functions/src/eosOps/supplierAdministration.ts SUPPLIER_STATUS_CAPABILITY)", "the Firestore commands (partMasterCommands.ts CAP_CATALOG_ACTIVATE), until the Firebase writers retire"],
+    "holders": ["admin", "partsManager"]
+  },
+  "items": {
+    "A1": { "new": ["admin|inventory.catalog.part.activate", "partsManager|inventory.catalog.part.activate"] },
+    "A2": { "new": ["partsAssociate|inventory.stock.receive", "partsAssociate|receivingOrder.record.read", "warehouseAssociate|inventory.stock.receive", "warehouseAssociate|receivingOrder.record.read"] },
+    "A3a": { "new": ["generalManager|ownership.handoff.correct", "salesManager|ownership.handoff.correct"] },
+    "A3b": {
+      "new": [
+        "serviceInboundWorkReviewer|inboundWork.request.accept", "serviceInboundWorkReviewer|inboundWork.request.attach", "serviceInboundWorkReviewer|inboundWork.request.decline",
+        "serviceInboundWorkReviewer|inboundWork.request.read", "serviceInboundWorkReviewer|workOrder.create", "serviceInboundWorkReviewer|workOrder.record.read"
+      ]
+    },
+    "A4": {
+      "new": ["fieldManager|equipment.model.manage", "generalManager|equipment.model.manage", "partsManager|equipment.model.manage", "warehouseManager|equipment.model.manage"],
+      "alreadyHeld": ["fieldManager|inventory.catalog.read", "generalManager|inventory.catalog.read", "partsManager|inventory.catalog.read", "warehouseManager|inventory.catalog.read"],
+      "alreadyHeldBy": "migration:1761523200000"
+    },
+    "A7": {
+      "new": [
+        "admin|inventory.catalog.alias.read", "admin|reorder.request.postPurchasingUpdate", "admin|reorder.request.recordPurchaseOrder", "admin|reorder.request.startPurchasing",
+        "dispatcher|reorder.request.postPurchasingUpdate", "dispatcher|reorder.request.recordPurchaseOrder", "dispatcher|reorder.request.startPurchasing",
+        "generalManager|reorder.request.postPurchasingUpdate",
+        "inventoryStockRelocationOperator|inventory.catalog.alias.read",
+        "purchasingManager|reorder.request.postPurchasingUpdate", "purchasingManager|reorder.request.recordPurchaseOrder", "purchasingManager|reorder.request.startPurchasing"
+      ],
+      "source": "a7-purchasing-parity (Firebase catalogs vs eos_policy.role_capabilities, 2026-10-19): toAddCount 12, toRemove none",
+      "excluded": [
+        { "role": "technician", "capabilities": ["reorder.request.startPurchasing", "reorder.request.postPurchasingUpdate", "reorder.request.recordPurchaseOrder"], "reason": "The Firebase grant was CONDITIONED (assignee-only). Owner: technicians are excluded. The three pairs are fenced pair-level in CATALOG_DECLARATIONS_WITHOUT_SYSTEM_DEFAULT so a catalog reconcile reports them as ADMINISTRATION_ONLY and never imports them." }
+      ],
+      "retainedEosOnly": [
+        { "role": "partsAssociate", "capabilities": ["reorder.request.startPurchasing", "reorder.request.postPurchasingUpdate", "reorder.request.recordPurchaseOrder"], "reason": "Owner: preserve verified parity for existing holders (granted through Administration, recordedActivationDecisionsDelta)." }
+      ]
+    }
+  },
+  "fence": {
+    "leftAdministrationGrantOnly": ["inventory.catalog.alias.read", "reorder.request.postPurchasingUpdate", "reorder.request.recordPurchaseOrder", "reorder.request.startPurchasing"],
+    "stillAdministrationGrantOnly": ["inventory.serializedAsset.acquire", "reorder.purchaseOrder.void", "reorder.request.approve", "reorder.request.cancel", "reorder.request.markReceived", "reorder.request.reject", "workOrder.parts.plan"],
+    "pairLevelNonDefaultsAdded": ["technician|reorder.request.postPurchasingUpdate", "technician|reorder.request.recordPurchaseOrder", "technician|reorder.request.startPurchasing"]
+  },
+  "reasonRule": {
+    "item": "A3-REASON",
+    "rule": "An ADMIN_CORRECTION or CUSTOMER_HANDOFF_REVIEW ownership handoff must state a non-blank reason; REASON_REQUIRED is refused before any write.",
+    "enforcedBy": ["updateAccount (functions/src/eosCrm/accountAuthority.ts)", "updateOpportunity (functions/src/eosCommercial/commands/opportunityCommandService.ts)"]
+  },
+  "counts": {
+    "baseline": { "before": 659, "after": 689, "migrationBackedBefore": 601, "migrationBackedAfter": 631 },
+    "capabilities": { "before": 193, "after": 194 },
+    "migrations": { "before": 108, "after": 109 },
+    "shellRequestSet": { "before": 63, "after": 65 }
+  }
+}
