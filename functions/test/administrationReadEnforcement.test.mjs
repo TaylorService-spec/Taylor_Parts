@@ -261,9 +261,10 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 109 -> 110: 1764680000000 -- A6 customer-balance summary (2026-10-19): finance.accountBalance.read registered (a READ key) and 8 Owner-ruled grants; no schema. The key reads one summary operation, not an Administration read.
   // 110 -> 111: 1764690000000 -- G-1 performance goal authoring (2026-10-20): performance.goal.create / .approve / .supersede / .retire registered (BUSINESS_ACTION keys, not READ keys) and the 32 Firebase-mirrored grants, plus the authoring command idempotency table; not a read-enforcement change.
   // 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): inventory.catalog.part.activate (a BUSINESS_ACTION, not a READ key) and 30 Owner-ruled grants; not a read-enforcement change.
+  // 112 -> 114: 1764712000000 -- F-1b invoice corrections (2026-10-20): three approval capabilities (BUSINESS_ACTION, not reads), no grants (S1b 1764710000000 is the 113th); not a read-enforcement change.
   // 111 -> 112: 1764700000000 -- F-1a issue invoice on EOS (2026-10-20): invoice header/counter schema, no capability, no grant; not a read-enforcement change.
   // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant. Not a read-enforcement change.
-  assert.equal(migrations.length, 113, "a migration was added or removed by the read enforcement");
+  assert.equal(migrations.length, 114, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

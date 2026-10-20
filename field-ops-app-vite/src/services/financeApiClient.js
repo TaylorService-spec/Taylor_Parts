@@ -14,9 +14,9 @@ export const FINANCE_ROUTE = "/operations/finance";
 
 /** Mirrors the server's EOS_FINANCE_OPERATIONS (closed), including the Financial Policy lifecycle (#232). */
 export const FINANCE_READ_OPERATIONS = Object.freeze(["readFinanceWorkspace", "readFinanceOverview", "readMyFinanceCompanyAccess", "listObligations", "readObligation", "listSettlements", "readSettlement",
-  "readAccountBalanceSummary", "readMyFinancialPolicyAuthority", "readFinancialPolicy", "listFinancialPolicyVersions"]);
+  "readAccountBalanceSummary", "readMyFinancialPolicyAuthority", "readFinancialPolicy", "listFinancialPolicyVersions", "listInvoiceCorrections", "readInvoiceCorrection"]);
 export const FINANCE_COMMAND_OPERATIONS = Object.freeze(["recordSettlement", "applySettlement", "reverseSettlementApplication", "voidSettlement",
-  "reconcileSettlement", "issueInvoice", "supplyReceiptCostEvidence", "relieveIntercompanySaleInventory",
+  "reconcileSettlement", "issueInvoice", "requestInvoiceCorrection", "decideInvoiceCorrection", "supplyReceiptCostEvidence", "relieveIntercompanySaleInventory",
   "saveFinancialPolicyDraft", "submitFinancialPolicy", "approveFinancialPolicy", "rejectFinancialPolicy", "activateFinancialPolicy",
   "withdrawFinancialPolicy", "cancelFinancialPolicy"]);
 const OPERATIONS = new Set([...FINANCE_READ_OPERATIONS, ...FINANCE_COMMAND_OPERATIONS]);

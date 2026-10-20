@@ -439,7 +439,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 193 -> 194: inventory.catalog.part.activate (GRANT-1 A1 split, 1764670000000), granted to admin and partsManager.
   // 194 -> 195: finance.accountBalance.read (A6 customer-balance summary, 1764680000000), granted to eight operational Roles.
   // 195 -> 199: performance.goal.create / .approve / .supersede / .retire (G-1 performance goal authoring (2026-10-20), 1764690000000), granted to the eight Firebase-holder Roles.
-  assert.equal(VOCABULARY.size, 199);
+  // 199 -> 202: finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve (F-1b, 1764712000000), granted to NOBODY.
+  assert.equal(VOCABULARY.size, 202);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

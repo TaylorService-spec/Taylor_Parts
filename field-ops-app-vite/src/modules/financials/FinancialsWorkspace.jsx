@@ -25,7 +25,7 @@ import SettlementCorrections from "./SettlementCorrections.jsx";
 const CONSOLIDATED = ["consolidated", "Consolidated (Reporting View)"];
 const STATUS_WORDS = Object.freeze({ OPEN: "Open", PARTIAL: "Partially Paid", SETTLED: "Settled", VOID: "Void" });
 const SETTLEMENT_WORDS = Object.freeze({ CUSTOMER_PAYMENT: "Customer Payment", PROVIDER_FUNDING: "Provider Funding", VENDOR_PAYMENT: "Vendor Payment",
-  INTERCOMPANY_PAYMENT: "Intercompany Payment", INTERCOMPANY_RECEIPT: "Intercompany Receipt" });
+  INTERCOMPANY_PAYMENT: "Intercompany Payment", INTERCOMPANY_RECEIPT: "Intercompany Receipt", CUSTOMER_REFUND: "Customer Refund (Record)" });
 const HANDOFF_WORDS = Object.freeze({ PENDING_DESTINATION: "Waiting for an accounting destination", READY_FOR_DELIVERY: "Ready for accounting",
   REJECTED: "Rejected by accounting", FAILED_RETRYABLE: "Delivery failed — retry possible", FAILED_FINAL: "Delivery failed" });
 const money = (minor, currency = "USD") => (minor === null || minor === undefined ? "—" : formatMinorUnits(Number(minor), currency));

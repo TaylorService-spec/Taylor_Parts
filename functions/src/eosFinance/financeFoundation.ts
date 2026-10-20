@@ -435,7 +435,11 @@ export async function readObligationBalance(db: Queryable, tenantId: string, obl
 async function refreshObligationStatus(c: Queryable, actor: FinanceActor, obligationId: string): Promise<void> {
   const b = (await readObligationBalance(c, actor.tenantId, obligationId)) as ObligationBalance;
   if (b.status === "VOID") return;
-  const status = b.originatedMinor > 0n && b.outstandingMinor === 0n ? "SETTLED" : b.settledMinor > 0n ? "PARTIAL" : "OPEN";
+  // F-1b: a receivable credited or written off to nothing (originated 0, outstanding 0) owes nothing: SETTLED, not OPEN. Only an adjustment fact makes originated 0 here.
+  const adjustedToNothing = b.originatedMinor === 0n && b.outstandingMinor === 0n
+    && (await c.query(`SELECT 1 FROM eos_finance.financial_facts WHERE tenant_id = $1 AND obligation_id = $2 AND fact_type IN ('RECEIVABLE_CREDITED', 'RECEIVABLE_WRITTEN_OFF') LIMIT 1`,
+      [actor.tenantId, obligationId])).rows.length > 0;
+  const status = (b.originatedMinor > 0n && b.outstandingMinor === 0n) || adjustedToNothing ? "SETTLED" : b.settledMinor > 0n ? "PARTIAL" : "OPEN";
   if (status !== b.status) {
     await c.query(`UPDATE eos_finance.obligations SET status = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, obligationId, status, actor.principalId]);
@@ -530,6 +534,36 @@ export async function insertSettlementFactOn(c: Queryable, actor: FinanceActor, 
       operatingCompanyId: o.operating_company_id, counterpartyId: o.counterparty_id, factClass: "SETTLEMENT", factType: "SETTLEMENT_APPLIED",
       sourceDomain: "SETTLEMENT", sourceRecordId: input.sourceRecordId, amountMinor: input.amountMinor, currency: o.currency, basis: "SETTLEMENT_APPLICATION",
       effectiveAt: input.effectiveAt, idempotencyKey: input.idempotencyKey, obligationId: input.obligationId, correlationId: input.correlationId ?? null,
+    });
+    await refreshObligationStatus(c, actor, input.obligationId);
+    return out;
+  } catch (err) {
+    if (err instanceof FinanceFoundationError) throw err;
+    return mapDatabaseError(err);
+  }
+}
+
+/**
+ * F-1b: the three obligation-adjustment fact types. An adjustment to an ISSUED invoice moves its receivable through ONE signed OBLIGATION-class fact
+ * (credit and write-off negative, debit positive); obligation_balances sums OBLIGATION facts, so outstanding stays derived and the origination fact is never
+ * edited. The database admits one only for an APPROVED invoice correction (assert_adjustment_fact_is_approved, migration 1764712000000).
+ */
+export const OBLIGATION_ADJUSTMENT_FACT_TYPES = Object.freeze(["RECEIVABLE_CREDITED", "RECEIVABLE_CHARGED", "RECEIVABLE_WRITTEN_OFF"] as const);
+export type ObligationAdjustmentFactType = (typeof OBLIGATION_ADJUSTMENT_FACT_TYPES)[number];
+
+/** Insert ONE obligation-adjustment fact inside the caller's transaction (the invoice-correction authority composes it), refreshing the status projection. */
+export async function insertObligationAdjustmentFactOn(c: Queryable, actor: FinanceActor, input: {
+  obligationId: string; factType: ObligationAdjustmentFactType; amountMinor: bigint; effectiveAt: Date; idempotencyKey: string; sourceRecordId: string;
+}) {
+  if (!(OBLIGATION_ADJUSTMENT_FACT_TYPES as readonly string[]).includes(input.factType)) refuse("FACT_TYPE_INVALID", "INVALID_INPUT", "not an obligation-adjustment fact type");
+  const { rows } = await c.query(`SELECT * FROM eos_finance.obligations WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, input.obligationId]);
+  const o = rows[0] ?? refuse("OBLIGATION_NOT_FOUND", "NOT_FOUND", "no obligation with that id");
+  if (o.status === "VOID") refuse("OBLIGATION_VOID", "PRECONDITION_FAILED", "a VOID obligation cannot be adjusted");
+  try {
+    const out = await insertFact(c, actor, {
+      operatingCompanyId: o.operating_company_id, counterpartyId: o.counterparty_id, factClass: "OBLIGATION", factType: input.factType, sourceDomain: "INVOICE_CORRECTION",
+      sourceRecordId: input.sourceRecordId, amountMinor: input.amountMinor, currency: o.currency, basis: "INVOICE_CORRECTION", effectiveAt: input.effectiveAt,
+      idempotencyKey: input.idempotencyKey, obligationId: input.obligationId,
     });
     await refreshObligationStatus(c, actor, input.obligationId);
     return out;

@@ -74,6 +74,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 
 - [Issue an invoice](./financials/issue-an-invoice.md) — **Financials > Receivables**: turn a receivable that is
   ready to bill into an invoice with its own number; who can do it, how the due date is set, and what each refusal means.
+- [Correct an issued invoice](./financials/correct-an-invoice.md) — credits, write-offs, adjustments, refunds and voids: one person
+  asks, a different Employee approves (even for one cent); a refund is recorded, never paid; a void only before any money moves.
 
 ## Goals
 

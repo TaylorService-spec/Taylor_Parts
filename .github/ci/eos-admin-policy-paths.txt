@@ -1015,3 +1015,10 @@ functions/src/eosOps/inventoryCommitmentRepository.ts
 functions/test/salesOrderAllocationOffline.test.mjs
 functions/test/salesOrderAllocationPostgres.test.mjs
 functions/src/eosCommercial/commands/salesOrderCommandService.ts
+
+# F-1b governed credits, write-offs, adjustments, refunds and voids (2026-10-20): the suites and the module; the migration is written by the controller from the reviewed draft.
+functions/test/f1bInvoiceCorrection.test.mjs
+functions/test/f1bInvoiceCorrectionPostgres.test.mjs
+functions/src/eosFinance/invoiceCorrection.ts
+docs/architecture/f1b-invoice-correction-grant-proposal.json
+functions/test/f1bInvoiceCorrectionDownPostgres.test.mjs

@@ -1,0 +1,28 @@
+{
+  "$comment": "F-1b PROPOSAL, UNAPPLIED, for the Owner only (DECISIONS #F-1b; Owner rulings 2026-10-20: 'Do not infer refund/void approval merely from existing settlement authority' and the Owner-only nonprod proposal). The migration 1764712000000 REGISTERS the three approval capabilities and GRANTS THEM TO NOBODY. Nothing here is applied: no Role holds an approval key, roleCapabilityAuthorityBaseline.json carries no pair, and an approval key is conferred only by an explicit grant activation through Administration. There is no existing policy for who approves corrections, refunds or voids (FIN-007 values are undecided). Nothing is Firebase parity (Firebase had no approval step).",
+  "migration": "1764712000000_invoice-corrections",
+  "status": "UNAPPLIED_PROPOSAL_PENDING_EXPLICIT_GRANT_ACTIVATION",
+  "capabilities": [
+    { "key": "finance.adjustment.approve", "object": "invoice", "action": "approveAdjustment", "kind": "BUSINESS_ACTION", "approves": ["CREDIT_MEMO", "DEBIT_CHARGE", "WRITE_OFF"], "requestKey": "finance.adjustment.record" },
+    { "key": "finance.refund.approve", "object": "payment", "action": "approveRefund", "kind": "BUSINESS_ACTION", "approves": ["REFUND"], "requestKey": "finance.refund.record" },
+    { "key": "finance.invoice.void.approve", "object": "invoice", "action": "approveVoid", "kind": "BUSINESS_ACTION", "approves": ["VOID"], "requestKey": "finance.adjustment.record" }
+  ],
+  "authorityMatrix": {
+    "finance.adjustment.approve": { "proposedHolder": "owner", "applied": false },
+    "finance.refund.approve": { "proposedHolder": "owner", "applied": false },
+    "finance.invoice.void.approve": { "proposedHolder": "owner", "applied": false }
+  },
+  "proposedGrants": [
+    { "roleKey": "owner", "capabilityKey": "finance.adjustment.approve", "applied": false },
+    { "roleKey": "owner", "capabilityKey": "finance.refund.approve", "applied": false },
+    { "roleKey": "owner", "capabilityKey": "finance.invoice.void.approve", "applied": false }
+  ],
+  "explicitlyNotGranted": ["financeManager", "controller", "accountingManager", "generalManager", "admin", "partsManager"],
+  "rules": [
+    "Even the proposed Owner holder can never approve a correction the Owner requested: the rule is by Employee (and Principal), enforced in the command and by CHECK in the database. Owner self-approval is refused with zero trace.",
+    "Approval also needs a Finance company assignment at the invoice's company with FULL inner reach; Role alone is never sufficient.",
+    "The approval keys are BUSINESS_ACTION, so Protected Administrator standing does not imply them; admin is not proposed.",
+    "partsManager stays without Finance execution (R3 / DECISIONS #193).",
+    "Applying the proposal is a separate Owner-authorized grant activation through Administration (and, if made a migration, a baseline change in the same change per Owner ruling E). Nothing in this change does it."
+  ]
+}
