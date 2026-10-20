@@ -31,6 +31,13 @@ import { accountArFromBalanceSummary, accountArFromObligations } from "../src/do
 import { ACCOUNT_AR_STATE } from "../src/domain/accountArView.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
+import { renderHook, waitFor } from "@testing-library/react";
+import { listWorkOrders } from "../src/services/workOrderService";
+import {
+  useAccountWorkOrderCount as useAccountWorkOrderCountMocked,
+  useAccountWorkOrderTimeline as useAccountWorkOrderTimelineMocked,
+} from "../src/hooks/useAccountServiceActivity";
+import { fetchAccountOpenWorkOrderCount, fetchAccountCompletedWorkOrderCount } from "../src/domain/accountWorkOrders";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -59,8 +66,13 @@ vi.mock("../src/hooks/useAccountAttentionWorkOrders", () => ({
 }));
 vi.mock("../src/hooks/useAccountServiceActivity", async (importOriginal) => ({
   ...(await importOriginal()),
-  useAccountWorkOrderCount: () => ({ value: null, loading: false, error: null }),
-  useAccountWorkOrderTimeline: () => ({ items: [], loading: false, error: null, hasMore: false }),
+  useAccountWorkOrderCount: vi.fn(() => ({ value: null, loading: false, error: null })),
+  useAccountWorkOrderTimeline: vi.fn(() => ({ items: [], loading: false, error: null, hasMore: false })),
+}));
+// The Work Order transport, so the REAL hooks (vi.importActual below) can be driven through a refusal / a failure.
+vi.mock("../src/services/workOrderService", async (importOriginal) => ({
+  ...(await importOriginal()),
+  listWorkOrders: vi.fn(),
 }));
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({
   useEmployeeDirectory: () => ({ byUserId: new Map(), byEmployeeId: new Map(), loading: false, error: null }),
@@ -504,6 +516,130 @@ describe("Account North Star P1 — service activity", () => {
     const { container } = renderService();
     expect(container.textContent).toMatch(/No service activity yet for this customer/);
     expect(container.querySelectorAll(".ns-svc__row")).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════ A REFUSED WORK ORDER READ IS NOT A FAILURE
+//
+// Found live on nonprod (warehouseManager): POST /operations/work-orders answered 403, and the page said
+// "couldn't be read. Try again later." -- false, since a refusal is a fact about the caller and no retry changes
+// it -- while the Finance area beside it correctly said "Not available to you". A refusal (client category
+// FORBIDDEN) is the Finance wording; "couldn't be read" is reserved for a genuine transport/server failure.
+
+describe("Account page — a refused work-order read says 'Not available to you'; a failure says 'Couldn't be read'", () => {
+  const OK = { value: 3, loading: false, error: false, denied: false };
+  const REFUSED = { value: null, loading: false, error: false, denied: true };
+  const FAILED = { value: null, loading: false, error: true, denied: false };
+  const TIMELINE = { items: [], loading: false, error: false, denied: false, hasMore: false };
+
+  // Each area is driven on its own: Completed and Open are the two calls to the count hook, told apart by their fetch function.
+  function drive({ open = OK, completed = OK, timeline = TIMELINE }) {
+    vi.mocked(useAccountWorkOrderCountMocked).mockImplementation((_id, fetchFn) =>
+      (fetchFn === fetchAccountOpenWorkOrderCount ? open : completed));
+    vi.mocked(useAccountWorkOrderTimelineMocked).mockImplementation(() => timeline);
+  }
+  afterEach(() => {
+    vi.mocked(useAccountWorkOrderCountMocked).mockImplementation(() => ({ value: null, loading: false, error: null }));
+    vi.mocked(useAccountWorkOrderTimelineMocked).mockImplementation(() => ({ items: [], loading: false, error: null, hasMore: false }));
+  });
+  const renderService = () => render(<MemoryRouter><ServiceActivitySection accountId="acct-1" /></MemoryRouter>);
+
+  it("service activity: a refused timeline says 'Not available to you' and never 'Try again later'", () => {
+    drive({ timeline: { ...TIMELINE, denied: true } });
+    const { container } = renderService();
+    expect(container.textContent).toMatch(/Service activity is not available to you/);
+    expect(container.textContent).not.toMatch(/couldn.t be read/i);
+    expect(container.textContent).not.toMatch(/Try again later/);
+    // Not an empty history either: a refusal is not "no service activity".
+    expect(container.textContent).not.toMatch(/No service activity yet/);
+  });
+
+  it("service activity: a failed timeline still says 'couldn't be read. Try again later.'", () => {
+    drive({ timeline: { ...TIMELINE, error: true } });
+    const { container } = renderService();
+    expect(container.textContent).toMatch(/Service activity couldn’t be read\. Try again later\./);
+    expect(container.textContent).not.toMatch(/not available to you/);
+  });
+
+  it("service activity counts: each count is refused / failed / answered independently", () => {
+    drive({ open: REFUSED, completed: FAILED });
+    const { container } = renderService();
+    const counts = container.querySelector(".ns-svc__counts").textContent;
+    expect(counts).toMatch(/Open Work Orders not available to you/);
+    expect(counts).toMatch(/Completed couldn’t be read/);
+    cleanup();
+    drive({ open: OK, completed: REFUSED });
+    const second = renderService().container.querySelector(".ns-svc__counts").textContent;
+    expect(second).toMatch(/Open Work Orders 3/);
+    expect(second).toMatch(/Completed not available to you/);
+  });
+
+  it("standing strip: a refused open-work-orders count says 'Not available to you'", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AccountHealthStrip workOrderCount={REFUSED} arView={{ kind: ACCOUNT_AR_STATE.EMPTY }} />
+      </MemoryRouter>,
+    );
+    const metric = Array.from(container.querySelectorAll(".ns-standing__metric"))
+      .find((m) => /Open work orders/.test(m.textContent));
+    expect(metric.textContent).toMatch(/Not available to you/);
+    expect(metric.textContent).not.toMatch(/Couldn’t be read/);
+  });
+
+  it("standing strip: a failed open-work-orders count says 'Couldn't be read', not 'Not available to you'", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AccountHealthStrip workOrderCount={FAILED} arView={{ kind: ACCOUNT_AR_STATE.EMPTY }} />
+      </MemoryRouter>,
+    );
+    const metric = Array.from(container.querySelectorAll(".ns-standing__metric"))
+      .find((m) => /Open work orders/.test(m.textContent));
+    expect(metric.textContent).toMatch(/Couldn’t be read/);
+    expect(metric.textContent).not.toMatch(/Not available to you/);
+  });
+
+  // The transport -> state classification, through the REAL hooks.
+  const refusal = () => Object.assign(new Error("forbidden"), { code: "FORBIDDEN", status: 403 });
+  const outage = () => Object.assign(new Error("unreachable"), { code: "UNREACHABLE", status: null });
+
+  it("hook: a FORBIDDEN count read is denied, not an error", async () => {
+    const real = await vi.importActual("../src/hooks/useAccountServiceActivity");
+    listWorkOrders.mockRejectedValue(refusal());
+    const { result } = renderHook(() => real.useAccountWorkOrderCount("acct-1", fetchAccountCompletedWorkOrderCount));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current).toMatchObject({ denied: true, error: false });
+  });
+
+  it("hook: an UNREACHABLE / server count failure is an error, not denied", async () => {
+    const real = await vi.importActual("../src/hooks/useAccountServiceActivity");
+    listWorkOrders.mockRejectedValue(outage());
+    const { result } = renderHook(() => real.useAccountWorkOrderCount("acct-1", fetchAccountCompletedWorkOrderCount));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current).toMatchObject({ denied: false, error: true });
+  });
+
+  it("hook: the timeline classifies a refusal as denied and an outage as an error", async () => {
+    const real = await vi.importActual("../src/hooks/useAccountServiceActivity");
+    listWorkOrders.mockRejectedValue(refusal());
+    const refused = renderHook(() => real.useAccountWorkOrderTimeline("acct-1"));
+    await waitFor(() => expect(refused.result.current.loading).toBe(false));
+    expect(refused.result.current).toMatchObject({ denied: true, error: false, isEmpty: false });
+    listWorkOrders.mockRejectedValue(outage());
+    const failed = renderHook(() => real.useAccountWorkOrderTimeline("acct-2"));
+    await waitFor(() => expect(failed.result.current.loading).toBe(false));
+    expect(failed.result.current).toMatchObject({ denied: false, error: true });
+  });
+
+  it("hook: the attention read classifies a refusal as denied and an outage as an error", async () => {
+    const real = await vi.importActual("../src/hooks/useAccountAttentionWorkOrders");
+    listWorkOrders.mockRejectedValue(refusal());
+    const refused = renderHook(() => real.useAccountAttentionWorkOrders("acct-1"));
+    await waitFor(() => expect(refused.result.current.loading).toBe(false));
+    expect(refused.result.current).toMatchObject({ denied: true, error: false, workOrders: null });
+    listWorkOrders.mockRejectedValue(outage());
+    const failed = renderHook(() => real.useAccountAttentionWorkOrders("acct-2"));
+    await waitFor(() => expect(failed.result.current.loading).toBe(false));
+    expect(failed.result.current).toMatchObject({ denied: false, error: true, workOrders: null });
   });
 });
 

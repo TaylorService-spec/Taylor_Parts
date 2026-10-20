@@ -39,9 +39,11 @@ export const HEALTH_METRIC_STATE = Object.freeze({
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
-// Open Work Orders. `countState` is useAccountWorkOrderCount's exact shape: { value, loading, error }.
+// Open Work Orders. `countState` is useAccountWorkOrderCount's exact shape: { value, loading, error, denied }.
 function openWorkOrdersMetric(countState) {
   if (!countState || countState.loading) return { id: "openWorkOrders", label: "Open work orders", state: HEALTH_METRIC_STATE.LOADING };
+  // A server refusal is DENIED, never UNAVAILABLE: "Not available to you", not "try again later".
+  if (countState.denied) return { id: "openWorkOrders", label: "Open work orders", state: HEALTH_METRIC_STATE.DENIED };
   if (countState.error) {
     return { id: "openWorkOrders", label: "Open work orders", state: HEALTH_METRIC_STATE.UNAVAILABLE };
   }

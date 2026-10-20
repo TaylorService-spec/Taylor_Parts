@@ -6,9 +6,11 @@
 // a browser: each element's view is a function of ONLY its own state, so
 // one element's error can never change what another renders.
 
-// One count cell (Completed or Open), from its own { value, loading, error }.
+// One count cell (Completed or Open), from its own { value, loading, error, denied }.
+// `denied` (the server refused the read) is its own answer, never folded into `error`.
 export function countView(state) {
   if (state.loading) return { kind: "loading" };
+  if (state.denied) return { kind: "denied" };
   if (state.error) return { kind: "error" };
   return { kind: "value", value: state.value };
 }
@@ -17,6 +19,7 @@ export function countView(state) {
 // zero (query returned no Work Orders), distinct from `error`.
 export function timelineView(state) {
   if (state.loading) return { kind: "loading" };
+  if (state.denied) return { kind: "denied" };
   if (state.error) return { kind: "error" };
   if (!state.items || state.items.length === 0) return { kind: "empty" };
   return { kind: "list" };

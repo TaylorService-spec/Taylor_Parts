@@ -1,4 +1,5 @@
 import { listWorkOrders } from "../services/workOrderService";
+import { classifyWorkOrderOutcome, WORK_ORDER_OUTCOME } from "./workOrderOutcome.js";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity
 // (docs/specifications/customer-account-business-model.md). Account-scoped
@@ -16,6 +17,13 @@ import { listWorkOrders } from "../services/workOrderService";
 //   - the timeline pages CLIENT-SIDE over one bounded read, newest-first by
 //     createdAt; `hasMore` stops at the bound, and `truncated` says more exist.
 const ACCOUNT_READ_BOUND = 200;
+
+// A REFUSAL IS NOT A FAILURE. The governed route answers 403 (client category FORBIDDEN) when the
+// caller holds no Work Order read; that is a fact about the caller, so the Account page says
+// "Not available to you" -- exactly as it does for Finance -- never "couldn't be read, try again
+// later", which is false for a refusal. Only the server's own refusal counts: every other failure
+// (unreachable, 5xx, not activated, truncated) stays a genuine "couldn't be read".
+export const isWorkOrderReadRefused = (err) => classifyWorkOrderOutcome(err).kind === WORK_ORDER_OUTCOME.UNAUTHORIZED;
 
 // These two buckets partition the canonical 11-value WorkOrderStatus enum
 // (the authority is functions/src/transitionEngine.ts, mirrored client-side

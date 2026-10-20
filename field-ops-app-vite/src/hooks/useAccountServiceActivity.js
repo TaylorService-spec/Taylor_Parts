@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchAccountWorkOrderTimelinePage } from "../domain/accountWorkOrders";
+import { fetchAccountWorkOrderTimelinePage, isWorkOrderReadRefused } from "../domain/accountWorkOrders";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity.
 // Independent hooks so the two summary counts and the Account Activity
@@ -21,9 +21,11 @@ export function useAccountWorkOrderCount(accountId, fetchFn) {
   const [value, setValue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [denied, setDenied] = useState(false); // the server refused the read: not a failure
 
   useEffect(() => {
     let cancelled = false;
+    setDenied(false);
     if (!accountId) {
       setValue(null);
       setLoading(false);
@@ -38,9 +40,11 @@ export function useAccountWorkOrderCount(accountId, fetchFn) {
         setValue(v);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        setError(true);
+        const refused = isWorkOrderReadRefused(err);
+        setDenied(refused);
+        setError(!refused);
         setLoading(false);
       });
     return () => {
@@ -48,7 +52,7 @@ export function useAccountWorkOrderCount(accountId, fetchFn) {
     };
   }, [accountId, fetchFn]);
 
-  return { value, loading, error };
+  return { value, loading, error, denied };
 }
 
 export function useAccountWorkOrderTimeline(accountId) {
@@ -56,6 +60,7 @@ export function useAccountWorkOrderTimeline(accountId) {
   const [loading, setLoading] = useState(true); // initial page only
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false); // initial-page error (blocks the list)
+  const [denied, setDenied] = useState(false); // initial-page refusal: the caller may not read Work Orders
   const [loadMoreError, setLoadMoreError] = useState(false); // pagination error (keeps the list)
   const [hasMore, setHasMore] = useState(false);
   const lastDocRef = useRef(null);
@@ -63,6 +68,7 @@ export function useAccountWorkOrderTimeline(accountId) {
   useEffect(() => {
     let cancelled = false;
     lastDocRef.current = null;
+    setDenied(false);
     if (!accountId) {
       setItems([]);
       setLoading(false);
@@ -84,9 +90,11 @@ export function useAccountWorkOrderTimeline(accountId) {
         setHasMore(more);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        setError(true);
+        const refused = isWorkOrderReadRefused(err);
+        setDenied(refused);
+        setError(!refused);
         setLoading(false);
       });
     return () => {
@@ -120,9 +128,10 @@ export function useAccountWorkOrderTimeline(accountId) {
     loading,
     loadingMore,
     error,
+    denied,
     loadMoreError,
     hasMore,
     loadMore,
-    isEmpty: !loading && !error && items.length === 0,
+    isEmpty: !loading && !error && !denied && items.length === 0,
   };
 }
