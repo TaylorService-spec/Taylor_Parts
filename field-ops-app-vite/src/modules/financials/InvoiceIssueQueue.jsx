@@ -38,17 +38,17 @@ export function useIssuableCompanies(callApi, enabled = true) {
  * command. ONE idempotency key per opened panel; a refusal stays here in the server's own words with nothing changed. `onIssued(invoice)` is the
  * caller's cue to re-read; nothing is optimistic.
  */
-export function IssuePanel({ callApi, billingPackageId, subject, amountText, onIssued, onCancel }) {
+export function IssuePanel({ callApi, billingPackageId, subject, amountText, onIssued, onCancel, onBusyChange }) {
   const [key] = useState(newKey);
   const [dueOn, setDueOn] = useState("");
   const [dueReason, setDueReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState(null);
   const issue = async () => {
-    setBusy(true); setRefusal(null);
+    setBusy(true); onBusyChange?.(true); setRefusal(null);
     const reason = dueReason.trim();
     const res = await callApi("issueInvoice", { billingPackageId, idempotencyKey: key, ...(dueOn ? { dueOn, ...(reason ? { dueReason: reason } : {}) } : {}) });
-    setBusy(false);
+    setBusy(false); onBusyChange?.(false);
     if (!res.ok) { setRefusal(res.message ?? "The invoice was not issued."); return; }
     onIssued(res.result.invoice);
   };
@@ -77,6 +77,8 @@ export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
   const [rows, setRows] = useState({ state: "idle", items: EMPTY, message: null });
   const [row, setRow] = useState(null); // the receivable whose issue panel is open
   const [notice, setNotice] = useState(null);
+  const [busy, setBusy] = useState(false); // an issue is in flight: no other row may start one
+  const openRow = useRef(null); // the receivable whose panel is the open one; a callback from any other panel is stale
   const latest = useRef(0);
 
   useEffect(() => { setCompany((current) => current || access.companies[0]?.operatingCompanyId || ""); }, [access.companies]);
@@ -92,10 +94,9 @@ export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
   }, [callApi, company]);
   useEffect(() => { load(); }, [load]);
 
-  const issued = async (invoice) => {
-    setNotice({ tone: "positive", text: `Invoice ${invoice.invoiceNumber} issued.` });
-    setRow(null);
-    await load();
+  const issued = async (invoice, issuedRowId) => {
+    if (openRow.current === issuedRowId) { openRow.current = null; setNotice({ tone: "positive", text: `Invoice ${invoice.invoiceNumber} issued.` }); setRow(null); }
+    await load(); // it was issued either way: re-read, but a superseded panel never closes the one now open
   };
 
   if (access.loading) return <p className="fo-muted" role="status">Loading the billing queue…</p>;
@@ -108,7 +109,7 @@ export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
       <SectionHeader title="Ready to Invoice" description="Sales Order receivables with no invoice yet. Issuing creates the invoice and its number; what is owed stays on the receivable." />
       {access.companies.length > 1 && (
         <Field label="Company">
-          <select className="fo-input" aria-label="Company" value={company} onChange={(e) => { setRow(null); setCompany(e.target.value); }}>
+          <select className="fo-input" aria-label="Company" value={company} onChange={(e) => { openRow.current = null; setRow(null); setCompany(e.target.value); }}>
             {access.companies.map((c) => <option key={c.operatingCompanyId} value={c.operatingCompanyId}>{c.name || operatingCompanyLabel(c.operatingCompanyId)}</option>)}
           </select>
         </Field>
@@ -127,7 +128,7 @@ export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
                 <td>{o.counterparty?.name ?? o.counterparty?.crmAccountId ?? "—"}</td>
                 <td>{operatingCompanyLabel(o.operatingCompanyId) || "—"}</td>
                 <td>{money(o.originatedMinor, o.currency)}</td>
-                <td><Button size="sm" variant="secondary" onClick={() => { setNotice(null); setRow(o); }}>Issue invoice</Button></td>
+                <td><Button size="sm" variant="secondary" disabled={busy} onClick={() => { setNotice(null); openRow.current = o.id; setRow(o); }}>Issue invoice</Button></td>
               </tr>
             ))}
           </tbody>
@@ -135,7 +136,7 @@ export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
       )}
       {row && (
         <IssuePanel key={row.id} callApi={callApi} billingPackageId={row.sourceRecordId} subject={row.sourceSalesOrder?.salesOrderNumber ?? "this receivable"}
-          amountText={money(row.originatedMinor, row.currency)} onIssued={issued} onCancel={() => setRow(null)} />
+          amountText={money(row.originatedMinor, row.currency)} onBusyChange={setBusy} onIssued={(invoice) => issued(invoice, row.id)} onCancel={() => { openRow.current = null; setRow(null); }} />
       )}
     </section>
   );

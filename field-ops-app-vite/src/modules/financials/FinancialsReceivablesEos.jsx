@@ -10,7 +10,7 @@
 // instead of being shown as a blank or fabricated. F-1a-UI: a holder of finance.invoice.issue is offered Issue invoice on an un-invoiced Sales
 // Order receivable (the Billing Queue is not reachable on the EOS build); the server's per-company advice narrows it and every command re-decides. No amount is totalled here: the scorecard
 // and the aging buckets are the server's, per currency.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { FinancialsPageFrame, FinancialsFilterRail, FinancialsHonestSection, FinSortableHeader, FinAnnotation } from "./FinancialsPrimitives.jsx";
 import { companyWords, labelWords } from "./financialsDisplay.js";
@@ -61,6 +61,8 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
   const [issuing, setIssuing] = useState(null); // the row whose issue panel is open
   const [issuedNotice, setIssuedNotice] = useState(null);
   const [reload, setReload] = useState(0);
+  const [busy, setBusy] = useState(false); // an issue is in flight: no other row may start one
+  const openRow = useRef(null); // the row whose panel is the open one; a callback from any other panel is stale
   const [company, setCompany] = useState("consolidated");
   const [view, setView] = useState(mode === "ar" ? "open" : "all");
   const period = useFinancialsPeriod();
@@ -165,7 +167,6 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
               <tr>
                 {th("record", "Record", { tip: "The Finance register's own reference (not an invoice number: MD-B1-1)." })}
                 {th("invoice", "Invoice", { tip: "The invoice issued against this receivable, with its issue date. Not invoiced: none has been issued yet." })}
-                {th("invoice", "Invoice", { tip: "The invoice issued against this receivable, with its issue date. Not invoiced: none has been issued yet." })}
                 {th("customer", "Customer")}
                 {th("company", "Company")}
                 {th("due", "Due")}
@@ -196,7 +197,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
                     {canIssue ? (
                       <td>
                         {issuable(row) && issueCompanies.has(row.companyId)
-                          ? <Button size="sm" variant="secondary" onClick={() => { setIssuedNotice(null); setIssuing(row); }}>Issue invoice</Button>
+                          ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setIssuedNotice(null); openRow.current = row.invoiceId; setIssuing(row); }}>Issue invoice</Button>
                           : null}
                       </td>
                     ) : null}
@@ -209,8 +210,12 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
         {issuedNotice ? <p className="fin-section-note" role="status">{issuedNotice}</p> : null}
         {issuing ? (
           <IssuePanel key={issuing.invoiceId} callApi={callApi} billingPackageId={issuing.raw.sourceRecordId} subject={issuing.raw.salesOrderNumber ?? "this receivable"}
-            amountText={issuing.total} onCancel={() => setIssuing(null)}
-            onIssued={(invoice) => { setIssuedNotice(`Invoice ${invoice.invoiceNumber} issued.`); setIssuing(null); setReload((n) => n + 1); }} />
+            amountText={issuing.total} onBusyChange={setBusy} onCancel={() => { openRow.current = null; setIssuing(null); }}
+            onIssued={(invoice) => {
+              setReload((n) => n + 1); // it was issued either way: re-read
+              if (openRow.current !== issuing.invoiceId) return; // a superseded panel never closes the one now open
+              openRow.current = null; setIssuedNotice(`Invoice ${invoice.invoiceNumber} issued.`); setIssuing(null);
+            }} />
         ) : null}
         <FinAnnotation tip="Original is what the receivable originated for; Settled is the sum of applied settlements net of reversals; Outstanding is what remains. All three are the server's figures." />
       </FinancialsHonestSection>

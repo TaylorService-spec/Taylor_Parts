@@ -199,6 +199,50 @@ describe("Receivables — Issue invoice (F-1a-UI)", () => {
     expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
   });
 
+  test("every body row has as many cells as the header has columns, for a holder and a non-holder", async () => {
+    server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null } })] } });
+    for (const props of [{ hasCapability: holder, callApi: stub() }, { hasCapability: () => false, callApi: stub() }, {}]) {
+      const { container, unmount } = page(props);
+      await settled(container, /INV-2026-000007/);
+      const table = container.querySelector("table.ns-table");
+      const headers = table.querySelectorAll("thead th");
+      expect(new Set([...headers].map((h) => h.textContent)).size).toBe(headers.length);
+      for (const tr of table.querySelectorAll("tbody tr")) expect(tr.querySelectorAll("td").length).toBe(headers.length);
+      expect(headers.length).toBe(props.hasCapability === holder ? 10 : 9);
+      unmount();
+    }
+  });
+
+  test("a void row, a non-billing-package source and a non-RECEIVABLE kind each show no Issue", async () => {
+    server({ listObligations: { scope: "consolidated", items: [
+      row({ id: "obl_00000001", status: "VOID" }),
+      row({ id: "obl_00000002", sourceDomain: "MANUAL" }),
+      row({ id: "obl_00000003", kind: "FUNDING_RECEIVABLE" }),
+    ] } });
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await settled(container, /00000003/);
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+  });
+
+  test("while an issue is in flight no other row can start one", async () => {
+    server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", sourceRecordId: "bp-2" })] } });
+    let release;
+    const callApi = vi.fn(async (op) => {
+      if (op === "readMyFinanceCompanyAccess") return issueAdvice();
+      return new Promise((resolve) => { release = () => resolve({ ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000001" } } }); });
+    });
+    page({ hasCapability: holder, callApi });
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole("button", { name: "Issue invoice" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).every((b) => b.disabled)).toBe(true));
+    release();
+    await screen.findByText(/Invoice INV-2026-000001 issued/);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).every((b) => !b.disabled)).toBe(true));
+  });
+
   test("a refusal is the server's own words and nothing is reported as issued", async () => {
     server();
     const callApi = stub({ issue: { ok: false, code: "PRECONDITION_FAILED", message: "the billing package's tax is not determined; it cannot be invoiced" } });

@@ -588,6 +588,23 @@ describe("Billing Queue > Issue invoice", () => {
     expect(container.textContent).not.toMatch(/ issued\./);
   });
 
+  test("while an issue is in flight no other row can start one", async () => {
+    const second = { ...ROW, id: "obl-2", sourceRecordId: "bpk-2", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-d", name: "Dune Cafe" } };
+    let release;
+    const callApi = vi.fn(async (op) => {
+      if (op === "readMyFinanceCompanyAccess") return access();
+      if (op === "listObligations") return { ok: true, result: { items: [ROW, second] } };
+      return new Promise((resolve) => { release = () => resolve({ ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000001" } } }); });
+    });
+    mountQueue({ hasCapability: holder, callApi });
+    await screen.findByText("Dune Cafe");
+    fireEvent.click(screen.getAllByRole("button", { name: "Issue invoice" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).every((b) => b.disabled)).toBe(true));
+    release();
+    await screen.findByText(/Invoice INV-2026-000001 issued/);
+  });
+
   test("no company offered by the server means no control", async () => {
     const callApi = server({ access: access(false) });
     mountQueue({ hasCapability: holder, callApi });
