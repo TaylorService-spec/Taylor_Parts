@@ -40,6 +40,7 @@ import { authorizeObjectAction, postgresContextualReader } from "./contextualAut
 import { scopedWarehouseIds } from "./partsReads.js";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse.js";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
+import { lockStockLocation } from "./stockLocationLock.js";
 import {
   CommitmentIdempotencyConflictError, InventoryCommitmentError, cancel, derivedKey, release, reserve,
   type CommitmentWriteResult, type DemandSource,
@@ -139,6 +140,7 @@ function asRefusal(err: unknown): never {
         : err.code === "PART_NOT_FOUND" || err.code === "WAREHOUSE_NOT_FOUND" || err.code === "DEMAND_NOT_FOUND" ? "NOT_FOUND"
           : err.code === "REASON_REQUIRED" || err.code === "QUANTITY_INVALID" ? "INVALID_INPUT"
             : "PRECONDITION_FAILED";
+    if (err.code === "DUPLICATE_CLAIM") return refuse(err.code, category, "this line already holds an allocation at this warehouse; release first to change the quantity here");
     return refuse(err.code, category, err.message);
   }
   throw err;
@@ -167,13 +169,19 @@ async function requireStatedCompanyAndOrder(db: Db, actor: ReceivingPrincipalAct
   if (!companyKey || !authority.companyKeys.includes(companyKey)) {
     refuse("COMPANY_OUT_OF_AUTHORITY", "FORBIDDEN", "the stated operating company is not one you hold authority over");
   }
+  // A PLAIN read first, so the company decision is made before any row lock is taken: a caller outside the order's company must not be able to learn
+  // anything about it from how long the lock took (no lock-timing oracle on a foreign order).
+  const { rows: peek } = await db.query<{ operating_company_key: string }>(
+    `SELECT operating_company_key FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, r.salesOrderId]);
+  if (!peek[0] || !authority.companyKeys.includes(peek[0].operating_company_key)) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
+  if (peek[0].operating_company_key !== companyKey) {
+    refuse("COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to a different operating company than the one you stated; company is stated, never derived, and the two must agree");
+  }
+  // Authorised: now lock the row (the one transitionSalesOrder locks) and RE-READ the state under the lock.
   const { rows: so } = await db.query<{ operating_company_key: string; state: string }>(
     `SELECT operating_company_key, state::text AS state FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
     [actor.tenantId, r.salesOrderId]);
-  if (!so[0] || !authority.companyKeys.includes(so[0].operating_company_key)) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
-  if (so[0].operating_company_key !== companyKey) {
-    refuse("COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to a different operating company than the one you stated; company is stated, never derived, and the two must agree");
-  }
+  if (!so[0] || so[0].operating_company_key !== companyKey) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
   return { companyKey: companyKey as string, companyKeys: authority.companyKeys, order: { state: so[0].state } };
 }
 
@@ -252,10 +260,14 @@ export async function allocateSalesOrderLine(deps: { readonly pool: Pool }, acto
       const [policy] = await createPostgresPartPolicyAuthority().readPartPolicies(db as PoolClient, actor.tenantId, [partId]);
       if (!policy?.found) refuse("PART_NOT_FOUND", "NOT_FOUND", "no such Part");
       if (policy.status !== "ACTIVE") refuse("PART_NOT_ACTIVE", "PRECONDITION_FAILED", "the Part is not ACTIVE; stock of it cannot be allocated");
-      const already = sum(await heldByWarehouse(db, actor.tenantId, r.salesOrderId, r.lineNumber));
+      const heldNow = await heldByWarehouse(db, actor.tenantId, r.salesOrderId, r.lineNumber);
+      const already = sum(heldNow);
       if (quantity > line.orderedQty - already) {
+        // A second claim at the SAME warehouse is refused (one active claim per line and warehouse): say how to change the quantity there.
+        const here = heldNow.find((h) => h.warehouseId === r.warehouseId)?.held ?? 0;
         refuse("QUANTITY_EXCEEDS_ORDER", "PRECONDITION_FAILED",
-          `the line orders ${line.orderedQty} and already holds ${already}; at most ${Math.max(0, line.orderedQty - already)} more can be allocated`);
+          `the line orders ${line.orderedQty} and already holds ${already}; at most ${Math.max(0, line.orderedQty - already)} more can be allocated`
+          + (here > 0 ? `. It already holds ${here} at this warehouse: release first to change the quantity here.` : ""));
       }
     }
 
@@ -334,6 +346,16 @@ export async function releaseSalesOrderClaims(
   const { rows } = await db.query<{ operating_company_key: string }>(
     `SELECT operating_company_key FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2`, [args.tenantId, args.salesOrderId]);
   if (!rows[0]) return 0;
+  // NO DEADLOCK BETWEEN TWO ORDERS. `cancel` takes the Part locks of one line at a time, so two orders whose lines hold the same Parts in opposite order
+  // could each hold the other's next lock (40P01). Take EVERY (warehouse, Part) lock this order holds up front, in ONE globally sorted pass -- the order
+  // every other writer of the pool uses (a warehouse, then Parts sorted) -- and the per-line `cancel` calls below only re-take locks already held.
+  const { rows: locks } = await db.query<{ warehouse_id: string; part_id: string }>(
+    `SELECT DISTINCT warehouse_id, part_id FROM eos_ops.inventory_commitments WHERE tenant_id = $1 AND sales_order_id = $2`,
+    [args.tenantId, args.salesOrderId]);
+  const sorted = locks.map((l) => [l.warehouse_id, l.part_id] as const)
+    .sort(([wa, pa], [wb, pb]) => (wa < wb ? -1 : wa > wb ? 1 : pa < pb ? -1 : pa > pb ? 1 : 0));
+  for (const [warehouseId, partId] of sorted) await lockStockLocation(db, args.tenantId, partId, "WAREHOUSE", warehouseId);
+
   const lines = [...new Set(held.map((h) => h.lineNumber))].sort((a, b) => a - b);
   for (const lineNumber of lines) {
     await cancel(db, {
@@ -341,6 +363,11 @@ export async function releaseSalesOrderClaims(
       source: { kind: "SALES_ORDER", salesOrderId: args.salesOrderId, lineNumber },
       idempotencyKey: `soEnd:${args.salesOrderId}:${lineNumber}:${args.toState}`,
     }, { reason: `Sales Order ${args.toState.toLowerCase()}` });
+  }
+  // POST-CONDITION: an order that has ended holds nothing. If anything is still held the transition must not commit.
+  const left = await heldByWarehouse(db, args.tenantId, args.salesOrderId, null);
+  if (left.length > 0) {
+    throw new InventoryCommitmentError("CLAIMS_NOT_RELEASED", `${left.length} claim(s) of Sales Order ${args.salesOrderId} are still held after the release; the transition is not committed`);
   }
   return lines.length;
 }

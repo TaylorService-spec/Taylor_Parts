@@ -108,7 +108,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
     `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
        expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
      VALUES ($1,'t1','fixture',$1,$1,$4,'EACH',$2,'STOCKED',false,false,false,$3,1,'fixture')`, [id, control, whole, status]);
-  for (const id of ["P-A", "P-OTHER", "P-REL", "P-RACE", "P-SHORT", "P-CXL", "P-CXL2", "P-NOSTOCK", "P-B", "P-FUL", "P-CLO", "P-READ", "P-NULL"]) await part(id);
+  for (const id of ["P-A", "P-OTHER", "P-REL", "P-RACE", "P-SHORT", "P-CXL", "P-CXL2", "P-NOSTOCK", "P-B", "P-FUL", "P-CLO", "P-READ", "P-NULL", "P-D1", "P-D2"]) await part(id);
   await part("P-SER", "SERIALIZED"); await part("P-UNIT", "SERIALIZED", true); await part("P-INACT", "STANDARD", false, "INACTIVE");
   let seq = 0;
   const move = (partId, warehouseId, delta, companyKey = CO_A) => q(
@@ -118,6 +118,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
   for (const id of ["P-A", "P-REL", "P-READ"]) { await move(id, "wh-a1", 20); await move(id, "wh-a2", 20); }
   await move("P-OTHER", "wh-a1", 5); await move("P-INACT", "wh-a1", 5); await move("P-RACE", "wh-a1", 10); await move("P-SHORT", "wh-a1", 3);
   await move("P-CXL", "wh-a1", 10); await move("P-CXL2", "wh-a1", 10); await move("P-FUL", "wh-a1", 10); await move("P-CLO", "wh-a1", 10); await move("P-NULL", "wh-a1", 10);
+  await move("P-D1", "wh-a1", 50); await move("P-D2", "wh-a1", 50);
   await move("P-A", "wh-a-closed", 5);
   await move("P-B", "wh-b1", 5, CO_B);
 
@@ -149,6 +150,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
   await order("so-closed-claims", [["PART", "P-CLO", 4]]);
   await order("so-read", [["PART", "P-READ", 6], ["SERVICE", "SVC-2", 1]]);
   await order("so-null-claims", [["PART", "P-NULL", 4]]);
+  for (let i = 1; i <= 6; i++) { await order(`so-dl${i}a`, [["PART", "P-D1", 3], ["PART", "P-D2", 3]]); await order(`so-dl${i}b`, [["PART", "P-D2", 3], ["PART", "P-D1", 3]]); }
 
   // Hard reservations are activated for Taylor's company only; Ventana's is not.
   await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1',$1,'fixture','test activation')`, [CO_A]);
@@ -405,6 +407,44 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
     const idle = await counts();
     await commercial.transitionSalesOrder({ pool }, csActor, { salesOrderId: "so-cxl-atomic", transition: "CANCEL", idempotencyKey: key() });
     assert.equal((await counts()).rows, idle.rows + 1, "the atomic order held 3 of one line: one RELEASED row");
+  });
+
+  await t.test("cancel race: two orders whose lines hold the same Parts in OPPOSITE order are cancelled concurrently -- both succeed, none deadlocks (40P01)", async () => {
+    const csActor = { tenantId: "t1", principalId: alice, capabilities: new Set(["salesOrder.write"]) };
+    const partOf = ["P-D1", "P-D2"];
+    for (let i = 1; i <= 6; i++) {
+      for (const [suffix, parts] of [["a", partOf], ["b", [...partOf].reverse()]]) {
+        const salesOrderId = `so-dl${i}${suffix}`;
+        for (let line = 1; line <= 2; line++) await allocate(alice, { salesOrderId, lineNumber: line, partId: parts[line - 1], quantity: 3 });
+      }
+    }
+    for (let i = 1; i <= 6; i++) {
+      const results = await Promise.allSettled(["a", "b"].map((s) =>
+        commercial.transitionSalesOrder({ pool }, csActor, { salesOrderId: `so-dl${i}${s}`, transition: "CANCEL", idempotencyKey: key() })));
+      for (const r of results) assert.equal(r.status, "fulfilled", `round ${i}: ${r.status === "rejected" ? `${r.reason?.code} ${r.reason?.message}` : ""}`);
+      for (const s of ["a", "b"]) {
+        assert.equal(await held(`so-dl${i}${s}`, 1) + await held(`so-dl${i}${s}`, 2), 0, `so-dl${i}${s} holds nothing`);
+        assert.equal((await q(`SELECT state::text AS s FROM eos_commercial.sales_orders WHERE id = $1`, [`so-dl${i}${s}`])).rows[0].s, "CANCELLED");
+      }
+    }
+    assert.equal(await committed("P-D1"), 0);
+    assert.equal(await committed("P-D2"), 0);
+  });
+
+  await t.test("a foreign order's row lock is no oracle: a caller outside its company is refused at once, even while the order is locked by another transaction", async () => {
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(`SELECT 1 FROM eos_commercial.sales_orders WHERE tenant_id = 't1' AND id = 'so-b' FOR UPDATE`);
+      const started = Date.now();
+      const err = await refused(() => allocate(alice, { salesOrderId: "so-b", partId: "P-B" }), "SALES_ORDER_NOT_FOUND", "NOT_FOUND");
+      assert.ok(err);
+      assert.ok(Date.now() - started < 2500, "the refusal did not wait for the foreign order's lock");
+      await refused(() => release(alice, { salesOrderId: "so-b" }), "SALES_ORDER_NOT_FOUND", "NOT_FOUND");
+    } finally {
+      await holder.query("ROLLBACK").catch(() => undefined);
+      holder.release();
+    }
   });
 
   await t.test("fulfil / close release the remainder too (a ledger has no implicit release); a live state never releases", async () => {

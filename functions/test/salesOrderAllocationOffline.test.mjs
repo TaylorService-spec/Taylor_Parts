@@ -152,3 +152,24 @@ test("a Sales Order cancel / fulfil / close releases its claims in the order's O
   const repo = code(read("eosOps/inventoryCommitmentRepository.ts"));
   assert.match(repo, /typeof \(pool as PoolClient\)\.release === "function"\) return run\(pool as PoolClient\)/);
 });
+
+test("releaseSalesOrderClaims: every (warehouse, Part) lock in ONE sorted pass before any per-line cancel, and a post-condition that nothing is still held", () => {
+  const src = code(ALLOC);
+  const body = src.slice(src.indexOf("export async function releaseSalesOrderClaims"), src.indexOf("export async function readSalesOrderAllocations"));
+  const pass = body.indexOf("lockStockLocation(db");
+  const loop = body.indexOf("await cancel(db");
+  const post = body.indexOf("CLAIMS_NOT_RELEASED");
+  assert.ok(pass > 0 && loop > pass, "the locks are all taken before the first per-line cancel");
+  assert.ok(post > loop, "the post-condition follows the release loop");
+  assert.match(body, /\.sort\(\(\[wa, pa\], \[wb, pb\]\)/, "warehouse-major, then Part: the order every other writer uses");
+  assert.doesNotMatch(body, /catch\s*\(/, "no try/catch: a failed release must roll the transition back");
+});
+
+test("the order row is locked only AFTER the company decision (no lock-timing oracle on a foreign order)", () => {
+  const src = code(ALLOC);
+  const fn = src.slice(src.indexOf("async function requireStatedCompanyAndOrder"), src.indexOf("async function requireWarehouseScope"));
+  const peek = fn.indexOf("COMPANY_MISMATCH");
+  const lock = fn.indexOf("FOR UPDATE");
+  assert.ok(peek > 0 && lock > peek, "the plain read and the company/authority checks come before FOR UPDATE");
+  assert.equal(fn.split("FOR UPDATE").length, 2, "exactly one FOR UPDATE");
+});

@@ -200,7 +200,7 @@ describe("Sales Order — North Star composition", () => {
     expect(within(slot).queryByRole("button")).toBeNull();
     expect(within(slot).queryByRole("link")).toBeNull();
     // It points at the governed control that already exists.
-    expect(slot.textContent).toMatch(/Use Allocate above/);
+    expect(slot.textContent).toMatch(/Use the Allocation section/);
   });
 
   it("the suggestion never states a fact about inventory it cannot read", () => {
@@ -238,7 +238,7 @@ describe("Sales Order — North Star composition", () => {
   it("composing the page changed no authority: the governed actions are still the only writes", () => {
     mount({}, { hasCapability: () => true });
     // The action cluster is still rendered, and still the sole source of write affordances.
-    expect(screen.getByRole("button", { name: /Allocate/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Cancel order/i })).toBeTruthy();
   });
 
   it("a caller with no capability signal gets no live write affordance — fail-closed", () => {

@@ -291,7 +291,7 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
         <span className="ns-suggest__label">Suggested</span>
         {intelligence?.speak ? (
           <span>
-            {intelligence.observedFact} {intelligence.businessConsequence} Use Allocate above to run the governed allocation.
+            {intelligence.observedFact} {intelligence.businessConsequence} Use the Allocation section to allocate stock.
           </span>
         ) : (
           <span>Nothing is proposed for this order.</span>

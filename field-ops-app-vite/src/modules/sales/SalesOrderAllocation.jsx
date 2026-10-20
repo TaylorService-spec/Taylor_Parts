@@ -68,7 +68,10 @@ export default function SalesOrderAllocation({ salesOrderId, client = salesOrder
         : await client.releaseSalesOrderAllocation({ ...base, reason, ...(quantity === undefined ? {} : { quantity }) });
       if (answer.errorStatus) { setError(refusalWords(answer)); return; }
       delete keys.current[attempt]; // this attempt is finished -- the next click is a new intent
-      setNotice(kind === "allocate" ? `Allocated ${quantity} to line ${line.lineNumber}.` : `Released the allocation on line ${line.lineNumber}.`);
+      // Say "Allocated" / "Released" only when the server APPLIED it. A replay changed nothing: say that, and still re-read the server's figures.
+      const applied = answer.result?.outcome === (kind === "allocate" ? "allocated" : "released");
+      setNotice(!applied ? `Line ${line.lineNumber}: that was already done; nothing changed.`
+        : kind === "allocate" ? `Allocated ${quantity} to line ${line.lineNumber}.` : `Released the allocation on line ${line.lineNumber}.`);
       setQuantities((q) => ({ ...q, [line.lineNumber]: "" }));
       await refresh();
       onChanged?.();

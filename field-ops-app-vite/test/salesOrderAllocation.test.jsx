@@ -92,6 +92,26 @@ describe("SalesOrderAllocation", () => {
     expect(c.allocateSalesOrder.mock.calls[3][0].idempotencyKey).not.toBe(c.allocateSalesOrder.mock.calls[2][0].idempotencyKey);
   });
 
+  it("a REPLAYED answer is not reported as an allocation or a release: it says nothing changed, and the figures are still re-read", async () => {
+    const c = client(data(), {
+      allocateSalesOrder: vi.fn(async () => ({ result: { outcome: "replayed" } })),
+      releaseSalesOrderAllocation: vi.fn(async () => ({ result: { outcome: "replayed" } })),
+    });
+    await mount(c);
+    qty(1, "2");
+    fireEvent.click(screen.getByRole("button", { name: "Allocate line 1" }));
+    const note = await screen.findByRole("status");
+    expect(note.textContent).toMatch(/already done; nothing changed/);
+    expect(note.textContent).not.toMatch(/Allocated 2/);
+    await waitFor(() => expect(c.readSalesOrderAllocations).toHaveBeenCalledTimes(2));
+    await ready();
+    fireEvent.change(screen.getByLabelText("Reason (required to release)"), { target: { value: "r" } });
+    fireEvent.click(screen.getByRole("button", { name: "Release line 1" }));
+    await waitFor(() => expect(c.releaseSalesOrderAllocation).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/already done; nothing changed/));
+    expect(screen.getByRole("status").textContent).not.toMatch(/Released the allocation/);
+  });
+
   it("a failure the platform did not govern says nothing specific", async () => {
     const c = client(data(), { allocateSalesOrder: vi.fn(async () => ({ errorStatus: "unavailable" })) });
     await mount(c);

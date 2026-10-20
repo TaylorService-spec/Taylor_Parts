@@ -120,17 +120,16 @@ describe("useSalesOrderActions -- idempotency key strategy", () => {
     });
   });
 
-  it("allocateSalesOrder / createServiceForSalesOrder are never called with an idempotencyKey (neither callable accepts one)", async () => {
+  it("createServiceForSalesOrder is never called with an idempotencyKey (the callable accepts none); the hook has no whole-order allocate (allocation is the Allocation section's per-line operation)", async () => {
     const client = mockClient();
-    client.allocateSalesOrder.mockResolvedValue({ result: { success: true, salesOrderId: "SO-1", readiness: "READY", counts: {} } });
     client.createServiceForSalesOrder.mockResolvedValue({ result: { success: true, salesOrderId: "SO-1", workOrderId: "WO-9", woNumber: "WO-2026-9" } });
     const { result } = renderHook(() => useSalesOrderActions("SO-1", { client }));
 
     await act(async () => {
-      await result.current.runAllocate();
       await result.current.runCreateService();
     });
-    expect(client.allocateSalesOrder).toHaveBeenCalledWith({ salesOrderId: "SO-1" });
+    expect(result.current.runAllocate).toBeUndefined();
+    expect(client.allocateSalesOrder).not.toHaveBeenCalled();
     expect(client.createServiceForSalesOrder).toHaveBeenCalledWith({ salesOrderId: "SO-1" });
   });
 });
