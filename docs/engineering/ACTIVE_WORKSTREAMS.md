@@ -449,6 +449,16 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
 - Lifecycle stage:     INTEGRATION (PR open)
 
+- Capability:          Lane S1b (2026-10-20) — hard stock reservations per operating company AND warehouse: reserve / release / consume / cancel with a lock-ordered no-oversell gate, replay by key + fingerprint, one audit row per applied command, serial Parts refused, readPartBalance per-location reserved / available with NOT_YET_ACTIVATED and SCOPE_PARTIAL
+- Agent/session:       Claude Code Lane S1b · Role: builder; controller merges
+- Branch / worktree:   `res/s1b-hard-reservations` · `.claude/worktrees/agent-ace14ced7aab07e51`
+- Base commit:         `e19dc610`
+- Owned paths:         `functions/src/eosOps/inventoryCommitmentRepository.ts` · the reserved/available block of `readPartBalance` in `functions/src/eosOps/partsReads.ts` · `functions/test/{stockReservationPostgres,eosOpsInventoryCommitment*,partBalancePostgres}.test.mjs`
+- Shared paths req'd:  this registry · DECISIONS.md · SYSTEM_AUTHORITIES.md · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` · small additive edits to Postgres suites that call `readPartBalance`
+- Dependencies:        migration `1764710000000_stock-reservation-company-warehouse` (controller-authored, in the PR); S1c (SO allocation command, UI, grants) follows
+- Expected outcome:    a hard reservation cannot lack a company or a warehouse, cannot oversell, replays safely and is governed end to end
+- Protected boundaries:none reached — no capability, grant, Firebase or production change; activation is an operator row
+
 - Capability:          Lane DOC (overnight 2026-10-20) — Service Work Order invoicing policy requirements (B5 gap; prepare only) + fresh Firebase dependency reconciliation against the Owner baseline (no deletion)
 - Agent/session:       Claude Code lane DOC · Role: builder (docs and read-only); controller reviews and merges
 - Branch / worktree:   `worktree-agent-a96482df91bab3cf0` · `.claude/worktrees/agent-a96482df91bab3cf0`

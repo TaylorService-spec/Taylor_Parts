@@ -1,0 +1,148 @@
+-- Up Migration
+-- S1b -- HARD STOCK RESERVATIONS, PER COMPANY AND WAREHOUSE (DECISIONS #165; Owner rulings 2026-10-20, S1a OD-2).
+--
+-- WHAT THIS CHANGES. `eos_ops.inventory_commitments` (migration 1758067200000) was a location-less, Work-Order-only
+-- ledger whose only writer was never wired and had no availability gate. The Owner ruled (S1a OD-2) that a hard
+-- reservation names an explicit operatingCompanyId AND an explicit warehouse, never infers one from the other, and
+-- that overselling, duplicate claims and cross-company commitments are prevented. DECISIONS #165 ruling 1 keeps ONE
+-- commitment pool (no `allocatedQty` authority), so a Sales Order claim is a row in this same ledger (S1a OD-9).
+--
+--   1. warehouse_id (NOT NULL)      the explicit location. A reservation without one is refused by the database.
+--   2. company/warehouse agree      a composite FOREIGN KEY (tenant, warehouse, company) -> warehouses. The company is
+--                                   STATED on the row and the database proves the stated warehouse belongs to it; it
+--                                   is never derived from the warehouse.
+--   3. a second demand source       work_order_id becomes nullable; sales_order_id + sales_order_line_number are added;
+--                                   a CHECK requires EXACTLY ONE source.
+--   4. request_fingerprint          the replay content hash beside the idempotency key (same key + same content = replay;
+--                                   same key + different content = conflict).
+--   5. append-only                  UPDATE, DELETE and TRUNCATE are refused by trigger: a release is a NEW row, never an edit.
+--   6. stock_reservation_activation the per-company switch. No row = reservations NOT_YET_ACTIVATED (the command refuses
+--                                   and the read says so). An operator inserts the row per environment; it is not a
+--                                   capability and not a grant.
+--
+-- NOT CHANGED: the vocabulary (RESERVED / RELEASED / CONSUMED, disjoint from the movement ledger), the pool arithmetic
+-- (RESERVED - RELEASED - CONSUMED), tenant-scoped idempotency uniqueness, and the Work Order replay table.
+--
+-- FAIL-CLOSED PRE-CHECK. Every existing row is, by construction, an UNLOCATED reservation. The repository that wrote them
+-- was called by no operation, so the table must be empty; if it is not, this migration refuses rather than invent a
+-- warehouse for them. Stop and report; do not backfill.
+
+SET search_path = eos_ops, public;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM eos_ops.inventory_commitments) THEN
+        RAISE EXCEPTION 'S1b: eos_ops.inventory_commitments is not empty; existing rows have no warehouse and are not backfilled here. Stop and report.';
+    END IF;
+END $$;
+
+-- The target of the company/warehouse agreement. Redundant with the primary key by design (it makes the composite
+-- foreign key expressible); it also means a warehouse cannot be re-homed to another company while claims reference it.
+ALTER TABLE warehouses
+    ADD CONSTRAINT warehouses_tenant_id_company_identity UNIQUE (tenant_id, id, operating_company_key);
+
+ALTER TABLE inventory_commitments
+    ALTER COLUMN work_order_id DROP NOT NULL,
+    ADD COLUMN sales_order_id          TEXT,
+    ADD COLUMN sales_order_line_number INTEGER,
+    ADD COLUMN warehouse_id            TEXT NOT NULL,
+    ADD COLUMN request_fingerprint     TEXT NOT NULL,
+    ADD CONSTRAINT commitment_exactly_one_source CHECK (
+        (work_order_id IS NOT NULL)::int + (sales_order_id IS NOT NULL)::int = 1),
+    ADD CONSTRAINT commitment_sales_order_line_travels_with_order CHECK (
+        (sales_order_id IS NULL) = (sales_order_line_number IS NULL)),
+    ADD CONSTRAINT commitment_sales_order_line_positive CHECK (
+        sales_order_line_number IS NULL OR sales_order_line_number > 0),
+    ADD CONSTRAINT commitment_warehouse_is_stated CHECK (btrim(warehouse_id) <> ''),
+    ADD CONSTRAINT commitment_fingerprint_is_sha256 CHECK (request_fingerprint ~ '^[0-9a-f]{64}$'),
+    ADD CONSTRAINT commitment_company_and_warehouse_agree
+        FOREIGN KEY (tenant_id, warehouse_id, operating_company_key)
+        REFERENCES warehouses (tenant_id, id, operating_company_key);
+
+-- The pool is read per (company, warehouse, part): the one arithmetic's index.
+CREATE INDEX inventory_commitments_by_location
+    ON inventory_commitments (tenant_id, operating_company_key, warehouse_id, part_id);
+CREATE INDEX inventory_commitments_by_sales_order_line
+    ON inventory_commitments (tenant_id, sales_order_id, sales_order_line_number)
+    WHERE sales_order_id IS NOT NULL;
+
+CREATE FUNCTION inventory_commitments_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'eos_ops.inventory_commitments is append-only: a release or consume is a new row, never an edit (%).', TG_OP
+        USING ERRCODE = '55000';
+END $$;
+
+CREATE TRIGGER inventory_commitments_no_update_or_delete
+    BEFORE UPDATE OR DELETE ON inventory_commitments
+    FOR EACH ROW EXECUTE FUNCTION inventory_commitments_append_only();
+
+-- Truncate would erase every reservation fact in one statement; the row-level trigger above cannot see it.
+CREATE TRIGGER inventory_commitments_no_truncate
+    BEFORE TRUNCATE ON inventory_commitments
+    FOR EACH STATEMENT EXECUTE FUNCTION inventory_commitments_append_only();
+
+-- The per-company switch. An operator row, never written by code. The company must be one this tenant is bound to
+-- (a key that exists), the row states WHY it was switched on, and it is insert-only: no edit, no delete, no truncate
+-- (a switch that could be flipped off silently would turn a known number back into NOT_YET_ACTIVATED).
+CREATE TABLE stock_reservation_activation (
+    tenant_id             TEXT NOT NULL REFERENCES eos_policy.tenants(id),
+    operating_company_key TEXT NOT NULL,
+    activated_by          TEXT NOT NULL,
+    reason                TEXT NOT NULL,
+    activated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, operating_company_key),
+    CONSTRAINT stock_reservation_activation_company_is_bound
+        FOREIGN KEY (tenant_id, operating_company_key)
+        REFERENCES eos_policy.tenant_operating_company_keys (tenant_id, operating_company_key),
+    CONSTRAINT stock_reservation_activation_company_is_stated CHECK (btrim(operating_company_key) <> ''),
+    CONSTRAINT stock_reservation_activation_actor_is_stated CHECK (btrim(activated_by) <> ''),
+    CONSTRAINT stock_reservation_activation_reason_is_stated CHECK (btrim(reason) <> '')
+);
+
+CREATE FUNCTION stock_reservation_activation_insert_only() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'eos_ops.stock_reservation_activation is insert-only (%).', TG_OP USING ERRCODE = '55000';
+END $$;
+
+CREATE TRIGGER stock_reservation_activation_no_update_or_delete
+    BEFORE UPDATE OR DELETE ON stock_reservation_activation
+    FOR EACH ROW EXECUTE FUNCTION stock_reservation_activation_insert_only();
+CREATE TRIGGER stock_reservation_activation_no_truncate
+    BEFORE TRUNCATE ON stock_reservation_activation
+    FOR EACH STATEMENT EXECUTE FUNCTION stock_reservation_activation_insert_only();
+
+-- Down Migration
+SET search_path = eos_ops, public;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM eos_ops.inventory_commitments) THEN
+        RAISE EXCEPTION 'S1b down: commitments exist; every row names its warehouse (and Sales Order claims cannot be represented by the Work-Order-only shape), so reversing would discard reservation facts.';
+    END IF;
+    IF EXISTS (SELECT 1 FROM eos_ops.stock_reservation_activation) THEN
+        RAISE EXCEPTION 'S1b down: company activation rows exist; they are operator decisions with a stated reason and are never discarded silently.';
+    END IF;
+END $$;
+
+DROP TABLE IF EXISTS stock_reservation_activation;
+DROP FUNCTION IF EXISTS stock_reservation_activation_insert_only();
+DROP TRIGGER IF EXISTS inventory_commitments_no_truncate ON inventory_commitments;
+DROP TRIGGER IF EXISTS inventory_commitments_no_update_or_delete ON inventory_commitments;
+DROP FUNCTION IF EXISTS inventory_commitments_append_only();
+DROP INDEX IF EXISTS inventory_commitments_by_sales_order_line;
+DROP INDEX IF EXISTS inventory_commitments_by_location;
+ALTER TABLE inventory_commitments
+    DROP CONSTRAINT IF EXISTS commitment_company_and_warehouse_agree,
+    DROP CONSTRAINT IF EXISTS commitment_fingerprint_is_sha256,
+    DROP CONSTRAINT IF EXISTS commitment_warehouse_is_stated,
+    DROP CONSTRAINT IF EXISTS commitment_sales_order_line_positive,
+    DROP CONSTRAINT IF EXISTS commitment_sales_order_line_travels_with_order,
+    DROP CONSTRAINT IF EXISTS commitment_exactly_one_source,
+    DROP COLUMN IF EXISTS request_fingerprint,
+    DROP COLUMN IF EXISTS warehouse_id,
+    DROP COLUMN IF EXISTS sales_order_line_number,
+    DROP COLUMN IF EXISTS sales_order_id,
+    ALTER COLUMN work_order_id SET NOT NULL;
+ALTER TABLE warehouses DROP CONSTRAINT IF EXISTS warehouses_tenant_id_company_identity;

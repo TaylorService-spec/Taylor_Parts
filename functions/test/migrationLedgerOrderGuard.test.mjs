@@ -222,6 +222,7 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): one capability (inventory.catalog.part.activate) and 30 Owner-ruled grants (A1, A2, A3a, A3b, A4, A7); no schema. APPENDED, an EXPLAINED pending migration.
 // 110 -> 111: 1764690000000 -- G-1 performance goal authoring (2026-10-20): four performance.goal.* capabilities, 32 Firebase-mirrored grants and the authoring idempotency table. APPENDED, an EXPLAINED pending migration.
 // 111 -> 112: 1764700000000 -- F-1a issue invoice on EOS (2026-10-20): the invoice number counter, the invoice's receivable / package / idempotency columns, invoice_totals and two triggers; no capability, no grant. APPENDED, an EXPLAINED pending migration.
+// 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
 // 112 -> 114: 1764712000000 -- F-1b governed invoice corrections (2026-10-20): invoice_corrections, three approval capabilities (no grants), settlement CUSTOMER_REFUND (S1b 1764710000000 is the 113th). APPENDED, an EXPLAINED pending migration.
 const RUNNABLE_MIGRATION_COUNT = 114;
 const TRACKED_MIGRATION_COUNT = 115; // the 114 runnable + the one deferred file
@@ -288,6 +289,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764680000000_account-balance-summary",
   "1764690000000_performance-goal-authoring",
   "1764700000000_invoice-issue",
+  "1764710000000_stock-reservation-company-warehouse",
   "1764712000000_invoice-corrections",
 ]);
 

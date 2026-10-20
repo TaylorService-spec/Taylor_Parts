@@ -432,6 +432,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // F-1a issue invoice (1764700000000): its down refuses only if an issued invoice or a number counter exists, and nothing here wrote one, so it is peeled first of all.
     // F-1b invoice corrections (1764712000000): its down refuses only if a correction, a refund record, an adjustment fact or a voided invoice exists, or an approval pair was granted outside it, and nothing here wrote one.
     if ((await newest()) === "1764712000000_invoice-corrections") migrate("down", 1);
+    // S1b hard stock reservations (1764710000000): its down refuses only while a commitment or an activation row exists, and nothing here wrote one.
+    if ((await newest()) === "1764710000000_stock-reservation-company-warehouse") migrate("down", 1);
     if ((await newest()) === "1764700000000_invoice-issue") migrate("down", 1);
     if ((await newest()) === "1764690000000_performance-goal-authoring") migrate("down", 1);
     if ((await newest()) === "1764680000000_account-balance-summary") migrate("down", 1);

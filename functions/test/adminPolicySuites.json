@@ -310,6 +310,7 @@
     "test/q1CommercialCrmAuditPostgres.test.mjs",
     "test/scannerScenariosOnEosPostgres.test.mjs",
     "test/f1aInvoiceIssuePostgres.test.mjs",
+    "test/stockReservationPostgres.test.mjs",
     "test/f1bInvoiceCorrectionPostgres.test.mjs",
     "test/f1bInvoiceCorrectionDownPostgres.test.mjs"
   ]

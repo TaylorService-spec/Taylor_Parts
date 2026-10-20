@@ -1007,6 +1007,10 @@ functions/test/f1aInvoiceIssuePostgres.test.mjs
 functions/migrations/1764700000000_invoice-issue.sql
 functions/src/eosFinance/invoiceIssue.ts
 field-ops-app-vite/src/modules/financials/InvoiceIssueQueue.jsx
+# S1b (2026-10-20): hard stock reservations per company and warehouse.
+functions/migrations/1764710000000_stock-reservation-company-warehouse.sql
+functions/test/stockReservationPostgres.test.mjs
+functions/src/eosOps/inventoryCommitmentRepository.ts
 # F-1b governed credits, write-offs, adjustments, refunds and voids (2026-10-20): the suites and the module; the migration is written by the controller from the reviewed draft.
 functions/test/f1bInvoiceCorrection.test.mjs
 functions/test/f1bInvoiceCorrectionPostgres.test.mjs

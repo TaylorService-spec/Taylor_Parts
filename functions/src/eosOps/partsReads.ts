@@ -32,6 +32,7 @@ import { currentMobileLocationIds } from "./mobileStockAuthority.js";
 import { listTruckViews } from "./truckRegistryAdministration.js";
 import { administrationReachTargets } from "./administrationReach.js";
 import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
+import { committedByWarehouse } from "./inventoryCommitmentRepository.js";
 
 export const INVENTORY_ON_HAND_READ = "inventory.transaction.read";
 export const RECEIPT_READ = "receivingOrder.record.read";
@@ -176,10 +177,12 @@ export async function readInventoryOnHand(deps: { readonly pool: Pool }, actor: 
 //
 //   onHand     Σ signed quantity_delta of NONE-tracked WAREHOUSE / BIN movements at ACTIVE warehouses (a bin is its warehouse's stock; a
 //              truck is excluded by design), floored at 0. UNKNOWN when the caller's scope holds no movement evidence for the Part.
-//   reserved   max(0, RESERVED - RELEASED - CONSUMED) over the Part's Work Order commitments (fulfillmentAvailability.ts
-//              openWorkOrderReserved). A commitment names no location, so reserved is company-wide, never per warehouse. No commitment row
-//              is a known 0 (the reservation ledger is written on every reservation).
-//   available  max(0, onHand - reserved); UNKNOWN whenever onHand is.
+//   reserved   HARD reservations (S1b; DECISIONS #165): max(0, RESERVED - RELEASED - CONSUMED) per company AND warehouse, the SAME
+//              function the reserve gate uses (inventoryCommitmentRepository.committedByWarehouse). Unallocated demand is not a hard
+//              reservation and is never counted. NOT_YET_ACTIVATED until the company is activated for reservations (never a confident 0
+//              nobody earned); SCOPE_PARTIAL when stock or claims of the Part sit in a warehouse the caller is not scoped over (the
+//              headline would be a wrong number; the per-warehouse figures in byLocation stay exact and in scope).
+//   available  max(0, onHand - reserved); UNKNOWN whenever onHand is; follows reserved when that is NOT_YET_ACTIVATED / SCOPE_PARTIAL.
 //   onOrder    the Reorder Purchase Orders still ORDERED in the caller's warehouse scope + the remaining quantity of canonical supplier
 //              purchase orders in a receivable status (APPROVED / SENT); UNKNOWN when no purchase order mentions the Part.
 //   byLocation on-hand by warehouse (warehouses holding nothing are omitted), so a breakdown always adds up to its own total.
@@ -191,10 +194,12 @@ export async function readInventoryOnHand(deps: { readonly pool: Pool }, actor: 
 const SERIAL_CONTROL_TYPES: readonly string[] = Object.freeze(["SERIALIZED", "SERIALIZED_LOT"]);
 const RECEIVABLE_SUPPLIER_STATUSES: readonly string[] = Object.freeze(["APPROVED", "SENT"]);
 
-export type BalanceFigure = { readonly state: "KNOWN" | "UNKNOWN" | "NOT_COUNTED_BY_QUANTITY"; readonly value: number | null };
+export type BalanceFigure = { readonly state: "KNOWN" | "UNKNOWN" | "NOT_COUNTED_BY_QUANTITY" | "NOT_YET_ACTIVATED" | "SCOPE_PARTIAL"; readonly value: number | null };
 const KNOWN = (value: number): BalanceFigure => Object.freeze({ state: "KNOWN" as const, value });
 const UNKNOWN: BalanceFigure = Object.freeze({ state: "UNKNOWN" as const, value: null });
 const NOT_QUANTITY: BalanceFigure = Object.freeze({ state: "NOT_COUNTED_BY_QUANTITY" as const, value: null });
+const NOT_YET_ACTIVATED: BalanceFigure = Object.freeze({ state: "NOT_YET_ACTIVATED" as const, value: null });
+const SCOPE_PARTIAL: BalanceFigure = Object.freeze({ state: "SCOPE_PARTIAL" as const, value: null });
 
 export async function readPartBalance(deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>) {
   requireCapability(actor, INVENTORY_ON_HAND_READ);
@@ -255,16 +260,57 @@ export async function readPartBalance(deps: { readonly pool: Pool }, actor: Reor
     const onHandValue = Math.max(0, activeRows.reduce((n, r) => n + Number(r.quantity), 0));
     const onHand = sawStock ? KNOWN(onHandValue) : UNKNOWN;
 
-    // ---- reserved: company-wide Work Order commitments ----
-    const commitments = await c.query(
-      `SELECT COALESCE(SUM(CASE event_type WHEN 'RESERVED' THEN quantity ELSE -quantity END), 0)::int AS net
-         FROM eos_ops.inventory_commitments
-        WHERE tenant_id = $1 AND part_id = $2 AND operating_company_key = ANY($3::text[])`,
-      [actor.tenantId, partId, keys]);
-    const reserved = KNOWN(Math.max(0, Number(commitments.rows[0]?.net ?? 0)));
-    const available = onHand.state === "KNOWN" ? KNOWN(Math.max(0, (onHand.value ?? 0) - (reserved.value ?? 0))) : UNKNOWN;
+    // ---- reserved: HARD reservations per company AND warehouse (S1b) ----
+    // Only RESERVED - RELEASED - CONSUMED rows count; unallocated demand never does. The arithmetic is the reserve gate's own.
+    const whs = scope.length === 0 ? { rows: [] as Array<Record<string, unknown>> } : await c.query(
+      `SELECT w.id, (w.status::text = 'ACTIVE') AS active, (a.tenant_id IS NOT NULL) AS activated
+         FROM eos_ops.warehouses w
+         LEFT JOIN eos_ops.stock_reservation_activation a
+           ON a.tenant_id = w.tenant_id AND a.operating_company_key = w.operating_company_key
+        WHERE w.tenant_id = $1 AND w.id = ANY($2::text[])`,
+      [actor.tenantId, scope]);
+    const activeScoped = whs.rows.filter((r) => r.active === true);
+    const activated = new Set(activeScoped.filter((r) => r.activated === true).map((r) => String(r.id)));
+    const allActivated = activeScoped.length > 0 && activeScoped.every((r) => activated.has(String(r.id)));
+    const committed = await committedByWarehouse(c, actor.tenantId, keys, partId, scope);
+    // Does the Part have stock or claims in an ACTIVE warehouse of a reachable company that the caller is NOT scoped over?
+    // Only that fact is disclosed (SCOPE_PARTIAL), never a quantity or a warehouse.
+    const outside = await c.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM eos_ops.warehouses w
+          WHERE w.tenant_id = $1 AND w.operating_company_key = ANY($2::text[]) AND w.status::text = 'ACTIVE' AND NOT (w.id = ANY($3::text[]))
+            AND NOT (w.id = ANY($5::text[]))
+            AND (EXISTS (SELECT 1 FROM eos_ops.inventory_commitments k
+                          WHERE k.tenant_id = w.tenant_id AND k.warehouse_id = w.id AND k.part_id = $4)
+              OR EXISTS (SELECT 1 FROM eos_ops.inventory_movements m
+                          WHERE m.tenant_id = w.tenant_id AND m.part_id = $4 AND m.tracking_mode = 'NONE'
+                            AND m.operating_company_key = w.operating_company_key
+                            AND ((m.location_type::text = 'WAREHOUSE' AND m.location_id = w.id)
+                              OR (m.location_type::text = 'BIN' AND m.location_id IN
+                                    (SELECT b.id FROM eos_ops.bins b WHERE b.tenant_id = w.tenant_id AND b.warehouse_id = w.id)))))
+       ) AS partial`,
+      [actor.tenantId, keys, scope, partId, [...PRESENTATION_EXCLUDED]]);
+    const scopePartial = outside.rows[0]?.partial === true;
+
+    const reservedAt = (warehouseId: string): BalanceFigure =>
+      activated.has(warehouseId) ? KNOWN(committed.get(warehouseId) ?? 0) : NOT_YET_ACTIVATED;
+    const availableAt = (warehouseId: string, quantity: number): BalanceFigure => {
+      const r = reservedAt(warehouseId);
+      return r.state === "KNOWN" ? KNOWN(Math.max(0, quantity - (r.value ?? 0))) : r;
+    };
+    const reserved: BalanceFigure =
+      activeScoped.length === 0 ? UNKNOWN
+      : !allActivated ? NOT_YET_ACTIVATED
+      : scopePartial ? SCOPE_PARTIAL
+      : KNOWN(activeScoped.reduce((n, r) => n + (committed.get(String(r.id)) ?? 0), 0));
+    // available = the sum of the per-warehouse figures (never one warehouse's surplus hiding another's shortage).
+    const available: BalanceFigure =
+      onHand.state !== "KNOWN" ? UNKNOWN
+      : reserved.state !== "KNOWN" ? reserved
+      : KNOWN(activeRows.reduce((n, r) => n + (availableAt(String(r.warehouse_id), Number(r.quantity)).value ?? 0), 0));
     const byLocation = activeRows.filter((r) => Number(r.quantity) > 0)
-      .map((r) => ({ warehouseId: String(r.warehouse_id), quantity: Number(r.quantity) }))
+      .map((r) => ({ warehouseId: String(r.warehouse_id), quantity: Number(r.quantity),
+        reserved: reservedAt(String(r.warehouse_id)), available: availableAt(String(r.warehouse_id), Number(r.quantity)) }))
       .sort((a, b) => (b.quantity - a.quantity) || a.warehouseId.localeCompare(b.warehouseId));
     return { partId, trackingMode: "NONE", scopedWarehouseIds: scope, onHand, reserved, available, onOrder, byLocation };
   });

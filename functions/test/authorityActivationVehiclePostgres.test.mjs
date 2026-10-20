@@ -250,6 +250,8 @@ test("the activation migration was APPENDED: only the later Administration and w
     "1764690000000_performance-goal-authoring.sql",
     // F-1a issue invoice on EOS (2026-10-20): the invoice number counter, the invoice's receivable / package / idempotency columns, invoice_totals and two triggers. No capability, no grant.
     "1764700000000_invoice-issue.sql",
+    // S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
+    "1764710000000_stock-reservation-company-warehouse.sql",
     // F-1b governed invoice corrections (2026-10-20): invoice_corrections, three finance approval capabilities (NO grants), the CUSTOMER_REFUND settlement kind and the void / fact triggers.
     "1764712000000_invoice-corrections.sql"],
     "an activation must be appended, never back-dated into history");
@@ -496,6 +498,7 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
     runMigrate(url, "down", 1); // F-1b invoice corrections (1764712000000): -3 capabilities (finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve), NO grants, one table dropped; its down refuses while a correction, a refund record, an adjustment fact or a voided invoice exists
     assert.deepEqual(await counts(), { caps: 199, grants: 729, mine: 26 });
+    runMigrate(url, "down", 1); // S1b hard stock reservations (1764710000000): schema only (columns, triggers, the activation table); its down refuses only while a commitment or an activation row exists
     runMigrate(url, "down", 1); // F-1a issue invoice (1764700000000): schema only (counter table, invoice columns, triggers, the totals view) -- nothing moves; its down refuses only while an issued invoice or a counter row exists
     assert.deepEqual(await counts(), { caps: 199, grants: 729, mine: 26 });
     runMigrate(url, "down", 1); // G-1 performance goal authoring (1764690000000): -4 capabilities (performance.goal.create / .approve / .supersede / .retire), -32 grants, one table dropped; its down refuses while a command record, an authored goal, a decision or a direct grant exists
@@ -648,6 +651,7 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     let url;
     ({ pool, url } = await standUp(name));
     runMigrate(url, "down", 1); // peel the F-1b invoice corrections migration (1764712000000) first -- 3 capabilities, no grants, one table
+    runMigrate(url, "down", 1); // peel the S1b hard stock reservations migration (1764710000000) first -- schema only
     runMigrate(url, "down", 1); // then the F-1a issue invoice migration (1764700000000) -- schema only
     runMigrate(url, "down", 1); // then the G-1 performance goal authoring migration (1764690000000) -- 4 capabilities, 32 grants, one table
     runMigrate(url, "down", 1); // then the A6 customer-balance summary (1764680000000) -- 1 capability, 8 grants
