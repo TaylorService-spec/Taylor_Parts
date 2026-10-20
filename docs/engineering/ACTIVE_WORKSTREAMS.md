@@ -372,6 +372,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none reached (F-1 build waits on the Owner's answers)
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
 
+- Capability:          Lane Q-1 — quotes and approvals: PR 1 audit on every applied Commercial and CRM command (build); PR 2 the quote / discount approval specification (docs, Owner decisions; nothing of the workflow is built) (B5 matrix stage 6; scenarios A and E)
+- Agent/session:       Claude Code lane Q-1 · Role: builder; controller merges
+- Branch / worktree:   `q1-commercial-audit` (PR 1) then `q1-quote-approval-spec` (PR 2) · isolated agent worktree
+- Base commit:         `b3d09dc3`
+- Owned paths:         `functions/src/eosAudit/commandAuditEvent.ts` · the audit calls in `eosCommercial/commands/*CommandService.ts`, the `audit` field of `commercialCommandKernel.ts`, `eosCrm/accountAuthority.ts`, `contactAuthority.ts`, `accountLocationAuthority.ts` · `functions/test/q1*.test.mjs` · `docs/architecture/q1-quote-approval-spec.md`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` (lanes F and RES run in parallel; merge main, never drop their entries)
+- Dependencies:        none
+- Expected outcome:    every applied Commercial / CRM command is audited; the quote and discount approval choices are numbered Owner decisions
+- Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
+- Lifecycle stage:     INTEGRATION (PR 1) · DESIGNED (PR 2)
+
 ## Ready for assignment
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.

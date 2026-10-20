@@ -231,8 +231,10 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
     const created = JSON.parse(res.body).result;
     const after = await count();
     assert.equal(after.a, before.a + 1);
-    // The CRM authority's audit trail is actor attribution on the row (an EOS Principal) plus the append-only ownership
-    // history; it writes no eos_policy.audit_events row on create (accepted D1-A design, recorded as a finding).
+    // The CRM authority's audit trail is actor attribution on the row (an EOS Principal), the append-only ownership history and,
+    // since Q-1, ONE eos_policy.audit_events row per applied command (the earlier D1-A "no audit row on create" finding is closed).
+    const audited = await q(`SELECT action, target_kind FROM eos_policy.audit_events WHERE target_id = $1`, [created.accountId ?? created.id]);
+    assert.deepEqual(audited.rows, [{ action: "crm.createAccount", target_kind: "crm_account" }]);
     const row = (await q(`SELECT created_by, updated_by, owner_employee_id FROM eos_crm.accounts WHERE id = $1`, [created.accountId ?? created.id])).rows[0];
     assert.equal(row.owner_employee_id, "e-1");
     assert.ok(row.created_by && row.created_by === row.updated_by, "attributed to the performing Principal");
