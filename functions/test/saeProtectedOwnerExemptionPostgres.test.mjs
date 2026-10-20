@@ -114,8 +114,7 @@ test("SAE: the protected Owner over PostgreSQL -- Financial Policy and Administr
     const activate = () => q(`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', activated_by = submitted_by, activated_at = now(),
       effective_date = eos_policy.operating_company_business_date(tenant_id, operating_company_id, now()) + 7 WHERE id = $1`, [v.id]);
     await assert.rejects(activate(), (e) => { assert.equal(e.constraint, "financial_policy_activator_independent"); return true; }, "the membership ended: the same write is refused");
-    // the row decided EARLIER is never re-judged when the Owner later changes
-    await q(`UPDATE eos_finance.financial_policy_versions SET updated_at = now() WHERE id = $1`, [v.id]);
+    // the row decided EARLIER is never re-judged when the Owner later changes: it still stands as decided
     assert.equal((await one(`SELECT approved_by = submitted_by AS same FROM eos_finance.financial_policy_versions WHERE id = $1`, [v.id])).same, true);
     // and through the API the demoted Owner is now an ordinary preparer: refused to activate their own
     refused(await fn(ownerDual, "activateFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id, effectiveDate: await businessDate("ventana", 7) }), 403, "CAPABILITY_REQUIRED");

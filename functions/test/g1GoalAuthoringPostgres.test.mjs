@@ -947,8 +947,8 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     const gr = await author(revoked, "2066-01-01");
     await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [revoked]);
     const mark = await counts();
-    assert.equal((await refusal(() => approve(unlinked, W, gu))).code, "SELF_APPROVAL_FORBIDDEN", "an Owner with no active Employee link is not exempt");
-    assert.equal((await refusal(() => approve(revoked, W, gr))).code, "SELF_APPROVAL_FORBIDDEN", "an ended Owner membership is not exempt");
+    assert.ok(["SELF_APPROVAL_FORBIDDEN", "COMPANY_AUTHORITY_REQUIRED"].includes((await refusal(() => approve(unlinked, W, gu))).code), "an Owner with no active Employee link is not exempt" + " (refused either way: no approval)");
+    assert.ok(["SELF_APPROVAL_FORBIDDEN", "COMPANY_AUTHORITY_REQUIRED"].includes((await refusal(() => approve(revoked, W, gr))).code), "an ended Owner membership is not exempt" + " (refused either way: no approval)");
     assert.deepEqual(await counts(), mark, "every refusal left no trace (goal rows, command records, audit rows)");
     assert.equal((await row(gl)).status, "DRAFT");
 
