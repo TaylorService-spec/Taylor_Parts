@@ -65,6 +65,7 @@ import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresP
 import { createHash, randomUUID } from "node:crypto";
 import { type OperatingCompanyKey, requireOperatingCompanyKey } from "./operatingCompanyCustody.js";
 import { lockStockLocation } from "./stockLocationLock.js";
+import { withActorAuthority } from "./administrationReach.js";
 
 const SCHEMA = "eos_ops";
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`;
@@ -442,7 +443,10 @@ async function auditApplied(
     [newId("audit"), ctx.tenantId, action, ctx.actorId,
      s.kind === "WORK_ORDER" ? "workOrder" : "salesOrderLine",
      s.kind === "WORK_ORDER" ? s.workOrderId : `${s.salesOrderId}:${s.lineNumber}`,
-     JSON.stringify({ operatingCompanyKey: ctx.operatingCompanyKey, rows: rows.map((r) => ({ warehouseId: r.warehouseId, partId: r.partId, eventType: r.eventType, quantity: r.quantity })) }),
+     JSON.stringify(await withActorAuthority(client, ctx.tenantId, ctx.actorId, {
+       operatingCompanyKey: ctx.operatingCompanyKey,
+       rows: rows.map((r) => ({ warehouseId: r.warehouseId, partId: r.partId, eventType: r.eventType, quantity: r.quantity })),
+     })),
      reason],
   );
 }

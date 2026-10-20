@@ -89,7 +89,7 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
     `INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, status, work_order_type, priority, customer_id, location_id,
        provenance, created_by_principal_id, created_at, updated_at)
      VALUES ($1,'t1',$2,'WORK_IN_PROGRESS'::eos_ops.ops_work_order_status,'SERVICE_CALL',2,'acct-1','loc-1','NATIVE',$3,now(),now())`, [id, companyKey, creator]);
-  for (let i = 1; i <= 12; i++) await workOrder(`wo-${i}`);
+  for (let i = 1; i <= 14; i++) await workOrder(`wo-${i}`);
   await workOrder("wo-b1", CO_B);
   await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, created_by, updated_by)
            VALUES ('so-1','t1','SO-0001','acct-1','emp-1',$1,'f','f')`, [CO_A]);
@@ -292,20 +292,20 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
 
     // CANCEL: a demand holding claims at two warehouses releases everything in one command, ONE audit row.
     await move("P-STD2", "WAREHOUSE", "wh-a2", 5);
-    await ledger.reserve(pool, ctx(5, "k-c5-1", "wh-a1"), [{ partId: "P-STD2", quantity: 2 }]);
-    await ledger.reserve(pool, ctx(5, "k-c5-2", "wh-a2"), [{ partId: "P-STD2", quantity: 3 }]);
+    await ledger.reserve(pool, ctx(13, "k-c13-1", "wh-a1"), [{ partId: "P-STD2", quantity: 2 }]);
+    await ledger.reserve(pool, ctx(13, "k-c13-2", "wh-a2"), [{ partId: "P-STD2", quantity: 3 }]);
     const cancelAudits = (await stockActions("stock.cancel")).length;
-    const cancelled = await ledger.cancel(pool, { tenantId: "t1", operatingCompanyKey: CO_A, source: wo(5), actorId: ACTOR, idempotencyKey: "k-cancel-5" }, { reason: "work order cancelled" });
+    const cancelled = await ledger.cancel(pool, { tenantId: "t1", operatingCompanyKey: CO_A, source: wo(13), actorId: ACTOR, idempotencyKey: "k-cancel-13" }, { reason: "work order cancelled" });
     assert.deepEqual(cancelled.map((w) => [w.record.warehouseId, w.record.partId, w.record.eventType, w.record.quantity]).sort(),
       [["wh-a1", "P-STD2", "RELEASED", 2], ["wh-a2", "P-STD2", "RELEASED", 3]]);
     assert.equal((await stockActions("stock.cancel")).length, cancelAudits + 1, "one audit row per applied command, not per row");
     assert.equal((await stockActions("stock.cancel")).at(-1).reason, "work order cancelled");
-    const replayCancel = await ledger.cancel(pool, { tenantId: "t1", operatingCompanyKey: CO_A, source: wo(5), actorId: ACTOR, idempotencyKey: "k-cancel-5" }, { reason: "work order cancelled" });
+    const replayCancel = await ledger.cancel(pool, { tenantId: "t1", operatingCompanyKey: CO_A, source: wo(13), actorId: ACTOR, idempotencyKey: "k-cancel-13" }, { reason: "work order cancelled" });
     assert.ok(replayCancel.every((w) => w.outcome === "replayed"));
     assert.equal((await stockActions("stock.cancel")).length, cancelAudits + 1);
     assert.equal(await committed("wh-a1", "P-STD2"), 0);
     // A cancelled demand can claim again (the old claim is closed) -- the pool shows only the new one.
-    await ledger.reserve(pool, ctx(5, "k-c5-again", "wh-a1"), [{ partId: "P-STD2", quantity: 1 }]);
+    await ledger.reserve(pool, ctx(13, "k-c13-again", "wh-a1"), [{ partId: "P-STD2", quantity: 1 }]);
     assert.equal(await committed("wh-a1", "P-STD2"), 1);
 
     // Every applied command wrote exactly one stock.* audit row (actor + company in the payload, nothing else free-text).
