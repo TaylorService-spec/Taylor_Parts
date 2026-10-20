@@ -49,6 +49,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none beyond standing delivery authority
 - Lifecycle stage:     MERGED `08b8baea` (#2121); nonprod verified (Job Assignments)
 
+- Capability:          SCAN-PORT — the thirteen sandbox scanner scenarios ported from the retired Firebase runner to EOS automated tests (real PostgreSQL in CI, no live environment, no credential); wedge and camera input at the client
+- Agent/session:       Claude Code lane SCAN-PORT · Role: builder; controller merges
+- Branch / worktree:   `worktree-agent-a2a3b9898eaa895ed` · agent worktree
+- Base commit:         `b3d09dc3`
+- Owned paths:         `functions/test/scannerScenariosOnEosPostgres.test.mjs` · `field-ops-app-vite/test/scannerScenarioInput.test.jsx` · header comment of `scripts/runSandboxScannerScenarios.mjs` (marked SUPERSEDED; not deleted)
+- Shared paths req'd:  this registry · `functions/test/adminPolicySuites.json` (postgres list) · `.github/ci/eos-admin-policy-paths.txt` · `.github/workflows/scan-workspace-tests.yml` (suite + triggers)
+- Dependencies:        one TODO scenario part (reservation-netted availability) waits on lane RES (S1b)
+- Expected outcome:    B5 acceptance "twelve scanner scenarios" is a CI regression suite on EOS instead of a manual run against retired callables
+- Protected boundaries:none; no capability, grant, migration, Rules, deploy or Firebase change
+- Lifecycle stage:     INTEGRATION (test-only PR; open, not merged)
+
 - Capability:          Dispatcher Board interactions — drag reaches every lane (scrolling grid), tap placement ("Place on a lane"), lane names open an in-board technician review with back-state, Dispatch gated on workOrder.lifecycle.dispatch (Owner "DISPATCH BOARD INTERACTIONS" 2026-10-17)
 - Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
 - Branch / worktree:   `fix/board-interactions-drag-tap-employee-review` · `D:/eos-dispatch-fix`

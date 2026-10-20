@@ -241,6 +241,9 @@ functions/test/partsPurchasingReceivingJourneyPostgres.test.mjs
 functions/test/inventoryWarehouseJourneyPostgres.test.mjs
 functions/test/equipmentActivationJourneyPostgres.test.mjs
 functions/test/truckInventoryActivationJourneyPostgres.test.mjs
+# SCAN-PORT (2026-10-20): the thirteen scanner scenarios on EOS (the Firebase runner is superseded).
+functions/test/scannerScenariosOnEosPostgres.test.mjs
+scripts/runSandboxScannerScenarios.mjs
 functions/test/financeFoundationPostgres.test.mjs
 functions/test/financePurchasingConsequencePostgres.test.mjs
 functions/test/financePurchasingIdentityCorrectionPostgres.test.mjs
