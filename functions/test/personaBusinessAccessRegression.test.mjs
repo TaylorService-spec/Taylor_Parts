@@ -193,7 +193,7 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // 34 -> 35: `analysis.workspace` (Analysis & Reporting, #208), earned by any read a measure is decided on, or reportDefinition.read.
   // 35 -> 36: `finance.policy` (Financial Policy Administration UI, #232 Phase 2), earned by finance.policy.read flat or at
   // operatingCompany scope.
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 39); // 36 -> 37: inventory.racking (B3); 37 -> 39: reporting.builder and reporting.savedReports (B4)
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 40); // 36 -> 37: inventory.racking (B3); 37 -> 39: reporting.builder and reporting.savedReports (B4); 39 -> 40: analysis.goals (G-1)
   assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
@@ -326,7 +326,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 107 -> 108: 1764660000000 -- P-1 governed supplier purchase order authoring (DECISIONS #P-1, resolves OD-B3-1): five supplier.purchaseOrder.* capabilities and their 27 Owner-ruled grants (create / send: admin, partsAssociate, purchasingManager; approve and cancel: admin, partsManager, owner, generalManager; read: 13 Roles), the order stamps, the lines' source request / price / release columns, the SPO number counter and the authoring idempotency record.
   // 109 -> 110: 1764680000000 -- A6 customer-balance summary (2026-10-19): finance.accountBalance.read registered (a READ key) and 8 Owner-ruled grants; no schema.
   // 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): inventory.catalog.part.activate registered (the Part / Manufacturer status key split from inventory.catalog.activate) and 30 Owner-ruled grants (A1 2, A2 4, A3a 2, A3b 6, A4 4, A7 12); no schema.
-  assert.equal(files.length, 110, "the migration chain moved; re-measure before trusting anything below");
+  // 110 -> 111: 1764690000000 -- G-1 performance goal authoring (2026-10-20): performance.goal.create / .approve / .supersede / .retire registered and their 32 Firebase-mirrored grants, plus the authoring idempotency table.
+  assert.equal(files.length, 111, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -409,13 +410,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
     // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
     // admin.administratorRole.assign.
-    assert.equal(rebuilt.length, 697, "the repository rebuild total"); // 689 -> 697: the 8 A6 customer-balance summary grants (1764680000000). // 659 -> 689: the 30 GRANT-1 Owner policy grants (1764670000000). // 632 -> 659: the 27 P-1 supplier purchase order grants (1764660000000). // 510 -> 632: the 122 B4 report / performance-goal parity grants (1764650000000). // 503 -> 510: the seven Warehouse racking mirror grants (1764630000000). // 488 -> 503: the fifteen Finance visibility mirror grants (1764620000000). // 482 -> 488: the six CRM activity grants (1764590000000). // 481 -> 482: the returns-intake clerk grant (1764580000000). // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
-    assert.equal(baselineDeployment.rebuildTotal, 697);
+    assert.equal(rebuilt.length, 729, "the repository rebuild total"); // 697 -> 729: the 32 G-1 performance goal authoring grants (1764690000000). // 689 -> 697: the 8 A6 customer-balance summary grants (1764680000000). // 659 -> 689: the 30 GRANT-1 Owner policy grants (1764670000000). // 632 -> 659: the 27 P-1 supplier purchase order grants (1764660000000). // 510 -> 632: the 122 B4 report / performance-goal parity grants (1764650000000). // 503 -> 510: the seven Warehouse racking mirror grants (1764630000000). // 488 -> 503: the fifteen Finance visibility mirror grants (1764620000000). // 482 -> 488: the six CRM activity grants (1764590000000). // 481 -> 482: the returns-intake clerk grant (1764580000000). // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
+    assert.equal(baselineDeployment.rebuildTotal, 729);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
     assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
       "migration:1763078400000", "migration:1764500000000", "migration:1764510000000", "migration:1764520000000", "migration:1764580000000",
-      "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000", "migration:1764660000000", "migration:1764670000000", "migration:1764680000000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 310);
+      "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000", "migration:1764660000000", "migration:1764670000000", "migration:1764680000000", "migration:1764690000000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 342);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
@@ -432,16 +433,17 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(await stampedBy("migration:1764630000000"), 7); // Warehouse racking (B3): two keys to the current Firebase holders (admin, inventoryBinAdministrator, owner, the two bin-reading operator Roles)
     assert.equal(await stampedBy("migration:1764650000000"), 122); // Report / goal parity (B4): the 39 B4 keys to the current Firebase holders (admin 39, owner 39, reportViewer 26, reportFinanceViewer 5, reportAuthor 3, ten goal readers)
     assert.equal(await stampedBy("migration:1764660000000"), 27); // Supplier PO authoring (P-1): create 3 + send 3 + approve 4 + cancel 4 + read 13, exactly as the Owner ruled
+    assert.equal(await stampedBy("migration:1764690000000"), 32); // Performance goal authoring (G-1): the four performance.goal write keys to the eight Firebase holders (admin, owner, fieldManager, generalManager, operationsManager, partsManager, salesManager, warehouseManager)
     assert.equal(await stampedBy("migration:1764680000000"), 8); // A6 customer-balance summary: finance.accountBalance.read to eight operational Roles, exactly as the Owner ruled
     assert.equal(await stampedBy("migration:1764670000000"), 30); // GRANT-1 Owner policy grants: A1 2 + A2 4 + A3a 2 + A3b 6 + A4 4 (the 4 inventory.catalog.read rows were already held) + A7 12
     // The whole 697-vs-387 difference carries the fourteen grant-bearing migrations' provenance.
-    assert.equal(26 + 1 + 1 + 16 + 20 + 30 + 1 + 6 + 15 + 7 + 122 + 27 + 30 + 8, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    assert.equal(26 + 1 + 1 + 16 + 20 + 30 + 1 + 6 + 15 + 7 + 122 + 27 + 30 + 8 + 32, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 195); // 194 -> 195: finance.accountBalance.read (A6, 1764680000000). // 193 -> 194: inventory.catalog.part.activate (GRANT-1 A1 split, 1764670000000). // 188 -> 193: the five supplier.purchaseOrder.* keys (P-1, 1764660000000). // 149 -> 188: the 38 report.* ids and performance.goal.read (B4, 1764640000000), granted to NO Role. // 147 -> 149: inventory.location.bin.read / .manage (B3, 1764630000000). // 142 -> 147: the five finance.visibility.* keys (B1, 1764620000000). // 140 -> 142: crm.activity.read / .create (#243). // 139 -> 140: inventory.returns.intake (#242). // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (#232, 1764560000000), granted to NO Role. 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role. 122 -> 128: the six rental capabilities (#207, 1764520000000). // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 199); // 195 -> 199: the four performance.goal authoring keys (G-1, 1764690000000). // 194 -> 195: finance.accountBalance.read (A6, 1764680000000). // 193 -> 194: inventory.catalog.part.activate (GRANT-1 A1 split, 1764670000000). // 188 -> 193: the five supplier.purchaseOrder.* keys (P-1, 1764660000000). // 149 -> 188: the 38 report.* ids and performance.goal.read (B4, 1764640000000), granted to NO Role. // 147 -> 149: inventory.location.bin.read / .manage (B3, 1764630000000). // 142 -> 147: the five finance.visibility.* keys (B1, 1764620000000). // 140 -> 142: crm.activity.read / .create (#243). // 139 -> 140: inventory.returns.intake (#242). // 135 -> 139: finance.policy.read / .prepare / .approve / .activate (#232, 1764560000000), granted to NO Role. 128 -> 135: inventory.supplierTerms.read / .create / .edit / .changeStatus + inventory.catalog.cost.read / .create / .edit (SUP-1, 1764530000000), granted to NO Role. 122 -> 128: the six rental capabilities (#207, 1764520000000). // 118 -> 122: the four settlement capabilities (#206, 1764510000000). // 115 -> 118: admin.systemConfiguration.manage + sales.discountAuthority.manage + salesAgreement.tradeIn.approve (#204, 1764500000000). // 114 -> 115: finance.configuration.manage (1764500000000, governed configuration 2026-10-02), granted to NO Role. // 113 -> 114: inventory.receipt.correct (1764430000000, Finance Activation 1 completion 2026-10-01), granted to NO Role. // 111 -> 113: inventory.catalog.alias.read + inventory.truckRegistry.manage (1764410000000, Truck Inventory activation 2026-10-01), granted to NO Role. // 109 -> 111: equipment.record.read + equipment.record.manage (1764400000000, the Equipment activation 2026-10-01), granted to NO Role. // 107 -> 109: warehouse.record.manage + supplier.record.read (1764380000000, 2026-10-01), granted to NO Role. // 104 -> 107: recover + selfScheduling.issue/.configure (2026-09-30), granted to NO Role; // 98 -> 104: workOrder.labor.correctEntry + five inboundWork.* (the completion pass 2026-09-30), granted to NO Role; // + workOrder.execution.record (1764300000000, the Work Order cutover 2026-09-30, granted to NO Role) // INTEGRATED 2026-09-29 (lanes L1 + L2 + L3 over main e2dac914; L5 adds no migration or capability): + inventory.serializedAsset.acquire (1764129600000, DQ-036(b), Administration-grant-only), + inventory.location.scopeBinding.manage (1764118800000, DQ-029, granted to nobody), + four ungranted Work Order business actions (1763856000000, DQ-010/DQ-011), + ownership.handoff.correct (1763683200000), + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000), + the eight Reorder lifecycle capabilities (1763337600000, registered with NO grants)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -564,7 +566,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 82 -> 121: the 39 B4 report.* / performance.goal.read keys (1764650000000), mirrored onto admin AND owner as in Firebase.
     // 121 -> 126: the five supplier.purchaseOrder.* keys (P-1, 1764660000000), granted to admin as ruled ("Admin has all").
     // 126 -> 131: GRANT-1 (1764670000000): inventory.catalog.part.activate (A1) and the Firebase purchasing-parity keys reorder.request.startPurchasing / .postPurchasingUpdate / .recordPurchaseOrder + inventory.catalog.alias.read (A7), granted to admin as in Firebase.
-    assert.equal(admin.capabilities.size, 131);
+    assert.equal(admin.capabilities.size, 135); // 131 -> 135: the four performance.goal authoring keys (G-1, 1764690000000), held by admin as in Firebase
     // 50 -> 51: admin.administratorRole.assign (migration 1763078400000, Owner ruling R1) -- the bounded
     // Administrator STAFFING capability. Admin does not need it (it holds admin.securityPolicy.write, which is
     // the stronger authority for the same act), so it is the ONE ruled owner-only key, named and not a drift.
@@ -579,7 +581,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // migration (administering EOS confers no rental authority), so ruled owner-only keys as well.
     // 65 -> 67: crm.activity.read / .create (#243), the same two keys admin gained -- neither Role gains anything the other lacks.
     // 67 -> 72: the same five finance.visibility.* keys admin gained (B1) -- neither Role gains anything the other lacks.
-    assert.equal(owner.capabilities.size, 115); // 112 -> 115: supplier.purchaseOrder.approve / .cancel / .read (P-1; Owner ruling D: not create or send). // 72 -> 73: inventory.location.bin.read (B3). 73 -> 112: the same 39 B4 keys admin gained (1764650000000)
+    assert.equal(owner.capabilities.size, 119); // 115 -> 119: the same four performance.goal authoring keys admin gained (G-1). // 112 -> 115: supplier.purchaseOrder.approve / .cancel / .read (P-1; Owner ruling D: not create or send). // 72 -> 73: inventory.location.bin.read (B3). 73 -> 112: the same 39 B4 keys admin gained (1764650000000)
     const RULED_OWNER_ONLY = ["admin.administratorRole.assign", "salesAgreement.tradeIn.approve", "finance.settlement.record", "finance.settlement.apply",
       "finance.settlement.correct", "finance.reconciliation.record", "rental.agreement.read", "rental.agreement.manage", "rental.charge.record",
       "rental.unit.assign", "rental.unit.return", "rental.fleet.manage"];
@@ -607,8 +609,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // Rental (#207): `rental.workspace` is the one surface owner reaches and admin does not -- the rental read is business
     // authority the migration withholds from admin, by the same rule as the settlement keys above.
     assert.deepEqual(owner.surfaces.filter((s) => !admin.surfaces.includes(s)), ["rental.workspace"]);
-    assert.equal(admin.surfaces.length, 28); // + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4: admin holds reportDefinition.read); + reporting.builder (B4 grants: report.*.read)
-    assert.equal(owner.surfaces.length, 26); // + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4: owner holds reportDefinition.read); + reporting.builder (B4 grants: report.*.read)
+    assert.equal(admin.surfaces.length, 29); // + analysis.goals (G-1: the four performance.goal authoring keys); // + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4: admin holds reportDefinition.read); + reporting.builder (B4 grants: report.*.read)
+    assert.equal(owner.surfaces.length, 27); // + analysis.goals (G-1); // + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4: owner holds reportDefinition.read); + reporting.builder (B4 grants: report.*.read)
     // NOT THE SAME ROLE, stated as an assertion rather than left implicit in the counts above.
     assert.notEqual(admin.capabilities.size, owner.capabilities.size);
     assert.notDeepEqual(admin.surfaces, owner.surfaces);
@@ -742,7 +744,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // gained receivingOrder.record.read. Reads only -- the Reorder distinction below is untouched.
     // 22 -> 23 and 13 -> 14: performance.goal.read (B4 grants, 1764650000000) -- partsManager and partsAssociate both hold it in Firebase.
     // 23 -> 26 and 14 -> 17: supplier.purchaseOrder.approve / .cancel / .read for partsManager; .create / .send / .read for partsAssociate (P-1, Owner ruling D).
-    assert.equal(manager.capabilities.size, 34); // 33 -> 34: finance.accountBalance.read (A6, 1764680000000; partsManager and purchasingManager both hold it: one key). // 28 -> 33 (GRANT-1, 1764670000000): inventory.catalog.part.activate + equipment.model.manage (partsManager) and the three A7 purchasing keys (purchasingManager) = +5. // the parts-manager persona holds partsManager AND purchasingManager: approve, cancel, read + create, send (P-1) = +5
+    assert.equal(manager.capabilities.size, 38); // 34 -> 38: the four performance.goal authoring keys (G-1; partsManager holds them in Firebase). // 33 -> 34: finance.accountBalance.read (A6, 1764680000000; partsManager and purchasingManager both hold it: one key). // 28 -> 33 (GRANT-1, 1764670000000): inventory.catalog.part.activate + equipment.model.manage (partsManager) and the three A7 purchasing keys (purchasingManager) = +5. // the parts-manager persona holds partsManager AND purchasingManager: approve, cancel, read + create, send (P-1) = +5
     assert.equal(associate.capabilities.size, 18); // 17 -> 18: finance.accountBalance.read (A6, 1764680000000). // GRANT-1: partsAssociate gains inventory.stock.receive + receivingOrder.record.read, but this persona also carries inventoryReceivingClerk, which already held both: unchanged.
     assert.equal(manager.surfaces.includes("inventory.reorderQueue"), true);
     assert.equal(associate.surfaces.includes("inventory.reorderQueue"), false);
@@ -1112,7 +1114,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // rather than `admin` (lane BI), and lane BN's contract withholds Data Import, receiving check-in
     // and dispatch from Owner.
     const ownerExecutive = await resolvePersona("owner-executive");
-    assert.equal(ownerExecutive.surfaces.length, 26); // + rental.workspace (#207) + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4); + reporting.builder (B4 grants)
+    assert.equal(ownerExecutive.surfaces.length, 27); // + analysis.goals (G-1); // + rental.workspace (#207) + analysis.workspace (#208); + inventory.racking (B3); + reporting.savedReports (B4); + reporting.builder (B4 grants)
     assert.ok(ownerExecutive.destinations.length >= 20,
       `owner-executive reached only ${ownerExecutive.destinations.length} destinations`);
     // technician-on-leave is the same PERSON as a technician minus the authority: the Employee, the
@@ -1230,11 +1232,12 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
       // Analysis (#208): + analysis.workspace for every persona holding a read a measure is decided on (or the report catalog read).
       // GRANT-1 (1764670000000): equipment.model.manage opens the equipment.register door for general-manager, service-manager (fieldManager), parts-manager and warehouse-manager (+1 each);
       // inventory.stock.receive opens receiving.checkIn for warehouse-associate (+1; parts-associate already had it through inventoryReceivingClerk).
-      "owner-executive": 26, "administrator": 28, "general-manager": 18, "office-manager": 4,
-      "service-manager": 15, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
+      // G-1 (1764690000000): the four performance.goal authoring keys open the analysis.goals door (+1) for owner-executive, administrator, general-manager, service-manager (fieldManager), parts-manager and warehouse-manager.
+      "owner-executive": 27, "administrator": 29, "general-manager": 19, "office-manager": 4,
+      "service-manager": 16, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
       "contract-technician": 3, "technician-on-leave": 0, "retail-sales-a": 9, "retail-sales-b": 9,
-      "national-accounts-sales": 9, "parts-manager": 15, "parts-associate": 10,
-      "warehouse-manager": 15, "warehouse-associate": 9, "records-clerk": 0,
+      "national-accounts-sales": 9, "parts-manager": 16, "parts-associate": 10,
+      "warehouse-manager": 16, "warehouse-associate": 9, "records-clerk": 0,
       "finance-controller": 13, "report-analyst": 0, "restricted-user": 0,
     };
     // EVERY persona is covered. A persona added to the manifest without a measured expectation here

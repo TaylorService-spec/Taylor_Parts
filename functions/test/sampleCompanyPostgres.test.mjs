@@ -288,8 +288,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 107 -> 108: 1764660000000 -- P-1 governed supplier purchase order authoring (DECISIONS #P-1): five supplier.purchaseOrder.* capabilities and 27 grants plus authoring tables / columns. No Sample Company data.
 // 109 -> 110: 1764680000000 -- A6 customer-balance summary (2026-10-19): finance.accountBalance.read registered (a READ key) and 8 Owner-ruled grants; no schema. No Sample Company data.
 // 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): one capability and 30 grants. No schema, no Sample Company data.
-const PINNED_LAST_MIGRATION = "1764680000000_account-balance-summary";
-const PINNED_MIGRATION_COUNT = 110;
+// 110 -> 111: 1764690000000 -- G-1 performance goal authoring (2026-10-20): four performance.goal.* capabilities, 32 Firebase-mirrored grants and the authoring idempotency table; no Sample Company data.
+const PINNED_LAST_MIGRATION = "1764690000000_performance-goal-authoring";
+const PINNED_MIGRATION_COUNT = 111;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

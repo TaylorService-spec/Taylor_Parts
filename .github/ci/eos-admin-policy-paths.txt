@@ -987,3 +987,10 @@ functions/test/a6AccountBalanceSummaryPostgres.test.mjs
 functions/migrations/1764680000000_account-balance-summary.sql
 docs/architecture/a6-account-balance-summary.json
 functions/src/eosOps/inventoryCompanyAuthority.ts
+# G-1 performance goal authoring (2026-10-20): the suites, the migration, the evidence they read, the command module and the reach decisions it shares with the goal reads.
+functions/test/g1GoalAuthoring.test.mjs
+functions/test/g1GoalAuthoringPostgres.test.mjs
+functions/migrations/1764690000000_performance-goal-authoring.sql
+docs/architecture/g1-goal-authoring-grant-parity.json
+functions/src/eosOps/performanceGoalAuthoring.ts
+functions/src/eosOps/performanceGoalReads.ts

@@ -231,7 +231,12 @@ export const NAV_DOMAINS = [
     key: "analysis",
     label: "Analysis",
     path: "analysis",
-    subnav: [{ key: "analysis", label: "Analysis", path: "" }],
+    subnav: [
+      { key: "analysis", label: "Analysis", path: "" },
+      // Goals (G-1, DECISIONS #G-1): author, approve and retire performance goals (targets). Its door is the `analysis.goals` surface, earned by the
+      // performance.goal authoring capabilities; no `legacyKey` -- a goal is authored on EOS only.
+      { key: "goals", label: "Goals", path: "goals" },
+    ],
   },
   {
     key: "service",
@@ -787,6 +792,7 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "rental/rental": ["rental.workspace"],
   // Analysis & Reporting (#208)
   "analysis/analysis": ["analysis.workspace"],
+  "analysis/goals": ["analysis.goals"],
   // Inventory
   "inventory/parts": ["inventory.catalog"],
   // R-1 Option A: the door follows its read's capability (inventory.catalog.read).

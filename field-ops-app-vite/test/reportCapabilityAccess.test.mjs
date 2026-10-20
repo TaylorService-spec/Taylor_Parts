@@ -88,7 +88,11 @@ ok("requests the report ids PLUS the governed surface ids -- a closed, declared 
   for (const id of ["supplier.purchaseOrder.read", "supplier.purchaseOrder.create", "supplier.purchaseOrder.approve", "supplier.purchaseOrder.send", "supplier.purchaseOrder.cancel"]) {
     assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `the supplier purchase order gate ${id} is not requested`);
   }
-  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 21); // GRANT-1 (2026-10-19): +18 -> +19 inventory.catalog.part.activate (A1) -> +20 reorder.purchaseOrder.read (the recorded-orders view gate for supplier-only holders) -> +21 finance.accountBalance.read (A6, the Account customer-balance summary gate)
+  // G-1 (2026-10-20) adds the five performance goal keys (Firebase catalog ids, asked under their own names): the Analysis > Goals screen's controls.
+  for (const id of ["performance.goal.read", "performance.goal.create", "performance.goal.supersede", "performance.goal.approve", "performance.goal.retire"]) {
+    assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `the performance goal gate ${id} is not requested`);
+  }
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 26); // G-1 (2026-10-20): +5 -> the PERFORMANCE_GOAL_GATE keys (performance.goal.read / .create / .supersede / .approve / .retire, the Analysis > Goals screen). Before: GRANT-1 (2026-10-19): +18 -> +19 inventory.catalog.part.activate (A1) -> +20 reorder.purchaseOrder.read (the recorded-orders view gate for supplier-only holders) -> +21 finance.accountBalance.read (A6, the Account customer-balance summary gate)
   // No duplicates: a repeated id would be a silent sign two concerns had drifted into one list.
   assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length);
 });

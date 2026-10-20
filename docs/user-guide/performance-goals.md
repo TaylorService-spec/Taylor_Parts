@@ -5,11 +5,11 @@
 See the target set for a figure right next to the figure itself, so you can tell at a glance whether
 you are on track.
 
-> **Goals are not created in EOS screens yet.** Goals are authored today in the old system. EOS reads
-> them and shows them; it does not yet let you create or change one. On **Financials → Goal
-> Management** the **New Goal** button is switched off, and the page says goal changes are not wired to
-> that screen and that no goal records exist yet. If you need a target set or changed, ask the person
-> who manages goals.
+> **Goals are set, approved and retired on Analysis > Goals.** If your role allows it, see
+> [Set, approve, replace and retire a goal](./analysis/set-approve-and-retire-goals.md). Everyone else
+> sees the targets on this page's tiles and asks the person who manages goals for a change. The
+> **Financials → Goal Management** page is a separate, read-only page: its **New Goal** button stays
+> switched off, and goals are not set there.
 
 ## Where you see targets
 

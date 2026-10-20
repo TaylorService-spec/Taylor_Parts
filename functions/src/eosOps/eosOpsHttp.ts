@@ -55,6 +55,7 @@ import {
   renameSavedReportDefinition, runReportDefinition,
 } from "./reportOperations.js";
 import { listCurrentPerformanceGoals, listGoalSubjects, listPerformanceGoalVersions } from "./performanceGoalReads.js";
+import { approvePerformanceGoal, createPerformanceGoalDraft, listGoalAuthoringOptions, retirePerformanceGoal } from "./performanceGoalAuthoring.js";
 import { correctReorderReceipt } from "./receiptCorrectionCommand.js";
 import { correctSupplierPurchaseOrderReceipt } from "./supplierReceiptCorrection.js";
 import { createSupplier, listSupplierOrganizationOptions, setSupplierStatus, updateSupplier } from "./supplierAdministration.js";
@@ -159,6 +160,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "listCurrentPerformanceGoals",
   "listPerformanceGoalVersions",
   "listGoalSubjects",
+  // PERFORMANCE GOAL AUTHORING (G-1): what the caller may author (metrics, companies, warehouses, people) -- needs one of the four authoring capabilities.
+  "listGoalAuthoringOptions",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -219,6 +222,11 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "renameSavedReportDefinition",
   "duplicateSavedReportDefinition",
   "deleteSavedReportDefinition",
+  // PERFORMANCE GOAL AUTHORING (G-1; resolves OD-B4-3): author a DRAFT (create, or supersede when it names a predecessor), approve it (never by its author), retire it.
+  // The capability of the VERB + the caller's operating companies + the reads' reach rules + the self-targeting and self-approval rules; each is its own authority.
+  "createPerformanceGoalDraft",
+  "approvePerformanceGoal",
+  "retirePerformanceGoal",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -293,6 +301,10 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   listCurrentPerformanceGoals: "/operations/inventory",
   listPerformanceGoalVersions: "/operations/inventory",
   listGoalSubjects: "/operations/inventory",
+  listGoalAuthoringOptions: "/operations/inventory",
+  createPerformanceGoalDraft: "/operations/inventory",
+  approvePerformanceGoal: "/operations/inventory",
+  retirePerformanceGoal: "/operations/inventory",
   stageDataImport: "/operations/inventory",
   executeDataImport: "/operations/inventory",
   createSavedReportDefinition: "/operations/inventory",
@@ -770,6 +782,24 @@ export async function executeOperation(
       case "listGoalSubjects": {
         const { actor, pool } = await supplierTermsActor();
         return ok(await listGoalSubjects({ pool }, actor, request.input ?? {}));
+      }
+      // PERFORMANCE GOAL AUTHORING (G-1). The same resolution as the goal reads (conditioned grants withheld); each command decides capability, company, reach and the
+      // self rules itself, and a refusal writes nothing.
+      case "listGoalAuthoringOptions": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await listGoalAuthoringOptions({ pool }, actor, request.input ?? {}));
+      }
+      case "createPerformanceGoalDraft": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await createPerformanceGoalDraft({ pool }, actor, request.input ?? {}));
+      }
+      case "approvePerformanceGoal": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await approvePerformanceGoal({ pool }, actor, request.input ?? {}));
+      }
+      case "retirePerformanceGoal": {
+        const { actor, pool } = await supplierTermsActor();
+        return ok(await retirePerformanceGoal({ pool }, actor, request.input ?? {}));
       }
       case "stageDataImport": {
         const { actor, pool } = await supplierTermsActor();

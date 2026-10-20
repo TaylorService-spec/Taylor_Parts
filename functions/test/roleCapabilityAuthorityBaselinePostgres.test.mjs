@@ -169,9 +169,11 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // 659 -> 689 (MIGRATION_BACKED 601 -> 631): migration 1764670000000, GRANT-1 Owner policy grants (2026-10-19) -- A1 2 + A2 4 + A3a 2 + A3b 6 + A4 4 new (the 4 inventory.catalog.read rows were already held) + A7 12 = 30 pairs; no new holder beyond the brief.
   // 689 -> 697 (MIGRATION_BACKED 631 -> 639): migration 1764680000000, A6 customer-balance summary (2026-10-19) -- finance.accountBalance.read to fieldManager, partsAssociate, partsManager,
   // purchasingManager, salesManager, salesperson, shopAssociate and shopManager (8 pairs); no new holder beyond the brief.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 697);
+  // 697 -> 729 (MIGRATION_BACKED 639 -> 671): migration 1764690000000, G-1 performance goal authoring (2026-10-20) -- performance.goal.create / .approve / .supersede / .retire to admin, owner, fieldManager, generalManager,
+  // operationsManager, partsManager, salesManager and warehouseManager (32 pairs): exactly the Firebase holders (docs/architecture/g1-goal-authoring-grant-parity.json).
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 729);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 639, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 671, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

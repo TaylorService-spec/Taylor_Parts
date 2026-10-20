@@ -1312,6 +1312,10 @@
     {
       "file": "test/eosSupplierPurchasingClient.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/eosGoalAuthoringClient.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

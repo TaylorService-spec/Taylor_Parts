@@ -122,7 +122,8 @@
     "test/b4ReportGoalGrantParity.test.mjs",
     "test/supplierPurchaseOrderAuthoringOffline.test.mjs",
     "test/grant1OwnerPolicyGrants.test.mjs",
-    "test/a6AccountBalanceSummary.test.mjs"
+    "test/a6AccountBalanceSummary.test.mjs",
+    "test/g1GoalAuthoring.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -301,6 +302,7 @@
     "test/b4ReportGoalGrantParityPostgres.test.mjs",
     "test/supplierPurchaseOrderAuthoringPostgres.test.mjs",
     "test/grant1OwnerPolicyGrantsPostgres.test.mjs",
-    "test/a6AccountBalanceSummaryPostgres.test.mjs"
+    "test/a6AccountBalanceSummaryPostgres.test.mjs",
+    "test/g1GoalAuthoringPostgres.test.mjs"
   ]
 }
