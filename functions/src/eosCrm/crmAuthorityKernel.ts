@@ -24,6 +24,7 @@
 // or client imports this module or the services built on it.
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
+import { wellFormed } from "../eosAudit/commandAuditEvent.js";
 
 /** The catalogued Customer capability KEYS (functions/src/access/permissionCatalog.ts). Nothing else is consulted. */
 export const CRM_CAPABILITIES = Object.freeze({
@@ -379,7 +380,7 @@ export async function runCrmCreate<P extends { idempotencyKey: string; request: 
          (id, tenant_id, principal_id, operation, idempotency_key_hash, request_hash, target_type, target_id, result)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [`crcpt_${randomUUID()}`, actor.tenantId, actor.principalId, operation, keyHash, requestHash,
-        outcome.targetType, outcome.targetId, JSON.stringify(outcome.result)],
+        outcome.targetType, outcome.targetId, JSON.stringify(wellFormed(outcome.result))],
     );
     await client.query("COMMIT");
     return { ...outcome.result, replayed: false };

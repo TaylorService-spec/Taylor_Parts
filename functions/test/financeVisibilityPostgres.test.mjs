@@ -166,6 +166,9 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
       assert.equal(d.attribution.creditedSalespersonEmployeeId, undefined, `${id}: no credited person is shown for a row that has none`);
     }
     assert.equal(ok(await off(ctrl, "readObligation", { obligationId: o8 })).sourceSalesOrder, null, "a rental charge has no Sales Order source");
+    const o7Detail = ok(await off(ctrl, "readObligation", { obligationId: o7 }));
+    assert.equal(o7Detail.sourceSalesOrder, null, "the DETAIL agrees with the list: a package of a DIFFERENT company is no source, so no other company's Sales Order number");
+    assert.equal(o7Detail.attribution.reason, "the billing package belongs to a different operating company than the receivable", "the attribution reason is unchanged");
     // F-2: the LIST carries the same Sales Order reference (obligation -> billing package -> Sales Order), null where there is none, so a list
     // reader needs no per-row detail read. A payment names the customer it came from.
     const listed = ok(await off(ctrl, "listObligations", { operatingCompanyId: "taylor", kind: "RECEIVABLE" })).items;

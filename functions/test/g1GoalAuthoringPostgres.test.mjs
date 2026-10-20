@@ -883,5 +883,19 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     await goals.approvePerformanceGoal(at2359, actor(approver, RC), { goalId: cc.goalId, reason: "Late on the eve", idempotencyKey: key("a") });
     assert.equal((await versionList()).find((v) => v.goalId === c.s).status, "SUPERSEDED");
     await everyDay(2048, (day) => (day < "2048-06-15" ? c.p : cc.goalId));
+    // REGRESSION PIN (HARDEN item 3): a clock that CROSSES midnight UTC between successive reads. The fixed-now stub above would also pass code that reads the clock twice (once for
+    // the approval timestamp, once for "today"); this one returns the eve of the scheduled start first and the start day itself on every later read. One read means the
+    // branch (correction vs ordinary supersede) and neverGoverned (derived from approved_at) both see the eve, so they agree.
+    const d = await scheduled(2050);
+    const cd = await correct(d, "06-15");
+    const ticks = [new Date("2050-05-31T23:59:59.999Z"), new Date("2050-06-01T00:00:00.000Z")];
+    const straddle = { ...deps, now: () => ticks.length > 1 ? ticks.shift() : ticks[0] };
+    const outD = await goals.approvePerformanceGoal(straddle, actor(approver, RC), { goalId: cd.goalId, reason: "Approved as the day turns", idempotencyKey: key("a") });
+    assert.equal(outD.correctedScheduledGoalId, d.s, "the branch read the eve: a correction, not an ordinary supersede");
+    assert.deepEqual(await statusOf(d.s), ["SUPERSEDED", "2050-06-01", "2050-12-31"], "the scheduled version's window is untouched");
+    const dList = await versionList();
+    assert.equal(reads.neverGoverned(dList.find((v) => v.goalId === d.s), dList), true, "neverGoverned (from approved_at) agrees with the branch");
+    assert.equal((await cur("2050-06-01")).goal.goalId, d.p, "the scheduled version never governed its would-be start day");
+    await everyDay(2050, (day) => (day < "2050-06-15" ? d.p : cd.goalId));
   });
 });
