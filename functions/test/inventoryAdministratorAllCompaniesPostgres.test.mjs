@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
+import { applyStockReservationMigration } from "./support/stockReservationMigration.mjs";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
@@ -20,6 +21,7 @@ const ADMIN_SUBJECT = `uid-${PREFIX}-admin`;
 
 test("A protected Administrator holds every governed company for the inventory domains; a non-protected admin-role holder does not", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { q, repo, person, pool } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: T, prefix: PREFIX });
+  await applyStockReservationMigration(pool);
   const reads = require("../lib/eosOps/partsReads.js");
   const cc = require("../lib/eosOps/cycleCountOperations.js");
   const rcv = require("../lib/eosOps/receiveReorderStockCommand.js");

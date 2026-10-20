@@ -1,56 +1,70 @@
-// The eos_ops inventory COMMITMENT repository, and the Work Order inventory-effect REPLAY authority.
+// The eos_ops inventory COMMITMENT repository: HARD STOCK RESERVATIONS per operating company AND warehouse (S1b),
+// and the Work Order inventory-effect REPLAY authority.
 //
-// ════════════════════ WHAT THIS IS, AND WHAT IT IS NOT ════════════════════
+// ════════════════════ WHAT A HARD RESERVATION IS ════════════════════
 //
-// This is the persistence boundary for migration 008's two tables. It is the Postgres target for the
-// two census blockers that had none (NB-2: no eos_ops reservation table; NB-7: no home for
-// `inventory_sync_status`), and nothing more. Like `cycleCountRepository.ts`, it is NOT wired to any
-// HTTP operation, is NOT called by the deployed client, and no live writer is cut over to it.
+// A hard reservation is one RESERVED row in `eos_ops.inventory_commitments` that states, explicitly and
+// separately, an operating company AND a warehouse (Owner ruling 2026-10-20, S1a OD-2; DECISIONS #165 ruling 4).
+//   * Neither is inferred from the other. Both are stated by the caller, and they must AGREE: the stated warehouse
+//     must belong to the stated company, otherwise the command refuses (COMPANY_WAREHOUSE_MISMATCH) and the
+//     database refuses too (composite foreign key). The demand document (Work Order, or Sales Order line) must
+//     belong to the stated company as well (DEMAND_COMPANY_MISMATCH): no cross-company commitment.
+//   * Company-wide VISIBILITY of demand is allowed; UNALLOCATED demand is NOT a hard reservation. Nothing here reads
+//     a plan, an order quantity or an `allocatedQty`: only RESERVED / RELEASED / CONSUMED rows reduce available stock
+//     (DECISIONS #165 ruling 1: ONE commitment pool, no second authority).
 //
-// IT IS A COMMITMENT AUTHORITY, NOT AN AVAILABILITY AUTHORITY. It answers "how much of this Part is
-// promised" and "what does this Work Order still hold". It deliberately does NOT answer "how much is
-// available", and `reserve()` deliberately does NOT gate on availability — see the refusal below.
+// ════════════════════ ONE ARITHMETIC ════════════════════
+//
+//   committed(company, warehouse, part) = max(0, Σ RESERVED − Σ RELEASED − Σ CONSUMED)
+//   available(company, warehouse, part) = max(0, sellableOnHand − committed), UNKNOWN whenever sellableOnHand is.
+//
+// `committedQuantity` / `committedByWarehouse` and `sellableOnHandAtWarehouse` are the ONLY places those are computed;
+// the reserve gate and `readPartBalance` both call them, so the read can never disagree with the gate.
+// CONSUMED reconciles a promise and moves no stock: the physical removal is a `WORK_ORDER_CONSUMPTION` movement
+// written by whoever owns that movement (S1a section 3.1).
+//
+// ════════════════════ NO OVERSELL: LOCK ORDER ════════════════════
+//
+// Every writer takes `lockStockLocation(tenant, part, 'WAREHOUSE', warehouse)` for each Part, in sorted Part order
+// (deadlock-free), BEFORE it reads on-hand or commitments, and holds it to the end of its transaction. Two concurrent
+// reservations of the last unit therefore serialize on the same lock, the second one reads the first one's committed
+// row, and is refused INSUFFICIENT_STOCK. It is the same lock family the stock movement writers use.
+//
+// ════════════════════ REPLAY, DUPLICATES, TRANSITIONS ════════════════════
+//
+//   * Each row's key derives from the operation key (`<base>:<EVENT>:<warehouse>:<part>`); each row also carries a
+//     content FINGERPRINT. Same key + same fingerprint = replay (writes nothing, audits nothing). Same key + different
+//     content = IDEMPOTENCY_CONFLICT, never a silent replay. Replay is decided BEFORE the availability gate, so a retry
+//     after the stock has since gone still replays.
+//   * ONE ACTIVE CLAIM per (demand line, part, warehouse): a second reserve while one is outstanding is DUPLICATE_CLAIM.
+//   * Governed transitions: reserve -> (release | consume), each refused unless it fits the outstanding claim at that
+//     company+warehouse; cancel releases everything a demand still holds. Append-only (the database refuses UPDATE and
+//     DELETE); one audit row per APPLIED command, with no free text beyond the reason.
+//   * Reserve before the company is activated (`stock_reservation_activation`) is refused RESERVATION_NOT_ACTIVATED.
+//
+// ════════════════════ SERIAL AND WHOLE-UNIT PARTS ════════════════════
+//
+// A quantity row cannot name units, so a serial-tracked or whole-unit Part is REFUSED here (TRACKING_MODE_NOT_SUPPORTED)
+// before any write. It therefore cannot be quantity-reserved in a way that double-claims a unit: a unit is never claimed
+// by this ledger at all. Claiming a NAMED unit on `serialized_custody` needs a custody holder the schema does not have;
+// that is a separate, unsettled design (S1a OD-8, deferred) and is not decided here.
 //
 // ════════════════════ COMMITMENT IS NOT MOVEMENT ════════════════════
 //
-// RESERVED / RELEASED / CONSUMED are commitment lifecycle facts. They write to
-// `eos_ops.inventory_commitments` and NEVER to `eos_ops.inventory_movements`; the three labels are
-// not members of `ops_movement_type` and must never be added to it. Migration 008's header carries
-// the full argument; the short version is that a reservation moves no stock, and a commitment row
-// has no location to put in `inventory_movements`' NOT NULL location columns.
+// RESERVED / RELEASED / CONSUMED are commitment lifecycle facts. They write to `eos_ops.inventory_commitments` and
+// NEVER to `eos_ops.inventory_movements`; the three labels are not members of `ops_movement_type`.
 //
-// ════════════════════ WHY THERE IS NO AVAILABILITY CHECK HERE ════════════════════
-//
-// `inventoryService.ts`'s `reserveParts()` refuses a reservation it cannot cover. Reproducing that
-// here would require physical on-hand, and physical on-hand is a sum over `inventory_movements`
-// restricted to ELIGIBLE locations — status==ACTIVE Warehouses, with MOBILE/truck stock excluded.
-// eos_ops cannot express that restriction: migration 005 deliberately created no `locations` table
-// (:32-43), so Warehouse status is still Firestore reference data. A sum over every location in the
-// movement ledger would count truck stock as committable, which is EXACTLY the defect DECISIONS #165
-// removed from the live path ("'all locations' counted truck stock as committable. Both are gone.").
-//
-// So this layer refuses to author a number it cannot author correctly. Availability gating belongs
-// to the governed command that calls this repository, once the reference-data migration named in the
-// cutover-boundary doc has given eos_ops a Warehouse authority to filter on.
-//
-// ════════════════════ WHY THERE IS NO PER-PART MUTEX TABLE ════════════════════
-//
-// The live path holds a per-part sentinel (`inventory_reservation_locks`, `inventoryService.ts:60-65`).
-// That collection is a MUTEX, not a reservation: its own comment says it "contains no quantity and is
-// never read for availability", and it exists only to force a competing reserve into the same
-// Firestore transaction's read set so the availability check cannot be lost to a race. It holds no
-// business fact, so it has NO target table here and must be RETIRED at cutover rather than migrated.
-//
-// Nothing replaces it yet because there is nothing to protect: a mutex guards a check-then-act, and
-// this layer performs no check. When availability gating arrives, the Postgres primitive is a row
-// lock or an advisory lock taken inside the same transaction as the insert — not a second table.
+// NOT WIRED. Like `cycleCountRepository.ts`, nothing calls these commands from an HTTP operation or from the Work Order
+// lifecycle yet: dispatch has no warehouse to supply (neither demand family selects one), and which warehouse a
+// dispatch reserves from is a selection rule nobody has ratified. The commands take the warehouse explicitly.
 
 import type { Pool, PoolClient } from "pg";
 // THE CATALOG ANSWERS WHAT A PART IS. Composed as a repository in this same Render runtime and run on
 // this command's own client, so the Part facts belong to the same transaction as the commitment rows.
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { type OperatingCompanyKey, requireOperatingCompanyKey } from "./operatingCompanyCustody.js";
+import { lockStockLocation } from "./stockLocationLock.js";
 
 const SCHEMA = "eos_ops";
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`;
@@ -80,8 +94,7 @@ export class InventoryCommitmentError extends Error {
 /**
  * The same idempotency key was already used for a DIFFERENT commitment.
  *
- * Mirrors `IdempotencyConflictError` in `inventoryLedger/operationalMovementRepository.ts`: replay
- * iff the stored row says the same thing, conflict iff it does not. A conflict is never silently
+ * Replay iff the stored row's fingerprint says the same thing, conflict iff it does not. A conflict is never silently
  * treated as a replay, because that would drop a real commitment on the floor.
  */
 export class CommitmentIdempotencyConflictError extends InventoryCommitmentError {
@@ -90,22 +103,32 @@ export class CommitmentIdempotencyConflictError extends InventoryCommitmentError
   }
 }
 
+/** The demand document that raised a claim. Exactly one source per row (a database CHECK). */
+export type DemandSource =
+  | { readonly kind: "WORK_ORDER"; readonly workOrderId: string }
+  | { readonly kind: "SALES_ORDER"; readonly salesOrderId: string; readonly lineNumber: number };
+
 /** One row of `eos_ops.inventory_commitments`. */
 export interface CommitmentEventRecord {
   readonly id: string;
   readonly tenantId: string;
   readonly operatingCompanyKey: OperatingCompanyKey;
-  readonly workOrderId: string;
+  readonly warehouseId: string;
+  readonly source: DemandSource;
+  /** The Work Order id, or null for a Sales Order claim. Kept for the Work Order readers. */
+  readonly workOrderId: string | null;
   readonly partId: string;
   readonly eventType: CommitmentEventType;
   readonly quantity: number;
   readonly idempotencyKey: string;
+  readonly fingerprint: string;
 }
 
 export interface CommitmentEventInput {
   readonly tenantId: string;
   readonly operatingCompanyKey: OperatingCompanyKey;
-  readonly workOrderId: string;
+  readonly warehouseId: string;
+  readonly source: DemandSource;
   readonly partId: string;
   readonly eventType: CommitmentEventType;
   readonly quantity: number;
@@ -120,14 +143,24 @@ export interface CommitmentWriteResult {
   readonly record: CommitmentEventRecord;
 }
 
+/** The replay content hash: everything the row asserts except its own id, actor and time. */
+export function commitmentFingerprint(input: Pick<CommitmentEventInput, "operatingCompanyKey" | "warehouseId" | "source" | "partId" | "eventType" | "quantity">): string {
+  const s = input.source;
+  return createHash("sha256").update(JSON.stringify([
+    input.operatingCompanyKey, input.warehouseId,
+    s.kind, s.kind === "WORK_ORDER" ? s.workOrderId : [s.salesOrderId, s.lineNumber],
+    input.partId, input.eventType, input.quantity,
+  ])).digest("hex");
+}
+
 // ════════════════════ writing commitment events ════════════════════
 
 /**
- * Append exactly ONE commitment event, idempotently.
+ * Append exactly ONE commitment event, idempotently. NO availability or transition checks live here: this is the
+ * storage primitive. Use `reserve` / `release` / `consume` / `cancel`, which hold the lock and decide first.
  *
- * Append-only: a release is a new row, never an edit to the reservation it releases. This module
- * offers no update and no delete against `inventory_commitments`, and a static test proves it —
- * the same enforcement posture migration 005 records for `inventory_movements` (:53-59).
+ * Append-only: a release is a new row, never an edit to the reservation it releases. This module offers no update and
+ * no delete against `inventory_commitments`, the database refuses both, and a static test proves the former.
  */
 export async function recordCommitmentEvent(
   db: Queryable,
@@ -136,18 +169,24 @@ export async function recordCommitmentEvent(
   const companyKey = requireCompany(input.operatingCompanyKey);
   requirePositiveQuantity(input.quantity, input.partId);
   requireNonEmpty(input.idempotencyKey, "idempotencyKey");
+  requireWarehouse(input.warehouseId);
+  requireSource(input.source);
 
+  const fingerprint = commitmentFingerprint({ ...input, operatingCompanyKey: companyKey });
   const id = newId("cmt");
+  const s = input.source;
   const { rows } = await db.query<CommitmentRow>(
     `INSERT INTO ${SCHEMA}.inventory_commitments
-       (id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
-        idempotency_key, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (id, tenant_id, operating_company_key, warehouse_id, work_order_id, sales_order_id, sales_order_line_number,
+        part_id, event_type, quantity, idempotency_key, request_fingerprint, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
-     RETURNING id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
-               idempotency_key`,
-    [id, input.tenantId, companyKey, input.workOrderId, input.partId, input.eventType,
-     input.quantity, input.idempotencyKey, input.actorId],
+     RETURNING ${ROW_COLUMNS}`,
+    [id, input.tenantId, companyKey, input.warehouseId,
+     s.kind === "WORK_ORDER" ? s.workOrderId : null,
+     s.kind === "SALES_ORDER" ? s.salesOrderId : null,
+     s.kind === "SALES_ORDER" ? s.lineNumber : null,
+     input.partId, input.eventType, input.quantity, input.idempotencyKey, fingerprint, input.actorId],
   );
 
   const inserted = rows[0];
@@ -161,55 +200,102 @@ export async function recordCommitmentEvent(
     // unique index is per-tenant, so this is unreachable in practice; it fails closed regardless.
     throw new InventoryCommitmentError("IDEMPOTENCY_UNREADABLE", "the conflicting commitment is not visible to this tenant");
   }
-  if (
-    existing.operatingCompanyKey !== companyKey ||
-    existing.workOrderId !== input.workOrderId ||
-    existing.partId !== input.partId ||
-    existing.eventType !== input.eventType ||
-    existing.quantity !== input.quantity
-  ) {
-    throw new CommitmentIdempotencyConflictError(input.idempotencyKey);
-  }
+  if (existing.fingerprint !== fingerprint) throw new CommitmentIdempotencyConflictError(input.idempotencyKey);
   return { outcome: "replayed", record: existing };
 }
+
+// ════════════════════ the one arithmetic ════════════════════
+
+/**
+ * Σ RESERVED − Σ RELEASED − Σ CONSUMED, floored at 0, for ONE company and ONE warehouse. The single definition of
+ * "committed"; the gate and the read both use it.
+ */
+export async function committedQuantity(
+  db: Queryable,
+  tenantId: string,
+  operatingCompanyKey: OperatingCompanyKey,
+  warehouseId: string,
+  partId: string,
+): Promise<number> {
+  const companyKey = requireCompany(operatingCompanyKey);
+  const byWarehouse = await committedByWarehouse(db, tenantId, [companyKey], partId, [warehouseId]);
+  return byWarehouse.get(warehouseId) ?? 0;
+}
+
+/** The same arithmetic for many warehouses at once (the read path); a warehouse with no row is absent, not 0. */
+export async function committedByWarehouse(
+  db: Queryable,
+  tenantId: string,
+  companyKeys: readonly string[],
+  partId: string,
+  warehouseIds: readonly string[],
+): Promise<Map<string, number>> {
+  const { rows } = await db.query<{ warehouse_id: string; net: string }>(
+    `SELECT warehouse_id,
+            SUM(CASE event_type WHEN 'RESERVED' THEN quantity ELSE -quantity END) AS net
+       FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND operating_company_key = ANY($2::text[]) AND part_id = $3
+        AND warehouse_id = ANY($4::text[])
+      GROUP BY warehouse_id`,
+    [tenantId, [...companyKeys], partId, [...warehouseIds]],
+  );
+  return new Map(rows.map((r) => [r.warehouse_id, Math.max(0, Number(r.net))]));
+}
+
+/**
+ * Sellable on-hand of one Part at ONE warehouse for ONE company: NONE-tracked WAREHOUSE and BIN movements of that
+ * warehouse (a bin is its warehouse's stock), MOBILE/truck excluded, floored at 0. `null` is UNKNOWN: the ledger holds
+ * no evidence for the Part there. The caller decides whether the warehouse is ACTIVE.
+ */
+export async function sellableOnHandAtWarehouse(
+  db: Queryable,
+  tenantId: string,
+  operatingCompanyKey: OperatingCompanyKey,
+  warehouseId: string,
+  partId: string,
+): Promise<number | null> {
+  const { rows } = await db.query<{ n: string; total: string | null }>(
+    `SELECT count(*) AS n, sum(m.quantity_delta) AS total
+       FROM ${SCHEMA}.inventory_movements m
+      WHERE m.tenant_id = $1 AND m.operating_company_key = $2 AND m.part_id = $3 AND m.tracking_mode = 'NONE'
+        AND ((m.location_type::text = 'WAREHOUSE' AND m.location_id = $4)
+          OR (m.location_type::text = 'BIN' AND m.location_id IN
+                (SELECT b.id FROM ${SCHEMA}.bins b WHERE b.tenant_id = $1 AND b.warehouse_id = $4)))`,
+    [tenantId, requireCompany(operatingCompanyKey), partId, warehouseId],
+  );
+  if (Number(rows[0]?.n ?? 0) === 0) return null;
+  return Math.max(0, Number(rows[0].total ?? 0));
+}
+
+// ════════════════════ the governed commands ════════════════════
 
 export interface ReserveLine {
   readonly partId: string;
   readonly quantity: number;
 }
 
-export interface WorkOrderCommitmentContext {
+/** What EVERY command states explicitly. Nothing here is defaulted or derived from anything else. */
+export interface ReservationContext {
   readonly tenantId: string;
   readonly operatingCompanyKey: OperatingCompanyKey;
-  readonly workOrderId: string;
+  readonly warehouseId: string;
+  readonly source: DemandSource;
   readonly actorId: string;
-  /**
-   * The replay identity of THIS operation. Every row it writes derives its own key from this one
-   * deterministically (`<base>:<eventType>:<partId>`), so re-running the whole operation replays
-   * every row rather than duplicating any of them.
-   */
+  /** The replay identity of THIS operation; every row derives its own key from it. */
   readonly idempotencyKey: string;
 }
+
+/** Cancel releases at every warehouse the demand holds, so it states the company but no single warehouse. */
+export type CancelContext = Omit<ReservationContext, "warehouseId">;
+
+const REASON_MAX = 200;
 
 /**
  * THE PART IS RESOLVED FROM THE CATALOG, IN THE CALLER'S TRANSACTION, BEFORE ANY ROW IS WRITTEN.
  *
- * A commitment line carries a partId and a quantity and nothing else -- no tracking mode, deliberately.
- * The Firestore path took trackingMode from the Part authority rather than the caller, and this path must
- * not be the one place that stopped being true: a caller that states tracking mode states whether its own
- * quantity is countable stock or individually tracked units, which is the decision this repository exists
- * to make on evidence.
- *
- * WHY IT REFUSES A SERIAL PART RATHER THAN COUNTING ONE. `inventory_commitments` promises a QUANTITY of a
- * Part. A serial-tracked Part's commitment is a promise about NAMED units, and a row saying "3 of PRT-2001"
- * cannot say which three. The existing validators refuse an unsupported tracking mode rather than
- * approximating it; this is that same refusal, not a new policy.
- *
- * WHEREVER A PROMISE IS MADE. Both `reserve` and `reconcileConsumption` call it, because both author a
- * commitment. `releaseOutstanding` deliberately does NOT -- see its own note.
- *
- * ALL PARTS IN ONE ROUND TRIP, before any write, so a plan whose fourth line names an unknown Part does not
- * write the first three.
+ * A serial-tracked or whole-unit Part is refused: a quantity row cannot say WHICH units, so it cannot be
+ * quantity-reserved without risking a double claim of one unit. See the header, "SERIAL AND WHOLE-UNIT PARTS".
+ * ALL PARTS IN ONE ROUND TRIP, before any write.
  */
 async function requireCommittablePartsThroughClient(
   client: PoolClient,
@@ -235,211 +321,347 @@ async function requireCommittablePartsThroughClient(
   }
 }
 
-/**
- * DISPATCHED. Reserve the requested quantity per Part, ALL-OR-NOTHING in one database transaction.
- *
- * Duplicate lines for the same Part are summed FIRST, exactly as `reserveParts()` does
- * (`inventoryService.ts:229-233`) — a Work Order's plan may legitimately carry two rows for one sku,
- * and reserving them separately would evaluate each against the same un-decremented figure.
- *
- * No availability gate: see this file's header for why that number cannot yet be authored here.
- */
-export async function reserve(
-  pool: Pool,
-  ctx: WorkOrderCommitmentContext,
-  lines: readonly ReserveLine[],
-): Promise<readonly CommitmentWriteResult[]> {
+/** The stated company, warehouse and demand must all agree. `forReserve` adds ACTIVE warehouse + company activation. */
+async function requireStatedScope(
+  client: PoolClient,
+  ctx: Pick<ReservationContext, "tenantId" | "operatingCompanyKey" | "warehouseId" | "source">,
+  forReserve: boolean,
+): Promise<void> {
+  const wh = await client.query<{ operating_company_key: string; status: string }>(
+    `SELECT operating_company_key, status::text AS status FROM ${SCHEMA}.warehouses WHERE tenant_id = $1 AND id = $2`,
+    [ctx.tenantId, ctx.warehouseId]);
+  if (!wh.rows[0]) throw new InventoryCommitmentError("WAREHOUSE_NOT_FOUND", `warehouse ${ctx.warehouseId} is not a warehouse of this tenant`);
+  if (wh.rows[0].operating_company_key !== ctx.operatingCompanyKey) {
+    throw new InventoryCommitmentError("COMPANY_WAREHOUSE_MISMATCH",
+      "the stated warehouse does not belong to the stated operating company; company is never derived from the warehouse and the two must agree");
+  }
+  const s = ctx.source;
+  const demand = s.kind === "WORK_ORDER"
+    ? await client.query<{ operating_company_key: string }>(
+        `SELECT operating_company_key FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2`, [ctx.tenantId, s.workOrderId])
+    : await client.query<{ operating_company_key: string }>(
+        `SELECT so.operating_company_key
+           FROM eos_commercial.sales_orders so
+           JOIN eos_commercial.sales_order_lines l ON l.tenant_id = so.tenant_id AND l.sales_order_id = so.id
+          WHERE so.tenant_id = $1 AND so.id = $2 AND l.line_number = $3`, [ctx.tenantId, s.salesOrderId, s.lineNumber]);
+  if (!demand.rows[0]) throw new InventoryCommitmentError("DEMAND_NOT_FOUND", "the demand document (or line) does not exist in this tenant");
+  if (demand.rows[0].operating_company_key !== ctx.operatingCompanyKey) {
+    throw new InventoryCommitmentError("DEMAND_COMPANY_MISMATCH", "the demand document belongs to a different operating company; a cross-company claim is refused");
+  }
+  if (!forReserve) return;
+  if (wh.rows[0].status !== "ACTIVE") throw new InventoryCommitmentError("WAREHOUSE_NOT_ACTIVE", `warehouse ${ctx.warehouseId} is not ACTIVE; it cannot take a new reservation`);
+  const act = await client.query(
+    `SELECT 1 FROM ${SCHEMA}.stock_reservation_activation WHERE tenant_id = $1 AND operating_company_key = $2`,
+    [ctx.tenantId, ctx.operatingCompanyKey]);
+  if (act.rows.length === 0) {
+    throw new InventoryCommitmentError("RESERVATION_NOT_ACTIVATED", "hard reservations are not yet activated for this operating company");
+  }
+}
+
+/** Outstanding of one demand's claim at one company+warehouse, per Part. Negative is returned, not floored. */
+async function outstandingAt(
+  db: Queryable,
+  ctx: Pick<ReservationContext, "tenantId" | "operatingCompanyKey" | "warehouseId" | "source">,
+): Promise<Map<string, number>> {
+  const s = ctx.source;
+  const { rows } = await db.query<{ part_id: string; outstanding: string }>(
+    `SELECT part_id, SUM(CASE event_type WHEN 'RESERVED' THEN quantity ELSE -quantity END) AS outstanding
+       FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND operating_company_key = $2 AND warehouse_id = $3 AND ${SOURCE_PREDICATE}
+      GROUP BY part_id ORDER BY part_id`,
+    [ctx.tenantId, ctx.operatingCompanyKey, ctx.warehouseId, ...sourceParams(s)],
+  );
+  return new Map(rows.map((r) => [r.part_id, Number(r.outstanding)]));
+}
+
+/** Over parameters (workOrderId, salesOrderId, lineNumber) at $4..$6 -- a NULL parameter compares NULL, i.e. never matches. */
+const SOURCE_PREDICATE = `(work_order_id = $4 OR (sales_order_id = $5 AND sales_order_line_number = $6))`;
+const SOURCE_PREDICATE_AT_3 = `(work_order_id = $3 OR (sales_order_id = $4 AND sales_order_line_number = $5))`;
+function sourceParams(s: DemandSource): [string | null, string | null, number | null] {
+  return s.kind === "WORK_ORDER" ? [s.workOrderId, null, null] : [null, s.salesOrderId, s.lineNumber];
+}
+
+/** Take the pool lock for every Part, in sorted order, BEFORE reading anything the decision rests on. */
+async function lockParts(client: PoolClient, ctx: Pick<ReservationContext, "tenantId" | "warehouseId">, partIds: Iterable<string>): Promise<void> {
+  for (const partId of [...new Set(partIds)].sort()) {
+    await lockStockLocation(client, ctx.tenantId, partId, "WAREHOUSE", ctx.warehouseId);
+  }
+}
+
+interface PlannedRow { readonly partId: string; readonly eventType: CommitmentEventType; readonly quantity: number; readonly warehouseId: string }
+
+/** All rows of one operation: replayed (every one already there, identical), conflict (any differs / some missing), or null (none yet). */
+async function replayOf(
+  client: PoolClient,
+  ctx: Pick<ReservationContext, "tenantId" | "operatingCompanyKey" | "source" | "idempotencyKey">,
+  planned: readonly PlannedRow[],
+): Promise<readonly CommitmentWriteResult[] | null> {
+  const found: CommitmentWriteResult[] = [];
+  for (const row of planned) {
+    const key = derivedKey(ctx.idempotencyKey, row.eventType, row.warehouseId, row.partId);
+    const existing = await readByIdempotencyKey(client, ctx.tenantId, key);
+    if (!existing) continue;
+    const fingerprint = commitmentFingerprint({ operatingCompanyKey: ctx.operatingCompanyKey, warehouseId: row.warehouseId, source: ctx.source, partId: row.partId, eventType: row.eventType, quantity: row.quantity });
+    if (existing.fingerprint !== fingerprint) throw new CommitmentIdempotencyConflictError(key);
+    found.push({ outcome: "replayed", record: existing });
+  }
+  if (found.length === 0) return null;
+  // One transaction writes all rows or none, so "some but not all" is a reused key with different content.
+  if (found.length !== planned.length) throw new CommitmentIdempotencyConflictError(ctx.idempotencyKey);
+  return found;
+}
+
+async function insertPlanned(
+  client: PoolClient,
+  ctx: Pick<ReservationContext, "tenantId" | "operatingCompanyKey" | "source" | "idempotencyKey" | "actorId">,
+  planned: readonly PlannedRow[],
+): Promise<CommitmentWriteResult[]> {
+  const written: CommitmentWriteResult[] = [];
+  for (const row of planned) {
+    written.push(await recordCommitmentEvent(client, {
+      tenantId: ctx.tenantId, operatingCompanyKey: ctx.operatingCompanyKey, warehouseId: row.warehouseId, source: ctx.source,
+      partId: row.partId, eventType: row.eventType, quantity: row.quantity, actorId: ctx.actorId,
+      idempotencyKey: derivedKey(ctx.idempotencyKey, row.eventType, row.warehouseId, row.partId),
+    }));
+  }
+  return written;
+}
+
+/** ONE audit row per APPLIED command. `reason` is the only free text. */
+async function auditApplied(
+  client: PoolClient,
+  ctx: Pick<ReservationContext, "tenantId" | "operatingCompanyKey" | "source" | "actorId">,
+  action: "stock.reserve" | "stock.release" | "stock.consume" | "stock.cancel",
+  rows: readonly PlannedRow[],
+  reason: string | null,
+): Promise<void> {
+  const s = ctx.source;
+  await client.query(
+    `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
+     VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8)`,
+    [newId("audit"), ctx.tenantId, action, ctx.actorId,
+     s.kind === "WORK_ORDER" ? "workOrder" : "salesOrderLine",
+     s.kind === "WORK_ORDER" ? s.workOrderId : `${s.salesOrderId}:${s.lineNumber}`,
+     JSON.stringify({ operatingCompanyKey: ctx.operatingCompanyKey, rows: rows.map((r) => ({ warehouseId: r.warehouseId, partId: r.partId, eventType: r.eventType, quantity: r.quantity })) }),
+     reason],
+  );
+}
+
+function sumLines(lines: readonly ReserveLine[]): Map<string, number> {
   const byPart = new Map<string, number>();
   for (const line of lines) {
     requirePositiveQuantity(line.quantity, line.partId);
+    requireNonEmpty(line.partId, "partId");
     byPart.set(line.partId, (byPart.get(line.partId) ?? 0) + line.quantity);
   }
+  return byPart;
+}
+
+function requireContext(ctx: Pick<ReservationContext, "operatingCompanyKey" | "source" | "idempotencyKey"> & { warehouseId?: string }, needWarehouse: boolean): void {
+  requireCompany(ctx.operatingCompanyKey);
+  requireNonEmpty(ctx.idempotencyKey, "idempotencyKey");
+  if (needWarehouse) requireWarehouse(ctx.warehouseId);
+  requireSource(ctx.source);
+}
+
+function requireReason(reason: unknown): string {
+  if (typeof reason !== "string" || reason.trim() === "" || reason.length > REASON_MAX) {
+    throw new InventoryCommitmentError("REASON_REQUIRED", `a reason of 1..${REASON_MAX} characters is required`);
+  }
+  return reason.trim();
+}
+
+/**
+ * RESERVE. Claim `quantity` of each Part at the stated company AND warehouse for the stated demand, ALL-OR-NOTHING in
+ * one transaction. Every refusal happens before any write: UNKNOWN_STOCK (no evidence), INSUFFICIENT_STOCK (known
+ * shortage), DUPLICATE_CLAIM, company/warehouse/demand disagreement, serial Part, company not activated.
+ *
+ * Duplicate lines for one Part are summed first. Stock-dependent checks run under the per-Part lock (see the header).
+ */
+export async function reserve(
+  pool: Pool,
+  ctx: ReservationContext,
+  lines: readonly ReserveLine[],
+): Promise<readonly CommitmentWriteResult[]> {
+  requireContext(ctx, true);
+  const byPart = sumLines(lines);
   if (byPart.size === 0) return [];
+  const planned: PlannedRow[] = [...byPart.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([partId, quantity]) => ({ partId, eventType: "RESERVED" as const, quantity, warehouseId: ctx.warehouseId }));
 
   return inTransaction(pool, async (client) => {
     await requireCommittablePartsThroughClient(client, ctx.tenantId, [...byPart.keys()]);
-    const written: CommitmentWriteResult[] = [];
-    for (const [partId, quantity] of sorted(byPart)) {
-      written.push(await recordCommitmentEvent(client, {
-        ...ctx, partId, eventType: "RESERVED", quantity,
-        idempotencyKey: derivedKey(ctx.idempotencyKey, "RESERVED", partId),
-      }));
+    await requireStatedScope(client, ctx, true);
+    await lockParts(client, ctx, byPart.keys());
+
+    const replay = await replayOf(client, ctx, planned);
+    if (replay) return replay;
+
+    const outstanding = await outstandingAt(client, ctx);
+    for (const row of planned) {
+      if ((outstanding.get(row.partId) ?? 0) > 0) {
+        throw new InventoryCommitmentError("DUPLICATE_CLAIM",
+          `this demand already holds an active claim on ${row.partId} at ${ctx.warehouseId}; release or consume it before claiming again`);
+      }
     }
+    for (const row of planned) {
+      const onHand = await sellableOnHandAtWarehouse(client, ctx.tenantId, ctx.operatingCompanyKey, ctx.warehouseId, row.partId);
+      if (onHand === null) {
+        throw new InventoryCommitmentError("UNKNOWN_STOCK", `there is no governed stock evidence for ${row.partId} at ${ctx.warehouseId}; unknown is never read as zero or as plenty`);
+      }
+      const committed = await committedQuantity(client, ctx.tenantId, ctx.operatingCompanyKey, ctx.warehouseId, row.partId);
+      const available = Math.max(0, onHand - committed);
+      if (row.quantity > available) {
+        throw new InventoryCommitmentError("INSUFFICIENT_STOCK", `need ${row.quantity} of ${row.partId} at ${ctx.warehouseId}, available ${available}`);
+      }
+    }
+    const written = await insertPlanned(client, ctx, planned);
+    await auditApplied(client, ctx, "stock.reserve", planned, null);
     return written;
   });
 }
 
 /**
- * CANCELLED. Release everything this Work Order still holds, per Part, in one transaction.
- *
- * READ FROM THE COMMITMENT LEDGER, NOT FROM THE PLAN — the orphan fix DECISIONS #165 landed. A
- * requirement deleted from the Work Order's plan after dispatch still has commitment rows, so a
- * plan-driven loop cannot see the reservation it left behind; this derivation can. Safe when nothing
- * was ever reserved: the map is empty and no row is written.
+ * RELEASE. End all or part of a claim without use. `lines` omitted releases everything this demand still holds at the
+ * stated company and warehouse. A release larger than the outstanding claim, or against a claim that does not exist at
+ * that company+warehouse, is refused before any write.
  */
-export async function releaseOutstanding(
+export async function release(
   pool: Pool,
-  ctx: WorkOrderCommitmentContext,
+  ctx: ReservationContext,
+  options: { readonly reason: string; readonly lines?: readonly ReserveLine[] },
 ): Promise<readonly CommitmentWriteResult[]> {
+  requireContext(ctx, true);
+  const reason = requireReason(options.reason);
+  const requested = options.lines === undefined ? null : sumLines(options.lines);
+
   return inTransaction(pool, async (client) => {
-    // NO CATALOG CHECK HERE, DELIBERATELY. Release is derived from the COMMITMENT LEDGER, not from the
-    // plan, for the orphan reason above -- and that is exactly why it must not ask the catalog whether the
-    // Part is still resolvable. A Part that was deactivated, or whose requirement was deleted, still has
-    // reservation rows this Work Order is holding; refusing to release them because the catalog no longer
-    // likes the Part would strand the stock forever. Validation belongs where a promise is MADE.
-    const outstanding = await outstandingByPart(client, ctx.tenantId, ctx.workOrderId);
-    const written: CommitmentWriteResult[] = [];
-    for (const [partId, quantity] of sorted(outstanding)) {
-      if (quantity <= 0) continue;
-      written.push(await recordCommitmentEvent(client, {
-        ...ctx, partId, eventType: "RELEASED", quantity,
-        idempotencyKey: derivedKey(ctx.idempotencyKey, "RELEASED", partId),
-      }));
-    }
+    await requireStatedScope(client, ctx, false);
+    const plan = await planDecrease(client, ctx, "RELEASED", requested);
+    if (plan.replayed) return plan.replayed;
+    if (plan.rows.length === 0) return [];
+    const written = await insertPlanned(client, ctx, plan.rows);
+    await auditApplied(client, ctx, "stock.release", plan.rows, reason);
     return written;
   });
 }
 
-export interface ConsumptionLine {
-  readonly partId: string;
-  readonly qtyPlanned: number;
-  /** Governed ACTUAL usage. Omitted means "no field usage recorded", which falls back to qtyPlanned. */
-  readonly qtyUsed?: number;
+/** CONSUME. The claim ended because the quantity was used. Moves no stock: the physical removal is a separate movement. */
+export async function consume(
+  pool: Pool,
+  ctx: ReservationContext,
+  lines: readonly ReserveLine[],
+): Promise<readonly CommitmentWriteResult[]> {
+  requireContext(ctx, true);
+  const requested = sumLines(lines);
+  if (requested.size === 0) return [];
+  return inTransaction(pool, async (client) => {
+    await requireStatedScope(client, ctx, false);
+    const plan = await planDecrease(client, ctx, "CONSUMED", requested);
+    if (plan.replayed) return plan.replayed;
+    const written = await insertPlanned(client, ctx, plan.rows);
+    await auditApplied(client, ctx, "stock.consume", plan.rows, null);
+    return written;
+  });
 }
 
 /**
- * COMPLETED. Reconcile this Work Order's commitment against what was actually used, in ONE
- * transaction, per Part:
- *
- *   top up   the outstanding reservation to qtyPlanned (RESERVED, only the positive delta)
- *   consume  the governed actual usage                  (CONSUMED)
- *   release  the unused remainder qtyPlanned - actual   (RELEASED)
- *
- * This is `consumeParts()`'s arithmetic (`inventoryService.ts:389-420`) with one deliberate
- * difference: overage is REFUSED, not clamped. The live path relies on `mergeQtyUsed()` having
- * already clamped `qtyUsed` to [0, qtyPlanned] upstream, and its own comment records that the
- * governed overage path (used > planned) "is a separate build (P1), not handled by this function".
- * A persistence layer that silently clamped would destroy the evidence that an overage happened.
- *
- * NOTHING PHYSICAL HAPPENS HERE. A CONSUMED commitment row reconciles a promise; the physical
- * removal of stock is a `WORK_ORDER_CONSUMPTION` row in `inventory_movements`, written by whoever
- * owns that movement. The two are separate facts and this function authors only the first.
+ * CANCEL. The demand ended: release EVERYTHING it still holds at every warehouse of the stated company, derived from
+ * the commitment LEDGER rather than from a plan (the #165 orphan fix), in one transaction, with ONE audit row. Nothing
+ * outstanding writes nothing. No catalog check: a deactivated Part must not strand stock.
  */
-export async function reconcileConsumption(
+export async function cancel(
   pool: Pool,
-  ctx: WorkOrderCommitmentContext,
-  lines: readonly ConsumptionLine[],
+  ctx: CancelContext,
+  options: { readonly reason: string },
 ): Promise<readonly CommitmentWriteResult[]> {
-  const planned = new Map<string, { qtyPlanned: number; qtyUsed: number }>();
-  for (const line of lines) {
-    requirePositiveQuantity(line.qtyPlanned, line.partId);
-    const used = line.qtyUsed ?? line.qtyPlanned;
-    if (!Number.isInteger(used) || used < 0) {
-      throw new InventoryCommitmentError("QUANTITY_INVALID", `qtyUsed for ${line.partId} must be a non-negative integer`);
+  requireContext(ctx, false);
+  const reason = requireReason(options.reason);
+  return inTransaction(pool, async (client) => {
+    const { rows: held } = await client.query<{ warehouse_id: string }>(
+      `SELECT DISTINCT warehouse_id FROM ${SCHEMA}.inventory_commitments
+        WHERE tenant_id = $1 AND operating_company_key = $2 AND ${SOURCE_PREDICATE_AT_3}
+        ORDER BY warehouse_id`,
+      [ctx.tenantId, ctx.operatingCompanyKey, ...sourceParams(ctx.source)]);
+    const replayed: CommitmentWriteResult[] = [];
+    const planned: PlannedRow[] = [];
+    for (const { warehouse_id: warehouseId } of held) {
+      const wctx: ReservationContext = { ...ctx, warehouseId };
+      await requireStatedScope(client, wctx, false);
+      const plan = await planDecrease(client, wctx, "RELEASED", null);
+      if (plan.replayed) replayed.push(...plan.replayed);
+      else planned.push(...plan.rows);
     }
-    if (used > line.qtyPlanned) {
-      throw new InventoryCommitmentError(
-        "CONSUMPTION_EXCEEDS_PLAN",
-        `qtyUsed ${used} exceeds qtyPlanned ${line.qtyPlanned} for ${line.partId}; the governed overage path is not this function`,
-      );
-    }
-    const existing = planned.get(line.partId);
-    planned.set(line.partId, existing
-      ? { qtyPlanned: existing.qtyPlanned + line.qtyPlanned, qtyUsed: existing.qtyUsed + used }
-      : { qtyPlanned: line.qtyPlanned, qtyUsed: used });
+    if (planned.length === 0) return replayed;
+    const written = await insertPlanned(client, ctx, planned);
+    await auditApplied(client, ctx, "stock.cancel", planned, reason);
+    return written.concat(replayed);
+  });
+}
+
+/**
+ * Plan a RELEASED or CONSUMED set under the Part locks. `requested === null` means "everything outstanding".
+ * Returns the rows to write, or the already-written rows of this very operation (a replay).
+ */
+async function planDecrease(
+  client: PoolClient,
+  ctx: ReservationContext,
+  eventType: "RELEASED" | "CONSUMED",
+  requested: Map<string, number> | null,
+): Promise<{ readonly rows: PlannedRow[]; readonly replayed: readonly CommitmentWriteResult[] | null }> {
+  // Lock first (the Parts it can touch), then read the outstanding claim under the lock.
+  const outstandingBefore = await outstandingAt(client, ctx);
+  await lockParts(client, ctx, requested ? requested.keys() : outstandingBefore.keys());
+
+  if (requested === null) {
+    // A "release everything" has no requested quantities to fingerprint: recognised by its key prefix.
+    const prior = await replayByPrefix(client, ctx, eventType);
+    if (prior.length > 0) return { rows: [], replayed: prior };
+  } else {
+    const sortedLines = [...requested.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const replay = await replayOf(client, ctx, sortedLines.map(([partId, quantity]) => ({ partId, eventType, quantity, warehouseId: ctx.warehouseId })));
+    if (replay) return { rows: [], replayed: replay };
   }
-  if (planned.size === 0) return [];
 
-  return inTransaction(pool, async (client) => {
-    await requireCommittablePartsThroughClient(client, ctx.tenantId, [...planned.keys()]);
-
-    const outstanding = await outstandingByPart(client, ctx.tenantId, ctx.workOrderId);
-    const written: CommitmentWriteResult[] = [];
-    for (const [partId, { qtyPlanned, qtyUsed }] of sorted(planned)) {
-      const topUp = qtyPlanned - Math.max(0, outstanding.get(partId) ?? 0);
-      if (topUp > 0) {
-        written.push(await recordCommitmentEvent(client, {
-          ...ctx, partId, eventType: "RESERVED", quantity: topUp,
-          idempotencyKey: derivedKey(ctx.idempotencyKey, "RESERVED", partId),
-        }));
-      }
-      if (qtyUsed > 0) {
-        written.push(await recordCommitmentEvent(client, {
-          ...ctx, partId, eventType: "CONSUMED", quantity: qtyUsed,
-          idempotencyKey: derivedKey(ctx.idempotencyKey, "CONSUMED", partId),
-        }));
-      }
-      const remainder = qtyPlanned - qtyUsed;
-      if (remainder > 0) {
-        written.push(await recordCommitmentEvent(client, {
-          ...ctx, partId, eventType: "RELEASED", quantity: remainder,
-          idempotencyKey: derivedKey(ctx.idempotencyKey, "RELEASED", partId),
-        }));
-      }
+  const outstanding = await outstandingAt(client, ctx);
+  const rows: PlannedRow[] = [];
+  const parts = requested ? [...requested.keys()].sort() : [...outstanding.keys()].sort();
+  for (const partId of parts) {
+    const have = outstanding.get(partId) ?? 0;
+    if (requested && have <= 0) throw new InventoryCommitmentError("NO_ACTIVE_CLAIM", `this demand holds no active claim on ${partId} at ${ctx.warehouseId} for the stated company`);
+    const want = requested ? (requested.get(partId) as number) : have;
+    if (want > have) {
+      throw new InventoryCommitmentError(eventType === "RELEASED" ? "RELEASE_EXCEEDS_OUTSTANDING" : "CONSUME_EXCEEDS_OUTSTANDING",
+        `${eventType === "RELEASED" ? "release" : "consume"} of ${want} exceeds the outstanding ${have} of ${partId} at ${ctx.warehouseId}`);
     }
-    return written;
-  });
+    if (want > 0) rows.push({ partId, eventType, quantity: want, warehouseId: ctx.warehouseId });
+  }
+  return { rows, replayed: null };
 }
 
-// ════════════════════ the derivations ════════════════════
-
-/**
- * THE COMMITTED-QUANTITY DERIVATION: how much of one Part is promised, across every Work Order.
- *
- * `RESERVED − RELEASED`, floored at 0, scoped to one tenant AND one operating company. Never a
- * stored total — the same rule migration 005 states for balances: a second maintained number is a
- * second thing to disagree with the evidence.
- *
- * CONSUMED IS DELIBERATELY NOT SUBTRACTED, and this is `openCommitment()`'s arithmetic
- * (`inventoryService.ts:152-160`) preserved EXACTLY, not re-derived. Its reason there is precise:
- * nothing in the live platform removes consumed stock from physical on-hand, so the consumed
- * quantity is kept counted as committed to keep it out of availability — "wrong reason, right
- * number".
- *
- * THAT REASON DOES NOT AUTOMATICALLY HOLD IN eos_ops, AND THIS IS THE OPEN QUESTION, NOT A DECISION.
- * `ops_movement_type` DOES contain `WORK_ORDER_CONSUMPTION`, so a governed consumption here can
- * record a real physical removal — and once it does, on-hand drops at consumption and a pool that
- * also kept CONSUMED committed would subtract the same quantity twice. Whether this derivation
- * switches to `RESERVED − RELEASED − CONSUMED` is exactly the ruling DECISIONS #165 records as
- * blocking ("the fix is either a physical removal movement at consumption or a change to that
- * ratified derivation, both of which are inventory-semantics decisions this package is not
- * authorised to make"). This module preserves the live arithmetic and makes no such decision.
- *
- * NOTHING SUBTRACTS THIS FROM ANYTHING YET. There is no availability derivation in eos_ops (see the
- * header), so no reader can currently be wrong either way.
- */
-export async function committedQuantityForPart(
-  db: Queryable,
-  tenantId: string,
-  operatingCompanyKey: OperatingCompanyKey,
-  partId: string,
-): Promise<number> {
-  const companyKey = requireCompany(operatingCompanyKey);
-  const { rows } = await db.query<{ committed: string | null }>(
-    `SELECT COALESCE(SUM(
-              CASE event_type
-                WHEN 'RESERVED' THEN quantity
-                WHEN 'RELEASED' THEN -quantity
-                ELSE 0
-              END), 0) AS committed
-       FROM ${SCHEMA}.inventory_commitments
-      WHERE tenant_id = $1 AND operating_company_key = $2 AND part_id = $3`,
-    [tenantId, companyKey, partId],
-  );
-  return Math.max(0, Number(rows[0]?.committed ?? 0));
+async function replayByPrefix(client: PoolClient, ctx: ReservationContext, eventType: CommitmentEventType): Promise<CommitmentWriteResult[]> {
+  const prefix = `${ctx.idempotencyKey}:${eventType}:${ctx.warehouseId}:`;
+  const { rows } = await client.query<CommitmentRow>(
+    `SELECT ${ROW_COLUMNS} FROM ${SCHEMA}.inventory_commitments
+      WHERE tenant_id = $1 AND left(idempotency_key, $3) = $2 ORDER BY part_id`,
+    [ctx.tenantId, prefix, prefix.length]);
+  const out = rows.map(toRecord);
+  for (const r of out) {
+    const same = r.operatingCompanyKey === ctx.operatingCompanyKey && r.warehouseId === ctx.warehouseId && sameSource(r.source, ctx.source);
+    if (!same) throw new CommitmentIdempotencyConflictError(r.idempotencyKey);
+  }
+  return out.map((record) => ({ outcome: "replayed" as const, record }));
 }
 
+const sameSource = (a: DemandSource, b: DemandSource): boolean => a.kind === b.kind && (a.kind === "WORK_ORDER"
+  ? a.workOrderId === (b as typeof a).workOrderId
+  : a.salesOrderId === (b as typeof a).salesOrderId && a.lineNumber === (b as typeof a).lineNumber);
+
+// ════════════════════ reads over the ledger ════════════════════
+
 /**
- * What ONE Work Order still holds, per Part: `RESERVED − RELEASED − CONSUMED`.
- *
- * This is `outstandingByPart()` / `getOutstandingReservation()` (`inventoryService.ts:163-186`,
- * `:277-291`) and it DOES subtract CONSUMED — correctly and uncontroversially, because a consumed
- * unit is no longer something this Work Order is still holding a claim on. The pool derivation above
- * asks a different question and has a different answer; the two are not in tension.
- *
- * Parts with no commitment rows are simply absent from the map. A negative value is returned as-is
- * rather than floored, because a negative outstanding would be evidence of a real accounting fault
- * (more released or consumed than was ever reserved) and hiding it would hide the fault.
+ * What ONE Work Order still holds, per Part, across its warehouses: `RESERVED − RELEASED − CONSUMED`. A negative value
+ * is returned as-is rather than floored, because a negative outstanding would be evidence of a real accounting fault.
  */
 export async function outstandingByPart(
   db: Queryable,
@@ -465,8 +687,7 @@ export async function readCommitmentHistory(
   workOrderId: string,
 ): Promise<readonly CommitmentEventRecord[]> {
   const { rows } = await db.query<CommitmentRow>(
-    `SELECT id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
-            idempotency_key
+    `SELECT ${ROW_COLUMNS}
        FROM ${SCHEMA}.inventory_commitments
       WHERE tenant_id = $1 AND work_order_id = $2
       ORDER BY created_at, id`,
@@ -474,6 +695,7 @@ export async function readCommitmentHistory(
   );
   return rows.map(toRecord);
 }
+
 
 // ════════════════════ the Work Order replay authority ════════════════════
 
@@ -629,17 +851,25 @@ export async function readWorkOrderEffects(
   }));
 }
 
+
 // ════════════════════ internals ════════════════════
+
+const ROW_COLUMNS = `id, tenant_id, operating_company_key, warehouse_id, work_order_id, sales_order_id,
+       sales_order_line_number, part_id, event_type, quantity, idempotency_key, request_fingerprint`;
 
 interface CommitmentRow {
   id: string;
   tenant_id: string;
   operating_company_key: string;
-  work_order_id: string;
+  warehouse_id: string;
+  work_order_id: string | null;
+  sales_order_id: string | null;
+  sales_order_line_number: number | null;
   part_id: string;
   event_type: CommitmentEventType;
   quantity: number;
   idempotency_key: string;
+  request_fingerprint: string;
 }
 
 function toRecord(row: CommitmentRow): CommitmentEventRecord {
@@ -647,11 +877,16 @@ function toRecord(row: CommitmentRow): CommitmentEventRecord {
     id: row.id,
     tenantId: row.tenant_id,
     operatingCompanyKey: row.operating_company_key,
+    warehouseId: row.warehouse_id,
+    source: row.work_order_id !== null
+      ? { kind: "WORK_ORDER", workOrderId: row.work_order_id }
+      : { kind: "SALES_ORDER", salesOrderId: row.sales_order_id as string, lineNumber: Number(row.sales_order_line_number) },
     workOrderId: row.work_order_id,
     partId: row.part_id,
     eventType: row.event_type,
     quantity: Number(row.quantity),
     idempotencyKey: row.idempotency_key,
+    fingerprint: row.request_fingerprint,
   };
 }
 
@@ -661,10 +896,7 @@ async function readByIdempotencyKey(
   idempotencyKey: string,
 ): Promise<CommitmentEventRecord | null> {
   const { rows } = await db.query<CommitmentRow>(
-    `SELECT id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
-            idempotency_key
-       FROM ${SCHEMA}.inventory_commitments
-      WHERE tenant_id = $1 AND idempotency_key = $2`,
+    `SELECT ${ROW_COLUMNS} FROM ${SCHEMA}.inventory_commitments WHERE tenant_id = $1 AND idempotency_key = $2`,
     [tenantId, idempotencyKey],
   );
   return rows[0] ? toRecord(rows[0]) : null;
@@ -676,6 +908,22 @@ async function readByIdempotencyKey(
  */
 function requireCompany(value: unknown): OperatingCompanyKey {
   return requireOperatingCompanyKey(value);
+}
+
+/** A hard reservation without an explicit warehouse is refused; there is no default and no derivation. */
+function requireWarehouse(value: unknown): void {
+  if (typeof value !== "string" || value.trim() === "" || value.trim() !== value || value.length > 200 || value.includes("/")) {
+    throw new InventoryCommitmentError("WAREHOUSE_REQUIRED", "an explicit warehouse (inventory location) is required; it is never defaulted or derived from the company");
+  }
+}
+
+function requireSource(source: unknown): void {
+  const s = source as DemandSource | null | undefined;
+  const ok = s !== null && typeof s === "object" && (
+    (s.kind === "WORK_ORDER" && typeof s.workOrderId === "string" && s.workOrderId.trim() !== "")
+    || (s.kind === "SALES_ORDER" && typeof s.salesOrderId === "string" && s.salesOrderId.trim() !== ""
+        && Number.isInteger(s.lineNumber) && s.lineNumber > 0));
+  if (!ok) throw new InventoryCommitmentError("DEMAND_REQUIRED", "exactly one demand source is required: a Work Order id, or a Sales Order id with a line number");
 }
 
 function requirePositiveQuantity(quantity: unknown, partId: string): void {
@@ -694,17 +942,12 @@ function requireNonEmpty(value: unknown, field: string): void {
 }
 
 /** Deterministic per-row replay identity, so replaying an operation replays each row it wrote. */
-function derivedKey(base: string, eventType: CommitmentEventType, partId: string): string {
-  return `${base}:${eventType}:${partId}`;
-}
-
-/** Stable iteration order, so a multi-row operation writes in the same order on every replay. */
-function sorted<T>(map: Map<string, T>): Array<[string, T]> {
-  return [...map.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+function derivedKey(base: string, eventType: CommitmentEventType, warehouseId: string, partId: string): string {
+  return `${base}:${eventType}:${warehouseId}:${partId}`;
 }
 
 /**
- * One transaction around a whole operation. All-or-nothing: a Work Order must never end up holding
+ * One transaction around a whole operation. All-or-nothing: a demand must never end up holding
  * half a reservation, which is the same rule `reserveParts()` states ("no partial reservations ever
  * land"). Never split these writes across round trips outside a transaction.
  */

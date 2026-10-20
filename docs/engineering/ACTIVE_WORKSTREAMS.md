@@ -449,6 +449,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
 - Lifecycle stage:     INTEGRATION (PR open)
 
+- Capability:          Lane S1b (2026-10-20) — hard stock reservations per operating company AND warehouse: reserve / release / consume / cancel with a lock-ordered no-oversell gate, replay by key + fingerprint, one audit row per applied command, serial Parts refused, readPartBalance per-location reserved / available with NOT_YET_ACTIVATED and SCOPE_PARTIAL
+- Agent/session:       Claude Code Lane S1b · Role: builder; controller merges
+- Branch / worktree:   `res/s1b-hard-reservations` · `.claude/worktrees/agent-ace14ced7aab07e51`
+- Base commit:         `e19dc610`
+- Owned paths:         `functions/src/eosOps/inventoryCommitmentRepository.ts` · the reserved/available block of `readPartBalance` in `functions/src/eosOps/partsReads.ts` · `functions/test/{stockReservationPostgres,eosOpsInventoryCommitment*,partBalancePostgres}.test.mjs` · `functions/test/support/{stockReservationMigration.mjs,pendingMigrations/}`
+- Shared paths req'd:  this registry · DECISIONS.md · SYSTEM_AUTHORITIES.md · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` · small additive edits to Postgres suites that call `readPartBalance`
+- Dependencies:        the controller writes migration `1764710000000_stock-reservation-company-warehouse` (SQL ships as `.sql.txt`); S1c (SO allocation command, UI, grants) follows
+- Expected outcome:    a hard reservation cannot lack a company or a warehouse, cannot oversell, replays safely and is governed end to end
+- Protected boundaries:none reached — no capability, grant, Firebase or production change; activation is an operator row
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 ## Ready for assignment
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.

@@ -25,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import pg from "pg";
 import * as repo from "../lib/eosOps/inventoryCommitmentRepository.js";
 import { OperatingCompanyAuthorityError } from "../lib/eosOps/operatingCompanyCustody.js";
+import { applyStockReservationMigration } from "./support/stockReservationMigration.mjs";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -36,6 +37,12 @@ const TENANT_B = "tenant-b";
 const COMPANY_A = "oc-alpha";
 const COMPANY_B = "oc-beta";
 const ACTOR = "uid-trusted-writer";
+// Warehouse ids are globally unique; each belongs to one tenant AND one company, which a commitment must state and agree with.
+const WH_A = "wh-ca-a";
+const WH_A2 = "wh-ca-a2";
+const WH_B = "wh-ca-b";
+const WH_T2 = "wh-ca-t2";
+const WO = (workOrderId) => ({ kind: "WORK_ORDER", workOrderId });
 
 let pool = null;
 function repoPool() {
@@ -67,6 +74,7 @@ async function reset() {
   migrate(["up"]);
   const seed = new pg.Client({ connectionString: URL });
   await seed.connect();
+  await applyStockReservationMigration(seed);
   for (const id of [TENANT_A, TENANT_B]) {
     await seed.query(
       "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",
@@ -90,6 +98,13 @@ async function reset() {
       );
     }
   }
+  const warehouse = (id, tenant, company) => seed.query(
+    `INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+     VALUES ($1,$2,$3,$1,'Site','ACTIVE','NATIVE','fixture','fixture')`, [id, tenant, company]);
+  await warehouse(WH_A, TENANT_A, COMPANY_A);
+  await warehouse(WH_A2, TENANT_A, COMPANY_A);
+  await warehouse(WH_B, TENANT_A, COMPANY_B);
+  await warehouse(WH_T2, TENANT_B, COMPANY_A);
   await seed.end();
 }
 
@@ -108,14 +123,6 @@ const enumLabels = (typeName) => query(
   [typeName],
 ).then((r) => r.rows.map((row) => row.enumlabel));
 
-const ctx = (overrides = {}) => ({
-  tenantId: TENANT_A,
-  operatingCompanyKey: COMPANY_A,
-  workOrderId: "wo-1",
-  actorId: ACTOR,
-  idempotencyKey: "op-1",
-  ...overrides,
-});
 
 // ============================ schema ============================
 
@@ -174,8 +181,8 @@ test("the operating company is mandatory on a commitment, with no default to fal
   await assert.rejects(
     () => query(
       `INSERT INTO eos_ops.inventory_commitments
-         (id, tenant_id, work_order_id, part_id, event_type, quantity, idempotency_key, created_by)
-       VALUES ('c1', $1, 'wo-1', 'p1', 'RESERVED', 1, 'k-raw', $2)`,
+         (id, tenant_id, warehouse_id, work_order_id, part_id, event_type, quantity, idempotency_key, request_fingerprint, created_by)
+       VALUES ('c1', $1, 'wh-ca-a', 'wo-1', 'p1', 'RESERVED', 1, 'k-raw', repeat('a', 64), $2)`,
       [TENANT_A, ACTOR],
     ),
     /null value in column "operating_company_key"/,
@@ -183,7 +190,7 @@ test("the operating company is mandatory on a commitment, with no default to fal
   // ...and the repository refuses first, with a reason instead of a constraint name.
   await assert.rejects(
     () => repo.recordCommitmentEvent(repoPool(), {
-      tenantId: TENANT_A, operatingCompanyKey: "", workOrderId: "wo-1", partId: "p1",
+      tenantId: TENANT_A, operatingCompanyKey: "", warehouseId: WH_A, source: WO("wo-1"), partId: "p1",
       eventType: "RESERVED", quantity: 1, idempotencyKey: "k-x", actorId: ACTOR,
     }),
     OperatingCompanyAuthorityError,
@@ -195,10 +202,10 @@ test("quantity is strictly positive at the SQL boundary too", { skip: SKIP }, as
     await assert.rejects(
       () => query(
         `INSERT INTO eos_ops.inventory_commitments
-           (id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity,
-            idempotency_key, created_by)
-         VALUES ($1, $2, $3, 'wo-1', 'p1', 'RESERVED', $4, $1, $5)`,
-        [`c-${bad}`, TENANT_A, COMPANY_A, bad, ACTOR],
+           (id, tenant_id, operating_company_key, warehouse_id, work_order_id, part_id, event_type, quantity,
+            idempotency_key, request_fingerprint, created_by)
+         VALUES ($1, $2, $3, $6, 'wo-1', 'p1', 'RESERVED', $4, $1, repeat('a', 64), $5)`,
+        [`c-${bad}`, TENANT_A, COMPANY_A, bad, ACTOR, WH_A],
       ),
       /commitment_quantity_positive/,
     );
@@ -208,171 +215,62 @@ test("quantity is strictly positive at the SQL boundary too", { skip: SKIP }, as
 test("a commitment belongs to a real tenant", { skip: SKIP }, async () => {
   await assert.rejects(
     () => repo.recordCommitmentEvent(repoPool(), {
-      tenantId: "tenant-that-does-not-exist", operatingCompanyKey: COMPANY_A, workOrderId: "wo-1",
+      tenantId: "tenant-that-does-not-exist", operatingCompanyKey: COMPANY_A, warehouseId: WH_A, source: WO("wo-1"),
       partId: "p1", eventType: "RESERVED", quantity: 1, idempotencyKey: "k-fk", actorId: ACTOR,
     }),
     /violates foreign key constraint/,
   );
 });
 
-// ============================ reserve / release / consume ============================
+// ============================ the ledger primitive (S1b) ============================
+//
+// The gated reserve / release / consume / cancel COMMANDS, the oversell and serial proofs are in
+// test/stockReservationPostgres.test.mjs. What is proved here is the STORAGE primitive and the derivations over it:
+// every row states a company AND a warehouse that agree, replay is by fingerprint, and the pool is per warehouse.
 
-test("reserve sums duplicate lines for one Part before writing, and writes one row per Part", { skip: SKIP }, async () => {
-  await reset();
-  // A Work Order's plan may legitimately carry two rows for one sku. Reserving them separately would
-  // size each against the same un-decremented figure; summing first is what the live path does.
-  const written = await repo.reserve(repoPool(), ctx(), [
-    { partId: "p1", quantity: 2 },
-    { partId: "p1", quantity: 3 },
-    { partId: "p2", quantity: 4 },
-  ]);
-  assert.deepEqual(written.map((w) => [w.record.partId, w.record.quantity, w.outcome]), [
-    ["p1", 5, "applied"],
-    ["p2", 4, "applied"],
-  ]);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 5);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p2"), 4);
+const row = (overrides = {}) => ({
+  tenantId: TENANT_A, operatingCompanyKey: COMPANY_A, warehouseId: WH_A, source: WO("wo-1"), partId: "p1",
+  eventType: "RESERVED", quantity: 1, idempotencyKey: "k-1", actorId: ACTOR, ...overrides,
 });
 
-test("replaying the same reserve operation commits nothing further", { skip: SKIP }, async () => {
+test("recordCommitmentEvent is idempotent by FINGERPRINT: same content replays, different content conflicts", { skip: SKIP }, async () => {
   await reset();
-  const lines = [{ partId: "p1", quantity: 5 }];
-  await repo.reserve(repoPool(), ctx(), lines);
-  const replay = await repo.reserve(repoPool(), ctx(), lines);
-
-  assert.deepEqual(replay.map((w) => w.outcome), ["replayed"], "the second run recognises itself");
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 5,
-    "a retried Work Order transition must not double-reserve");
+  const first = await repo.recordCommitmentEvent(repoPool(), row({ quantity: 5 }));
+  const replay = await repo.recordCommitmentEvent(repoPool(), row({ quantity: 5 }));
+  assert.deepEqual([first.outcome, replay.outcome], ["applied", "replayed"]);
+  assert.equal(replay.record.id, first.record.id);
+  assert.match(first.record.fingerprint, /^[0-9a-f]{64}$/);
+  await assert.rejects(() => repo.recordCommitmentEvent(repoPool(), row({ quantity: 9 })),
+    (err) => err instanceof repo.CommitmentIdempotencyConflictError, "swallowing this would drop a real commitment on the floor");
+  await assert.rejects(() => repo.recordCommitmentEvent(repoPool(), row({ quantity: 5, source: WO("wo-2") })),
+    (err) => err instanceof repo.CommitmentIdempotencyConflictError);
   const { rows } = await query("SELECT count(*)::int AS n FROM eos_ops.inventory_commitments");
   assert.equal(rows[0].n, 1);
 });
 
-test("the same idempotency key for a DIFFERENT commitment is a conflict, never a silent replay", { skip: SKIP }, async () => {
+test("committed is RESERVED - RELEASED - CONSUMED, floored at 0, and per warehouse", { skip: SKIP }, async () => {
   await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 5 }]);
-  await assert.rejects(
-    () => repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 9 }]),
-    (err) => err instanceof repo.CommitmentIdempotencyConflictError,
-    "swallowing this would drop a real commitment on the floor",
-  );
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 5);
-});
-
-test("reserve is ALL-OR-NOTHING: a refused line leaves no partial commitment behind", { skip: SKIP }, async () => {
-  await reset();
-  // Stage a conflicting row for p2 only. p1 sorts first and is written, then p2 conflicts -- if the
-  // operation were not one transaction, p1's reservation would survive as a half-applied dispatch.
-  await repo.recordCommitmentEvent(repoPool(), {
-    tenantId: TENANT_A, operatingCompanyKey: COMPANY_A, workOrderId: "wo-1", partId: "p2",
-    eventType: "RESERVED", quantity: 99, idempotencyKey: "op-1:RESERVED:p2", actorId: ACTOR,
-  });
-
-  await assert.rejects(
-    () => repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 1 }, { partId: "p2", quantity: 2 }]),
-    (err) => err instanceof repo.CommitmentIdempotencyConflictError,
-  );
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 0,
-    "no partial reservation ever lands");
-});
-
-test("release is derived from the COMMITMENT LEDGER, so a Part dropped from the plan is not orphaned", { skip: SKIP }, async () => {
-  await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 5 }, { partId: "p2", quantity: 2 }]);
-  // The plan is never consulted here. p2 could have been deleted from the Work Order entirely and
-  // its commitment would still be found and released -- the orphan leak a plan-driven loop cannot see.
-  const released = await repo.releaseOutstanding(repoPool(), ctx({ idempotencyKey: "op-cancel" }));
-
-  assert.deepEqual(released.map((w) => [w.record.partId, w.record.quantity]), [["p1", 5], ["p2", 2]]);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 0);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p2"), 0);
-  assert.deepEqual([...(await repo.outstandingByPart(repoPool(), TENANT_A, "wo-1"))], [["p1", 0], ["p2", 0]]);
-});
-
-test("releasing a Work Order that never reserved anything writes nothing and does not fail", { skip: SKIP }, async () => {
-  await reset();
-  const released = await repo.releaseOutstanding(repoPool(), ctx({ workOrderId: "wo-never", idempotencyKey: "op-c2" }));
-  assert.deepEqual(released, []);
-});
-
-test("consumption reconciles the commitment to ACTUAL usage: consume what was used, release the rest", { skip: SKIP }, async () => {
-  await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 5 }]);
-  const written = await repo.reconcileConsumption(repoPool(), ctx({ idempotencyKey: "op-complete" }), [
-    { partId: "p1", qtyPlanned: 5, qtyUsed: 3 },
-  ]);
-
-  assert.deepEqual(written.map((w) => [w.record.eventType, w.record.quantity]), [
-    ["CONSUMED", 3],
-    ["RELEASED", 2],
-  ], "no top-up was needed, and the unused remainder is not left stranded");
-  assert.deepEqual([...(await repo.outstandingByPart(repoPool(), TENANT_A, "wo-1"))], [["p1", 0]],
-    "the Work Order holds nothing further");
-});
-
-test("consumption tops the reservation up to the plan first, and only by the shortfall", { skip: SKIP }, async () => {
-  await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 2 }]);
-  const written = await repo.reconcileConsumption(repoPool(), ctx({ idempotencyKey: "op-complete" }), [
-    { partId: "p1", qtyPlanned: 5 }, // no qtyUsed recorded -> falls back to qtyPlanned
-  ]);
-  assert.deepEqual(written.map((w) => [w.record.eventType, w.record.quantity]), [
-    ["RESERVED", 3],
-    ["CONSUMED", 5],
-  ], "the top-up is the delta, never a re-reservation of the whole line");
-});
-
-test("consumption beyond the plan is REFUSED, not silently clamped", { skip: SKIP }, async () => {
-  await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 5 }]);
-  await assert.rejects(
-    () => repo.reconcileConsumption(repoPool(), ctx({ idempotencyKey: "op-complete" }), [
-      { partId: "p1", qtyPlanned: 5, qtyUsed: 7 },
-    ]),
-    (err) => err instanceof repo.InventoryCommitmentError && err.code === "CONSUMPTION_EXCEEDS_PLAN",
-    "clamping here would destroy the evidence that an overage happened",
-  );
-  const { rows } = await query(
-    "SELECT count(*)::int AS n FROM eos_ops.inventory_commitments WHERE event_type <> 'RESERVED'",
-  );
-  assert.equal(rows[0].n, 0, "the refusal wrote nothing at all");
-});
-
-// ============================ the derivations ============================
-
-test("committed quantity is RESERVED - RELEASED, and CONSUMED is deliberately not subtracted", { skip: SKIP }, async () => {
-  await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 10 }]);
-  await repo.reconcileConsumption(repoPool(), ctx({ idempotencyKey: "op-complete" }), [
-    { partId: "p1", qtyPlanned: 10, qtyUsed: 4 },
-  ]);
-  // RESERVED 10, CONSUMED 4, RELEASED 6.
-  //
-  // The live authority's arithmetic, preserved EXACTLY rather than re-derived: consumed quantity
-  // stays counted as committed. inventoryService.ts's openCommitment() explains why -- nothing
-  // removes consumed stock from physical on-hand there, so keeping it committed keeps it out of
-  // availability ("wrong reason, right number"). Whether eos_ops should instead subtract CONSUMED,
-  // now that ops_movement_type HAS a WORK_ORDER_CONSUMPTION movement, is DECISIONS #165's open
-  // ruling -- this package preserves the existing answer rather than making that decision.
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 4);
-  // The same rows, asked the OTHER question: what does this Work Order still hold? Nothing.
+  await repo.recordCommitmentEvent(repoPool(), row({ quantity: 10, idempotencyKey: "k-r" }));
+  await repo.recordCommitmentEvent(repoPool(), row({ quantity: 4, eventType: "CONSUMED", idempotencyKey: "k-c" }));
+  await repo.recordCommitmentEvent(repoPool(), row({ quantity: 6, eventType: "RELEASED", idempotencyKey: "k-l" }));
+  // CONSUMED is subtracted now (S1a section 3.1): a consumed unit leaves the shelf by its own movement and must not stay committed.
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A, "p1"), 0);
+  await repo.recordCommitmentEvent(repoPool(), row({ quantity: 3, warehouseId: WH_A2, idempotencyKey: "k-2", source: WO("wo-2") }));
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A2, "p1"), 3);
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A, "p1"), 0, "another warehouse's claim is not this one's");
   assert.deepEqual([...(await repo.outstandingByPart(repoPool(), TENANT_A, "wo-1"))], [["p1", 0]]);
 });
 
-test("committed quantity is floored at 0 and never reports a negative promise", { skip: SKIP }, async () => {
+test("committed is floored at 0 and never reports a negative promise; the per-demand fault is NOT hidden", { skip: SKIP }, async () => {
   await reset();
-  await repo.recordCommitmentEvent(repoPool(), {
-    tenantId: TENANT_A, operatingCompanyKey: COMPANY_A, workOrderId: "wo-odd", partId: "p1",
-    eventType: "RELEASED", quantity: 3, idempotencyKey: "k-odd", actorId: ACTOR,
-  });
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 0);
-  // Per Work Order the fault is NOT hidden: a negative outstanding is evidence of a real accounting
-  // error, and this derivation reports it rather than flooring it away.
+  await repo.recordCommitmentEvent(repoPool(), row({ source: WO("wo-odd"), eventType: "RELEASED", quantity: 3, idempotencyKey: "k-odd" }));
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A, "p1"), 0);
   assert.deepEqual([...(await repo.outstandingByPart(repoPool(), TENANT_A, "wo-odd"))], [["p1", -3]]);
 });
 
 test("a Part with no commitment at all is 0 committed and absent from the outstanding map", { skip: SKIP }, async () => {
   await reset();
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "never-seen"), 0);
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A, "never-seen"), 0);
   assert.deepEqual([...(await repo.outstandingByPart(repoPool(), TENANT_A, "wo-never"))], []);
 });
 
@@ -380,35 +278,31 @@ test("a Part with no commitment at all is 0 committed and absent from the outsta
 
 test("one tenant's commitments are invisible to another's derivations", { skip: SKIP }, async () => {
   await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 5 }]);
-  await repo.reserve(repoPool(), ctx({ tenantId: TENANT_B }), [{ partId: "p1", quantity: 7 }]);
-
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 5);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_B, COMPANY_A, "p1"), 7);
+  await repo.recordCommitmentEvent(repoPool(), row({ quantity: 5 }));
+  await repo.recordCommitmentEvent(repoPool(), row({ tenantId: TENANT_B, warehouseId: WH_T2, quantity: 7 }));
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A, "p1"), 5);
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_B, COMPANY_A, WH_T2, "p1"), 7);
   assert.deepEqual([...(await repo.outstandingByPart(repoPool(), TENANT_A, "wo-1"))], [["p1", 5]]);
   assert.deepEqual((await repo.readCommitmentHistory(repoPool(), TENANT_A, "wo-1")).map((r) => r.quantity), [5]);
 });
 
 test("the same idempotency key in two tenants is two commitments, not a collision", { skip: SKIP }, async () => {
-  // The unique index is (tenant_id, idempotency_key). A global key space would let one tenant's
-  // replay identity silently suppress another tenant's commitment.
+  // The unique index is (tenant_id, idempotency_key). A global key space would let one tenant's replay identity silently
+  // suppress another tenant's commitment.
   await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 1 }]);
-  const other = await repo.reserve(repoPool(), ctx({ tenantId: TENANT_B }), [{ partId: "p1", quantity: 1 }]);
-  assert.deepEqual(other.map((w) => w.outcome), ["applied"]);
+  await repo.recordCommitmentEvent(repoPool(), row());
+  const other = await repo.recordCommitmentEvent(repoPool(), row({ tenantId: TENANT_B, warehouseId: WH_T2 }));
+  assert.equal(other.outcome, "applied");
 });
 
-test("one operating company's commitments do not net against another's stock", { skip: SKIP }, async () => {
-  // Why the column is mandatory: the committed quantity exists to be subtracted from physical
-  // on-hand, and every inventory_movements row carries a company. Without this scoping a claim would
-  // be netted against every company's shelf at once.
+test("one operating company's commitments do not net against another's", { skip: SKIP }, async () => {
+  // Why the company is stated: the committed quantity exists to be subtracted from on-hand, and every movement carries a company.
   await reset();
-  await repo.reserve(repoPool(), ctx(), [{ partId: "p1", quantity: 5 }]);
-  await repo.reserve(repoPool(), ctx({ operatingCompanyKey: COMPANY_B, idempotencyKey: "op-b" }), [
-    { partId: "p1", quantity: 8 },
-  ]);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_A, "p1"), 5);
-  assert.equal(await repo.committedQuantityForPart(repoPool(), TENANT_A, COMPANY_B, "p1"), 8);
+  await repo.recordCommitmentEvent(repoPool(), row({ quantity: 5 }));
+  await repo.recordCommitmentEvent(repoPool(), row({ operatingCompanyKey: COMPANY_B, warehouseId: WH_B, quantity: 8, idempotencyKey: "k-b", source: WO("wo-b") }));
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_A, WH_A, "p1"), 5);
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_B, WH_B, "p1"), 8);
+  assert.equal(await repo.committedQuantity(repoPool(), TENANT_A, COMPANY_B, WH_A, "p1"), 0, "a company never reads another company's warehouse claims");
 });
 
 // ============================ the Work Order replay authority ============================

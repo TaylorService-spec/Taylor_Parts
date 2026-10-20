@@ -22,6 +22,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { applyStockReservationMigration } from "./support/stockReservationMigration.mjs";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
@@ -71,6 +72,7 @@ test("Company isolation for warehouse-scoped inventory: capability, then company
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
+  await applyStockReservationMigration(pool);
   const q = (text, values = []) => pool.query(text, values);
   const repo = new PostgresPolicyRepository(pool);
 

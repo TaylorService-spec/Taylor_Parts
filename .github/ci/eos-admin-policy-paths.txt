@@ -1001,3 +1001,8 @@ functions/src/eosOps/performanceGoalReads.ts
 functions/test/q1CommandAuditInventory.test.mjs
 functions/test/q1CommercialCrmAuditPostgres.test.mjs
 functions/src/eosAudit/commandAuditEvent.ts
+# S1b (2026-10-20): hard stock reservations per company and warehouse.
+functions/test/stockReservationPostgres.test.mjs
+functions/test/support/stockReservationMigration.mjs
+functions/test/support/pendingMigrations/1764710000000_stock-reservation-company-warehouse.sql.txt
+functions/src/eosOps/inventoryCommitmentRepository.ts

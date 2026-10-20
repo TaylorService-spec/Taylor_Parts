@@ -39,7 +39,8 @@ const neverQueried = {
 const validInput = {
   tenantId: "tenant-a",
   operatingCompanyKey: "oc-alpha",
-  workOrderId: "wo-1",
+  warehouseId: "wh-1",
+  source: { kind: "WORK_ORDER", workOrderId: "wo-1" },
   partId: "p1",
   eventType: "RESERVED",
   quantity: 1,
@@ -74,11 +75,12 @@ test("a commitment row writes to inventory_commitments and never to inventory_mo
   // The repository is the only writer this migration ships. If it mentioned the movement table at
   // all, a commitment could reach it.
   const code = REPOSITORY.split("\n").filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*")).join("\n");
-  assert.doesNotMatch(code, /inventory_movements/, "the commitment repository never touches the movement ledger");
+  // S1b: the reserve GATE reads on-hand from the movement ledger (one arithmetic), but it never writes there.
+  assert.doesNotMatch(code, /(INSERTs+INTO|UPDATE|DELETEs+FROM)s+${SCHEMA}.inventory_movements/, "the commitment repository never writes the movement ledger");
   assert.doesNotMatch(code, /serialized_custody/, "nor the custody pointer");
 });
 
-test("the commitment table declares no location, no tracking mode and no serial identity", () => {
+test("the ORIGINAL commitment table declares no location, no tracking mode and no serial identity (S1b adds warehouse_id by a later migration)", () => {
   // Not an omission to be fixed later: a commitment has never had a location (the live reservation
   // is "summed across ALL locations"), and inventing one would assert a warehouse choice neither
   // demand family makes.
