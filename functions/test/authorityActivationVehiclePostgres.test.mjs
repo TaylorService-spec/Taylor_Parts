@@ -253,7 +253,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
     "1764710000000_stock-reservation-company-warehouse.sql",
     // F-1b governed invoice corrections (2026-10-20): invoice_corrections, three finance approval capabilities (NO grants), the CUSTOMER_REFUND settlement kind and the void / fact triggers.
-    "1764712000000_invoice-corrections.sql"],
+    "1764712000000_invoice-corrections.sql",
+    // S1c Sales Order allocation (2026-10-20): salesOrder.fulfill registered (BUSINESS_ACTION) and granted to admin, dispatcher, owner by Firebase parity (3 grants).
+    "1764714000000_sales-order-allocation-capability.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -496,6 +498,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // S1c Sales Order allocation (1764714000000): -1 capability (salesOrder.fulfill), -3 grants (admin, dispatcher, owner); its down refuses only while a Sales Order commitment, an Administration decision or a direct grant exists
+    assert.deepEqual(await counts(), { caps: 202, grants: 729, mine: 26 });
     runMigrate(url, "down", 1); // F-1b invoice corrections (1764712000000): -3 capabilities (finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve), NO grants, one table dropped; its down refuses while a correction, a refund record, an adjustment fact or a voided invoice exists
     assert.deepEqual(await counts(), { caps: 199, grants: 729, mine: 26 });
     runMigrate(url, "down", 1); // S1b hard stock reservations (1764710000000): schema only (columns, triggers, the activation table); its down refuses only while a commitment or an activation row exists
@@ -650,7 +654,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the F-1b invoice corrections migration (1764712000000) first -- 3 capabilities, no grants, one table
+    runMigrate(url, "down", 1); // peel the S1c Sales Order allocation migration (1764714000000) first -- 1 capability, 3 grants
+    runMigrate(url, "down", 1); // then the F-1b invoice corrections migration (1764712000000) -- 3 capabilities, no grants, one table
     runMigrate(url, "down", 1); // peel the S1b hard stock reservations migration (1764710000000) first -- schema only
     runMigrate(url, "down", 1); // then the F-1a issue invoice migration (1764700000000) -- schema only
     runMigrate(url, "down", 1); // then the G-1 performance goal authoring migration (1764690000000) -- 4 capabilities, 32 grants, one table

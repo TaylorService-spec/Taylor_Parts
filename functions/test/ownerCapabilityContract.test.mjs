@@ -171,6 +171,7 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "salesAgreement.create",
   "salesAgreement.read",
   "salesAgreement.updateDraft",
+  "salesOrder.fulfill", // S1c (migration 1764714000000): Firebase parity (OWNER_COMMERCIAL_AUTHORITY); 92 -> 93.
   "salesOrder.read",
   "salesOrder.write",
   "warehouse.record.read",
@@ -227,7 +228,7 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
 
 check("Owner's governed (in-vocabulary) capabilities are exactly the 88 in the contract", () => {
   assert.deepEqual(ownerInVocabulary, [...OWNER_CONTRACT_IN_VOCABULARY].sort());
-  assert.equal(ownerInVocabulary.length, 92, "92 governed capabilities -- the four G-1 performance.goal authoring keys (1764690000000) + the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3) + the 39 B4 report/goal keys (1764650000000)");
+  assert.equal(ownerInVocabulary.length, 93, "93 governed capabilities -- salesOrder.fulfill (S1c, 1764714000000) + the four G-1 performance.goal authoring keys (1764690000000) + the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3) + the 39 B4 report/goal keys (1764650000000)");
 });
 
 check("administration READS do not separate Owner from Administrator", () => {
@@ -440,7 +441,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 194 -> 195: finance.accountBalance.read (A6 customer-balance summary, 1764680000000), granted to eight operational Roles.
   // 195 -> 199: performance.goal.create / .approve / .supersede / .retire (G-1 performance goal authoring (2026-10-20), 1764690000000), granted to the eight Firebase-holder Roles.
   // 199 -> 202: finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve (F-1b, 1764712000000), granted to NOBODY.
-  assert.equal(VOCABULARY.size, 202);
+  // 202 -> 203: salesOrder.fulfill (S1c Sales Order allocation, 1764714000000), granted to admin, dispatcher and owner.
+  assert.equal(VOCABULARY.size, 203);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

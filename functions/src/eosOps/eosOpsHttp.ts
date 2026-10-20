@@ -41,6 +41,7 @@ import {
 import { ReorderAssignmentError, assignReorderRequestToEmployee, listReorderAssignmentTargets } from "./reorderAssignmentAuthority.js";
 import { listInventoryLocations, listInventoryWarehouses, listPurchaseOrderSupplierOptions, listReceipts, listReceivingLocationOptions, listSuppliers, listTransferOrders, listTruckRoster, readInventoryMovements, readInventoryOnHand, readPartBalance, readReceipt, readTruckStock } from "./partsReads.js";
 import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
+import { allocateSalesOrderLine, readSalesOrderAllocations, releaseSalesOrderAllocation } from "./salesOrderAllocation.js";
 import {
   listReceivableSupplierPurchaseOrders, listSupplierReceivingLocationOptions, readSupplierPurchaseOrderProgress, receiveSupplierPurchaseOrder,
 } from "./supplierPurchaseOrderReceiving.js";
@@ -149,6 +150,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   // THE PART BALANCE (Firebase exit B3-x): on-hand / reserved / available / on-order of ONE Part, three-valued, scoped to the caller's
   // companies and warehouses -- inventory.transaction.read (the on-hand read's key).
   "readPartBalance",
+  // S1c: the allocations on one Sales Order (salesOrder.fulfill or salesOrder.read; company authority; the caller's warehouse scope).
+  "readSalesOrderAllocations",
   // RECORDS AND REPORTING (Firebase exit B4, DECISIONS #B4). Each is its OWN authority -- not behind the Reorder activation boundary: the Account's imported
   // service history (customer.record.read + the caller's companies), the Data Import job history (admin.dataImport.execute), the saved report definitions
   // (reportDefinition.read, the caller's own), a report run (report.<object>.read + fields + the caller's companies) and the three performance-goal reads.
@@ -213,6 +216,9 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   // P-1: supplier purchase order authoring -- the capability of the ACTION (create / approve / send / cancel) + company authority (+ the WAREHOUSE scope to create).
   "createSupplierPurchaseOrder",
   "transitionSupplierPurchaseOrder",
+  // S1c: Sales Order allocation -- a hard reservation (S1b) of a line's quantity at a warehouse the caller states. salesOrder.fulfill + company authority + the WAREHOUSE scope.
+  "allocateSalesOrderLine",
+  "releaseSalesOrderAllocation",
   // B3-x: the supplier-PO receipt correction (VOID): inventory.receipt.correct + company authority + the WAREHOUSE scope. No fallback to or from correctReorderReceipt.
   "correctSupplierPurchaseOrderReceipt",
   // RECORDS AND REPORTING (B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
@@ -287,6 +293,9 @@ export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsOperation,
   listPurchasableReorderRequests: "/operations/inventory",
   createSupplierPurchaseOrder: "/operations/inventory",
   transitionSupplierPurchaseOrder: "/operations/inventory",
+  allocateSalesOrderLine: "/operations/inventory",
+  releaseSalesOrderAllocation: "/operations/inventory",
+  readSalesOrderAllocations: "/operations/inventory",
   readSupplierPurchaseOrderProgress: "/operations/inventory",
   listSupplierReceivingLocationOptions: "/operations/inventory",
   listLegacyInventoryActionNotes: "/operations/inventory",
@@ -427,6 +436,8 @@ const REORDER_AUTHORITY_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "listLegacyInventoryActionNotes", "readPartBalance", "correctSupplierPurchaseOrderReceipt",
   // P-1: supplier purchase order authoring.
   "listSupplierPurchaseOrders", "readSupplierPurchaseOrder", "listPurchasableReorderRequests", "createSupplierPurchaseOrder", "transitionSupplierPurchaseOrder",
+  // S1c: Sales Order allocation (hard stock reservations) sits behind the same boundary as the stock authority it draws on.
+  "allocateSalesOrderLine", "releaseSalesOrderAllocation", "readSalesOrderAllocations",
 ]);
 
 export type OperationsApiFailureCode =
@@ -680,6 +691,18 @@ export async function executeOperation(
       case "readSupplierPurchaseOrder": {
         const { actor, pool } = await reorderActor();
         return ok(await readSupplierPurchaseOrder({ pool }, actor, request.input ?? {}));
+      }
+      case "allocateSalesOrderLine": {
+        const { actor, pool } = await reorderActor();
+        return ok(await allocateSalesOrderLine({ pool }, actor, request.input ?? {}));
+      }
+      case "releaseSalesOrderAllocation": {
+        const { actor, pool } = await reorderActor();
+        return ok(await releaseSalesOrderAllocation({ pool }, actor, request.input ?? {}));
+      }
+      case "readSalesOrderAllocations": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readSalesOrderAllocations({ pool }, actor, request.input ?? {}));
       }
       case "listPurchasableReorderRequests": {
         const { actor, pool } = await reorderActor();

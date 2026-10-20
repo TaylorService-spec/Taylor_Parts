@@ -3,7 +3,6 @@ import { salesOrderCommandClient } from "../services/salesOrderCommandClient.js"
 import {
   outcomeFromErrorCode,
   outcomeFromTransitionResult,
-  outcomeFromAllocateResult,
   outcomeFromServiceResult,
 } from "../domain/salesOrderActions.js";
 
@@ -29,7 +28,7 @@ function newIdempotencyKey() {
 // failed attempt -- that is exactly the retry case this exists to protect.
 export function useSalesOrderActions(salesOrderId, deps) {
   const client = deps?.client ?? salesOrderCommandClient;
-  const [pending, setPending] = useState({ advance: false, cancel: false, allocate: false, service: false });
+  const [pending, setPending] = useState({ advance: false, cancel: false, service: false });
   const transitionKeysRef = useRef({});
 
   // A retained key MUST NOT survive a change of Sales Order.
@@ -76,19 +75,6 @@ export function useSalesOrderActions(salesOrderId, deps) {
     }
   }, [salesOrderId, client]);
 
-  const runAllocate = useCallback(async () => {
-    setPending((p) => ({ ...p, allocate: true }));
-    try {
-      const { result, errorStatus } = await client.allocateSalesOrder({ salesOrderId });
-      if (errorStatus) {
-        throw Object.assign(new Error(outcomeFromErrorCode(errorStatus).message), { outcome: outcomeFromErrorCode(errorStatus) });
-      }
-      return outcomeFromAllocateResult(result);
-    } finally {
-      setPending((p) => ({ ...p, allocate: false }));
-    }
-  }, [salesOrderId, client]);
-
   const runCreateService = useCallback(async () => {
     setPending((p) => ({ ...p, service: true }));
     try {
@@ -102,5 +88,5 @@ export function useSalesOrderActions(salesOrderId, deps) {
     }
   }, [salesOrderId, client]);
 
-  return { pending, runTransition, runAllocate, runCreateService, peekTransitionIntentKey, discardTransitionIntent };
+  return { pending, runTransition, runCreateService, peekTransitionIntentKey, discardTransitionIntent };
 }

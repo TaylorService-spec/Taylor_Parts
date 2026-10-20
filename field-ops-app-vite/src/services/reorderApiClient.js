@@ -60,6 +60,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "listLegacyInventoryActionNotes",
   // Firebase exit B3-x: one Part's on-hand / reserved / available / on-order.
   "readPartBalance",
+  // S1c: the allocations on one Sales Order and the warehouses the caller may allocate from (services/salesOrderCommandClient.js).
+  "readSalesOrderAllocations",
   // Firebase exit B4: records and reporting (services/eosRecordsClients.js) -- imported service history, Data Import history, Report Builder / Saved Reports and
   // the three performance-goal reads. Each is its own authority on the server (not behind the Reorder boundary).
   "listImportedServiceHistory",
@@ -103,6 +105,9 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   // P-1: supplier purchase order authoring (create; approve / send / cancel are ONE transition command).
   "createSupplierPurchaseOrder",
   "transitionSupplierPurchaseOrder",
+  // S1c: Sales Order allocation (a hard reservation at a stated warehouse) and its release.
+  "allocateSalesOrderLine",
+  "releaseSalesOrderAllocation",
   // Firebase exit B3-x: the supplier-PO receipt correction (VOID only).
   "correctSupplierPurchaseOrderReceipt",
   // Firebase exit B4: Data Import of SERVICE_HISTORY and the saved report definitions.

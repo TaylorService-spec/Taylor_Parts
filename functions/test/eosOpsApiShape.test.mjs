@@ -51,6 +51,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       "readSupplierPurchaseOrderProgress", "listSupplierReceivingLocationOptions", "listLegacyInventoryActionNotes",
       // The Part balance (Firebase exit B3-x): on-hand / reserved / available / on-order of one Part, three-valued.
       "readPartBalance",
+      // Sales Order allocation (S1c, DECISIONS #S1c): the allocations on one order, and the warehouses the caller may allocate from.
+      "readSalesOrderAllocations",
       // Records and reporting (Firebase exit B4, DECISIONS #B4): imported service history, Data Import history, saved report definitions, a report run, performance goals.
       "listImportedServiceHistory", "listDataImportJobs", "listSavedReportDefinitions", "readSavedReportDefinition", "runReportDefinition",
       "listCurrentPerformanceGoals", "listPerformanceGoalVersions", "listGoalSubjects",
@@ -72,6 +74,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "receiveSupplierPurchaseOrder",
     // Supplier purchase order authoring (P-1): create, and approve / send / cancel as ONE transition command.
     "createSupplierPurchaseOrder", "transitionSupplierPurchaseOrder",
+    // Sales Order allocation (S1c): a hard reservation of a line's quantity at a stated warehouse, and its release.
+    "allocateSalesOrderLine", "releaseSalesOrderAllocation",
     // The supplier-PO receipt correction (Firebase exit B3-x): VOID only; no fallback to or from correctReorderReceipt.
     "correctSupplierPurchaseOrderReceipt",
     // Records and reporting (Firebase exit B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
@@ -256,7 +260,8 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // + the supplier purchase order receipt and its three reads, and the archived legacy notes read (Firebase exit B3, DECISIONS #B3): 39 -> 44.
   // + readPartBalance and correctSupplierPurchaseOrderReceipt (Firebase exit B3-x): 44 -> 46.
   // + supplier purchase order authoring (P-1): three reads and two commands: 46 -> 51.
-  assert.equal(reorderOps.length, 51);
+  // + Sales Order allocation (S1c): one read and two commands: 51 -> 54.
+  assert.equal(reorderOps.length, 54);
   for (const operation of reorderOps) {
     const r = await executeOperation({ reader: untouchable, pool: untouchable, reorderPostgresActive: false },
       { caller: { externalSubject: "x", identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });

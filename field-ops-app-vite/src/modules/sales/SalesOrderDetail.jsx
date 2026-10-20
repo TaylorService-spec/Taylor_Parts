@@ -10,6 +10,7 @@ import LifecycleBand from "../../shared/ui/LifecycleBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import SalesOrderActions from "./SalesOrderActions.jsx";
 import SalesOrderFulfillmentSection from "./SalesOrderFulfillmentSection.jsx";
+import SalesOrderAllocation from "./SalesOrderAllocation.jsx";
 import { useAccountNamesWithStatus, ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
 import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/referenceResolution.js";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
@@ -290,7 +291,7 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
         <span className="ns-suggest__label">Suggested</span>
         {intelligence?.speak ? (
           <span>
-            {intelligence.observedFact} {intelligence.businessConsequence} Use Allocate above to run the governed allocation.
+            {intelligence.observedFact} {intelligence.businessConsequence} Use the Allocation section to allocate stock.
           </span>
         ) : (
           <span>Nothing is proposed for this order.</span>
@@ -342,6 +343,12 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
               </div>
             )}
           </RuledSection>
+
+          {/* STOCK ALLOCATION (S1c). A hard reservation of a PART line's quantity at a warehouse the caller chooses. Everything it offers comes
+              from one server read; it is absent for an order with no PART line. `actionDeps.allocationClient` is the test seam. */}
+          {view.lines.some((l) => l.kind === "PART") ? (
+            <SalesOrderAllocation salesOrderId={view.id} client={actionDeps?.allocationClient} onChanged={refetch} />
+          ) : null}
 
           {/* Fulfillment & Installation — a READ-ONLY projection over records that already exist.
               `workOrders` stays null until a governed linked-Work-Order read is wired, and null

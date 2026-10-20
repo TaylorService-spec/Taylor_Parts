@@ -20,6 +20,7 @@ import {
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
 import { salesOrderFulfillmentLines, salesOrderFullyFulfilled } from "../fulfillment/salesOrderFulfillmentAuthority";
+import { releaseSalesOrderClaims } from "../../eosOps/salesOrderAllocation";
 import {
   insertSalesOrder, lockAgreementForOpportunity, lockOpportunity, lockOrderForOpportunity, lockOrderState, newRecordId,
   type AgreementRow, type OpportunityRow,
@@ -229,6 +230,9 @@ export function transitionSalesOrder(deps: CommercialCommandDeps, actor: Commerc
         `UPDATE eos_commercial.sales_orders SET state = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2`,
         [actor.tenantId, order.id, patch.state, actor.principalId],
       );
+      // S1c (S1a OD-11): a ledger has no implicit release. Entering CANCELLED, FULFILLED or CLOSED ends the order's claim on stock, so every hard
+      // reservation its lines hold is released in THIS transaction (the order row is already locked). Nothing held writes nothing.
+      await releaseSalesOrderClaims(db, { tenantId: actor.tenantId, salesOrderId: order.id, toState: patch.state, actorId: actor.principalId });
       return {
         result: { salesOrderId: order.id, state: patch.state }, target: { family: "salesOrder" as const, id: order.id },
         audit: {

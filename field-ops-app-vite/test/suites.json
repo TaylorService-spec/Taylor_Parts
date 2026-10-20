@@ -1320,6 +1320,10 @@
     {
       "file": "test/eosGoalAuthoringClient.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/salesOrderAllocationClient.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

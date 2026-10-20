@@ -1,6 +1,5 @@
 // Sweep R1-9 -- pins the fix for SalesOrderActions.jsx's ConfirmDialog usages: only CANCEL is a
-// genuinely destructive action. ADVANCE (a routine forward lifecycle step), ALLOCATE (a read/compute
-// action the dialog's own consequence text says "does not change pricing or quote terms"), and SERVICE
+// genuinely destructive action. ADVANCE (a routine forward lifecycle step) and SERVICE
 // (creates a Work Order) must NOT render with ConfirmDialog's destructive-default AlertTriangle icon /
 // "Destructive action" label / red confirm button -- that falsely signals irreversible harm for routine
 // actions. Renders the REAL ConfirmDialog (not mocked) so the assertion exercises the actual prop wiring,
@@ -10,9 +9,8 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 vi.mock("../src/hooks/useSalesOrderActions.js", () => ({
   useSalesOrderActions: () => ({
-    pending: { advance: false, cancel: false, allocate: false, service: false },
+    pending: { advance: false, cancel: false, service: false },
     runTransition: vi.fn(),
-    runAllocate: vi.fn(),
     runCreateService: vi.fn(),
     discardTransitionIntent: vi.fn(),
   }),
@@ -43,13 +41,6 @@ describe("SalesOrderActions -- ConfirmDialog destructive styling matches actual 
     render(<SalesOrderActions view={BASE_VIEW} onChanged={() => {}} hasCapability={GRANTED} />);
     fireEvent.click(screen.getByRole("button", { name: /Move to In Fulfillment/ }));
     expect(screen.getByText("Advance Sales Order")).toBeTruthy();
-    expect(screen.queryByText("Destructive action")).toBeNull();
-  });
-
-  it("ALLOCATE dialog is not styled as destructive", () => {
-    render(<SalesOrderActions view={BASE_VIEW} onChanged={() => {}} hasCapability={GRANTED} />);
-    fireEvent.click(screen.getByRole("button", { name: "Allocate" }));
-    expect(screen.getByText("Allocate Sales Order")).toBeTruthy();
     expect(screen.queryByText("Destructive action")).toBeNull();
   });
 
