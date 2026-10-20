@@ -305,6 +305,7 @@
     "test/grant1OwnerPolicyGrantsPostgres.test.mjs",
     "test/a6AccountBalanceSummaryPostgres.test.mjs",
     "test/g1GoalAuthoringPostgres.test.mjs",
-    "test/q1CommercialCrmAuditPostgres.test.mjs"
+    "test/q1CommercialCrmAuditPostgres.test.mjs",
+    "test/scannerScenariosOnEosPostgres.test.mjs"
   ]
 }

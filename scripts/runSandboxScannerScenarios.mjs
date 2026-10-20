@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+// SUPERSEDED (2026-10-20, lane SCAN-PORT). This runner targets the RETIRED Firebase callables of a live sandbox and needs a real
+// persona password, so it can no longer be run and is not a regression test. Every one of its thirteen scenarios is ported to the
+// EOS API and runs in CI on a disposable PostgreSQL, with no live environment and no credential:
+//   functions/test/scannerScenariosOnEosPostgres.test.mjs        server: the scenario-by-scenario mapping is in its header
+//   field-ops-app-vite/test/scannerScenarioInput.test.jsx        client: physical-scanner (wedge) and camera input
+// The file is kept, not deleted, as the record of what the scenarios asserted. Do not extend it; extend the tests above.
+//
 // THE THIRTEEN SANDBOX SCANNER SCENARIOS -- run as real personas against the real deployed callables.
 //
 // Run: node scripts/runSandboxScannerScenarios.mjs
