@@ -1,0 +1,58 @@
+{
+  "$comment": "S1a stock-reservation spec companion, 2026-10-20. Firebase-parity holders derived READ-ONLY from functions/src/access/{compatibilityRoles,governedBusinessRoles,permissionCatalog}.ts at main 09a82d3e. Nothing was written to a role, a grant, a database or a fixture. No migration is proposed by this file; the rows below are the set an S1c migration would carry IF Owner Decision 12 confirms parity.",
+  "decision": "Owner decision 2026-10-19: sales-order allocation and create-service are rebuilt in EOS (S-1, supersedes ruling D2). Grants here are PROPOSED parity only; none is authorized by this file.",
+  "baseline": {
+    "firebaseSource": "main 09a82d3e functions/src/access/{compatibilityRoles.ts:112-113, governedBusinessRoles.ts:175-177, permissionCatalog.ts:253-270}",
+    "eosSource": "migrations/1759536000000_commercial-capability-vocabulary.sql:16 (deliberately NOT registered); roleCapabilityAuthorityBaseline.json (no salesOrder.fulfill / salesOrder.service rows)"
+  },
+  "keys": {
+    "salesOrder.fulfill": {
+      "firebaseHolders": ["admin", "dispatcher", "owner"],
+      "derivedFrom": {
+        "admin": "ADMIN_ALL_PERMISSIONS = whole catalog (and SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS:112)",
+        "dispatcher": "SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS:112",
+        "owner": "OWNER_COMMERCIAL_AUTHORITY:175"
+      },
+      "firebaseConditioned": [],
+      "eosRegistered": false,
+      "eosHolders": []
+    },
+    "salesOrder.service": {
+      "firebaseHolders": ["admin", "dispatcher", "owner"],
+      "derivedFrom": {
+        "admin": "ADMIN_ALL_PERMISSIONS = whole catalog (and SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS:113)",
+        "dispatcher": "SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS:113",
+        "owner": "OWNER_COMMERCIAL_AUTHORITY:177"
+      },
+      "firebaseConditioned": [],
+      "eosRegistered": false,
+      "eosHolders": []
+    }
+  },
+  "reservationKeys": {
+    "firebase": [],
+    "note": "Firebase has no reservation capability. reserveParts / releaseParts / consumeParts are system effects of Work Order edges (triggerInventoryEffects, after transitionWorkOrder). Parity design: no new key, no new grant. A manual hold/release command has no Firebase analogue and would be a non-parity grant (Owner Decision 6)."
+  },
+  "proposedRegistration": [
+    { "capability": "salesOrder.fulfill", "actionKind": "BUSINESS_ACTION", "postgresNative": true },
+    { "capability": "salesOrder.service", "actionKind": "BUSINESS_ACTION", "postgresNative": true }
+  ],
+  "toAdd": [
+    { "role": "admin", "capability": "salesOrder.fulfill" },
+    { "role": "dispatcher", "capability": "salesOrder.fulfill" },
+    { "role": "owner", "capability": "salesOrder.fulfill" },
+    { "role": "admin", "capability": "salesOrder.service" },
+    { "role": "dispatcher", "capability": "salesOrder.service" },
+    { "role": "owner", "capability": "salesOrder.service" }
+  ],
+  "toAddCount": 6,
+  "toRemove": [],
+  "excluded": [
+    { "roles": ["salesManager", "salesperson", "generalManager", "officeManager", "partsManager", "warehouseManager", "fieldManager"], "capabilities": ["salesOrder.fulfill", "salesOrder.service"], "reason": "Not Firebase holders. Any extension is a separate Owner ruling." }
+  ],
+  "notes": [
+    "Explicit VALUES only; protected roles matched as protected rows; ON CONFLICT DO NOTHING; no DELETE; no sweep.",
+    "Firebase registered both keys active:false (sandbox-activated, production off). The EOS grant is live in whichever environment the migration runs; production activation is a separate operator step and Owner gate.",
+    "salesOrder.write already has EOS holders (admin, dispatcher, generalManager, owner, salesManager, salesperson); those are unchanged and are not parity for fulfill/service."
+  ]
+}
