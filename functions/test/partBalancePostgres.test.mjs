@@ -121,7 +121,7 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
   const commit = (partId, eventType, quantity, companyKey = "sample-co", warehouseId = companyKey === "ventana-co" ? "wh-v" : "wh-1") => q(
     `INSERT INTO eos_ops.inventory_commitments (id, tenant_id, operating_company_key, warehouse_id, work_order_id, part_id, event_type, quantity, idempotency_key, request_fingerprint, created_by)
      VALUES ($1,'t1',$2,$3,'wo-fixture',$4,$5,$6,$1,repeat('a', 64),'fixture')`, [`cmt-bal-${++seq}`, companyKey, warehouseId, partId, eventType, quantity]);
-  const activate = (companyKey) => q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by) VALUES ('t1',$1,'fixture')`, [companyKey]);
+  const activate = (companyKey) => q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1',$1,'fixture','test activation')`, [companyKey]);
   const reorder = async (partId, warehouseId, status, quantity, companyKey = "sample-co") => {
     const id = `rr-bal-${++seq}`;
     await q(`INSERT INTO eos_ops.reorder_requests (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity, updated_by, provenance, requested_by, received_at)
@@ -194,6 +194,20 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
     // A truck is not warehouse stock: a MOBILE movement never counts.
     await move("PART-A", "MOBILE", "truck-9", 50);
     assert.deepEqual(fig((await balance("PART-A")).onHand), ["KNOWN", 13]);
+  });
+
+  await t.test("the read's per-warehouse on-hand IS the gate's on-hand (one arithmetic, bins rolled up)", async () => {
+    for (const partId of ["PART-A", "PART-B", "PART-C"]) {
+      const b = await balance(partId, actor(receiver2));
+      for (const l of b.byLocation) {
+        assert.equal(l.quantity, await ledger.sellableOnHandAtWarehouse(pool, "t1", "sample-co", l.warehouseId, partId), `${partId} at ${l.warehouseId}`);
+        assert.equal(l.available.value, Math.max(0, l.quantity - await ledger.committedQuantity(pool, "t1", "sample-co", l.warehouseId, partId)), "available = on-hand - committed, the gate's formula");
+      }
+    }
+    // The same equality when the gate is the one asked first: bins and a WAREHOUSE row of wh-1 sum to the read's figure.
+    const a = await balance("PART-A");
+    assert.equal(a.byLocation[0].quantity, 13);
+    assert.equal(await ledger.sellableOnHandAtWarehouse(pool, "t1", "sample-co", "wh-1", "PART-A"), 13);
   });
 
   await t.test("reserved is the HARD reservations per company AND warehouse (RESERVED - RELEASED - CONSUMED), the gate's own arithmetic; available floors at 0", async () => {

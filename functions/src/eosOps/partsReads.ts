@@ -279,6 +279,7 @@ export async function readPartBalance(deps: { readonly pool: Pool }, actor: Reor
       `SELECT EXISTS (
          SELECT 1 FROM eos_ops.warehouses w
           WHERE w.tenant_id = $1 AND w.operating_company_key = ANY($2::text[]) AND w.status::text = 'ACTIVE' AND NOT (w.id = ANY($3::text[]))
+            AND NOT (w.id = ANY($5::text[]))
             AND (EXISTS (SELECT 1 FROM eos_ops.inventory_commitments k
                           WHERE k.tenant_id = w.tenant_id AND k.warehouse_id = w.id AND k.part_id = $4)
               OR EXISTS (SELECT 1 FROM eos_ops.inventory_movements m
@@ -288,7 +289,7 @@ export async function readPartBalance(deps: { readonly pool: Pool }, actor: Reor
                               OR (m.location_type::text = 'BIN' AND m.location_id IN
                                     (SELECT b.id FROM eos_ops.bins b WHERE b.tenant_id = w.tenant_id AND b.warehouse_id = w.id)))))
        ) AS partial`,
-      [actor.tenantId, keys, scope, partId]);
+      [actor.tenantId, keys, scope, partId, [...PRESENTATION_EXCLUDED]]);
     const scopePartial = outside.rows[0]?.partial === true;
 
     const reservedAt = (warehouseId: string): BalanceFigure =>

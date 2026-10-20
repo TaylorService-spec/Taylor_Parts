@@ -287,7 +287,7 @@ test("SCAN-PORT: the scanner scenarios on EOS (real PostgreSQL, real transports)
   });
   await t.test("SCN-4 'available' nets open HARD reservations (S1b): a claim at the warehouse lowers available, never on-hand, and unallocated demand does not", async () => {
     const ledger = require("../lib/eosOps/inventoryCommitmentRepository.js");
-    await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by) VALUES ($1,'taylor','fixture')`, [TENANT]);
+    await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ($1,'taylor','fixture','scenario activation')`, [TENANT]);
     await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('cust-scn-4',$1,'Cust','ACTIVE','f','f')`, [TENANT]);
     await q(`INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, status, work_order_type, priority, customer_id, location_id,
                provenance, created_by_principal_id, created_at, updated_at)

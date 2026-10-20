@@ -25,7 +25,9 @@
 //
 // ════════════════════ NO OVERSELL: LOCK ORDER ════════════════════
 //
-// Every writer takes `lockStockLocation(tenant, part, 'WAREHOUSE', warehouse)` for each Part, in sorted Part order
+// Order everywhere: the DEMAND lock (one per Work Order / Sales Order line) first, then the per-Part locks in sorted order.
+// The demand lock makes "release everything" and "cancel" read a claim set that cannot change under them; it never
+// serialises different demands against each other. Every writer takes `lockStockLocation(tenant, part, 'WAREHOUSE', warehouse)` for each Part, in sorted Part order
 // (deadlock-free), BEFORE it reads on-hand or commitments, and holds it to the end of its transaction. Two concurrent
 // reservations of the last unit therefore serialize on the same lock, the second one reads the first one's committed
 // row, and is refused INSUFFICIENT_STOCK. It is the same lock family the stock movement writers use.
@@ -38,7 +40,8 @@
 //     after the stock has since gone still replays.
 //   * ONE ACTIVE CLAIM per (demand line, part, warehouse): a second reserve while one is outstanding is DUPLICATE_CLAIM.
 //   * Governed transitions: reserve -> (release | consume), each refused unless it fits the outstanding claim at that
-//     company+warehouse; cancel releases everything a demand still holds. Append-only (the database refuses UPDATE and
+//     company+warehouse; cancel releases everything a demand still holds. Release / consume / cancel act on the commitment
+//     ROWS, never on the demand document or the warehouse row, so a purged demand or a closed warehouse cannot strand stock. Append-only (the database refuses UPDATE and
 //     DELETE); one audit row per APPLIED command, with no free text beyond the reason.
 //   * Reserve before the company is activated (`stock_reservation_activation`) is refused RESERVATION_NOT_ACTIVATED.
 //
@@ -322,11 +325,16 @@ async function requireCommittablePartsThroughClient(
   }
 }
 
-/** The stated company, warehouse and demand must all agree. `forReserve` adds ACTIVE warehouse + company activation. */
+/**
+ * RESERVE ONLY. The stated company, warehouse and demand must all agree, the warehouse must be ACTIVE and the company
+ * activated. Release, consume and cancel deliberately do NOT call this: they act on the commitment ROWS (which already
+ * carry a company and warehouse that agreed when they were written), so a purged, renumbered or closed demand, or a
+ * warehouse that has since been closed, can never strand stock. A transition stated for a company or warehouse the
+ * demand holds no claim at finds no claim (NO_ACTIVE_CLAIM).
+ */
 async function requireStatedScope(
   client: PoolClient,
   ctx: Pick<ReservationContext, "tenantId" | "operatingCompanyKey" | "warehouseId" | "source">,
-  forReserve: boolean,
 ): Promise<void> {
   const wh = await client.query<{ operating_company_key: string; status: string }>(
     `SELECT operating_company_key, status::text AS status FROM ${SCHEMA}.warehouses WHERE tenant_id = $1 AND id = $2`,
@@ -349,7 +357,6 @@ async function requireStatedScope(
   if (demand.rows[0].operating_company_key !== ctx.operatingCompanyKey) {
     throw new InventoryCommitmentError("DEMAND_COMPANY_MISMATCH", "the demand document belongs to a different operating company; a cross-company claim is refused");
   }
-  if (!forReserve) return;
   if (wh.rows[0].status !== "ACTIVE") throw new InventoryCommitmentError("WAREHOUSE_NOT_ACTIVE", `warehouse ${ctx.warehouseId} is not ACTIVE; it cannot take a new reservation`);
   const act = await client.query(
     `SELECT 1 FROM ${SCHEMA}.stock_reservation_activation WHERE tenant_id = $1 AND operating_company_key = $2`,
@@ -380,6 +387,17 @@ const SOURCE_PREDICATE = `(work_order_id = $4 OR (sales_order_id = $5 AND sales_
 const SOURCE_PREDICATE_AT_3 = `(work_order_id = $3 OR (sales_order_id = $4 AND sales_order_line_number = $5))`;
 function sourceParams(s: DemandSource): [string | null, string | null, number | null] {
   return s.kind === "WORK_ORDER" ? [s.workOrderId, null, null] : [null, s.salesOrderId, s.lineNumber];
+}
+
+/** One advisory lock per demand (Work Order, or Sales Order line), taken before any Part lock and held to the end of the transaction. */
+async function lockDemand(client: PoolClient, ctx: Pick<ReservationContext, "tenantId" | "source">): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [demandLockKey(ctx.tenantId, ctx.source)]);
+}
+
+/** The advisory-lock key of one demand. Exported so a test can hold it and prove the commands wait for it. */
+export function demandLockKey(tenantId: string, s: DemandSource): string {
+  const id = s.kind === "WORK_ORDER" ? `WORK_ORDER:${s.workOrderId}` : `SALES_ORDER:${s.salesOrderId}:${s.lineNumber}`;
+  return `eos-commitment-demand:${tenantId}:${id}`;
 }
 
 /** Take the pool lock for every Part, in sorted order, BEFORE reading anything the decision rests on. */
@@ -495,7 +513,8 @@ export async function reserve(
 
   return inTransaction(pool, async (client) => {
     await requireCommittablePartsThroughClient(client, ctx.tenantId, [...byPart.keys()]);
-    await requireStatedScope(client, ctx, true);
+    await requireStatedScope(client, ctx);
+    await lockDemand(client, ctx);
     await lockParts(client, ctx, byPart.keys());
 
     const replay = await replayOf(client, ctx, planned);
@@ -540,7 +559,6 @@ export async function release(
   const requested = options.lines === undefined ? null : sumLines(options.lines);
 
   return inTransaction(pool, async (client) => {
-    await requireStatedScope(client, ctx, false);
     const plan = await planDecrease(client, ctx, "RELEASED", requested);
     if (plan.replayed) return plan.replayed;
     if (plan.rows.length === 0) return [];
@@ -560,7 +578,6 @@ export async function consume(
   const requested = sumLines(lines);
   if (requested.size === 0) return [];
   return inTransaction(pool, async (client) => {
-    await requireStatedScope(client, ctx, false);
     const plan = await planDecrease(client, ctx, "CONSUMED", requested);
     if (plan.replayed) return plan.replayed;
     const written = await insertPlanned(client, ctx, plan.rows);
@@ -582,6 +599,7 @@ export async function cancel(
   requireContext(ctx, false);
   const reason = requireReason(options.reason);
   return inTransaction(pool, async (client) => {
+    await lockDemand(client, ctx);
     const { rows: held } = await client.query<{ warehouse_id: string }>(
       `SELECT DISTINCT warehouse_id FROM ${SCHEMA}.inventory_commitments
         WHERE tenant_id = $1 AND operating_company_key = $2 AND ${SOURCE_PREDICATE_AT_3}
@@ -591,7 +609,6 @@ export async function cancel(
     const planned: PlannedRow[] = [];
     for (const { warehouse_id: warehouseId } of held) {
       const wctx: ReservationContext = { ...ctx, warehouseId };
-      await requireStatedScope(client, wctx, false);
       const plan = await planDecrease(client, wctx, "RELEASED", null);
       if (plan.replayed) replayed.push(...plan.replayed);
       else planned.push(...plan.rows);
@@ -613,7 +630,10 @@ async function planDecrease(
   eventType: "RELEASED" | "CONSUMED",
   requested: Map<string, number> | null,
 ): Promise<{ readonly rows: PlannedRow[]; readonly replayed: readonly CommitmentWriteResult[] | null }> {
-  // Lock first (the Parts it can touch), then read the outstanding claim under the lock.
+  // The DEMAND lock first: every writer of this demand's claims (reserve, release, consume, cancel) takes it before any Part
+  // lock, so the set of Parts this demand holds cannot change between the read below and the Part locks (no pre-lock read
+  // can go stale), and the order demand -> Parts (sorted) is the same everywhere, so it cannot deadlock.
+  await lockDemand(client, ctx);
   const outstandingBefore = await outstandingAt(client, ctx);
   await lockParts(client, ctx, requested ? requested.keys() : outstandingBefore.keys());
 

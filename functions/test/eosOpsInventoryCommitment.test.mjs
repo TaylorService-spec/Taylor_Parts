@@ -14,7 +14,7 @@
 // test/eosOpsInventoryCommitmentPostgres.test.mjs, against a real postgres:16.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   recordCommitmentEvent,
@@ -76,8 +76,36 @@ test("a commitment row writes to inventory_commitments and never to inventory_mo
   // all, a commitment could reach it.
   const code = REPOSITORY.split("\n").filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*")).join("\n");
   // S1b: the reserve GATE reads on-hand from the movement ledger (one arithmetic), but it never writes there.
-  assert.doesNotMatch(code, /(INSERTs+INTO|UPDATE|DELETEs+FROM)s+${SCHEMA}.inventory_movements/, "the commitment repository never writes the movement ledger");
+  assert.equal(writesMovementLedger(code), false, "the commitment repository never writes the movement ledger");
   assert.doesNotMatch(code, /serialized_custody/, "nor the custody pointer");
+});
+
+/** A write to the movement ledger, whether the schema is literal, templated (`${SCHEMA}`) or absent. */
+function writesMovementLedger(code) {
+  return /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:eos_ops\.|\$\{[^}]+\}\.)?inventory_movements\b/i.test(code);
+}
+
+test("the movement-ledger write guard is not vacuous: it catches a planted write and passes a read", () => {
+  assert.equal(writesMovementLedger("db.query(`INSERT INTO ${SCHEMA}.inventory_movements (id) VALUES ($1)`)"), true, "templated-schema INSERT");
+  assert.equal(writesMovementLedger("db.query(`INSERT INTO eos_ops.inventory_movements (id) VALUES ($1)`)"), true, "literal-schema INSERT");
+  assert.equal(writesMovementLedger("db.query(`UPDATE ${SCHEMA}.inventory_movements SET quantity_delta = 0`)"), true, "UPDATE");
+  assert.equal(writesMovementLedger("db.query('DELETE FROM inventory_movements')"), true, "unqualified DELETE");
+  assert.equal(writesMovementLedger("db.query(`SELECT sum(m.quantity_delta) FROM ${SCHEMA}.inventory_movements m`)"), false, "a read is not a write");
+  // ...and run against the real repository source with a write planted into it:
+  assert.equal(writesMovementLedger(`${REPOSITORY}\nawait db.query(\`INSERT INTO \${SCHEMA}.inventory_movements (id) VALUES ('x')\`);`), true, "a planted write in the repository is caught");
+});
+
+test("only the commitment repository imports recordCommitmentEvent from src: the gate cannot be bypassed", () => {
+  const importers = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (path.endsWith(".ts") && readFileSync(path, "utf8").includes("recordCommitmentEvent")) importers.push(path.split("\\").join("/"));
+    }
+  };
+  walk("src");
+  assert.deepEqual(importers, ["src/eosOps/inventoryCommitmentRepository.ts"]);
 });
 
 test("the ORIGINAL commitment table declares no location, no tracking mode and no serial identity (S1b adds warehouse_id by a later migration)", () => {

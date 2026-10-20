@@ -180,7 +180,10 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
   // A hard reservation states its company AND warehouse (S1b); the quantity-tracked Part has stock there so the gate can pass.
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-sample','t1','sample-co','wh-sample','Site','ACTIVE','NATIVE','fixture','fixture')`);
-  await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by) VALUES ('t1','sample-co','fixture')`);
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1','sampleco','ACTIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+           VALUES ('t1','sampleco','sample-co','ACTIVE','NATIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1','sample-co','fixture','test activation')`);
   await q(`INSERT INTO eos_ops.inventory_movements (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
              movement_type, quantity_delta, source_kind, source_id, created_by)
            VALUES ('mov-wocat-1','t1','sample-co','p-standard','NONE','WAREHOUSE','wh-sample','RECEIVED',500,'FIXTURE','fixture','fixture')`);

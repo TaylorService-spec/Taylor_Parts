@@ -20,6 +20,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const ledger = require("../lib/eosOps/inventoryCommitmentRepository.js");
+const { stockLocationLockKey } = require("../lib/eosOps/stockLocationLock.js");
 const { OperatingCompanyAuthorityError } = require("../lib/eosOps/operatingCompanyCustody.js");
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 
@@ -89,14 +90,21 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
     `INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, status, work_order_type, priority, customer_id, location_id,
        provenance, created_by_principal_id, created_at, updated_at)
      VALUES ($1,'t1',$2,'WORK_IN_PROGRESS'::eos_ops.ops_work_order_status,'SERVICE_CALL',2,'acct-1','loc-1','NATIVE',$3,now(),now())`, [id, companyKey, creator]);
-  for (let i = 1; i <= 14; i++) await workOrder(`wo-${i}`);
+  for (let i = 1; i <= 16; i++) await workOrder(`wo-${i}`);
   await workOrder("wo-b1", CO_B);
   await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, created_by, updated_by)
            VALUES ('so-1','t1','SO-0001','acct-1','emp-1',$1,'f','f')`, [CO_A]);
   await q(`INSERT INTO eos_commercial.sales_order_lines (tenant_id, sales_order_id, line_number, kind, ref, business_unit, ordered_qty)
            VALUES ('t1','so-1',1,'PART','P-STD','PARTS',50), ('t1','so-1',2,'PART','P-STD','PARTS',2)`);
   await q(`INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id) VALUES ('seed-audit','t1','seed','f','x','x')`);
-  await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by) VALUES ('t1',$1,'fixture')`, [CO_A]);
+  // Both companies are bound to the tenant (the activation switch has a foreign key to the binding table).
+  for (const [id, key] of [["co-a-id", CO_A], ["co-b-id", CO_B]]) {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1',$1,'ACTIVE','fixture','f','f')`, [id]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+             VALUES ('t1',$1,$2,'ACTIVE','NATIVE','fixture','f','f')`, [id, key]);
+  }
+  const activate = (key, reason = "test activation") => q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1',$1,'fixture',$2)`, [key, reason]);
+  await activate(CO_A);
 
   const wo = (n) => ({ kind: "WORK_ORDER", workOrderId: `wo-${n}` });
   const ctx = (n, key, warehouseId = "wh-a1", overrides = {}) => ({
@@ -154,7 +162,7 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
   await t.test("a company that is not activated cannot reserve (NOT_YET_ACTIVATED), and activation is per company", async () => {
     const c = { ...ctx(1, "k-act", "wh-b1"), operatingCompanyKey: CO_B, source: { kind: "WORK_ORDER", workOrderId: "wo-b1" } };
     await assert.rejects(() => ledger.reserve(pool, c, [{ partId: "P-STD2", quantity: 1 }]), refused("RESERVATION_NOT_ACTIVATED"));
-    await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by) VALUES ('t1',$1,'fixture')`, [CO_B]);
+    await activate(CO_B);
     const [r] = await ledger.reserve(pool, c, [{ partId: "P-STD2", quantity: 1 }]);
     assert.equal(r.outcome, "applied");
     assert.equal(await committed("wh-b1", "P-STD2", CO_B), 1);
@@ -177,8 +185,22 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
 
   await t.test("no oversell under concurrency: concurrent reservations never exceed the location's available stock", async () => {
     // wh-a2 holds 4 of P-STD. Eight demands race for one unit each: exactly four win.
-    const racers = await Promise.allSettled([1, 2, 3, 4, 5, 6, 7, 8].map((n) =>
-      ledger.reserve(pool, ctx(n, `k-race-${n}`, "wh-a2"), [{ partId: "P-STD", quantity: 1 }])));
+    // BARRIER: a separate transaction holds the Part lock while all eight racers queue behind it (pg_locks shows eight waiters),
+    // then lets them go together -- so the contention is real, not left to scheduling luck.
+    const barrier = await pool.connect();
+    await barrier.query("BEGIN");
+    await barrier.query("SELECT pg_advisory_xact_lock(hashtext($1))", [stockLocationLockKey("t1", "P-STD", "WAREHOUSE", "wh-a2")]);
+    const pending = [1, 2, 3, 4, 5, 6, 7, 8].map((n) =>
+      ledger.reserve(pool, ctx(n, `k-race-${n}`, "wh-a2"), [{ partId: "P-STD", quantity: 1 }]));
+    for (let waited = 0; ; waited += 25) {
+      const { rows } = await q("SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted");
+      if (rows[0].n >= 8) break;
+      assert.ok(waited < 15000, "the eight racers never queued on the Part lock");
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    await barrier.query("COMMIT");
+    barrier.release();
+    const racers = await Promise.allSettled(pending);
     const won = racers.filter((r) => r.status === "fulfilled");
     const lost = racers.filter((r) => r.status === "rejected");
     assert.equal(won.length, 4, "exactly the stock on hand was reserved");
@@ -285,7 +307,7 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
     // A transition stated for another company or warehouse finds no claim: refused, nothing written.
     const rows = await countRows();
     await assert.rejects(() => ledger.release(pool, ctx(11, "k-rel-wrongwh", "wh-a2"), { reason: "wrong place", lines: [{ partId: "P-STD", quantity: 1 }] }), refused("NO_ACTIVE_CLAIM"));
-    await assert.rejects(() => ledger.release(pool, { ...ctx(11, "k-rel-wrongco"), operatingCompanyKey: CO_B }, { reason: "wrong company", lines: [{ partId: "P-STD", quantity: 1 }] }), refused("COMPANY_WAREHOUSE_MISMATCH"));
+    await assert.rejects(() => ledger.release(pool, { ...ctx(11, "k-rel-wrongco"), operatingCompanyKey: CO_B }, { reason: "wrong company", lines: [{ partId: "P-STD", quantity: 1 }] }), refused("NO_ACTIVE_CLAIM"));
     assert.equal(await countRows(), rows);
     await assert.rejects(() => ledger.release(pool, ctx(11, "k-rel-noreason"), { reason: "  " }), refused("REASON_REQUIRED"));
     await assert.rejects(() => ledger.release(pool, ctx(11, "k-rel-longreason"), { reason: "x".repeat(201) }), refused("REASON_REQUIRED"));
@@ -319,6 +341,7 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
   await t.test("the ledger is append-only in the database: a release is a new row, never an edit", async () => {
     await assert.rejects(() => q(`UPDATE eos_ops.inventory_commitments SET quantity = 99`), /append-only/);
     await assert.rejects(() => q(`DELETE FROM eos_ops.inventory_commitments`), /append-only/);
+    await assert.rejects(() => q(`TRUNCATE eos_ops.inventory_commitments`), /append-only/, "one statement must not erase every reservation fact");
   });
 
   // ════════════════════ serial custody ════════════════════
@@ -337,6 +360,67 @@ test("hard stock reservations: company + warehouse, no oversell, replay, governe
     // A serial Part mixed with a good line refuses the whole command: the good line is not written either.
     await assert.rejects(() => ledger.reserve(pool, ctx(7, "k-ser-mix"), [{ partId: "P-STD", quantity: 1 }, { partId: "P-SER", quantity: 1 }]), refused("TRACKING_MODE_NOT_SUPPORTED"));
     assert.equal(await countRows(), before);
+  });
+
+  // ════════════════════ transitions never depend on the demand still existing (F2) ════════════════════
+
+  await t.test("a purged or renumbered demand can never strand stock: release, consume and cancel work from the commitment rows", async () => {
+    // Work Order: reserve, delete the Work Order, then release.
+    await ledger.reserve(pool, ctx(14, "k-f2-wo"), [{ partId: "P-STD2", quantity: 2 }]);
+    await q(`DELETE FROM eos_ops.work_orders WHERE tenant_id = 't1' AND id = 'wo-14'`);
+    await assert.rejects(() => ledger.reserve(pool, ctx(14, "k-f2-wo-again"), [{ partId: "P-STD2", quantity: 1 }]), refused("DEMAND_NOT_FOUND"), "a NEW claim still needs the demand");
+    const [consumed] = await ledger.consume(pool, ctx(14, "k-f2-con"), [{ partId: "P-STD2", quantity: 1 }]);
+    assert.equal(consumed.record.eventType, "CONSUMED");
+    const [released] = await ledger.release(pool, ctx(14, "k-f2-rel"), { reason: "demand purged" });
+    assert.deepEqual([released.record.eventType, released.record.quantity], ["RELEASED", 1]);
+    assert.deepEqual([...(await ledger.outstandingByPart(pool, "t1", "wo-14"))], [["P-STD2", 0]]);
+
+    // Sales Order line: reserve, renumber the line, then cancel the claim under the old number.
+    await q(`INSERT INTO eos_commercial.sales_order_lines (tenant_id, sales_order_id, line_number, kind, ref, business_unit, ordered_qty) VALUES ('t1','so-1',3,'PART','P-STD2','PARTS',4)`);
+    const so3 = { kind: "SALES_ORDER", salesOrderId: "so-1", lineNumber: 3 };
+    await ledger.reserve(pool, { ...ctx(1, "k-f2-so"), source: so3 }, [{ partId: "P-STD2", quantity: 2 }]);
+    await q(`UPDATE eos_commercial.sales_order_lines SET line_number = 9 WHERE tenant_id = 't1' AND sales_order_id = 'so-1' AND line_number = 3`);
+    const cancelled = await ledger.cancel(pool, { tenantId: "t1", operatingCompanyKey: CO_A, source: so3, actorId: ACTOR, idempotencyKey: "k-f2-so-cancel" }, { reason: "line renumbered" });
+    assert.deepEqual(cancelled.map((w) => [w.record.eventType, w.record.quantity]), [["RELEASED", 2]]);
+  });
+
+  await t.test("release-all and cancel take the DEMAND lock first, so the Parts they read cannot go stale before the Part locks", async () => {
+    await ledger.reserve(pool, ctx(15, "k-f4-res"), [{ partId: "P-STD2", quantity: 1 }]);
+    await ledger.reserve(pool, ctx(16, "k-f4-res16"), [{ partId: "P-STD2", quantity: 1 }]);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (const [n, run] of [
+      [15, () => ledger.release(pool, ctx(15, "k-f4-rel"), { reason: "release all" })],
+      [16, () => ledger.cancel(pool, { tenantId: "t1", operatingCompanyKey: CO_A, source: wo(16), actorId: ACTOR, idempotencyKey: "k-f4-cancel" }, { reason: "cancel all" })],
+    ]) {
+      const holder = await pool.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtext($1))", [ledger.demandLockKey("t1", wo(n))]);
+      let done = false;
+      const running = run().then((r) => { done = true; return r; });
+      await sleep(400);
+      const waited = done === false;
+      await holder.query("COMMIT"); // always let go, so a failing assertion cannot hang the suite
+      holder.release();
+      const written = await running;
+      assert.equal(waited, true, `wo-${n}: the command must wait for the demand lock before it reads the claim`);
+      assert.deepEqual(written.map((w) => w.record.eventType), ["RELEASED"]);
+    }
+  });
+
+  await t.test("the activation switch is bound to a real company key, states a reason, and is insert-only", async () => {
+    const insert = (key, by, reason) => q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1',$1,$2,$3)`, [key, by, reason]);
+    await assert.rejects(() => insert("co-unbound", "op", "no such company"), /stock_reservation_activation_company_is_bound/);
+    await assert.rejects(() => insert("co-a", "op", "x"), /duplicate key/, "one row per company");
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1','co-c-id','ACTIVE','fixture','f','f')`);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by) VALUES ('t1','co-c-id','co-c','ACTIVE','NATIVE','fixture','f','f')`);
+    for (const reason of ["", "   "]) await assert.rejects(() => insert("co-c", "op", reason), /stock_reservation_activation_reason_is_stated/);
+    await assert.rejects(() => insert("co-c", "  ", "why"), /stock_reservation_activation_actor_is_stated/);
+    await assert.rejects(() => q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by) VALUES ('t1','co-c','op')`), /null value in column "reason"/);
+    await assert.rejects(() => q(`UPDATE eos_ops.stock_reservation_activation SET reason = 'edited'`), /insert-only/);
+    await assert.rejects(() => q(`DELETE FROM eos_ops.stock_reservation_activation`), /insert-only/);
+    await assert.rejects(() => q(`TRUNCATE eos_ops.stock_reservation_activation`), /insert-only/);
+    // co-c is not activated: a reservation for it is refused (and only an operator row can change that).
+    await insert("co-c", "op", "activate for the test");
   });
 
   // ════════════════════ the one arithmetic ════════════════════

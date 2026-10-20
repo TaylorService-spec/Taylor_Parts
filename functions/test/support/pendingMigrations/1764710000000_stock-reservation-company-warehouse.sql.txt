@@ -15,7 +15,7 @@
 --                                   a CHECK requires EXACTLY ONE source.
 --   4. request_fingerprint          the replay content hash beside the idempotency key (same key + same content = replay;
 --                                   same key + different content = conflict).
---   5. append-only                  UPDATE and DELETE are refused by trigger: a release is a NEW row, never an edit.
+--   5. append-only                  UPDATE, DELETE and TRUNCATE are refused by trigger: a release is a NEW row, never an edit.
 --   6. stock_reservation_activation the per-company switch. No row = reservations NOT_YET_ACTIVATED (the command refuses
 --                                   and the read says so). An operator inserts the row per environment; it is not a
 --                                   capability and not a grant.
@@ -77,26 +77,55 @@ CREATE TRIGGER inventory_commitments_no_update_or_delete
     BEFORE UPDATE OR DELETE ON inventory_commitments
     FOR EACH ROW EXECUTE FUNCTION inventory_commitments_append_only();
 
+-- Truncate would erase every reservation fact in one statement; the row-level trigger above cannot see it.
+CREATE TRIGGER inventory_commitments_no_truncate
+    BEFORE TRUNCATE ON inventory_commitments
+    FOR EACH STATEMENT EXECUTE FUNCTION inventory_commitments_append_only();
+
+-- The per-company switch. An operator row, never written by code. The company must be one this tenant is bound to
+-- (a key that exists), the row states WHY it was switched on, and it is insert-only: no edit, no delete, no truncate
+-- (a switch that could be flipped off silently would turn a known number back into NOT_YET_ACTIVATED).
 CREATE TABLE stock_reservation_activation (
     tenant_id             TEXT NOT NULL REFERENCES eos_policy.tenants(id),
     operating_company_key TEXT NOT NULL,
     activated_by          TEXT NOT NULL,
+    reason                TEXT NOT NULL,
     activated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant_id, operating_company_key),
-    CONSTRAINT stock_reservation_activation_company_is_stated CHECK (btrim(operating_company_key) <> '')
+    CONSTRAINT stock_reservation_activation_company_is_bound
+        FOREIGN KEY (tenant_id, operating_company_key)
+        REFERENCES eos_policy.tenant_operating_company_keys (tenant_id, operating_company_key),
+    CONSTRAINT stock_reservation_activation_company_is_stated CHECK (btrim(operating_company_key) <> ''),
+    CONSTRAINT stock_reservation_activation_actor_is_stated CHECK (btrim(activated_by) <> ''),
+    CONSTRAINT stock_reservation_activation_reason_is_stated CHECK (btrim(reason) <> '')
 );
+
+CREATE FUNCTION stock_reservation_activation_insert_only() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'eos_ops.stock_reservation_activation is insert-only (%).', TG_OP USING ERRCODE = '55000';
+END $$;
+
+CREATE TRIGGER stock_reservation_activation_no_update_or_delete
+    BEFORE UPDATE OR DELETE ON stock_reservation_activation
+    FOR EACH ROW EXECUTE FUNCTION stock_reservation_activation_insert_only();
+CREATE TRIGGER stock_reservation_activation_no_truncate
+    BEFORE TRUNCATE ON stock_reservation_activation
+    FOR EACH STATEMENT EXECUTE FUNCTION stock_reservation_activation_insert_only();
 
 -- Down Migration
 SET search_path = eos_ops, public;
 
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM eos_ops.inventory_commitments WHERE work_order_id IS NULL) THEN
-        RAISE EXCEPTION 'S1b down: Sales Order claims exist; they cannot be represented by the Work-Order-only shape.';
+    IF EXISTS (SELECT 1 FROM eos_ops.inventory_commitments) THEN
+        RAISE EXCEPTION 'S1b down: commitments exist; every row names its warehouse (and Sales Order claims cannot be represented by the Work-Order-only shape), so reversing would discard reservation facts.';
     END IF;
 END $$;
 
 DROP TABLE IF EXISTS stock_reservation_activation;
+DROP FUNCTION IF EXISTS stock_reservation_activation_insert_only();
+DROP TRIGGER IF EXISTS inventory_commitments_no_truncate ON inventory_commitments;
 DROP TRIGGER IF EXISTS inventory_commitments_no_update_or_delete ON inventory_commitments;
 DROP FUNCTION IF EXISTS inventory_commitments_append_only();
 DROP INDEX IF EXISTS inventory_commitments_by_sales_order_line;
