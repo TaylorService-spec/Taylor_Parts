@@ -38,6 +38,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
 - Lifecycle stage:     INTEGRATION (PR open; not merged)
 
+- Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
+- Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
+- Branch / worktree:   `docs/r1-production-recovery-release` · `.claude/worktrees/agent-ad1865bb5a1b23704`
+- Base commit:         `2f8be86f`
+- Owned paths:         `docs/operations/production-recovery-release-r1.md`
+- Shared paths req'd:  this registry
+- Dependencies:        none (git history + `evidence/firebase-deployed-inventory-20261019/` only)
+- Expected outcome:    Hosting `4f30ab3a`, Pages `6cac0423`, Functions `4f30ab3a` (84/84 export match) and Rules `0526140d` pinned, with tag commands for the controller
+- Protected boundaries:none reached (no deploy, tag push, cloud call, credential or workflow edit)
+- Lifecycle stage:     INTEGRATION (docs PR open; controller creates the tags after review)
+
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
 - Branch / worktree:   PR #2120 · Lane Firebase clone (private PG :55507)
