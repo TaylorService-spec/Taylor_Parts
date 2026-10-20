@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Stock reservation and sales-order allocation (S-1): S1a authority spec, then S1b only where the spec shows one governed answer (it does not; S1b not started)
+- Agent/session:       Claude Code Lane RES · Role: builder (spec); controller merges
+- Branch / worktree:   `res/s1a-stock-reservation-spec` · lane RES worktree
+- Base commit:         `09a82d3e`
+- Owned paths:         `docs/architecture/s1a-stock-reservation-spec.md`, `docs/architecture/s1a-reservation-grant-parity.json`
+- Shared paths req'd:  this registry (one row). No DECISIONS.md, precedence-sweep, shell gate or migration-count edit
+- Dependencies:        none for the spec; S1b/S1c wait on Owner Decisions 1-12 in the spec
+- Expected outcome:    Owner rulings on the 12 numbered decisions, then S1b (reserve/release/consume + gate) and S1c (allocation, create-service)
+- Protected boundaries:reservation activation on dispatch, any capability grant (`salesOrder.fulfill` / `.service` parity set is derived, not applied), any migration, any production step
+- Lifecycle stage:     DESIGNED
+
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
 - Branch / worktree:   PR #2120 · Lane Firebase clone (private PG :55507)
