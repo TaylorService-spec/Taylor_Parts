@@ -54,13 +54,55 @@ test("the CRM mutation operations served are exactly the audited inventory", () 
   assert.deepEqual([...mutations].sort(), [...CRM_MUTATIONS].sort());
 });
 
-test("every CRM mutation call site writes its audit row", () => {
-  for (const file of ["accountAuthority.ts", "contactAuthority.ts", "accountLocationAuthority.ts"]) {
-    const src = code(`eosCrm/${file}`);
-    const sites = count(src, "runCrmCreate(") + count(src, "runCrmCommand(");
-    assert.ok(sites > 0);
-    assert.equal(count(src, "recordCommandAudit("), sites, `${file}: one recordCommandAudit per mutation`);
+// transport operation -> [file, exported function]; checked PER FUNCTION, so a mutation that loses its audit cannot hide behind a sibling's.
+const CRM_FUNCTIONS = {
+  createAccount: "accountAuthority.ts", updateAccount: "accountAuthority.ts",
+  createContact: "contactAuthority.ts", importAccountContacts: "contactAuthority.ts", updateContact: "contactAuthority.ts",
+  createAccountLocation: "accountLocationAuthority.ts", updateAccountLocation: "accountLocationAuthority.ts",
+};
+
+/** The source of ONE exported function: from its `export function name(` to the next top-level export (or the end of the file). */
+function functionSource(src, name) {
+  const start = src.indexOf(`export function ${name}(`);
+  assert.ok(start >= 0, `${name} is exported`);
+  const next = src.indexOf("\nexport ", start + 10);
+  return src.slice(start, next < 0 ? undefined : next);
+}
+
+test("every CRM mutation function writes exactly one audit row of its own action", () => {
+  assert.deepEqual(Object.keys(CRM_FUNCTIONS).sort(), CRM_MUTATIONS.filter((op) => op !== "createAccountActivity").sort());
+  for (const [name, file] of Object.entries(CRM_FUNCTIONS)) {
+    const body = functionSource(code(`eosCrm/${file}`), name);
+    assert.equal(count(body, "recordCommandAudit("), 1, `${name}: exactly one recordCommandAudit call`);
+    assert.ok(body.includes(`action: "crm.${name}"`), `${name}: its audit action is crm.${name}`);
   }
   // CRM activity predates Q-1 and writes its row inline, in the same transaction.
-  assert.equal(count(code("eosCrm/crmActivityAuthority.ts"), "INSERT INTO eos_policy.audit_events"), 1);
+  const activity = functionSource(code("eosCrm/crmActivityAuthority.ts"), "createAccountActivity");
+  assert.equal(count(activity, "INSERT INTO eos_policy.audit_events"), 1);
+});
+
+test("an audit row never carries free text or contact details: the CRM views and the Commercial helpers record a length or a flag", () => {
+  const account = code("eosCrm/accountAuthority.ts");
+  assert.match(account, /notesLength: textLength\(notes\), billingAddressPresent: billingAddress !== null/);
+  assert.match(code("eosCrm/contactAuthority.ts"), /emailPresent: email !== null, phonePresent: phone !== null/);
+  assert.match(code("eosCrm/accountLocationAuthority.ts"), /addressPresent: .*accessNotesLength: textLength\(accessNotes\)/);
+  // No CRM audit call spreads a raw projection.
+  for (const file of ["accountAuthority.ts", "contactAuthority.ts", "accountLocationAuthority.ts"]) {
+    assert.doesNotMatch(code(`eosCrm/${file}`), /(before|after): \{ \.\.\.(created|was|updated|project\()/, `${file}: a raw projection is spread into an audit row`);
+  }
+  assert.match(code("eosCommercial/commands/opportunityCommandService.ts"), /FREE_TEXT = \["need", "nextAction"\]/);
+  assert.match(code("eosCommercial/commands/salesAgreementCommandService.ts"), /FREE_TEXT = \["shippingInstructions", "specialInstructions"\]/);
+});
+
+test("wellFormed, pickFields and lineFacts: lone surrogates become U+FFFD; free text becomes a length; lines lose their text", () => {
+  const { wellFormed, pickFields, lineFacts, textLength } = require("../lib/eosAudit/commandAuditEvent.js");
+  assert.equal(wellFormed("a\uD800b"), "a�b");
+  assert.equal(wellFormed("a\uDC00b"), "a�b");
+  assert.equal(wellFormed("ok 😀 pair"), "ok 😀 pair", "a valid surrogate pair is untouched");
+  assert.deepEqual(wellFormed({ "k\uD800": ["x\uD800", { y: "\uDFFF", n: 3, z: null }] }), { "k�": ["x�", { y: "�", n: 3, z: null }] });
+  for (const s of [wellFormed("a\uD800b"), JSON.stringify(wellFormed({ v: "\uD800" }))]) assert.ok(!/\\ud[89ab]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])/i.test(s));
+  assert.deepEqual(pickFields({ need: "secret", n: 4 }, ["need", "n", "gone"], ["need"]), { needLength: 6, n: 4, gone: null });
+  assert.equal(textLength(null), null);
+  assert.deepEqual(lineFacts([{ kind: "PART", ref: "p", quantity: 2, unitPrice: 5, warranty: "12 months parts", description: "secret text" }]),
+    [{ kind: "PART", ref: "p", quantity: 2, unitPrice: 5, warrantyLength: 15 }]);
 });

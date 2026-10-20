@@ -162,8 +162,11 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     const input = { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, nextAction: "Send revised quote", expectedValue: 21000 };
     await applied("update", () => opp.updateOpportunity(deps, SELLER, input), {
       action: "opportunity.update", kind: "opportunity", id: o.opportunityId,
-      before: { nextAction: null, expectedValue: 18500.5, editVersion: 1 }, after: { nextAction: "Send revised quote", expectedValue: 21000, editVersion: 2 },
+      before: { nextActionLength: null, expectedValue: 18500.5, editVersion: 1 }, after: { nextActionLength: "Send revised quote".length, expectedValue: 21000, editVersion: 2 },
     });
+    const row = (await q(`SELECT before, after FROM eos_policy.audit_events WHERE action = 'opportunity.update' AND target_id = $1 ORDER BY occurred_at DESC LIMIT 1`, [o.opportunityId])).rows[0];
+    assert.ok(!JSON.stringify(row).includes("Send revised quote"), "free text is recorded as a length, never as text");
+    assert.ok(!("nextAction" in row.after), "no nextAction value key");
     await replayed("update replay", () => opp.updateOpportunity(deps, SELLER, input));
     await refused("stale version", () => opp.updateOpportunity(deps, SELLER, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 1, need: "stale" }), "VERSION_CONFLICT");
     await refused("no capability", () => opp.updateOpportunity(deps, { ...SELLER, capabilities: new Set() }, { idempotencyKey: key(), opportunityId: o.opportunityId, expectedEditVersion: 2, need: "x" }), "CAPABILITY_REQUIRED");
@@ -188,6 +191,15 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     await refused("illegal jump", () => opp.transitionOpportunity(deps, SELLER, { idempotencyKey: key(), opportunityId: o.opportunityId, toStage: "DECISION" }), "ILLEGAL_TRANSITION");
   });
 
+  await t.test("a lone surrogate in a recorded string cannot turn an applied command into a failure: the audit row holds U+FFFD instead", async () => {
+    // The line reference reaches the audit `after` straight from the input (not re-read from the database), and jsonb rejects a lone surrogate escape.
+    const input = { ...newOpportunityInput(), lines: [{ kind: "PART", ref: "part\uD800-x", qty: 1 }] };
+    await applied("lone surrogate", () => opp.createOpportunity(deps, SELLER, input), {
+      action: "opportunity.create", kind: "opportunity", id: (r) => r.opportunityId, before: null,
+      after: { lines: [{ kind: "PART", ref: "part�-x", qty: 1 }] },
+    });
+  });
+
   // ════════════════════ SALES AGREEMENT ════════════════════
   let won; let agreement;
   await t.test("salesAgreement.create / updateDraft (discount) / trade-in approve and decline / accept", async () => {
@@ -199,17 +211,25 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     agreement = await applied("agreement create", () => sa.createSalesAgreement(deps, SELLER, createIn), {
       action: "salesAgreement.create", kind: "sales_agreement", id: (r) => r.salesAgreementId, before: null,
       after: (r) => ({ salesAgreementNumber: r.salesAgreementNumber, opportunityId: won.opportunityId, accountId: "acct-1", state: "DRAFT",
-        customerDiscount: { kind: "PERCENT", percentBasisPoints: 500 }, tradeInCount: 2 }),
+        customerDiscount: { kind: "PERCENT", percentBasisPoints: 500 },
+        tradeIns: [
+          { itemNumber: 1, proposedValueMinor: 40000, approvalStatus: "PROPOSED", approvedCreditMinor: null, descriptionLength: "Used reach-in".length },
+          { itemNumber: 2, proposedValueMinor: 30000, approvalStatus: "PROPOSED", approvedCreditMinor: null, descriptionLength: "Used cooler".length },
+        ] }),
     });
     await replayed("agreement create replay", () => sa.createSalesAgreement(deps, SELLER, createIn));
     await refused("agreement already exists", () => sa.createSalesAgreement(deps, SELLER, agreementInput(won.opportunityId)), "AGREEMENT_ALREADY_EXISTS");
 
-    const draftIn = { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerPO: "PO-77", customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } };
+    const instructions = "Call Pat on 555-0100 before delivery";
+    const draftIn = { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerPO: "PO-77", specialInstructions: instructions,
+      customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } };
     await applied("draft update", () => sa.updateSalesAgreementDraft(deps, SELLER, draftIn), {
       action: "salesAgreement.updateDraft", kind: "sales_agreement", id: agreement.salesAgreementId,
-      before: { customerPO: null, customerDiscount: { kind: "PERCENT", percentBasisPoints: 500 } },
-      after: { customerPO: "PO-77", customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } },
+      before: { customerPO: null, specialInstructionsLength: null, customerDiscount: { kind: "PERCENT", percentBasisPoints: 500 } },
+      after: { customerPO: "PO-77", specialInstructionsLength: instructions.length, customerDiscount: { kind: "PERCENT", percentBasisPoints: 750 } },
     });
+    const draftRow = (await q(`SELECT before, after FROM eos_policy.audit_events WHERE action = 'salesAgreement.updateDraft' AND target_id = $1`, [agreement.salesAgreementId])).rows[0];
+    assert.ok(!JSON.stringify(draftRow).includes("555-0100"), "special instructions are recorded as a length");
     await replayed("draft update replay", () => sa.updateSalesAgreementDraft(deps, SELLER, draftIn));
     await refused("discount above the actor's authority", () => sa.updateSalesAgreementDraft(deps, SELLER,
       { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerDiscount: { kind: "PERCENT", percentBasisPoints: 1001 } }), "DISCOUNT_EXCEEDS_AUTHORITY");
@@ -226,11 +246,34 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     await refused("already decided", () => sa.approveSalesAgreementTradeIn(deps, GM, { ...approveIn, idempotencyKey: key() }), "TRADE_IN_ALREADY_DECIDED");
     await refused("a decline states its reason", () => sa.declineSalesAgreementTradeIn(deps, GM,
       { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, itemNumber: 2 }), "REASON_REQUIRED");
+    await refused("a decline reason over the existing 500-character limit", () => sa.declineSalesAgreementTradeIn(deps, GM,
+      { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, itemNumber: 2, reason: "x".repeat(501) }), "REASON_TOO_LONG");
     await applied("trade-in decline", () => sa.declineSalesAgreementTradeIn(deps, GM,
       { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, itemNumber: 2, reason: "not in condition" }), {
       action: "salesAgreement.declineTradeIn", kind: "sales_agreement", id: agreement.salesAgreementId, actor: "p-gm", reason: "not in condition",
       before: { itemNumber: 2, approvalStatus: "PROPOSED", proposedValueMinor: 30000, tradeInCreditMinor: 35000 },
       after: { itemNumber: 2, approvalStatus: "DECLINED", approvedCreditMinor: null, tradeInCreditMinor: 35000 },
+    });
+
+    // Restating item 1 with a corrected description returns it to PROPOSED, so the credit AFTER the command is 0 (syncApprovedTradeInCredit),
+    // not the 35000 the draft held before it; item 2 keeps its decision. The audit states the value after the sync and each trade-in's decision.
+    const corrected = "Used reach-in (corrected)";
+    await applied("draft update restating trade-ins", () => sa.updateSalesAgreementDraft(deps, SELLER, {
+      idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, customerPO: "PO-78",
+      tradeIns: [{ description: corrected, proposedValueMinor: 40000 }, { description: "Used cooler", proposedValueMinor: 30000 }] }), {
+      action: "salesAgreement.updateDraft", kind: "sales_agreement", id: agreement.salesAgreementId,
+      before: { customerPO: "PO-77", tradeInMinor: 35000, tradeIns: [
+        { itemNumber: 1, proposedValueMinor: 40000, approvalStatus: "APPROVED", approvedCreditMinor: 35000, descriptionLength: "Used reach-in".length },
+        { itemNumber: 2, proposedValueMinor: 30000, approvalStatus: "DECLINED", approvedCreditMinor: null, descriptionLength: "Used cooler".length }] },
+      after: { customerPO: "PO-78", tradeInMinor: 0, tradeIns: [
+        { itemNumber: 1, proposedValueMinor: 40000, approvalStatus: "PROPOSED", approvedCreditMinor: null, descriptionLength: corrected.length },
+        { itemNumber: 2, proposedValueMinor: 30000, approvalStatus: "DECLINED", approvedCreditMinor: null, descriptionLength: "Used cooler".length }] },
+    });
+    await applied("trade-in re-approve", () => sa.approveSalesAgreementTradeIn(deps, GM,
+      { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId, itemNumber: 1, approvedCreditMinor: 35000, reason: "re-inspected" }), {
+      action: "salesAgreement.approveTradeIn", kind: "sales_agreement", id: agreement.salesAgreementId, actor: "p-gm", reason: "re-inspected",
+      before: { itemNumber: 1, approvalStatus: "PROPOSED", proposedValueMinor: 40000, tradeInCreditMinor: 0 },
+      after: { itemNumber: 1, approvalStatus: "APPROVED", approvedCreditMinor: 35000, tradeInCreditMinor: 35000 },
     });
 
     const acceptIn = { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId };
@@ -296,10 +339,13 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     });
     await replayed("authorize replay", () => so.authorizeSalesOrderServiceProvider(deps, SELLER, authIn));
     await refused("a reason is required", () => so.authorizeSalesOrderServiceProvider(deps, SELLER, { ...authIn, idempotencyKey: key(), reason: " " }), "REASON_REQUIRED");
+    await refused("an authorize reason over the existing 500-character limit", () => so.authorizeSalesOrderServiceProvider(deps, SELLER, { ...authIn, idempotencyKey: key(), reason: "x".repeat(501) }), "REASON_TOO_LONG");
+    await refused("a revoke reason over the existing 500-character limit", () => so.revokeSalesOrderServiceProvider(deps, SELLER,
+      { idempotencyKey: key(), salesOrderId: direct.salesOrderId, serviceOperatingCompanyId: "ventana", reason: "x".repeat(501) }), "REASON_TOO_LONG");
     await applied("revoke", () => so.revokeSalesOrderServiceProvider(deps, SELLER,
       { idempotencyKey: key(), salesOrderId: direct.salesOrderId, serviceOperatingCompanyId: "ventana", reason: "work finished" }), {
       action: "salesOrder.revokeServiceProvider", kind: "sales_order", id: direct.salesOrderId, reason: "work finished",
-      before: { serviceOperatingCompanyId: "ventana", status: "ACTIVE" }, after: { serviceOperatingCompanyId: "ventana", status: "REVOKED" },
+      before: { serviceOperatingCompanyKey: "ventana-ops-t1", status: "ACTIVE" }, after: { serviceOperatingCompanyKey: "ventana-ops-t1", status: "REVOKED" },
     });
     // Re-authorizing a revoked provider carries the REVOKED row as its before.
     await applied("re-authorize", () => so.authorizeSalesOrderServiceProvider(deps, SELLER, { ...authIn, idempotencyKey: key() }), {
@@ -334,16 +380,22 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
       action: "crm.updateAccount", kind: "crm_account", id: account.accountId, reason: "territory realignment",
       before: { ownerEmployeeId: "e-retail" }, after: { ownerEmployeeId: "e-national" },
     });
+    // Notes and the billing address are free text / contact details: a length and presence flags, never the text.
+    await applied("updateAccount notes and billing address", () => accounts.updateAccount(crmDeps, CRM,
+      { accountId: account.accountId, notes: "Prefers calls after 5pm", billingAddress: { street: "1 Main St", city: "Tempe", state: "AZ", zip: "85281" } }), {
+      action: "crm.updateAccount", kind: "crm_account", id: account.accountId,
+      before: { notesLength: null, billingAddressPresent: false }, after: { notesLength: "Prefers calls after 5pm".length, billingAddressPresent: true, notesChanged: true, billingAddressChanged: true },
+    });
     await refused("updateAccount with nothing to change", () => accounts.updateAccount(crmDeps, CRM, { accountId: account.accountId }), "NO_CHANGES_REQUESTED");
     await refused("updateAccount on an unknown Account", () => accounts.updateAccount(crmDeps, CRM, { accountId: "acct-nope", name: "x" }), "ACCOUNT_NOT_FOUND");
 
     const contactIn = { idempotencyKey: key(), accountId: account.accountId, name: "Pat Doe", email: "pat@example.com" };
     contact = await applied("createContact", () => contacts.createContact(crmDeps, CRM, contactIn), {
-      action: "crm.createContact", kind: "crm_contact", id: (r) => r.contactId, before: null, after: { accountId: account.accountId, name: "Pat Doe", email: "pat@example.com" },
+      action: "crm.createContact", kind: "crm_contact", id: (r) => r.contactId, before: null, after: { accountId: account.accountId, name: "Pat Doe", emailPresent: true, phonePresent: false },
     });
     await replayed("createContact replay", () => contacts.createContact(crmDeps, CRM, contactIn));
     await applied("updateContact", () => contacts.updateContact(crmDeps, CRM, { contactId: contact.contactId, phone: "555-0100" }), {
-      action: "crm.updateContact", kind: "crm_contact", id: contact.contactId, before: { phone: null }, after: { phone: "555-0100" },
+      action: "crm.updateContact", kind: "crm_contact", id: contact.contactId, before: { phonePresent: false }, after: { phonePresent: true, phoneChanged: true, emailChanged: false },
     });
     await refused("updateContact on an unknown Contact", () => contacts.updateContact(crmDeps, CRM, { contactId: "cont-nope", phone: "1" }), "CONTACT_NOT_FOUND");
 
@@ -360,11 +412,11 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     const siteIn = { idempotencyKey: key(), accountId: account.accountId, name: "Main yard", addressCity: "Phoenix" };
     site = await applied("createAccountLocation", () => sites.createAccountLocation(crmDeps, CRM, siteIn), {
       action: "crm.createAccountLocation", kind: "crm_account_location", id: (r) => r.accountLocationId, before: null,
-      after: { accountId: account.accountId, name: "Main yard", addressCity: "Phoenix" },
+      after: { accountId: account.accountId, name: "Main yard", addressPresent: true, accessNotesLength: null },
     });
     await replayed("createAccountLocation replay", () => sites.createAccountLocation(crmDeps, CRM, siteIn));
     await applied("updateAccountLocation", () => sites.updateAccountLocation(crmDeps, CRM, { accountLocationId: site.accountLocationId, accessNotes: "Gate code 1234" }), {
-      action: "crm.updateAccountLocation", kind: "crm_account_location", id: site.accountLocationId, before: { accessNotes: null }, after: { accessNotes: "Gate code 1234" },
+      action: "crm.updateAccountLocation", kind: "crm_account_location", id: site.accountLocationId, before: { accessNotesLength: null }, after: { accessNotesLength: "Gate code 1234".length, accessNotesChanged: true, addressChanged: false },
     });
     await refused("updateAccountLocation on an unknown site", () => sites.updateAccountLocation(crmDeps, CRM, { accountLocationId: "site-nope", name: "x" }), "ACCOUNT_LOCATION_NOT_FOUND");
   });
@@ -389,6 +441,14 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
     assert.equal((await q(`SELECT name FROM eos_crm.accounts WHERE id = $1`, [account.accountId])).rows[0].name, "Audit Co Renamed");
     assert.equal((await q(`SELECT count(*)::int n FROM eos_crm.contacts WHERE name = 'Never Applied'`)).rows[0].n, 0);
     assert.equal(await total(), n0);
+  });
+
+  await t.test("audit_events is append-only: no free text and no contact detail reached it anywhere in the run", async () => {
+    const everything = JSON.stringify((await q(`SELECT action, target_id, before, after, reason FROM eos_policy.audit_events WHERE tenant_id = 't1'`)).rows);
+    for (const secret of ["Send revised quote", "pat@example.com", "555-0100", "Gate code", "Phoenix", "Prefers calls", "1 Main St", "Tempe", "85281",
+      "Call Pat", "Used reach-in", "Used cooler", "Walk-in freezer"]) {
+      assert.ok(!everything.includes(secret), `"${secret}" must be recorded as a length or a flag, never as text`);
+    }
   });
 
   await t.test("every audit row of the run is attributed to a Principal and carries an operation action", async () => {

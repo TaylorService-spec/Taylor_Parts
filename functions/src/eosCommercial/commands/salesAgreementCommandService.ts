@@ -8,7 +8,8 @@ import {
   buildAcceptSalesAgreement, buildCreateSalesAgreement, buildUpdateSalesAgreementDraft, computeAgreementTotals, type CustomerDiscount,
 } from "../../salesAgreement/salesAgreementCommands";
 import { allocateCommercialNumber } from "../commercialNumbering";
-import { pickFields } from "../../eosAudit/commandAuditEvent";
+import { lineFacts, pickFields } from "../../eosAudit/commandAuditEvent";
+import { MAX_HANDOFF_REASON_LENGTH } from "../commercialOwnershipAuthority";
 import { discountAuthorityOf, discountWithinAuthority } from "../../salesAuthority/salesDiscountAuthority";
 import {
   COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireReservedHolder, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
@@ -164,6 +165,27 @@ async function replaceTradeIns(db: Queryable, tenantId: string, agreementId: str
         same ? was.decision_reason : null]);
   }
 }
+/**
+ * Q-1 audit: each trade-in as its value and decision, never its text (the description is recorded as a length; manufacturer, model,
+ * serial, notes and evidence reference are not recorded at all).
+ */
+async function tradeInFacts(db: Queryable, tenantId: string, agreementId: string): Promise<Record<string, unknown>[]> {
+  const { rows } = await db.query(
+    `SELECT item_number, proposed_value_minor, approval_status, approved_credit_minor, char_length(description) AS description_length
+       FROM eos_commercial.sales_agreement_trade_ins WHERE tenant_id = $1 AND sales_agreement_id = $2 ORDER BY item_number`, [tenantId, agreementId]);
+  return rows.map((r) => ({
+    itemNumber: Number(r.item_number), proposedValueMinor: Number(r.proposed_value_minor), approvalStatus: r.approval_status,
+    approvedCreditMinor: r.approved_credit_minor === null ? null : Number(r.approved_credit_minor), descriptionLength: Number(r.description_length),
+  }));
+}
+
+/** An existing reason limit of the Commercial domain (the handoff reason's, commercialOwnershipAuthority.ts) applied to a decision reason. */
+function requireReasonWithinLimit(reason: string | null): void {
+  if (reason !== null && reason.length > MAX_HANDOFF_REASON_LENGTH) {
+    fail("REASON_TOO_LONG", "INVALID_INPUT", `reason must be at most ${MAX_HANDOFF_REASON_LENGTH} characters`);
+  }
+}
+
 /** The Agreement's trade-in credit IS the sum of its APPROVED trade-ins. */
 async function syncApprovedTradeInCredit(db: Queryable, tenantId: string, agreementId: string): Promise<number> {
   const { rows } = await db.query(
@@ -268,7 +290,8 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
           after: {
             salesAgreementNumber: number.number, opportunityId: opportunity.id, accountId: built.accountId, state: "DRAFT",
             ownerEmployeeId: built.ownerEmployeeId, operatingCompanyId: built.operatingCompanyId, creditedSalespersonId: built.creditedSalespersonId,
-            lines: built.lines, charges: built.totals, customerDiscount: discount, tradeInCount: tradeIns?.length ?? 0, ...accountable,
+            lines: lineFacts(built.lines), charges: built.totals, customerDiscount: discount,
+            tradeIns: await tradeInFacts(db, actor.tenantId, id), ...accountable,
           },
         },
       };
@@ -352,6 +375,7 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
         values.push(bp); sets.push(`customer_discount_basis_points = $${values.length}`);
         values.push(amount); sets.push(`customer_discount_amount_minor = $${values.length}`);
       }
+      const tradeInsBefore = tradeIns !== undefined ? await tradeInFacts(db, actor.tenantId, current.id) : undefined;
       if (tradeIns !== undefined) await replaceTradeIns(db, actor.tenantId, current.id, disc[0].operating_company_key, actor.principalId, tradeIns);
       await db.query(
         `UPDATE eos_commercial.sales_agreements SET ${[...sets, "updated_by = $3", "updated_at = now()"].join(", ")}
@@ -363,19 +387,30 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
       // Q-1 audit: what the draft held and what it now holds, for the fields this edit wrote (discount and trade-ins included).
       const was: Record<string, unknown> = { ...current.charges, locationId: current.locationId, creditedSalespersonId: current.creditedSalespersonId,
         customerPO: current.customerPO, isLease: current.isLease, fulfillmentIntent: current.fulfillmentIntent,
-        shippingInstructions: current.shippingInstructions, shipVia: current.shipVia, specialInstructions: current.specialInstructions, lines: current.lines };
+        shippingInstructions: current.shippingInstructions, shipVia: current.shipVia, specialInstructions: current.specialInstructions, lines: lineFacts(current.lines) };
+      const FREE_TEXT = ["shippingInstructions", "specialInstructions"]; // recorded as <field>Length, never the text
       const draftKeys = Object.keys(DRAFT_COLUMNS).filter((f) => f in patch);
-      const chargeKeys = totals ? Object.keys(CHARGE_COLUMNS) : [];
+      // The charges AFTER the whole command: syncApprovedTradeInCredit can move trade_in_minor after the UPDATE wrote the patch's value.
+      const chargesChanged = totals !== undefined || tradeIns !== undefined;
+      const chargeKeys = chargesChanged ? Object.keys(CHARGE_COLUMNS) : [];
+      const { rows: finalCharges } = await db.query(`SELECT shipping_minor, install_charge_minor, tax_minor, down_payment_minor, trade_in_minor
+        FROM eos_commercial.sales_agreements WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, current.id]);
+      const chargesAfter = { shippingMinor: Number(finalCharges[0].shipping_minor), installChargeMinor: Number(finalCharges[0].install_charge_minor),
+        taxMinor: Number(finalCharges[0].tax_minor), downPaymentMinor: Number(finalCharges[0].down_payment_minor), tradeInMinor: Number(finalCharges[0].trade_in_minor) };
       const lineKeys = patch.lines ? ["lines"] : [];
+      const patchView = { ...patch, ...(patch.lines ? { lines: lineFacts(patch.lines) } : {}) };
       return {
         result: { salesAgreementId: current.id, changed }, target: target(current.id),
         audit: {
           action: "salesAgreement.updateDraft", targetKind: "sales_agreement", targetId: current.id,
-          before: { ...pickFields(was, [...draftKeys, ...chargeKeys, ...lineKeys]), ...(discountChange !== undefined ? { customerDiscount: standing } : {}) },
+          before: {
+            ...pickFields(was, [...draftKeys, ...chargeKeys, ...lineKeys], FREE_TEXT), ...(discountChange !== undefined ? { customerDiscount: standing } : {}),
+            ...(tradeInsBefore !== undefined ? { tradeIns: tradeInsBefore } : {}),
+          },
           after: {
-            ...pickFields(patch, [...draftKeys, ...lineKeys]), ...pickFields(totals ?? {}, chargeKeys),
+            ...pickFields(patchView, [...draftKeys, ...lineKeys], FREE_TEXT), ...pickFields(chargesAfter, chargeKeys),
             ...(discountChange !== undefined ? { customerDiscount: discountChange } : {}),
-            ...(tradeIns !== undefined ? { tradeInCount: tradeIns.length } : {}), changed,
+            ...(tradeIns !== undefined ? { tradeIns: await tradeInFacts(db, actor.tenantId, current.id) } : {}), changed,
           },
         },
       };
@@ -434,6 +469,7 @@ function decideTradeIn(deps: CommercialCommandDeps, actor: CommercialActorContex
       if (current.state !== "DRAFT") fail("ILLEGAL_TRANSITION", "PRECONDITION_FAILED", "a trade-in value is decided only on a DRAFT Sales Agreement");
       if (!Number.isSafeInteger(input.itemNumber) || (input.itemNumber as number) < 1) fail("INVALID_INPUT", "INVALID_INPUT", "itemNumber is required");
       const reason = typeof input.reason === "string" && input.reason.trim() !== "" ? input.reason.trim() : null;
+      requireReasonWithinLimit(reason);
       if (decision === "DECLINED" && reason === null) fail("REASON_REQUIRED", "INVALID_INPUT", "a declined trade-in states its reason");
       if (decision === "APPROVED" && (!Number.isSafeInteger(input.approvedCreditMinor) || (input.approvedCreditMinor as number) < 1)) {
         fail("TRADE_IN_INVALID", "INVALID_INPUT", "approvedCreditMinor is the approved value in positive minor units");

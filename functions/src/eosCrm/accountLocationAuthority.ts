@@ -16,7 +16,7 @@
 // TENANCY: the parent Account is read in the actor's tenant only, and `account_locations_account_same_tenant` makes a
 // cross-tenant link unrepresentable.
 import { randomUUID } from "node:crypto";
-import { recordCommandAudit } from "../eosAudit/commandAuditEvent.js";
+import { recordCommandAudit, textLength } from "../eosAudit/commandAuditEvent.js";
 import { assertNoInventoryLocationDiscriminator, inheritOwnerFromAccount } from "../crm/customerIdentity.js";
 import {
   CRM_CAPABILITIES,
@@ -74,6 +74,15 @@ interface AccountLocationRow {
 
 const COLUMNS =
   "id, account_id, name, address_street, address_city, address_state, address_postal_code, access_notes, owner_employee_id, created_by, created_at, updated_by, updated_at";
+
+/**
+ * Q-1 audit view of a customer site: the name identifies it; the street address is recorded as presence and the access notes as a
+ * length, never as text (audit_events is append-only).
+ */
+const auditView = (p: AccountLocationProjection): Record<string, unknown> => {
+  const { addressStreet, addressCity, addressState, addressPostalCode, accessNotes, ...rest } = p;
+  return { ...rest, addressPresent: [addressStreet, addressCity, addressState, addressPostalCode].some((v) => v !== null), accessNotesLength: textLength(accessNotes) };
+};
 
 const project = (row: AccountLocationRow): AccountLocationProjection => ({
   accountLocationId: row.id,
@@ -144,7 +153,7 @@ export function createAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
           fields.get("addressState") ?? null, fields.get("addressPostalCode") ?? null, fields.get("accessNotes") ?? null,
           inheritOwnerFromAccount(parent.ownerEmployeeId), principalId],
       );
-      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createAccountLocation", targetKind: "crm_account_location", targetId: rows[0].id, before: null, after: { ...project(rows[0]) } });
+      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createAccountLocation", targetKind: "crm_account_location", targetId: rows[0].id, before: null, after: auditView(project(rows[0])) });
       return { result: project(rows[0]), targetType: "ACCOUNT_LOCATION", targetId: rows[0].id };
     },
   );
@@ -174,7 +183,12 @@ export function updateAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
       if (rows.length === 0) fail("ACCOUNT_LOCATION_NOT_FOUND", "NOT_FOUND", "the customer site does not exist in this tenant");
       await recordCommandAudit(db, tenantId, principalId, {
         action: "crm.updateAccountLocation", targetKind: "crm_account_location", targetId: accountLocationId,
-        before: { ...project(prior.rows[0]) }, after: { ...project(rows[0]) },
+        before: auditView(project(prior.rows[0])),
+        after: {
+          ...auditView(project(rows[0])),
+          addressChanged: (["address_street", "address_city", "address_state", "address_postal_code"] as const).some((c) => prior.rows[0][c] !== rows[0][c]),
+          accessNotesChanged: prior.rows[0].access_notes !== rows[0].access_notes,
+        },
       });
       return project(rows[0]);
     },

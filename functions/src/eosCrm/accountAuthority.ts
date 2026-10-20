@@ -50,7 +50,7 @@
 // unset, taxStatus unset or UNKNOWN) or changing either stored value requires customer.governedField.write.
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
-import { recordCommandAudit } from "../eosAudit/commandAuditEvent.js";
+import { recordCommandAudit, textLength } from "../eosAudit/commandAuditEvent.js";
 import { CRM_ACCOUNT_STATUSES, isCrmAccountStatus, type CrmAccountStatus } from "../crm/customerIdentity.js";
 import { createPostgresEmployeeAuthority } from "../employeeIdentity/postgresEmployeeAuthority.js";
 import {
@@ -191,6 +191,15 @@ const project = (row: AccountRow): AccountProjection => {
     updatedBy: row.updated_by,
     updatedAt: isoOf(row.updated_at),
   };
+};
+
+/**
+ * Q-1 audit view of an Account. audit_events is append-only, so it carries identity, state and amounts -- never free text or
+ * contact details: notes as a length, the billing address as presence, tags as a count.
+ */
+const auditView = (p: AccountProjection): Record<string, unknown> => {
+  const { notes, billingAddress, tags, ...rest } = p;
+  return { ...rest, notesLength: textLength(notes), billingAddressPresent: billingAddress !== null, tagCount: tags.length };
 };
 
 // ════════════════════ field validation ════════════════════
@@ -482,7 +491,7 @@ export function createAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       );
       await replaceChildren(db, tenantId, accountId, fields, false);
       const created = await selectAccount(db, tenantId, accountId);
-      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createAccount", targetKind: "crm_account", targetId: accountId, before: null, after: { ...created } });
+      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createAccount", targetKind: "crm_account", targetId: accountId, before: null, after: auditView(created) });
       return { result: created, targetType: "ACCOUNT", targetId: accountId };
     },
   );
@@ -571,7 +580,13 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       await replaceChildren(db, tenantId, accountId, fields, true);
       const updated = await selectAccount(db, tenantId, accountId);
       await recordCommandAudit(db, tenantId, principalId, {
-        action: "crm.updateAccount", targetKind: "crm_account", targetId: accountId, before: { ...was }, after: { ...updated }, reason: owner === null ? null : terms.reason,
+        action: "crm.updateAccount", targetKind: "crm_account", targetId: accountId, before: auditView(was),
+        after: {
+          ...auditView(updated), notesChanged: was.notes !== updated.notes,
+          billingAddressChanged: JSON.stringify(was.billingAddress) !== JSON.stringify(updated.billingAddress),
+          tagsChanged: JSON.stringify(was.tags) !== JSON.stringify(updated.tags),
+        },
+        reason: owner === null ? null : terms.reason,
       });
       return updated;
     },

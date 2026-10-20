@@ -12,6 +12,8 @@ import { deriveSalesOrderLinesFromAgreement } from "../../salesAgreement/salesAg
 import type { SalesAgreementState } from "../../salesAgreement/salesAgreementLifecycle";
 import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { allocateCommercialNumber } from "../commercialNumbering";
+import { lineFacts } from "../../eosAudit/commandAuditEvent";
+import { MAX_HANDOFF_REASON_LENGTH } from "../commercialOwnershipAuthority";
 import {
   COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireActiveSalesChannel, requireActiveTenantAccount, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
@@ -117,6 +119,13 @@ async function stageBuiltSalesOrder(
   return { salesOrderId: id, salesOrderNumber: number.number, state: built.state, ...accountable };
 }
 
+/** An existing reason limit of the Commercial domain (the handoff reason's, commercialOwnershipAuthority.ts) applied to a decision reason. */
+function requireReasonWithinLimit(reason: unknown): void {
+  if (typeof reason === "string" && reason.trim().length > MAX_HANDOFF_REASON_LENGTH) {
+    fail("REASON_TOO_LONG", "INVALID_INPUT", `reason must be at most ${MAX_HANDOFF_REASON_LENGTH} characters`);
+  }
+}
+
 const lineKey = (l: { kind: string; ref: string; qty: number }) => `${l.kind}:${l.ref}:${l.qty}`;
 const sameMultiset = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
 
@@ -163,7 +172,7 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
         after: {
           salesOrderNumber: created.salesOrderNumber, accountId: built.accountId, opportunityId, salesAgreementId: null, state: created.state,
           salesChannel: built.salesChannel, ownerEmployeeId: built.ownerEmployeeId, operatingCompanyId: built.operatingCompanyId,
-          creditedSalespersonId: built.creditedSalespersonId, lines: built.lines, accountableEmployeeId: created.accountableEmployeeId,
+          creditedSalespersonId: built.creditedSalespersonId, lines: lineFacts(built.lines), accountableEmployeeId: created.accountableEmployeeId,
           accountablePersonSource: created.accountablePersonSource,
         },
       },
@@ -254,6 +263,7 @@ export function authorizeSalesOrderServiceProvider(deps: CommercialCommandDeps, 
         fail("SERVICE_SCOPES_INVALID", "INVALID_INPUT", "scopes is a non-empty list of INSTALLATION and / or SERVICE");
       }
       if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "an authorization states its reason");
+      requireReasonWithinLimit(input.reason);
       const { rows: so } = await db.query(`SELECT operating_company_key FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, order.id]);
       const { rows: key } = await db.query(`SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys
         WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`, [actor.tenantId, String(input.serviceOperatingCompanyId ?? "")]);
@@ -286,6 +296,9 @@ export function revokeSalesOrderServiceProvider(deps: CommercialCommandDeps, act
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       scope.admitChannel(order.salesChannel);
       if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "a revocation states its reason");
+      requireReasonWithinLimit(input.reason);
+      const { rows: companyKey } = await db.query(`SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys
+        WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`, [actor.tenantId, String(input.serviceOperatingCompanyId ?? "")]);
       const { rowCount } = await db.query(
         `UPDATE eos_commercial.sales_order_service_providers p SET status = 'REVOKED', revoked_by = $4, revoked_at = now(), revoke_reason = $5
            FROM eos_policy.tenant_operating_company_keys k
@@ -297,8 +310,8 @@ export function revokeSalesOrderServiceProvider(deps: CommercialCommandDeps, act
         result: { salesOrderId: order.id, status: "REVOKED" }, target: { family: "salesOrder" as const, id: order.id },
         audit: {
           action: "salesOrder.revokeServiceProvider", targetKind: "sales_order", targetId: order.id,
-          before: { serviceOperatingCompanyId: String(input.serviceOperatingCompanyId ?? ""), status: "ACTIVE" },
-          after: { serviceOperatingCompanyId: String(input.serviceOperatingCompanyId ?? ""), status: "REVOKED" },
+          before: { serviceOperatingCompanyKey: companyKey[0]?.operating_company_key ?? null, status: "ACTIVE" },
+          after: { serviceOperatingCompanyKey: companyKey[0]?.operating_company_key ?? null, status: "REVOKED" },
           reason: (input.reason as string).trim(),
         },
       };
