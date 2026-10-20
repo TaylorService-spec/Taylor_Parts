@@ -403,7 +403,7 @@ test("supplier identity + receipt correction over the governed path", { skip: SK
     const after = await capabilitiesForRoleKeys(pool, TENANT, ["partsManager"]);
     assert.ok(partsManagerFinanceBefore.has("finance.invoice.issue") && partsManagerFinanceBefore.has("finance.adjustment.record"), "the defect was present");
     const fin = (set) => [...set].filter((k) => k.startsWith("finance.")).sort();
-    assert.deepEqual(fin(after), ["finance.invoice.read", "finance.payment.read"], "Parts Manager keeps only the finance READS");
+    assert.deepEqual(fin(after), ["finance.accountBalance.read", "finance.invoice.read", "finance.payment.read"], "Parts Manager keeps only the finance READS (+ the A6 customer-balance summary key, migration 1764680000000)");
     const removed = [...partsManagerFinanceBefore].filter((k) => !after.has(k)).sort();
     const added = [...after].filter((k) => !partsManagerFinanceBefore.has(k)).sort();
     assert.deepEqual([removed, added], [["finance.adjustment.record", "finance.invoice.issue"], ["inventory.receipt.correct"]]);

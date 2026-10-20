@@ -213,7 +213,7 @@ test("A6 customer-balance summary on PostgreSQL: grants, reach, company isolatio
     assert.deepEqual(Object.keys(r).sort(), ["asOf", "restricted", "status", "summaries"]);
     assert.ok(!Number.isNaN(Date.parse(r.asOf)));
     for (const s of r.summaries) {
-      assert.deepEqual(Object.keys(s).sort(), ["currency", "operatingCompanyId", "openReceivableCount", "outstandingMinor", "overdueCount", "overdueMinor"]);
+      assert.deepEqual(Object.keys(s).sort(), ["currency", "openReceivableCount", "operatingCompanyId", "outstandingMinor", "overdueCount", "overdueMinor"]);
       assert.equal(typeof s.openReceivableCount, "number");
       assert.equal(typeof s.outstandingMinor, "string");
     }

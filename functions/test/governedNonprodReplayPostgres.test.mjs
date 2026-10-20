@@ -26,16 +26,16 @@ test("the recorded decisions replay the governed nonprod authority exactly: 94 /
   for (const ch of roles.RECORDED_TENANT_SALES_CHANNELS) {
     await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id,sales_channel,status,source,established_by,updated_by) VALUES ($1,$2,'ACTIVE','replay','replay','replay') ON CONFLICT DO NOTHING`, [T, ch]);
   }
-  assert.equal(await apply(roles.commercialSharedContextOperations()), 707, "D-B Commercial Shared Context (+4)");
-  assert.equal(await apply(d("salesManagerParityDelta").salesManagerActivationOperations()), 708, "Sales Manager separation (-1) + parity (+2)");
-  assert.equal(await apply(d("serviceActivationAuthorityDelta").serviceExperienceOperations()), 709, "Service Experience (+1)");
-  assert.equal(await apply(d("recordedActivationDecisionsDelta").recordedActivationOperations()), 721, "recorded Catalog/Reorder + self-scheduling (+12)");
-  assert.equal(await apply(roles.operationalConfigurationAdministratorOperations()), 721, "DQ-033 creates a Role, no grant");
-  assert.equal(await apply(d("partsPurchasingReceivingDelta").partsPurchasingReceivingOperations()), 727, "Parts / Purchasing / Receiving (+6)");
-  assert.equal(await apply(d("purchasingFinanceClosureDelta").purchasingFinanceClosureOperations()), 727, "Purchasing -> Finance closure (grant and revoke net 0)");
-  assert.equal(await apply(d("inventoryWarehouseActivationDelta").inventoryWarehouseGrantOperations()), 734, "Inventory / Warehouse (+7)");
-  assert.equal(await apply(d("equipmentActivationDelta").equipmentActivationOperations()), 743, "Equipment (+9)");
-  assert.equal(await apply(d("truckInventoryActivationDelta").truckInventoryActivationOperations()), 750, "Truck Inventory (+7)");
+  assert.equal(await apply(roles.commercialSharedContextOperations()), 715, "D-B Commercial Shared Context (+4)");
+  assert.equal(await apply(d("salesManagerParityDelta").salesManagerActivationOperations()), 716, "Sales Manager separation (-1) + parity (+2)");
+  assert.equal(await apply(d("serviceActivationAuthorityDelta").serviceExperienceOperations()), 717, "Service Experience (+1)");
+  assert.equal(await apply(d("recordedActivationDecisionsDelta").recordedActivationOperations()), 729, "recorded Catalog/Reorder + self-scheduling (+12)");
+  assert.equal(await apply(roles.operationalConfigurationAdministratorOperations()), 729, "DQ-033 creates a Role, no grant");
+  assert.equal(await apply(d("partsPurchasingReceivingDelta").partsPurchasingReceivingOperations()), 735, "Parts / Purchasing / Receiving (+6)");
+  assert.equal(await apply(d("purchasingFinanceClosureDelta").purchasingFinanceClosureOperations()), 735, "Purchasing -> Finance closure (grant and revoke net 0)");
+  assert.equal(await apply(d("inventoryWarehouseActivationDelta").inventoryWarehouseGrantOperations()), 742, "Inventory / Warehouse (+7)");
+  assert.equal(await apply(d("equipmentActivationDelta").equipmentActivationOperations()), 751, "Equipment (+9)");
+  assert.equal(await apply(d("truckInventoryActivationDelta").truckInventoryActivationOperations()), 758, "Truck Inventory (+7)");
 
   const migrations = readdirSync(new URL("../migrations", import.meta.url)).filter((f) => f.endsWith(".sql")).length;
   assert.equal((await q(`SELECT count(*)::int n FROM public.pgmigrations`)).rows[0].n, migrations);
@@ -44,7 +44,7 @@ test("the recorded decisions replay the governed nonprod authority exactly: 94 /
   // 97 -> 98: 1764560000000 Financial Policy foundation -- four finance.policy.* keys, granted to NO Role, so the grant counts do not move.
   assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities`)).rows[0].n, 195); // 194 -> 195: finance.accountBalance.read (A6, 1764680000000), granted to eight operational Roles. // 193 -> 194: inventory.catalog.part.activate (GRANT-1 A1 split, 1764670000000). // 188 -> 193: the five supplier.purchaseOrder.* keys (P-1, 1764660000000), granted to the ruled Roles. // 149 -> 188: the 38 report.* ids and performance.goal.read (B4, 1764640000000), granted to NO Role. // 147 -> 149: the two inventory.location.bin.* keys (B3, 1764630000000). // 142 -> 147: the five finance.visibility.* keys (B1, 1764620000000). // 140 -> 142: crm.activity.read / .create (#243, 1764590000000). // 139 -> 140: inventory.returns.intake (#242, 1764580000000). // 128 -> 135: the four inventory.supplierTerms.* + three inventory.catalog.cost.* keys; 135 -> 139: the four finance.policy.* keys
   // Replaying again adds nothing (idempotent), and the delta files introduce no Role beyond the two they record.
-  assert.equal(await apply(d("truckInventoryActivationDelta").truckInventoryActivationOperations()), 750);
+  assert.equal(await apply(d("truckInventoryActivationDelta").truckInventoryActivationOperations()), 758);
   for (const key of ["commercialSharedContext", "operationalConfigurationAdministrator"]) {
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1 AND key=$2`, [T, key])).rows[0].n, 1, key);
   }

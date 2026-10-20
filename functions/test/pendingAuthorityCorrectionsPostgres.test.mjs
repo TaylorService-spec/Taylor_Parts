@@ -103,7 +103,7 @@ const capabilitiesOf = (roleKey) =>
   new Set(AUTHORITY_BASELINE_GRANTS
     .filter((g) => g.roleKey === roleKey && g.evidence !== "migration:1762646400000" && g.evidence !== "migration:1763078400000"
       && g.evidence !== "migration:1764500000000" && g.evidence !== "migration:1764510000000" && g.evidence !== "migration:1764520000000"
-      && g.evidence !== "migration:1764590000000" && g.evidence !== "migration:1764620000000" && g.evidence !== "migration:1764630000000" && g.evidence !== "migration:1764650000000" && g.evidence !== "migration:1764660000000" && g.evidence !== "migration:1764670000000")
+      && g.evidence !== "migration:1764590000000" && g.evidence !== "migration:1764620000000" && g.evidence !== "migration:1764630000000" && g.evidence !== "migration:1764650000000" && g.evidence !== "migration:1764660000000" && g.evidence !== "migration:1764670000000" && g.evidence !== "migration:1764680000000")
     .map((g) => g.capabilityKey));
 
 /** What a Role held BEFORE this activation -- the baseline minus the rows this migration wrote. */
@@ -118,7 +118,7 @@ const capabilitiesBeforeOf = (roleKey) =>
   new Set(AUTHORITY_BASELINE_GRANTS
     .filter((g) => g.roleKey === roleKey && g.evidence !== MIG && g.evidence !== CONTROL_PLANE && g.evidence !== ADMINISTRATOR_STAFFING
       && g.evidence !== GOVERNED_CONFIGURATION && g.evidence !== "migration:1764510000000" && g.evidence !== "migration:1764520000000"
-      && g.evidence !== "migration:1764590000000" && g.evidence !== "migration:1764620000000" && g.evidence !== "migration:1764630000000" && g.evidence !== "migration:1764650000000" && g.evidence !== "migration:1764660000000" && g.evidence !== "migration:1764670000000")
+      && g.evidence !== "migration:1764590000000" && g.evidence !== "migration:1764620000000" && g.evidence !== "migration:1764630000000" && g.evidence !== "migration:1764650000000" && g.evidence !== "migration:1764660000000" && g.evidence !== "migration:1764670000000" && g.evidence !== "migration:1764680000000")
     .map((g) => g.capabilityKey));
 
 const holdersOf = (capabilityKey) =>
@@ -137,7 +137,7 @@ test("the baseline declares the ACTIVATED authority, and still says what nonprod
   // ...and the OTHER question is still answerable without arithmetic in somebody's head.
   assert.equal(AUTHORITY_BASELINE_NONPROD_MEASURED_TOTAL, 387);
   assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG, CONTROL_PLANE, ADMINISTRATOR_STAFFING, GOVERNED_CONFIGURATION, "migration:1764510000000", "migration:1764520000000",
-    "migration:1764580000000", "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000", "migration:1764660000000", "migration:1764670000000"],
+    "migration:1764580000000", "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000", "migration:1764660000000", "migration:1764670000000", "migration:1764680000000"],
     "the activation vehicle, the Administration control plane, the Administrator staffing capability and the #204 governed configuration holders are authored beyond the 387 measurement");
 });
 
