@@ -27,7 +27,7 @@
 // COMPANY (#235 / #237): capability first, then company. A caller with no operating-company authority is REFUSED, never answered with an empty list.
 import type { Pool, PoolClient } from "pg";
 import { visibleEmployeeIdsFor, type PrincipalPosition } from "../access/hierarchicalVisibilityCore.js";
-import { currentGoalFor, GoalError, type PerformanceGoal } from "../performance/performanceGoal.js";
+import { GoalError, goalCoversDate, type PerformanceGoal } from "../performance/performanceGoal.js";
 import { findMetric, isScopeBindable, type GoalScopeType } from "../performance/performanceMetricRegistry.js";
 import { scopedWarehouseIds } from "./partsReads.js";
 import { acceptOnly, DATE_AS_TEXT, inTransaction, isPlainObject, reachableCompanies, refuse, requireCapability, type ReachableCompanies, type RecordsActor } from "./recordsSupport.js";
@@ -195,6 +195,49 @@ export const goalOf = (r: Record<string, unknown>): PerformanceGoal => Object.fr
   ...(typeof r.provenance === "string" ? { provenance: r.provenance } : {}),
 });
 
+/**
+ * Does this version GOVERN the dates its window covers? The authority is the WINDOW, and a window is only ever written by an approval: so a version governs when it
+ * carries approval evidence -- APPROVED, or SUPERSEDED / RETIRED after approval (supersession closes the predecessor's window the day before its successor starts,
+ * retirement closes the window at the retiring day; the dates before are still its own). A DRAFT, and a draft that was discarded (RETIRED with no approver), never govern.
+ * The Firebase read selects APPROVED only; that stranded the dates between an approved future-dated successor and its start, and every historical as-of read (G-1b).
+ */
+export const governsDates = (g: Pick<PerformanceGoal, "status" | "approvedByUid">): boolean =>
+  g.status === "APPROVED" || ((g.status === "SUPERSEDED" || g.status === "RETIRED") && typeof g.approvedByUid === "string" && g.approvedByUid !== "");
+
+const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * A SCHEDULED version (approved, not yet started) that was replaced BEFORE it took effect never governed a day: the correction (G-1b) supersedes it without
+ * touching its window (a window cannot end before it begins), so "never governed" is DERIVED -- its approved successor was approved on a UTC day before its own
+ * start. A version replaced on or after its start day governed its window. UTC, the same clock the retire path and the approval timestamp use.
+ */
+export function neverGoverned(g: PerformanceGoal, all: readonly PerformanceGoal[]): boolean {
+  if (g.status !== "SUPERSEDED") return false;
+  const successor = all.find((s) => s.supersedesGoalId === g.goalId && governsDates(s) && typeof s.approvedAtMillis === "number" && Number.isFinite(s.approvedAtMillis));
+  return successor !== undefined && utcDay(successor.approvedAtMillis as number) < g.effectiveFrom;
+}
+
+/** The versions of ONE target that govern the dates their windows cover: approval evidence, and not a scheduled version replaced before it started. */
+export const governingVersions = <T extends PerformanceGoal>(goals: readonly T[]): T[] => goals.filter((g) => governsDates(g) && !neverGoverned(g, goals));
+
+/**
+ * THE target in force for one (metric, scope) on one date, or null. Considers every version that governs (governingVersions) whose window covers the date.
+ * AMBIGUITY IS A REFUSAL, NOT A TIE-BREAK: two governing versions covering one date is a data defect (a close that did not happen); it raises GOAL_AMBIGUOUS and the
+ * read renders it UNAVAILABLE -- never "no goal", and never the newer one.
+ */
+export function governingGoalFor(goals: readonly PerformanceGoal[], target: GoalTargetRequest, onDate: string): PerformanceGoal | null {
+  const all = (Array.isArray(goals) ? goals : []).filter((g) => g && g.metricId === target.metricId
+    && g.targetScopeType === target.targetScopeType && (g.targetScopeId ?? null) === (target.targetScopeId ?? null));
+  const candidates = governingVersions(all).filter((g) => goalCoversDate(g, onDate));
+  if (candidates.length === 0) return null;
+  if (candidates.length > 1) {
+    throw new GoalError("GOAL_AMBIGUOUS",
+      `${candidates.length} governing goals cover ${target.metricId} at ${target.targetScopeType}:${target.targetScopeId ?? "-"} on ${onDate} (${candidates
+        .map((g) => `${g.goalId}@v${g.version}`).join(", ")}) -- a supersession failed to close the earlier window`);
+  }
+  return candidates[0];
+}
+
 async function versionsFor(db: Pick<PoolClient, "query">, tenantId: string, t: GoalTargetRequest): Promise<PerformanceGoal[]> {
   const { rows } = await db.query(
     `SELECT goal_id, metric_id, target_scope_type, target_scope_id, target_value, unit, direction, currency,
@@ -245,7 +288,7 @@ export async function subjectEmployeeIds(ctx: GoalContext): Promise<string[]> {
   return rows.map((r) => String(r.id));
 }
 
-/** The current APPROVED target for each requested (metric, scope), as of a date the CALLER supplies (this authority owns no clock). */
+/** The target in force for each requested (metric, scope), as of a date the CALLER supplies (this authority owns no clock): see governingGoalFor. */
 export async function listCurrentPerformanceGoals(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
   requireCapability(actor, GOAL_READ_CAPABILITY);
   const i = acceptOnly(input, ["targets", "onDate"]);
@@ -268,7 +311,7 @@ export async function listCurrentPerformanceGoals(deps: { readonly pool: Pool },
       const versions = await versionsFor(ctx.db, actor.tenantId, t);
       try {
         results.push({
-          ...t, goal: currentGoalFor(versions, { metricId: t.metricId, targetScopeType: t.targetScopeType as GoalScopeType, targetScopeId: t.targetScopeId }, onDate),
+          ...t, goal: governingGoalFor(versions, t, onDate),
           denied: false, deniedFactor: null, unavailableReason: null,
         });
       } catch (err) {
