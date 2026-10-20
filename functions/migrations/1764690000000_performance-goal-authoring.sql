@@ -6,6 +6,9 @@
 --   1. performance_goal_commands: the idempotency record of the three authoring commands (key -> command + request fingerprint + stored result), so a replay writes nothing.
 --      Keyed PER ACTOR, as supplier_po_commands is. The goal rows themselves (eos_ops.performance_goals, migration 1764640000000) are unchanged: a goal authored here is
 --      provenance NATIVE with the EOS Principal id as author / approver.
+--   1b. performance_goals gains author_employee_id (nullable: a copied row has none): the Employee linked to the AUTHOR at draft time, so two-person approval rests on distinct
+--      Employees and a later relink of that Employee to a new Principal does not make a second person. And the approval-evidence CHECK is widened for ONE case: a DRAFT that is
+--      RETIRED (its disposition -- never measured) carries no approver. DRAFT still has none, APPROVED / SUPERSEDED still must have one, RETIRED has both or neither.
 --   2. FOUR capabilities REGISTERED on the existing `performanceGoal` Object, under the Firebase catalog's own ids (functions/src/access/permissionCatalog.ts):
 --      performance.goal.create, .approve, .supersede, .retire. (The brief named three; the Firebase catalog and commands have FOUR write verbs -- a version that names a
 --      predecessor asks .supersede -- so all four are mirrored, or "replace a target in force" would disappear.)
@@ -37,6 +40,18 @@ CREATE TABLE performance_goal_commands (
 );
 
 CREATE INDEX performance_goal_commands_by_goal ON performance_goal_commands (tenant_id, goal_id);
+
+ALTER TABLE performance_goals ADD COLUMN author_employee_id TEXT;
+ALTER TABLE performance_goals ADD CONSTRAINT performance_goals_author_employee_shape CHECK (author_employee_id IS NULL OR btrim(author_employee_id) <> '');
+
+ALTER TABLE performance_goals DROP CONSTRAINT performance_goals_approval_evidence;
+ALTER TABLE performance_goals ADD CONSTRAINT performance_goals_approval_evidence CHECK (
+       (status = 'DRAFT' AND approved_by_ref IS NULL AND approved_at_ms IS NULL)
+    OR (status IN ('APPROVED', 'SUPERSEDED') AND approved_by_ref IS NOT NULL AND approved_at_ms IS NOT NULL)
+    OR (status = 'RETIRED' AND (approved_by_ref IS NULL) = (approved_at_ms IS NULL)));
+
+COMMENT ON COLUMN performance_goals.author_employee_id IS
+    'The Employee linked to the author Principal when the draft was authored here (NULL for a copied row). Two-person approval compares Employees, not only Principals.';
 
 COMMENT ON TABLE performance_goal_commands IS
     'Idempotency record of createPerformanceGoalDraft / approvePerformanceGoal / retirePerformanceGoal: the same key and request replays the stored result and writes nothing; the same key with a different request is refused. Keyed per actor.';
@@ -90,6 +105,8 @@ BEGIN
     IF v_n > 0 THEN RAISE EXCEPTION 'G1_GOAL_AUTHORING: refuses to reverse -- % authoring command record(s) exist', v_n; END IF;
     SELECT count(*) INTO v_n FROM eos_ops.performance_goals WHERE provenance = 'NATIVE';
     IF v_n > 0 THEN RAISE EXCEPTION 'G1_GOAL_AUTHORING: refuses to reverse -- % performance goal(s) were authored here', v_n; END IF;
+    SELECT count(*) INTO v_n FROM eos_ops.performance_goals WHERE status = 'RETIRED' AND approved_by_ref IS NULL;
+    IF v_n > 0 THEN RAISE EXCEPTION 'G1_GOAL_AUTHORING: refuses to reverse -- % draft(s) were retired without ever being approved', v_n; END IF;
     SELECT count(*) INTO v_n FROM eos_policy.role_capability_decisions
      WHERE superseded_at IS NULL AND capability_key IN ('performance.goal.create', 'performance.goal.approve', 'performance.goal.supersede', 'performance.goal.retire');
     IF v_n > 0 THEN RAISE EXCEPTION 'G1_GOAL_AUTHORING: refuses to reverse -- % Administration decision(s) name a goal authoring capability', v_n; END IF;
@@ -103,6 +120,11 @@ END
 $$;
 
 DROP TABLE eos_ops.performance_goal_commands;
+
+ALTER TABLE eos_ops.performance_goals DROP CONSTRAINT performance_goals_approval_evidence;
+ALTER TABLE eos_ops.performance_goals ADD CONSTRAINT performance_goals_approval_evidence CHECK ((status = 'DRAFT') = (approved_by_ref IS NULL AND approved_at_ms IS NULL));
+ALTER TABLE eos_ops.performance_goals DROP CONSTRAINT performance_goals_author_employee_shape;
+ALTER TABLE eos_ops.performance_goals DROP COLUMN author_employee_id;
 
 SET search_path = eos_policy, public;
 DELETE FROM role_capabilities WHERE granted_by = 'migration:1764690000000';
