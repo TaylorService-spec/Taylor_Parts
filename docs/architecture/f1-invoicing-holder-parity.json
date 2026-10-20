@@ -1,0 +1,312 @@
+{
+  "decision": "F-1 invoicing, adjustments, refunds and reporting: the exact Firebase-parity holders of every finance key (evidence for docs/architecture/f1-invoicing-spec.md; no grant is proposed or made here)",
+  "derivedBy": "Lane F, 2026-10-20, read-only. Firebase holders = the compiled Role catalog (functions/lib/access/{compatibilityRoles,governedBusinessRoles,permissionCatalog}.js built from main 09a82d3e; admin and owner hold the catalog by derivation). EOS holders = the committed migration-derived baseline functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json (729 grants). The nonprod database was NOT read: A7 compares against it, and this lane has no credential for it.",
+  "firebaseParityKeys": {
+    "finance.invoice.issue": {
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsManager"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsManager"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.adjustment.record": {
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsManager"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsManager"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.payment.apply": {
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.refund.record": {
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.read": {
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [],
+      "firebaseOnly": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager"
+      ],
+      "eosOnly": [],
+      "eosEquivalent": "finance.payment.read (and finance.invoice.read), same 14 holders in the committed baseline; the nonprod live holders may be narrower (matrix row listAccountInvoiceAr) and are read from the nonprod database before any migration",
+      "note": "finance.read does not exist as an EOS key; firebaseOnly lists every holder only because the key name is absent, not because a holder is missing"
+    },
+    "finance.visibility.self": {
+      "firebaseHolders": [
+        "admin",
+        "owner",
+        "salesperson"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "admin",
+        "owner",
+        "salesperson"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.visibility.team": {
+      "firebaseHolders": [
+        "admin",
+        "owner",
+        "salesManager"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "admin",
+        "owner",
+        "salesManager"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.visibility.businessUnit": {
+      "firebaseHolders": [
+        "admin",
+        "owner"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "admin",
+        "owner"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.visibility.company": {
+      "firebaseHolders": [
+        "admin",
+        "owner"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "admin",
+        "owner"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    },
+    "finance.visibility.consolidated": {
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ],
+      "firebaseConditioned": {},
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ],
+      "firebaseOnly": [],
+      "eosOnly": []
+    }
+  },
+  "eosOnlyKeys": {
+    "finance.accountBalance.read": {
+      "eosCommittedBaselineHolders": [
+        "fieldManager",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager"
+      ]
+    },
+    "finance.configuration.manage": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ]
+    },
+    "finance.invoice.read": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager"
+      ]
+    },
+    "finance.payment.read": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager"
+      ]
+    },
+    "finance.reconciliation.record": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ]
+    },
+    "finance.settlement.apply": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ]
+    },
+    "finance.settlement.correct": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ]
+    },
+    "finance.settlement.record": {
+      "eosCommittedBaselineHolders": [
+        "accountingManager",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ]
+    }
+  },
+  "findings": [
+    "All four write keys (finance.invoice.issue, finance.adjustment.record, finance.payment.apply, finance.refund.record) are already registered in EOS (migration 1761609600000) with exactly the Firebase holders, except partsManager.",
+    "partsManager: a Firebase holder of finance.invoice.issue and finance.adjustment.record that the Owner-ruled R3 delta REVOKES in EOS (DECISIONS #193, purchasingFinanceClosureDelta.ts). The committed baseline still lists the original migration grant; whether Administration has applied the revoke is a nonprod read. Parity with Firebase is NOT recommended for partsManager.",
+    "finance.payment.apply: EOS has no such behaviour; the live cash model is finance.settlement.record / .apply / .correct (accountingManager, controller, financeManager, generalManager, owner; admin by derivation). Firebase's six holders (adding admin) map onto those; no grant is needed for parity beyond confirming admin's derived standing.",
+    "No new key is required for Firebase parity. A new key is required only if the Owner answers OD-F1-1 / OD-F1-4 with an approval step (an approver key) or OD-F1-9 with a void key; those are not Firebase parity and are listed in the spec for Owner decision, not proposed as grants."
+  ],
+  "toAdd": [],
+  "toRemove": []
+}
