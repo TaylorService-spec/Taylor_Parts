@@ -25,7 +25,6 @@ import { execFileSync } from "node:child_process";
 import pg from "pg";
 import * as repo from "../lib/eosOps/inventoryCommitmentRepository.js";
 import { OperatingCompanyAuthorityError } from "../lib/eosOps/operatingCompanyCustody.js";
-import { applyStockReservationMigration } from "./support/stockReservationMigration.mjs";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -74,7 +73,6 @@ async function reset() {
   migrate(["up"]);
   const seed = new pg.Client({ connectionString: URL });
   await seed.connect();
-  await applyStockReservationMigration(seed);
   for (const id of [TENANT_A, TENANT_B]) {
     await seed.query(
       "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",

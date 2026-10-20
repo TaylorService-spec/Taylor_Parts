@@ -48,7 +48,6 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
-import { applyStockReservationMigration } from "./support/stockReservationMigration.mjs";
 
 const require = createRequire(import.meta.url);
 const partsDelta = require("../lib/adminPolicy/partsPurchasingReceivingDelta.js");
@@ -92,7 +91,6 @@ test("census: every scenario of the superseded Firebase runner is ported to a na
 
 test("SCAN-PORT: the scanner scenarios on EOS (real PostgreSQL, real transports)", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { q, admin, person, repo, pool, http } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: TENANT, prefix: PREFIX });
-  await applyStockReservationMigration(pool);
   const ADMIN_SUBJECT = `uid-${PREFIX}-admin`;
   const one = async (sql, v = []) => (await q(sql, v)).rows[0];
   const call = async (who, route, operation, input = {}) => {

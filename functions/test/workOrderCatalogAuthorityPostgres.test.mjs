@@ -12,7 +12,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
-import { applyStockReservationMigration } from "./support/stockReservationMigration.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -45,7 +44,6 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe",
   });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
-  await applyStockReservationMigration(pool);
   const q = (text, values = []) => pool.query(text, values);
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
