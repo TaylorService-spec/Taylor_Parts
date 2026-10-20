@@ -1002,6 +1002,7 @@
           "functions/src/eosExperience/myWork.ts",
           "functions/src/eosExperience/principalDisplayNames.ts",
           "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/salesOrderAllocation.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
           "functions/src/salesOrder/salesOrderReadService.ts"
         ],
@@ -1018,7 +1019,7 @@
           "field-ops-app-vite/src/modules/accounts/AccountDetail.jsx",
           "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
         ],
-        "serverReferenceCount": 11,
+        "serverReferenceCount": 12,
         "clientReferenceCount": 11,
         "evidence": "EXPORTED"
       },
@@ -1079,6 +1080,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/salesOrderAllocation.ts",
           "functions/src/fulfillment/allocateSalesOrder.ts"
         ],
         "clientReferences": [
@@ -1087,7 +1089,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/salesOrderCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
