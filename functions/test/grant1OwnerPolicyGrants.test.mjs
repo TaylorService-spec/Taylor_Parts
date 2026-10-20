@@ -89,7 +89,7 @@ test("a. the evidence file equals the Owner's list, item for item", () => {
   assert.deepEqual(EVIDENCE.migration, { file: `functions/migrations/${MIGRATION_FILE}`, stamp: STAMP, idPrefix: "rc_g1_", capabilitiesRegistered: 1, newGrantsWritten: 30, pairsNamedInValues: 34, pairsAlreadyHeld: 4 });
   assert.deepEqual(EVIDENCE.counts, {
     baseline: { before: 659, after: 689, migrationBackedBefore: 601, migrationBackedAfter: 631 },
-    capabilities: { before: 193, after: 194 }, migrations: { before: 108, after: 109 }, shellRequestSet: { before: 63, after: 64 },
+    capabilities: { before: 193, after: 194 }, migrations: { before: 108, after: 109 }, shellRequestSet: { before: 63, after: 65 },
   });
 });
 

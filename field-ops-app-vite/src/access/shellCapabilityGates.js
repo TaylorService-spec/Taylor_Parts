@@ -199,6 +199,9 @@ export const SUPPLIER_PURCHASE_ORDER_GATE = Object.freeze({
   approve: "supplier.purchaseOrder.approve",
   send: "supplier.purchaseOrder.send",
   cancel: "supplier.purchaseOrder.cancel",
+  // Not a supplier key: the OTHER view on the same page (the Reorder purchase orders a buyer records). A supplier-only holder (Parts Associate, Parts Manager: they hold
+  // supplier.purchaseOrder.read, not reorder.purchaseOrder.read) is shown the supplier view alone, never the recorded list the server would refuse.
+  recordedRead: "reorder.purchaseOrder.read",
 });
 
 /**

@@ -1231,7 +1231,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
       "owner-executive": 26, "administrator": 28, "general-manager": 18, "office-manager": 4,
       "service-manager": 15, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
       "contract-technician": 3, "technician-on-leave": 0, "retail-sales-a": 9, "retail-sales-b": 9,
-      "national-accounts-sales": 9, "parts-manager": 15, "parts-associate": 9,
+      "national-accounts-sales": 9, "parts-manager": 15, "parts-associate": 10,
       "warehouse-manager": 15, "warehouse-associate": 9, "records-clerk": 0,
       "finance-controller": 13, "report-analyst": 0, "restricted-user": 0,
     };

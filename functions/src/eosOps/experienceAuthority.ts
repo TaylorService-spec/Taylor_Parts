@@ -260,7 +260,9 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   ]),
 
   // ── Purchasing
-  surface("purchasing.purchaseOrders", "Purchase Orders", [{ capabilityKey: "reorder.purchaseOrder.read" }]),
+  // P-1 follow-up (live walk, 2026-10-19): the door is also earned by supplier.purchaseOrder.read. The supplier PO buyers and approvers (Parts Associate, Parts Manager) hold it WITHOUT
+  // reorder.purchaseOrder.read, so they had no Purchase Orders nav item. The door confers nothing: each view re-decides on its own key.
+  surface("purchasing.purchaseOrders", "Purchase Orders", [{ capabilityKey: "reorder.purchaseOrder.read" }, { capabilityKey: "supplier.purchaseOrder.read" }]),
   // The Supplier master read moved to PostgreSQL (eos_ops.suppliers, supplier.record.read -- PARTS / PURCHASING /
   // RECEIVING RULINGS, 2026-10-01), which closed the purchasing.suppliers VOCABULARY gap; the door already existed.
   surface("purchasing.suppliers", "Suppliers", [{ capabilityKey: "supplier.record.read" }]),
