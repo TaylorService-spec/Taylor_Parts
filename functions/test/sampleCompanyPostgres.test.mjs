@@ -293,8 +293,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant. No Sample Company data.
 // 112 -> 114: 1764712000000 -- F-1b governed invoice corrections (2026-10-20): invoice_corrections, approval capabilities (no grants), CUSTOMER_REFUND; no Sample Company data (S1b is the 113th).
 // 114 -> 115: 1764714000000 -- S1c Sales Order allocation (2026-10-20): salesOrder.fulfill and 3 grants; no schema, no Sample Company data.
-const PINNED_LAST_MIGRATION = "1764714000000_sales-order-allocation-capability";
-const PINNED_MIGRATION_COUNT = 115;
+// 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): SQL seam and database-level people rules; no capability, no grant, no Sample Company data.
+const PINNED_LAST_MIGRATION = "1764716000000_protected-owner-secondary-approval-exemption";
+const PINNED_MIGRATION_COUNT = 116;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

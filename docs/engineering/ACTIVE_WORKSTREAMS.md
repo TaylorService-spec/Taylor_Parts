@@ -529,3 +529,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    every money correction of an issued invoice is requested by one Employee and applied only on a different Employee's approval; outstanding stays derived from the receivable
 - Protected boundaries:capability registration only, NO grants (Owner-only proposal recorded, unapplied); no production, Rules, deploy, Firebase or external-payment action
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+
+- Capability:          SAE — the protected Owner is exempt from secondary approval and self-approval separation of duties, platform-wide, through ONE TypeScript seam and ONE SQL seam (Rule 1); the seam is shaped for the delegated exemption (Rule 2, PR-2). Removes ONLY the second person; every capability, company, state, integrity, reason, idempotency and audit rule still applies.
+- Agent/session:       Claude Code lane SAE · Role: builder; controller merges and writes the migration
+- Branch / worktree:   `lane-sae/self-approval-exception-policy` · `D:/Taylor_Parts/.claude/worktrees/agent-a08b3e958c7c5b2f6`
+- Base commit:         `5671c167`
+- Owned paths:         `functions/src/access/secondaryApprovalExemption{,Core}.ts` · the same-person checks of `eosFinance/invoiceCorrection.ts`, `eosFinance/financialPolicy.ts`, `finance/financialApprovals.ts`, `eosOps/performanceGoalAuthoring.ts`, `eosOps/supplierPurchaseOrderAuthoring.ts`, `eosOps/cycleCount{Operations,Repository}.ts` · `functions/test/sae*.test.mjs` · the permission-catalog descriptions of `performance.goal.approve`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` (#SAE) · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/governance/precedence-sweep.json` · `docs/governance/owner-commercial-spec-rulings-2026-10-20.md` · `docs/architecture/capability-graph.json` · `functions/test/adminPolicySuites.json` · the migration-count pin tests
+- Dependencies:        migration `1764716000000_protected-owner-secondary-approval-exemption` (SQL saved as a `.sql.txt`, written by the controller; no capability, no grant); F-1b (#2188). S1c runs in parallel and shares no file
+- Expected outcome:    the protected Owner can request and approve the same transaction in every EOS-native workflow with the basis recorded; every non-Owner keeps the two-person rule; Q-1 will reuse the seam
+- Protected boundaries:no capability, no grant, no Rules, deploy, Firebase, production or external-payment action; the Firestore-era self-approval sites are reported, not changed
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)

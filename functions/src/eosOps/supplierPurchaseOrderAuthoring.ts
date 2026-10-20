@@ -30,6 +30,7 @@ import { isCallerTheAssignedEmployee } from "./reorderAssignmentAuthority.js";
 import { scopedWarehouseIds } from "./partsReads.js";
 import { withActorAuthority } from "./administrationReach.js";
 import { allocateSupplierPoNumber } from "./supplierPoNumbering.js";
+import { exemptionRecord, resolveSecondaryApprovalExemption, type ApprovalExemptionRecord } from "../access/secondaryApprovalExemption.js";
 import { CATALOG_READ_CAPABILITY, COMMERCIAL_READ_CAPABILITY, SUPPLIER_TERMS_READ_CAPABILITY } from "./partSupplierTerms.js";
 
 const SCHEMA = "eos_ops";
@@ -337,7 +338,14 @@ export const SUPPLIER_PO_TRANSITIONS = Object.freeze({
 } as const);
 type TransitionAction = keyof typeof SUPPLIER_PO_TRANSITIONS;
 
+/** This workflow's declared site in the central scope map (access/secondaryApprovalExemptionCore.ts). */
+export const PO_APPROVAL_SITE = "purchasing.supplierPurchaseOrder" as const;
+
 export interface TransitionSupplierPurchaseOrderResult {
+  /** Present ONLY on an approval the seam's exemption admitted as a same-person decision (DECISIONS #SAE). */
+  readonly approvalBasis?: string;
+  readonly approvalScope?: string | null;
+  readonly approvalGrantSource?: string;
   readonly outcome: "applied" | "replayed";
   readonly purchaseOrderId: string;
   readonly action: TransitionAction;
@@ -389,9 +397,13 @@ export async function transitionSupplierPurchaseOrder(
     if (po.rows.length === 0) refuse("PURCHASE_ORDER_NOT_FOUND", "NOT_FOUND", "purchase order not found");
     const before = { status: String(po.rows[0].status), version: Number(po.rows[0].version) };
     if (before.version !== expectedVersion) refuse("PURCHASE_ORDER_VERSION_CONFLICT", "PRECONDITION_FAILED", "the purchase order changed since it was read");
-    // SEGREGATION OF DUTIES (Owner ruling D): whoever raised an order does not approve it, even holding .approve.
+    // SEGREGATION OF DUTIES (Owner ruling D): whoever raised an order does not approve it, even holding .approve -- except the governed protected Owner (DECISIONS #SAE),
+    // admitted ONLY by the central seam; the approval then records approvalBasis + provenance in the command record and the audit row.
+    let exemption: ApprovalExemptionRecord | null = null;
     if (action === "APPROVE" && po.rows[0].created_by === actor.principalId) {
-      refuse("SELF_APPROVAL_FORBIDDEN", "FORBIDDEN", "the Employee who raised a purchase order cannot approve it");
+      const resolution = await resolveSecondaryApprovalExemption(c, actor.tenantId, actor.principalId, PO_APPROVAL_SITE);
+      exemption = exemptionRecord(resolution, actor.principalId, actor.tenantId, PO_APPROVAL_SITE);
+      if (exemption === null) refuse("SELF_APPROVAL_FORBIDDEN", "FORBIDDEN", "the Employee who raised a purchase order cannot approve it, unless the governed protected Owner (DECISIONS #SAE)");
     }
     if (!(rule.from as readonly string[]).includes(before.status)) {
       refuse("STATUS_TRANSITION_NOT_ALLOWED", "PRECONDITION_FAILED", `a purchase order in ${before.status} cannot be ${rule.to.toLowerCase()}`);
@@ -426,12 +438,13 @@ export async function transitionSupplierPurchaseOrder(
         if (back.rowCount === 1) released.push(String(l.source_request_id));
       }
     }
+    const basis = exemption ? { approvalBasis: exemption.approvalBasis, approvalScope: exemption.scopeKey, approvalGrantSource: exemption.grantSource } : {};
     const result: TransitionSupplierPurchaseOrderResult = {
-      outcome: "applied", purchaseOrderId, action: action as TransitionAction, statusBefore: before.status, status: rule.to, version: before.version + 1, releasedRequestIds: released,
+      outcome: "applied", purchaseOrderId, action: action as TransitionAction, statusBefore: before.status, status: rule.to, version: before.version + 1, releasedRequestIds: released, ...basis,
     };
     await recordCommand(c, actor, key, action as string, purchaseOrderId, fingerprint, result);
     await writeAudit(c, actor, `supplier.purchaseOrder.${(action as string).toLowerCase()}`, purchaseOrderId, before,
-      { status: rule.to, version: before.version + 1, releasedRequestIds: released }, at, reason ?? `supplier purchase order ${rule.to.toLowerCase()}`);
+      { status: rule.to, version: before.version + 1, releasedRequestIds: released, ...basis }, at, reason ?? `supplier purchase order ${rule.to.toLowerCase()}`);
     return result;
   });
 }

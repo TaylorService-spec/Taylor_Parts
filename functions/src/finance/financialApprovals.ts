@@ -5,12 +5,15 @@
 // here. What IS fixed here, mechanically:
 //   • FAIL-CLOSED: an action type with no explicit policy REQUIRES approval — absence of policy is never
 //     permission.
-//   • SELF-APPROVAL FORBIDDEN: the approver must not be the requester, ever.
+//   • SELF-APPROVAL FORBIDDEN: the approver must not be the requester -- for everyone except the governed protected Owner, admitted ONLY
+//     by the central seam's verified exemption (DECISIONS #SAE; it amends FIN-007's former "ever"/"under any policy").
 //   • Approvals are EXPLICIT frozen records naming action, target, both people, decision, reason, and
 //     time — invariant C: governance events are history.
 //   • A rejection is terminal for that request; acting anyway must be impossible to do quietly
 //     (assertActionApproved refuses).
 // Integer minor units; pure; no I/O; capability activation and threshold values stay Owner-gated.
+
+import { exemptionRecord, type ApprovalBasis, type SelfApprovalSite } from "../access/secondaryApprovalExemptionCore";
 
 export const APPROVABLE_ACTION_TYPES = Object.freeze([
   "INVOICE_ADJUSTMENT", // credit memo / debit charge (adjustmentCommands)
@@ -73,15 +76,28 @@ export interface ApprovalRecordInput {
   decision: string;
   reason: string;
   decidedAtMillis: number; // ctx-supplied server time
+  /**
+   * The ONLY way a same-person decision is admitted (DECISIONS #SAE): the resolution object issued by the central seam
+   * (access/secondaryApprovalExemption) for THIS decider. It is re-verified here -- a boolean, a copy or any object this
+   * module did not receive from the seam is ignored. Absent: self-approval is refused exactly as before.
+   */
+  exemption?: unknown;
+  /** The tenant and the declared site the exemption must have been issued for; an exemption is never honoured without both (a resolution for another tenant or site is refused). */
+  tenantId?: string;
+  site?: SelfApprovalSite;
 }
 
-export interface ApprovalRecord extends Omit<ApprovalRecordInput, "actionType" | "decision"> {
+export interface ApprovalRecord extends Omit<ApprovalRecordInput, "actionType" | "decision" | "exemption" | "tenantId" | "site"> {
   actionType: ApprovableActionType;
   decision: ApprovalDecision;
+  /** Present ONLY when the seam's exemption admitted a same-person decision: why, and from where. */
+  approvalBasis?: ApprovalBasis;
+  approvalScope?: string | null;
+  approvalGrantSource?: string;
 }
 
-// Validate + freeze one approval/rejection record. Self-approval is forbidden unconditionally — no policy
-// input can re-enable it.
+// Validate + freeze one approval/rejection record. Self-approval is forbidden for everyone except a verified exemption from the central
+// seam (the protected Owner; DECISIONS #SAE amends FIN-007's "under any policy"); no policy input and no caller-invented flag re-enables it.
 export function buildApprovalRecord(input: ApprovalRecordInput): ApprovalRecord {
   if (!(APPROVABLE_ACTION_TYPES as readonly string[]).includes(input?.actionType)) throw new ApprovalError("ACTION_TYPE_INVALID", `unknown financial action type "${input?.actionType}"`);
   if (!(APPROVAL_DECISIONS as readonly string[]).includes(input.decision)) throw new ApprovalError("DECISION_INVALID", `decision must be one of ${APPROVAL_DECISIONS.join("/")}`);
@@ -91,10 +107,13 @@ export function buildApprovalRecord(input: ApprovalRecordInput): ApprovalRecord 
   if (!nonEmpty(input.reason)) throw new ApprovalError("REASON_REQUIRED", "a decision without a reason is not governance");
   if (input.amountMinor !== null && (!isInt(input.amountMinor) || input.amountMinor < 0)) throw new ApprovalError("AMOUNT_INVALID", "amountMinor must be a non-negative integer or null");
   if (!isInt(input.decidedAtMillis) || input.decidedAtMillis <= 0) throw new ApprovalError("DECIDED_AT_REQUIRED", "decidedAtMillis (ms epoch) is required");
-  if (input.requestedByUid.trim() === input.decidedByUid.trim()) {
-    throw new ApprovalError("SELF_APPROVAL_FORBIDDEN", "the requester may not decide their own request — under any policy");
+  const same = input.requestedByUid.trim() === input.decidedByUid.trim();
+  const exempt = same && nonEmpty(input.tenantId) && nonEmpty(input.site) ? exemptionRecord(input.exemption, input.decidedByUid.trim(), input.tenantId, input.site) : null;
+  if (same && !exempt) {
+    throw new ApprovalError("SELF_APPROVAL_FORBIDDEN", "the requester may not decide their own request — unless the governed protected Owner (DECISIONS #SAE)");
   }
   return Object.freeze({
+    ...(exempt ? { approvalBasis: exempt.approvalBasis, approvalScope: exempt.scopeKey, approvalGrantSource: exempt.grantSource } : {}),
     actionType: input.actionType as ApprovableActionType,
     targetRecordId: input.targetRecordId.trim(),
     amountMinor: input.amountMinor,

@@ -6,6 +6,7 @@
 // as a nonexistent one); every refusal leaves ZERO trace; one audit row per command; segregation of duties; cancel releasing the requests;
 // a request on at most ONE active PO of EITHER kind; and On Order never double counting.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
+import { seedProtectedOwnerRows } from "./support/protectedOwnerFixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -582,5 +583,54 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     await q(`UPDATE eos_ops.supplier_purchase_order_lines SET link_released_at = now() WHERE purchase_order_id = $1`, [a]);
     await q(`INSERT INTO eos_ops.supplier_purchase_order_lines (tenant_id, purchase_order_id, line_id, part_id, ordered_quantity, source_request_id)
              VALUES ('t1','raw-po','L1','PART-A',1,$1)`, [r]);
+  });
+
+  // ════════════════════════════ SAE: the protected Owner (DECISIONS #SAE) ════════════════════════════
+  await t.test("SAE: the governed protected Owner approves a purchase order they raised themselves and the approval records its basis; a look-alike, a revoked Owner and an Owner with no Employee keep the refusal", async () => {
+    const BUYER_CAPS = [CREATE, SEND, READ, APPROVE, CANCEL];
+    const make = async (subject, owner, emp) => {
+      const p = await principal(subject);
+      await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1,'t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`, [emp]);
+      await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+               VALUES ($1,'t1',$2,$3,'taylor','OPERATOR_ASSERTED','f','test','active')`, [`epl-${emp}`, p, emp]);
+      await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+               VALUES ($1,'t1',$2,'WAREHOUSE','wh-1', now(),'fixture')`, [`os-${emp}`, emp]);
+      if (owner) await seedProtectedOwnerRows(q, { tenantId: "t1", principalId: p });
+      return p;
+    };
+    const raise = async (who, emp) => (await create([{ reorderRequestId: await request({ assignee: emp }) }], {}, actor(BUYER_CAPS, who))).purchaseOrderId;
+    const ownerP = await make("uid-sae-owner", true, "e-sae-owner");
+    const po = await raise(ownerP, "e-sae-owner");
+    const out = await transition(po, "APPROVE", {}, actor(BUYER_CAPS, ownerP));
+    assert.deepEqual([out.outcome, out.status, out.statusBefore], ["applied", "APPROVED", "DRAFT"]);
+    assert.deepEqual([out.approvalBasis, out.approvalScope, out.approvalGrantSource], ["PROTECTED_OWNER", "PURCHASING", "PROTECTED_OWNER_MEMBERSHIP"]);
+    const row = await poOf(po);
+    assert.deepEqual([row.status, row.created_by, row.approved_by], ["APPROVED", ownerP, ownerP], "the request and the decision stay separate facts on the row: raised by and approved by the same Owner");
+    const audit = await one(`SELECT action, actor_uid, after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'supplier.purchaseOrder.approve'`, [po]);
+    assert.deepEqual([audit.actor_uid, audit.after.approvalBasis, audit.after.approvalScope, audit.after.approvalGrantSource], [ownerP, "PROTECTED_OWNER", "PURCHASING", "PROTECTED_OWNER_MEMBERSHIP"]);
+    // every other validation still runs: a stale version, a non-DRAFT state, and the capability itself
+    assert.equal((await refusal(() => transition(po, "APPROVE", { expectedVersion: 99 }, actor(BUYER_CAPS, ownerP)))).code, "PURCHASE_ORDER_VERSION_CONFLICT");
+    assert.equal((await refusal(() => transition(po, "APPROVE", { expectedVersion: 1 }, actor(BUYER_CAPS, ownerP)))).code, "STATUS_TRANSITION_NOT_ALLOWED");
+    const po2 = await raise(ownerP, "e-sae-owner");
+    assert.equal((await refusal(() => transition(po2, "APPROVE", {}, actor([CREATE, SEND, READ], ownerP)))).code, "CAPABILITY_REQUIRED", "the exemption adds no authority: no approve capability, no approval");
+    // a non-Owner (the buyer) raising and approving: still refused; so is a role merely named like the Owner (no protected flag) and an Owner without an Employee link
+    const lookalike = await make("uid-sae-look", false, "e-sae-look");
+    await q(`INSERT INTO eos_policy.roles (id, tenant_id, key, name, origin, protected, created_by, updated_by) VALUES ('role-look','t1','ownerLookalike','Owner','CUSTOM',false,'f','f') ON CONFLICT DO NOTHING`);
+    await q(`INSERT INTO eos_policy.user_role_assignments (id, tenant_id, principal_id, role_id, scope_type, scope_value, status, granted_by, access_version_at_grant, created_by, updated_by)
+             VALUES ('a-look','t1',$1,'role-look','global',NULL,'active','f',0,'f','f')`, [lookalike]);
+    const poL = await raise(lookalike, "e-sae-look");
+    assert.equal((await refusal(() => transition(poL, "APPROVE", {}, actor(BUYER_CAPS, lookalike)))).code, "SELF_APPROVAL_FORBIDDEN");
+    const unlinked = await make("uid-sae-nolink", true, "e-sae-nolink");
+    const poU = await raise(unlinked, "e-sae-nolink");
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [unlinked]);
+    assert.ok(["SELF_APPROVAL_FORBIDDEN", "COMPANY_AUTHORITY_REQUIRED"].includes((await refusal(() => transition(poU, "APPROVE", {}, actor(BUYER_CAPS, unlinked)))).code), "an Owner with no active Employee link is not exempt" + " (refused either way: no approval)");
+    const revoked = await make("uid-sae-revoked", true, "e-sae-revoked");
+    const poR = await raise(revoked, "e-sae-revoked");
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1`, [revoked]);
+    assert.ok(["SELF_APPROVAL_FORBIDDEN", "COMPANY_AUTHORITY_REQUIRED"].includes((await refusal(() => transition(poR, "APPROVE", {}, actor(BUYER_CAPS, revoked)))).code), "an ended Owner membership is not exempt" + " (refused either way: no approval)");
+    assert.equal((await poOf(poR)).status, "DRAFT", "every refusal wrote nothing");
+    // the ordinary buyer is unchanged
+    const poB = await raise(buyer, "e-b");
+    assert.equal((await refusal(() => transition(poB, "APPROVE", {}, actor(BUYER_CAPS, buyer)))).code, "SELF_APPROVAL_FORBIDDEN");
   });
 });

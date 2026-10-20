@@ -265,7 +265,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 111 -> 112: 1764700000000 -- F-1a issue invoice on EOS (2026-10-20): invoice header/counter schema, no capability, no grant; not a read-enforcement change.
   // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant. Not a read-enforcement change.
   // 114 -> 115: 1764714000000 -- S1c Sales Order allocation (2026-10-20): salesOrder.fulfill registered (a BUSINESS_ACTION, not a READ key) and 3 Firebase-parity grants; no schema. Not a read-enforcement change.
-  assert.equal(migrations.length, 115,"a migration was added or removed by the read enforcement");
+  // 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam and database-level people rules; no capability, no grant; not a read-enforcement change.
+  assert.equal(migrations.length, 116, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

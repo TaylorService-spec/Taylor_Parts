@@ -9,6 +9,10 @@
 //   decideInvoiceCorrection    APPROVE applies it atomically; REJECT closes it; WITHDRAW lets the requester take it back.
 //                              (finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve by kind; WITHDRAW is the requester's own, with the request key)
 //
+// THE ONE EXCEPTION (Owner policy override 2026-10-20, DECISIONS #SAE): the governed PROTECTED OWNER, otherwise authorized (request key, approval key, company, state),
+// may decide a correction they requested themselves -- no second Employee. That is decided ONLY by the central seam (access/secondaryApprovalExemption.ts); the decision
+// records approval_basis (PROTECTED_OWNER) and its provenance on the row and in the audit, and every other validation still applies. Every other person keeps the rule below.
+//
 // TWO PEOPLE ARE TWO EMPLOYEES (the G-1 rule). The requester's linked Employee is recorded on the request. An approval is refused SELF_APPROVAL_FORBIDDEN when the
 // Principals are equal, when the approver's linked Employee is the Employee recorded on the request (so relinking the requester's Employee to a new Principal does not
 // make a second person), or when the requester Principal's CURRENT link resolves to the approver's Employee. Both people must resolve to an access-eligible Employee. The
@@ -42,6 +46,7 @@ import { retirePackageReceivableOn } from "./billingPackage";
 import { businessToday } from "./invoiceIssue";
 import { linkedEmployeeId } from "./financeVisibility";
 import { recordCommandAudit } from "../eosAudit/commandAuditEvent";
+import { exemptionRecord, resolveSecondaryApprovalExemption, type ApprovalExemptionRecord } from "../access/secondaryApprovalExemption";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -130,6 +135,8 @@ export const correctionView = (r: Record<string, any>) => Object.freeze({
   requestedBy: String(r.requested_by), requestedByEmployeeId: String(r.requested_by_employee_id), requestedAt: iso(r.requested_at) as string,
   decidedBy: r.decided_by ?? null, decidedByEmployeeId: r.decided_by_employee_id ?? null, decidedAt: iso(r.decided_at), decisionReason: r.decision_reason ?? null,
   factId: r.fact_id ?? null, refundRecordId: r.refund_settlement_id ?? null,
+  // null = an ordinary two-person decision; otherwise why a same-person decision was admitted (SAE) and its provenance.
+  approvalBasis: r.approval_basis ?? null, approvalScope: r.approval_scope ?? null, approvalGrantSource: r.approval_grant_source ?? null,
   // A refund is an ACCOUNTING FACT, never evidence that cash was sent.
   refundRecorded: r.kind === "REFUND" && r.status === "APPLIED" && r.refund_settlement_id != null,
   ...(r.kind === "REFUND" && r.status === "APPLIED" ? { notice: REFUND_NOTICE } : {}),
@@ -298,17 +305,28 @@ export interface DecideInvoiceCorrectionInput {
 }
 
 /** The people rule. Refused before any write; the database refuses the same in invoice_corrections CHECKs. */
-async function assertSeparatePerson(c: Queryable, actor: FinanceActor, corr: Record<string, any>): Promise<string> {
-  const self = () => refuse("SELF_APPROVAL_FORBIDDEN", "PRECONDITION_FAILED", "a correction is decided by a different Employee than the one who requested it -- under any policy (FIN-007)");
-  if (actor.principalId === corr.requested_by) return self();
+/** This workflow's declared site in the central scope map (access/secondaryApprovalExemptionCore.ts). */
+export const CORRECTION_APPROVAL_SITE = "finance.invoiceCorrection" as const;
+
+async function assertSeparatePerson(c: Queryable, actor: FinanceActor, corr: Record<string, any>): Promise<{ employee: string; exemption: ApprovalExemptionRecord | null }> {
+  const self = () => refuse("SELF_APPROVAL_FORBIDDEN", "PRECONDITION_FAILED",
+    "a correction is decided by a different Employee than the one who requested it, unless the decider is the governed protected Owner (FIN-007, as amended by DECISIONS #SAE)");
+  // A same-person decision is admitted ONLY by the central seam: the protected Owner (and, with an explicit grant, a delegated exemption for this workflow).
+  const admitSelf = async (approver: string | null) => {
+    const ex = await resolveSecondaryApprovalExemption(c, actor.tenantId, actor.principalId, CORRECTION_APPROVAL_SITE);
+    const rec = ex.exempt ? exemptionRecord(ex, actor.principalId, actor.tenantId, CORRECTION_APPROVAL_SITE) : null;
+    if (ex.exempt && rec && (approver === null || ex.employeeId === approver)) return { employee: ex.employeeId, exemption: rec };
+    return self();
+  };
+  if (actor.principalId === corr.requested_by) return admitSelf(null);
   const approver = (await linkedEmployeeId(c, actor.tenantId, actor.principalId))
     ?? refuse("APPROVER_EMPLOYEE_REQUIRED", "PRECONDITION_FAILED", "a correction is decided by an Employee: this account is linked to no access-eligible Employee");
   // The Employee recorded at request time (a later relink of that Employee to a new Principal does not make a second person) ...
-  if (approver === corr.requested_by_employee_id) return self();
+  if (approver === corr.requested_by_employee_id) return admitSelf(approver);
   // ... and the requester Principal's CURRENT link.
   const { rows } = await c.query(`SELECT employee_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`, [actor.tenantId, corr.requested_by]);
-  if (rows.some((r) => String(r.employee_id) === approver)) return self();
-  return approver;
+  if (rows.some((r) => String(r.employee_id) === approver)) return admitSelf(approver);
+  return { employee: approver, exemption: null };
 }
 
 export async function decideInvoiceCorrection(pool: Pool, actor: FinanceActor, input: DecideInvoiceCorrectionInput) {
@@ -344,12 +362,13 @@ export async function decideInvoiceCorrection(pool: Pool, actor: FinanceActor, i
     if (keyed.length > 0) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that idempotency key decided a different correction");
 
     let approverEmployee: string;
+    let exemption: ApprovalExemptionRecord | null = null;
     if (decision === "WITHDRAW") {
       // Only the requester takes a request back (anyone else REJECTS, with the approval key).
       if (actor.principalId !== corr.requested_by) refuse("WITHDRAW_BY_REQUESTER_ONLY", "PRECONDITION_FAILED", "only the person who requested a correction withdraws it");
       approverEmployee = String(corr.requested_by_employee_id);
     } else {
-      approverEmployee = await assertSeparatePerson(c, actor, corr);
+      ({ employee: approverEmployee, exemption } = await assertSeparatePerson(c, actor, corr));
     }
 
     let outcome: "applied" | "rejected" | "withdrawn";
@@ -367,9 +386,10 @@ export async function decideInvoiceCorrection(pool: Pool, actor: FinanceActor, i
     const status = decision === "APPROVE" ? "APPLIED" : decision === "REJECT" ? "REJECTED" : "WITHDRAWN";
     const moved = await c.query(
       `UPDATE eos_finance.invoice_corrections SET status = $3, decided_by = $4, decided_by_employee_id = $5, decided_at = now(), decision_reason = $6,
-              decision_idempotency_key = $7, decision_fingerprint = $8
+              decision_idempotency_key = $7, decision_fingerprint = $8, approval_basis = $9, approval_scope = $10, approval_grant_source = $11
         WHERE tenant_id = $1 AND id = $2 AND status = 'PENDING'`,
-      [actor.tenantId, correctionId, status, actor.principalId, approverEmployee, reason, key, fingerprint]);
+      [actor.tenantId, correctionId, status, actor.principalId, approverEmployee, reason, key, fingerprint,
+        exemption?.approvalBasis ?? null, exemption?.scopeKey ?? null, exemption?.grantSource ?? null]);
     if (moved.rowCount !== 1) refuse("CORRECTION_NOT_PENDING", "CONFLICT", "this correction is no longer pending");
 
     if (decision === "APPROVE") effect = await applyEffectOn(c, actor, corr, eligible as Eligible);
@@ -380,7 +400,9 @@ export async function decideInvoiceCorrection(pool: Pool, actor: FinanceActor, i
       targetKind: "invoice_correction", targetId: correctionId, before: { status: "PENDING" },
       after: { correctionId, kind, status, invoiceId: correction.invoiceId, invoiceNumber: correction.invoiceNumber, operatingCompanyId: correction.operatingCompanyId, obligationId: correction.obligationId,
         amountMinor: correction.amountMinor, currency: correction.currency, requestedBy: correction.requestedBy, requestedByEmployeeId: correction.requestedByEmployeeId,
-        decidedBy: actor.principalId, decidedByEmployeeId: approverEmployee, ...effect },
+        decidedBy: actor.principalId, decidedByEmployeeId: approverEmployee,
+        // SAE: why a same-person decision was admitted, and from where (absent for an ordinary two-person decision).
+        ...(exemption ? { approvalBasis: exemption.approvalBasis, approvalScope: exemption.scopeKey, approvalGrantSource: exemption.grantSource } : {}), ...effect },
       reason,
     });
     return Object.freeze({ outcome, correction, ...(correction.refundRecorded ? { refundRecorded: true, notice: REFUND_NOTICE } : {}) });

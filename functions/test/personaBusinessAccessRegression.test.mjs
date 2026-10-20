@@ -330,7 +330,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 111 -> 112: 1764700000000 -- F-1a issue invoice on EOS (2026-10-20): invoice schema only, no capability and no grant.
   // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
   // 114 -> 115: 1764714000000 -- S1c Sales Order allocation (2026-10-20): salesOrder.fulfill registered and granted to admin, dispatcher, owner (3 grants); no schema.
-  assert.equal(files.length, 115, "the migration chain moved; re-measure before trusting anything below");
+  // 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam and database-level people rules; no capability, no grant.
+  assert.equal(files.length, 116, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

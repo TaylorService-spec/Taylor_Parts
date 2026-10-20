@@ -21,6 +21,7 @@ import { createBin } from "../lib/eosOps/warehouseBinRepository.js";
 import { handleOperationsRequest, CYCLE_COUNT_ROUTE } from "../lib/eosOps/eosOpsHttp.js";
 import { CYCLE_COUNT_WRITER_AUTHORITY } from "../lib/cycleCount/cycleCountWriterState.js";
 import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
+import { seedProtectedOwnerRows } from "./support/protectedOwnerFixture.mjs";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -256,6 +257,37 @@ test("separation of duties: the person who counted a variance cannot approve it"
   ok(await call(REVIEWER, "openCycleCountLine", { sheetId: s, partId: PART }));
   ok(await call(REVIEWER, "submitCycleCountLine", { sheetId: s, partId: PART, countedQuantity: 5 }));
   refused(await call(REVIEWER, "reconcileCycleCountLine", { sheetId: s, partId: PART, decision: "APPROVE", reason: "one extra" }), 403, "SEPARATION_OF_DUTIES");
+});
+
+test("SAE: the governed protected Owner reconciles a variance they counted themselves -- the audit row records the basis; an ordinary reconcile of someone else's count records none; the Owner needs the capability and every other rule", { skip: SKIP }, async () => {
+  const OWNER_P = await persona({ subject: "cc-owner-sae", capabilities: [...REVIEWER_CAPS, ...COUNTER_CAPS] });
+  const pid = (await q(`SELECT id FROM eos_policy.principals WHERE external_subject = $1`, [OWNER_P])).rows[0].id;
+  await seedProtectedOwnerRows(q, { tenantId: TENANT, principalId: pid }); // the Employee persona() already linked is the one the exemption requires
+  // 1. An ordinary two-person reconcile by the Owner (REVIEWER counted a variance on the earlier sheet): no basis recorded.
+  const earlier = (await q(`SELECT sheet_id FROM eos_ops.cycle_count_lines WHERE tenant_id = $1 AND status = 'COUNTED' AND submitted_by <> $2 LIMIT 1`, [TENANT, pid])).rows[0];
+  assert.ok(earlier, "the separation-of-duties test left a COUNTED line counted by someone else");
+  const ordinary = ok(await call(OWNER_P, "reconcileCycleCountLine", { sheetId: earlier.sheet_id, partId: PART, decision: "APPROVE", reason: "counted by the reviewer" }));
+  assert.equal(ordinary.outcome, "applied");
+  const ordinaryAudit = (await q(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'cycleCount.line.reconcile' AND actor_uid = $2 ORDER BY occurred_at DESC LIMIT 1`, [TENANT, pid])).rows[0];
+  assert.equal(ordinaryAudit.after.approvalBasis, undefined, "an ordinary two-person reconcile records no basis");
+  // 2. The Owner counts a variance and reconciles it themselves.
+  const s2 = ok(await call(OWNER_P, "createCycleCountSheet", { location: { type: "BIN", locationId: BIN_A }, idempotencyKey: "k-sae-owner" })).sheet.sheetId;
+  ok(await call(OWNER_P, "openCycleCountLine", { sheetId: s2, partId: PART }));
+  const lineBefore = (await q(`SELECT expected_quantity FROM eos_ops.cycle_count_lines WHERE tenant_id = $1 AND sheet_id = $2`, [TENANT, s2])).rows[0].expected_quantity;
+  ok(await call(OWNER_P, "submitCycleCountLine", { sheetId: s2, partId: PART, countedQuantity: lineBefore + 2 }));
+  const ledgerBefore = await count(`SELECT count(*) AS n FROM eos_ops.inventory_movements WHERE source_kind = 'CYCLE_COUNT_LINE'`);
+  const done = ok(await call(OWNER_P, "reconcileCycleCountLine", { sheetId: s2, partId: PART, decision: "APPROVE", reason: "owner counted two extra" }));
+  assert.equal(done.outcome, "applied"); assert.equal(done.line.status, "RECONCILED"); assert.ok(done.line.ledgerMovementId);
+  assert.equal(await count(`SELECT count(*) AS n FROM eos_ops.inventory_movements WHERE source_kind = 'CYCLE_COUNT_LINE'`), ledgerBefore + 1, "exactly one ledger adjustment, as for anyone");
+  const rows = (await q(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'cycleCount.line.reconcile' AND actor_uid = $2 ORDER BY occurred_at DESC LIMIT 1`, [TENANT, pid])).rows;
+  assert.deepEqual([rows[0].after.approvalBasis, rows[0].after.approvalScope, rows[0].after.approvalGrantSource], ["PROTECTED_OWNER", "INVENTORY", "PROTECTED_OWNER_MEMBERSHIP"]);
+  // 3. A replay is safe; the rest of the rules are not relaxed (a reason is required for a discrepancy).
+  assert.equal(ok(await call(OWNER_P, "reconcileCycleCountLine", { sheetId: s2, partId: PART, decision: "APPROVE", reason: "owner counted two extra" })).outcome, "replayed");
+  // 4. The ordinary reviewer is still refused (the earlier test), and an Owner WITHOUT the reconcile capability is refused for the capability, never exempted into it.
+  const NOCAP = await persona({ subject: "cc-owner-nocap", capabilities: COUNTER_CAPS });
+  const npid = (await q(`SELECT id FROM eos_policy.principals WHERE external_subject = $1`, [NOCAP])).rows[0].id;
+  await seedProtectedOwnerRows(q, { tenantId: TENANT, principalId: npid });
+  refused(await call(NOCAP, "reconcileCycleCountLine", { sheetId: s2, partId: PART, decision: "APPROVE", reason: "x" }), 403, "CAPABILITY_MISSING");
 });
 
 test("close needs every line decided; after close, a retry of the decision still replays; new work is refused", { skip: SKIP }, async () => {

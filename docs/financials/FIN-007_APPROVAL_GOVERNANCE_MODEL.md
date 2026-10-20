@@ -14,7 +14,7 @@ authority deferred here).
 |---|---|
 | `APPROVABLE_ACTION_TYPES` | closed set over the modeled actions: `INVOICE_ADJUSTMENT · WRITE_OFF · REFUND · PLAN_APPROVAL · ATTRIBUTION_CORRECTION` |
 | `isApprovalRequired(policy, action)` | **fail-closed**: an action type with NO explicit policy line requires approval; duplicate policy lines for one type are thrown (`POLICY_AMBIGUOUS` — ambiguous policy is not policy); a threshold can never exempt an action with no stated amount |
-| `buildApprovalRecord` | explicit frozen decision record: action + target + requester + decider + `APPROVED/REJECTED` + **mandatory reason** + ctx-supplied decide time. **Self-approval forbidden unconditionally** — no policy input re-enables it |
+| `buildApprovalRecord` | explicit frozen decision record: action + target + requester + decider + `APPROVED/REJECTED` + **mandatory reason** + ctx-supplied decide time. **Self-approval forbidden for everyone except the governed protected Owner** (DECISIONS #SAE amends the former "unconditionally"): only a resolution object issued by the central seam (`access/secondaryApprovalExemption`) admits a same-person decision, and the record then carries `approvalBasis`; no policy input and no caller-supplied flag re-enables it |
 | `assertActionApproved(action, record)` | the execution-side guard: refuses on missing record, wrong action/target, `REJECTED` (a rejection is terminal for that request), amount above the approved amount (**approving 100 is not approving 150**), or a monetary action whose approval states no amount |
 
 ## 2. Owner-undecided (policy values, not machinery)
