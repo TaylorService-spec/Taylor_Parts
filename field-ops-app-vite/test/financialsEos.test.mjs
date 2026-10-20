@@ -110,7 +110,7 @@ test("reads: consolidated principal -> one consolidated overview and one consoli
     [["readMyFinanceCompanyAccess", null], ["readFinanceOverview", "consolidated"], ["listObligations", "consolidated"]]);
   assert.equal(s.calls[2][1].kind, "RECEIVABLE");
   const one = server({ readMyFinanceCompanyAccess: access(["taylor", "ventana"]), readFinanceOverview: overview(), listObligations: { items: [] } });
-  await fetchFinancialFactsFromEos({ companyId: "ventana" }, 200, { call: one.call });
+  await fetchFinancialFactsFromEos({ companyId: "ventana", factTypes: ["INVOICE"] }, 200, { call: one.call });
   assert.deepEqual(one.calls.slice(1).map(([op, i]) => [op, i.operatingCompanyId]), [["readFinanceOverview", "ventana"], ["listObligations", "ventana"]]);
   // A company the server did not name is never requested, whatever the chip says.
   const only = server({ readMyFinanceCompanyAccess: access(["taylor"]), readFinanceOverview: overview(), listObligations: { items: [] } });
@@ -121,10 +121,10 @@ test("reads: consolidated principal -> one consolidated overview and one consoli
 
 test("reads: one reached company is totalled by the server for that company; several-but-not-all get rows and NO total", async () => {
   const single = server({ readMyFinanceCompanyAccess: access(["taylor"]), readFinanceOverview: overview(), listObligations: { items: [row()] } });
-  await fetchFinancialFactsFromEos({}, 200, { call: single.call });
+  await fetchFinancialFactsFromEos({ factTypes: ["INVOICE"] }, 200, { call: single.call });
   assert.deepEqual(single.calls.slice(1).map(([op, i]) => [op, i.operatingCompanyId]), [["readFinanceOverview", "taylor"], ["listObligations", "taylor"]]);
   const three = server({ readMyFinanceCompanyAccess: access(["a", "b", "c"], { consolidated: false }), readFinanceOverview: overview(), listObligations: { items: [row()] } });
-  const out = await fetchFinancialFactsFromEos({}, 200, { call: three.call });
+  const out = await fetchFinancialFactsFromEos({ factTypes: ["INVOICE"] }, 200, { call: three.call });
   assert.equal(three.calls.some(([op]) => op === "readFinanceOverview"), false, "no overview is asked for: the total is not assembled");
   assert.equal(out.result.summary, undefined);
   assert.equal(out.result.invoices.length, 3);
@@ -133,7 +133,7 @@ test("reads: one reached company is totalled by the server for that company; sev
 test("reads: the window travels as a request; a restricted reader is told so; a full page is flagged truncated", async () => {
   const full = Array.from({ length: OBLIGATION_PAGE_LIMIT }, (_, i) => row({ id: `obl_${i}` }));
   const s = server({ readMyFinanceCompanyAccess: access(["taylor"], { restricted: true }), readFinanceOverview: overview({ visibility: { restricted: true } }), listObligations: { items: full } });
-  const out = await fetchFinancialFactsFromEos({ periodStartMillis: 1000, periodEndMillis: 2000 }, 200, { call: s.call });
+  const out = await fetchFinancialFactsFromEos({ factTypes: ["INVOICE"], periodStartMillis: 1000, periodEndMillis: 2000 }, 200, { call: s.call });
   assert.deepEqual([out.result.truncated, out.result.restricted], [true, true]);
   assert.equal(s.calls[1][1].recordedFrom, new Date(1000).toISOString());
   assert.equal(s.calls[1][1].recordedTo, new Date(2001).toISOString());
@@ -153,9 +153,9 @@ test("reads: refusal is a permission fact only when the server says FORBIDDEN; e
   assert.deepEqual(await fetchFinancialFactsFromEos({}, 200, { call: failedList.call }), { errorStatus: "unavailable" }, "all or nothing");
   const hung = await fetchFinancialFactsFromEos({}, 200, { call: () => new Promise(() => {}), timeoutMs: 20 });
   assert.deepEqual(hung, { errorStatus: "unavailable" });
-  const payments = server({});
-  assert.deepEqual(await fetchFinancialFactsFromEos({ factTypes: ["PAYMENT_RECEIPT"] }, 200, { call: payments.call }), { errorStatus: "unavailable" });
-  assert.equal(payments.calls.length, 0, "payments are settlements: no receivable read is made for them");
+  const unknown = server({});
+  assert.deepEqual(await fetchFinancialFactsFromEos({ factTypes: ["FORECAST"] }, 200, { call: unknown.call }), { errorStatus: "unavailable" });
+  assert.equal(unknown.calls.length, 0, "a fact family EOS does not serve is refused before any read");
 });
 
 test("the reader asks for exactly the finance operations the client declares, and a missing record is 'notFound', not a denial", async () => {

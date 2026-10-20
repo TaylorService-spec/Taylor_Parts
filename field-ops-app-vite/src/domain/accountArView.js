@@ -153,6 +153,8 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
       key: inv.invoiceId,
       invoiceNumber: inv.invoiceNumber ?? inv.invoiceId,
       salesOrderId: inv.salesOrderId,
+      // F-2: the Sales Order's own number where the source supplies it (EOS receivables billed from a Sales Order); absent otherwise.
+      salesOrderNumber: typeof inv.salesOrderNumber === "string" && inv.salesOrderNumber.length > 0 ? inv.salesOrderNumber : null,
       position: inv.arPosition,
       // The governed company stamped on THIS invoice, and the words for it. Absent entirely on a
       // response that predates the dimension (undefined); null when the read answered and the

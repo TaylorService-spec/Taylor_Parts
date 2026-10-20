@@ -166,6 +166,17 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
       assert.equal(d.attribution.creditedSalespersonEmployeeId, undefined, `${id}: no credited person is shown for a row that has none`);
     }
     assert.equal(ok(await off(ctrl, "readObligation", { obligationId: o8 })).sourceSalesOrder, null, "a rental charge has no Sales Order source");
+    // F-2: the LIST carries the same Sales Order reference (obligation -> billing package -> Sales Order), null where there is none, so a list
+    // reader needs no per-row detail read. A payment names the customer it came from.
+    const listed = ok(await off(ctrl, "listObligations", { operatingCompanyId: "taylor", kind: "RECEIVABLE" })).items;
+    const sourceOf = (id) => listed.find((i) => i.id === id)?.sourceSalesOrder;
+    assert.deepEqual(sourceOf(o1), { id: "so-1", salesOrderNumber: "SO-1" });
+    assert.equal(sourceOf(o8), null, "a rental charge: no Sales Order source");
+    assert.equal(sourceOf(o9), null, "no billing package at all");
+    assert.ok(listed.every((i) => "sourceSalesOrder" in i), "every listed receivable answers the key (a reference or null)");
+    const stl = ok(await off(ctrl, "readSettlement", { settlementId: stlA }));
+    assert.deepEqual([stl.counterparty.kind, stl.counterparty.crmAccountId], ["EXTERNAL_ORGANIZATION", "acct-t"]);
+    assert.ok(ok(await off(ctrl, "listSettlements", { operatingCompanyId: "taylor" })).items.every((s) => s.counterparty?.kind === "EXTERNAL_ORGANIZATION"));
   });
 
   // ── INACT ──

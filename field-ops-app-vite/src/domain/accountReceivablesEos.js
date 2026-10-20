@@ -9,8 +9,10 @@
 // are unchanged. Everywhere else the Firebase callable is the sole source and this module is not consulted.
 //
 // WHAT THE ROWS ARE, AND ARE NOT. An EOS receivable is EOS operational truth that money is owed (DECISIONS #197): NOT the
-// accounting invoice. It has no invoice number, no Sales Order reference and no issue date, so those fields are absent
-// (null), never invented; the result carries `recordNoun: "Receivable"` so the screen words the record truthfully.
+// accounting invoice. It has no invoice number and no issue date, so those fields are absent (null), never invented. The
+// Sales Order reference IS carried where the receivable was billed from a Sales Order (F-2: listObligations' sourceSalesOrder,
+// obligation -> billing package -> Sales Order); otherwise it too is null. The result carries `recordNoun: "Receivable"` so the
+// screen words the record truthfully.
 //
 // NO AUTHORITY HERE. The server decided which companies and rows this caller may see before a row reached this file. This
 // module classifies and totals the rows it was given, per currency, and nothing else:
@@ -70,7 +72,8 @@ export function accountArFromObligations(pages) {
         invoiceNumber: null,
         accountId: row.counterparty?.crmAccountId ?? null,
         companyId: typeof row.operatingCompanyId === "string" ? row.operatingCompanyId : null,
-        salesOrderId: null,
+        salesOrderId: row.sourceSalesOrder?.id ?? null,
+        salesOrderNumber: row.sourceSalesOrder?.salesOrderNumber ?? null,
         currency: row.currency,
         state: row.status ?? null,
         totalMinor: total,
@@ -83,7 +86,7 @@ export function accountArFromObligations(pages) {
       });
     }
   }
-  return Object.freeze({ status: "ready", invoices, summary: summarize(invoices), recordNoun: EOS_RECORD_NOUN });
+  return Object.freeze({ status: "ready", invoices, summary: summarizeReceivables(invoices), recordNoun: EOS_RECORD_NOUN });
 }
 
 /**
@@ -119,7 +122,7 @@ export function accountArFromBalanceSummary(answer) {
 const UNATTRIBUTED = "UNATTRIBUTED";
 
 /** Mirrors summarizeAccountAr (functions/src/finance/financeReadProjection.ts), except VOID rows are excluded from open: a void record is never owed. */
-function summarize(reads) {
+export function summarizeReceivables(reads) {
   const billedByCurrency = {};
   const collectedByCurrency = {};
   const outstandingByCurrency = {};

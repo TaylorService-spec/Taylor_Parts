@@ -13,7 +13,7 @@
 // Contract: `{ result }` on an answer, or `{ errorStatus: "denied" | "unavailable" | "notFound" }`; never a throw.
 import { callFinanceApi } from "./financeApiClient.js";
 import { READ_TIMEOUT_MS, boundedRead } from "../access/boundedRead.js";
-import { periodWindows, readableCompanies, receivablesEnvelope } from "../domain/financialsEos.js";
+import { FACT_TYPES, SETTLEMENT_PAGE_LIMIT, paymentFacts, periodWindows, readableCompanies, receivablesEnvelope } from "../domain/financialsEos.js";
 
 /** The server's cap on one `listObligations` page (financeOperations.ts obligationRows(..., 200)). */
 export const OBLIGATION_PAGE_LIMIT = 200;
@@ -61,26 +61,41 @@ export async function resolveScope(reader, companyId) {
 }
 
 /**
- * `listFinancialFacts`'s replacement where an EOS API is declared: the receivables envelope (rows + the server's own totals and
- * aging). Only the INVOICE fact family exists in EOS (a receivable); payments are settlements and have their own reads.
+ * `listFinancialFacts`'s replacement where an EOS API is declared (F-2: every family the Firebase read served). INVOICE is the receivables
+ * envelope (rows + the server's own totals and aging); PAYMENT_RECEIPT / PAYMENT_APPLICATION are the customer-payment settlements and their
+ * applications (domain/financialsEos.js paymentFacts). No factTypes means all three, as the callable did. `accountId` NARROWS to one CRM Account:
+ * the receivables are asked for that account only and, with no company total that answers for one account, the summary is the account read's.
  *
- * @param {{ companyId?: string|null, factTypes?: string[], periodStartMillis?: number, periodEndMillis?: number }} filters
+ * @param {{ companyId?: string|null, accountId?: string|null, factTypes?: string[], periodStartMillis?: number, periodEndMillis?: number }} filters
  */
 export async function fetchFinancialFactsFromEos(filters = {}, _limit = OBLIGATION_PAGE_LIMIT, options = {}) {
-  const types = Array.isArray(filters.factTypes) && filters.factTypes.length > 0 ? filters.factTypes : ["INVOICE"];
-  if (!types.includes("INVOICE")) return UNAVAILABLE;
+  const types = Array.isArray(filters.factTypes) && filters.factTypes.length > 0 ? filters.factTypes : FACT_TYPES;
+  if (!types.every((t) => FACT_TYPES.includes(t))) return UNAVAILABLE;
+  const wantsInvoices = types.includes("INVOICE");
+  const wantsPayments = types.includes("PAYMENT_RECEIPT") || types.includes("PAYMENT_APPLICATION");
+  const accountId = typeof filters.accountId === "string" && filters.accountId.trim() !== "" ? filters.accountId.trim() : null;
   const reader = financeReader(options);
   const resolved = await resolveScope(reader, filters.companyId);
   if (resolved.errorStatus) return resolved;
   const { companies, total } = resolved.scope;
-  const window = periodWindows(filters).receivables;
+  const windows = periodWindows(filters);
   const asked = companies.length > 1 && total === "consolidated" ? ["consolidated"] : companies;
-  const [overview, ...lists] = await Promise.all([
-    total === null ? Promise.resolve({ result: null }) : reader.overview({ operatingCompanyId: total, ...window }),
-    ...asked.map((operatingCompanyId) => reader.receivables({ operatingCompanyId, ...window })),
+  // The company overview is not account-scoped, so an account-narrowed read asks for none (its summary comes from its own rows).
+  const overviewRead = wantsInvoices && accountId === null && total !== null ? reader.overview({ operatingCompanyId: total, ...windows.receivables }) : Promise.resolve({ result: null });
+  const [overview, ...rest] = await Promise.all([
+    overviewRead,
+    ...(wantsInvoices ? asked.map((operatingCompanyId) => reader.receivables({ operatingCompanyId, ...(accountId ? { crmAccountId: accountId } : {}), ...windows.receivables })) : []),
+    ...(wantsPayments ? asked.map((operatingCompanyId) => reader.settlements({ operatingCompanyId, ...windows.settlements })) : []),
   ]);
-  for (const r of [overview, ...lists]) if (r.errorStatus) return r;
+  for (const r of [overview, ...rest]) if (r.errorStatus) return r;
+  const lists = rest.slice(0, wantsInvoices ? asked.length : 0);
+  const settled = rest.slice(lists.length);
   const pages = lists.map((r) => ({ items: r.result?.items, truncated: Array.isArray(r.result?.items) && r.result.items.length >= OBLIGATION_PAGE_LIMIT }));
-  const envelope = receivablesEnvelope({ overview: overview.result, pages });
-  return envelope.status === "ready" ? { result: envelope } : UNAVAILABLE;
+  const envelope = receivablesEnvelope({ overview: overview.result, pages, accountScoped: wantsInvoices && accountId !== null });
+  if (envelope.status !== "ready") return UNAVAILABLE;
+  if (!wantsPayments) return { result: envelope };
+  const facts = paymentFacts(settled.map((r) => ({ items: r.result?.items, truncated: Array.isArray(r.result?.items) && r.result.items.length >= SETTLEMENT_PAGE_LIMIT })), { accountId });
+  if (facts === null) return UNAVAILABLE;
+  return { result: Object.freeze({ ...envelope, truncated: envelope.truncated || facts.truncated,
+    payments: types.includes("PAYMENT_RECEIPT") ? facts.payments : [], applications: types.includes("PAYMENT_APPLICATION") ? facts.applications : [] }) };
 }
