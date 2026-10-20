@@ -214,14 +214,14 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.equal((await current(FIRM, "2026-12-21")).goal, null, "after the retirement there is no target");
     assert.deepEqual((await audits(L.v2)).map((a) => a.action), ["createPerformanceGoalDraft", "supersedePerformanceGoal", "retirePerformanceGoal"]);
     assert.equal((await refusal(() => retire(approver, W, L.v2))).code, "GOAL_NOT_RETIRABLE", "a retired goal is not reopened or retired twice");
-    // A future goal: created, approved, retired the same day -> closes at its own start.
+    // A bounded window is never LENGTHENED by a retire: it closes at its own end.
     const metric = { metricId: "purchasing.purchaseOrder.open.count", targetScopeType: "FIRM" };
-    const f = await create(mgr, W, { ...metric, targetValue: 8, unit: "COUNT", direction: "AT_MOST", effectiveFrom: "2027-06-01" });
+    const f = await create(mgr, W, { ...metric, targetValue: 8, unit: "COUNT", direction: "AT_MOST", effectiveFrom: "2026-05-01", effectiveTo: "2026-06-30" });
     await approve(approver, W, f.goalId);
-    assert.equal((await retire(approver, W, f.goalId)).closedAt, "2027-06-01");
-    assert.equal((await row(f.goalId)).t, "2027-06-01");
+    assert.equal((await retire(approver, W, f.goalId)).closedAt, "2026-06-30");
+    assert.equal((await row(f.goalId)).t, "2026-06-30");
     // The retire reason is audited verbatim; the draft's author may retire what someone else approved.
-    const g = await create(mgr, W, { ...metric, targetValue: 9, unit: "COUNT", direction: "AT_MOST", effectiveFrom: "2027-08-01" });
+    const g = await create(mgr, W, { ...metric, targetValue: 9, unit: "COUNT", direction: "AT_MOST", effectiveFrom: "2026-07-01" });
     await approve(approver, W, g.goalId);
     assert.equal((await retire(mgr, W, g.goalId)).status, "RETIRED");
   });
@@ -289,7 +289,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
 
   await t.test("versioning: the registry is the vocabulary -- a wrong unit, direction, currency, scope id or an inactive metric is refused with nothing written", async () => {
     const before = await counts();
-    const bad = async (over, code) => assert.equal((await refusal(() => create(mgr, W, draft(over)))).code, code, JSON.stringify(over));
+    const bad = async (over, code) => assert.equal((await refusal(() => create(mgr, W, draft({ effectiveFrom: "2040-01-01", ...over })))).code, code, JSON.stringify(over));
     await bad({ metricId: "no.such.metric" }, "GOAL_INVALID");
     await bad({ metricId: "sales.invoiced.amount" }, "GOAL_INVALID");          // registered, not active for goals (its blocker is named)
     await bad({ unit: "PERCENT" }, "GOAL_INVALID");
@@ -514,7 +514,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     const rt2 = await goals.retirePerformanceGoal(deps, actor(approver, W), { goalId: first.goalId, reason: "done", idempotencyKey: "replay-rt" });
     assert.deepEqual([rt2.outcome, rt2.closedAt], ["replayed", rt.closedAt]);
     // Concurrent duplicates: exactly one applies.
-    const dup = { ...m, effectiveFrom: "2026-11-09", targetValue: 12, idempotencyKey: "replay-race" };
+    const dup = { ...m, effectiveFrom: "2026-12-21", targetValue: 12, idempotencyKey: "replay-race" };
     const race = await Promise.allSettled([goals.createPerformanceGoalDraft(deps, actor(mgr, W), dup), goals.createPerformanceGoalDraft(deps, actor(mgr, W), dup)]);
     const settled = race.filter((r) => r.status === "fulfilled").map((r) => r.value);
     assert.equal(settled.length, 2, "both racers are answered, neither with an internal error");
@@ -608,5 +608,213 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.equal(sample.actor_uid, approver);
     assert.match(sample.reason, /author=.*approver=/);
     assert.equal(sample.after.outcome, "applied");
+  });
+
+  // ════════════════════ 8. G-1b: WHAT GOVERNS A DATE, SCHEDULED VERSIONS, CORRECTIVE REPLACEMENT ════════════════════
+  // One dedicated target (receiving.purchaseOrder.receivable.count, FIRM) shared by every scenario below; each scenario lives in its OWN year with BOUNDED windows
+  // (so no scenario's window can touch another's) and states "today" through the command's clock.
+  const R = { metricId: "receiving.purchaseOrder.receivable.count", targetScopeType: "FIRM" };
+  const RC = [...W, RECEIVE];
+  const at = (date) => ({ ...deps, now: () => new Date(`${date}T12:00:00.000Z`) });
+  const mk = (who, today, input, caps = RC) => goals.createPerformanceGoalDraft(at(today), actor(who, caps), { idempotencyKey: key("c"), ...R, targetValue: 10, unit: "COUNT", direction: "AT_MOST", ...input });
+  const ok = (who, today, goalId, reason = "Agreed", extra = {}, caps = RC) => goals.approvePerformanceGoal(at(today), actor(who, caps), { goalId, reason, idempotencyKey: key("a"), ...extra });
+  const rt = (who, today, goalId, reason = "Stopped", caps = RC) => goals.retirePerformanceGoal(at(today), actor(who, caps), { goalId, reason, idempotencyKey: key("r"), });
+  const cur = async (date) => (await reads.listCurrentPerformanceGoals({ pool }, actor(admin, [READ, RECEIVE]), { targets: [R], onDate: date })).results[0];
+  /** The target value in force on each date (null = none), and the proof that no date is ambiguous. */
+  const timeline = async (Y, expected) => {
+    for (const [md, want] of Object.entries(expected)) {
+      const r = await cur(`${Y}-${md}`);
+      assert.equal(r.unavailableReason, null, `${Y}-${md} is not ambiguous`);
+      assert.equal(r.goal?.targetValue ?? null, want, `${Y}-${md}`);
+    }
+  };
+  /** P (value 10, Y-01-01..Y-12-31) approved; S (value 8) from Y-06-01 replaces it, approved while it is still SCHEDULED. Today = Y-03-01. */
+  const scheduled = async (Y) => {
+    const D0 = `${Y}-03-01`;
+    const p = await mk(mgr, D0, { targetValue: 10, effectiveFrom: `${Y}-01-01`, effectiveTo: `${Y}-12-31` });
+    await ok(approver, D0, p.goalId);
+    const s = await mk(mgr, D0, { targetValue: 8, effectiveFrom: `${Y}-06-01`, effectiveTo: `${Y}-12-31`, supersedesGoalId: p.goalId });
+    await ok(approver, D0, s.goalId);
+    return { Y, D0, p: p.goalId, s: s.goalId };
+  };
+  const statusOf = async (id) => { const r = await row(id); return [r.status, r.f, r.t]; };
+  const correct = (x, from, over = {}) => mk(mgr, x.D0, { targetValue: 6, effectiveFrom: `${x.Y}-${from}`, effectiveTo: `${x.Y}-12-31`, supersedesGoalId: x.s, ...over });
+
+  await t.test("G-1b F1: an approved future-dated successor leaves no gap -- the predecessor governs to the day before it, the successor from its start; superseded history stays readable", async () => {
+    const x = await scheduled(2031);
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2031-01-01", "2031-05-31"], "the predecessor's window was closed the day before the successor");
+    assert.deepEqual(await statusOf(x.s), ["APPROVED", "2031-06-01", "2031-12-31"]);
+    await timeline(2031, { "01-01": 10, "03-01": 10, "05-30": 10, "05-31": 10, "06-01": 8, "06-02": 8, "12-31": 8 });
+    assert.equal((await cur("2030-12-31")).goal, null, "before the first window there is no target");
+    assert.equal((await cur("2032-01-01")).goal, null, "after the last window there is no target");
+    // An historical as-of read of a SUPERSEDED window returns that version, with its number, window and approval evidence.
+    const old = (await cur("2031-04-15")).goal;
+    assert.deepEqual([old.goalId, old.status, old.targetValue, old.effectiveTo], [x.p, "SUPERSEDED", 10, "2031-05-31"]);
+    // The superseded window still counts as governed: a first version may not claim it.
+    const before = await counts();
+    const e = await refusal(() => mk(mgr, x.D0, { effectiveFrom: "2031-02-01", effectiveTo: "2031-02-28", targetValue: 3 }));
+    assert.deepEqual([e.code, e.category], ["GOAL_ALREADY_IN_FORCE", "CONFLICT"]);
+    assert.deepEqual(await counts(), before);
+  });
+
+  await t.test("G-1b F1: a RETIRED version governs the days before its retire day; a discarded draft and a draft never govern", async () => {
+    const Y = 2032, D0 = `${Y}-02-01`;
+    const p = await mk(mgr, D0, { effectiveFrom: `${Y}-01-01`, effectiveTo: `${Y}-12-31`, targetValue: 10 });
+    await timeline(Y, { "02-15": null });
+    await ok(approver, D0, p.goalId);
+    await timeline(Y, { "02-15": 10, "03-10": 10 });
+    assert.equal((await rt(approver, `${Y}-03-10`, p.goalId)).closedAt, `${Y}-03-10`);
+    assert.deepEqual(await statusOf(p.goalId), ["RETIRED", `${Y}-01-01`, `${Y}-03-10`]);
+    await timeline(Y, { "01-01": 10, "02-15": 10, "03-09": 10, "03-10": 10, "03-11": null, "12-31": null });
+    // A draft that is discarded was never a target: RETIRED without an approver, its window untouched, governing nothing.
+    const d = await mk(mgr, `${Y}-04-01`, { effectiveFrom: `${Y}-06-01`, effectiveTo: `${Y}-06-30`, targetValue: 99 });
+    await timeline(Y, { "06-15": null });
+    const out = await rt(approver, `${Y}-04-02`, d.goalId, "Entered by mistake");
+    assert.deepEqual([out.status, out.closedAt], ["RETIRED", null]);
+    assert.deepEqual(await statusOf(d.goalId), ["RETIRED", `${Y}-06-01`, `${Y}-06-30`]);
+    assert.equal((await q(`SELECT approved_by_ref FROM eos_ops.performance_goals WHERE goal_id = $1`, [d.goalId])).rows[0].approved_by_ref, null);
+    await timeline(Y, { "06-15": null });
+    // ... and the discarded window is free again.
+    assert.equal((await mk(mgr, `${Y}-04-03`, { effectiveFrom: `${Y}-06-10`, effectiveTo: `${Y}-06-20`, targetValue: 5 })).status, "DRAFT");
+  });
+
+  await t.test("G-1b F1: two governing versions on one date are still REFUSED as ambiguous (never resolved by order) -- while a pair that does not overlap is not", async () => {
+    const m = R.metricId;
+    await seed({ metric: m, from: "2033-01-01", to: "2033-12-31", status: "APPROVED", version: 1 });
+    await seed({ metric: m, from: "2033-06-01", to: "2033-12-31", status: "SUPERSEDED", version: 2 });
+    const bad = await cur("2033-07-01");
+    assert.equal(bad.goal, null);
+    assert.match(bad.unavailableReason, /GOAL_AMBIGUOUS|failed to close the earlier window/);
+    assert.match(bad.unavailableReason, /2 governing goals/);
+    const fine = await cur("2033-03-01");
+    assert.deepEqual([fine.unavailableReason, fine.goal?.targetValue], [null, 5], "a date covered by one governing version is not ambiguous");
+  });
+
+  await t.test("G-1b: an approved version that has not started is SCHEDULED and cannot be retired -- a business refusal, no mutation, no trace; a started one can", async () => {
+    const x = await scheduled(2034);
+    const before = await counts();
+    const e = await refusal(() => rt(approver, x.D0, x.s, "Entered by mistake"));
+    assert.deepEqual([e.code, e.category], ["GOAL_SCHEDULED_NOT_RETIRABLE", "PRECONDITION_FAILED"]);
+    assert.match(e.message, /hasn't started yet.*corrective replacement for someone else to approve/);
+    assert.deepEqual(await counts(), before, "no goal, no command record, no audit row, no state change");
+    assert.deepEqual(await statusOf(x.s), ["APPROVED", "2034-06-01", "2034-12-31"]);
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2034-01-01", "2034-05-31"], "the version before it is untouched");
+    await timeline(2034, { "05-31": 10, "06-01": 8 });
+    // The day it starts it is in force, and retirable like any other: the window closes at the retire day.
+    assert.deepEqual([(await rt(approver, "2034-06-01", x.s)).status, (await row(x.s)).t], ["RETIRED", "2034-06-01"]);
+  });
+
+  await t.test("G-1b: a corrective replacement with an EARLIER start supersedes the scheduled version and moves the preceding boundary earlier; the scheduled version never governs", async () => {
+    const x = await scheduled(2035);
+    const c = await correct(x, "05-10");
+    assert.deepEqual([c.status, c.supersedesGoalId], ["DRAFT", x.s]);
+    await timeline(2035, { "05-31": 10, "06-01": 8 }); // a draft changes nothing
+    const out = await ok(approver, x.D0, c.goalId, "The start date was wrong");
+    assert.deepEqual([out.status, out.supersededGoalId, out.correctedScheduledGoalId, out.precedingGoalId, out.precedingClosedAt, out.predecessorClosedAt],
+      ["APPROVED", x.s, x.s, x.p, "2035-05-09", null]);
+    assert.deepEqual(await statusOf(x.s), ["SUPERSEDED", "2035-06-01", "2035-12-31"], "the scheduled record is kept, its window untouched");
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2035-01-01", "2035-05-09"]);
+    assert.deepEqual(await statusOf(c.goalId), ["APPROVED", "2035-05-10", "2035-12-31"]);
+    // Boundary dates (start-1, start, start+1), and the scheduled version's own old start: exactly one version per date, S never.
+    await timeline(2035, { "03-01": 10, "05-08": 10, "05-09": 10, "05-10": 6, "05-11": 6, "05-31": 6, "06-01": 6, "06-02": 6, "12-31": 6 });
+    assert.equal((await cur("2035-06-01")).goal.goalId, c.goalId);
+    // Audit: one row for the correction, carrying both Principals, the reason and the correction; the scheduled version's own audit trail is unchanged.
+    assert.deepEqual((await audits(x.s)).map((a) => a.action), ["createPerformanceGoalDraft", "supersedePerformanceGoal"]);
+    const a = (await q(`SELECT after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'supersedePerformanceGoal'`, [c.goalId])).rows[0].after;
+    assert.deepEqual([a.correctedScheduledGoal, a.precedingGoalId, a.precedingClosedAt, a.reason, a.approver, a.author], [true, x.p, "2035-05-09", "The start date was wrong", approver, mgr]);
+  });
+
+  await t.test("G-1b: a corrective replacement with the SAME start leaves the preceding boundary where it was", async () => {
+    const x = await scheduled(2036);
+    const c = await correct(x, "06-01");
+    const out = await ok(approver, x.D0, c.goalId);
+    assert.deepEqual([out.precedingClosedAt, out.predecessorClosedAt], ["2036-05-31", null]);
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2036-01-01", "2036-05-31"]);
+    assert.deepEqual(await statusOf(x.s), ["SUPERSEDED", "2036-06-01", "2036-12-31"]);
+    await timeline(2036, { "05-31": 10, "06-01": 6, "06-02": 6, "12-31": 6 });
+    assert.equal((await cur("2036-06-01")).goal.goalId, c.goalId, "the new version, not the one it replaced on the same start day");
+  });
+
+  await t.test("G-1b: a corrective replacement with a LATER start keeps the preceding version in force until the corrected start -- nothing is lost in between", async () => {
+    const x = await scheduled(2037);
+    const c = await correct(x, "06-20");
+    const out = await ok(approver, x.D0, c.goalId);
+    assert.deepEqual([out.precedingClosedAt, out.predecessorClosedAt], ["2037-06-19", null]);
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2037-01-01", "2037-06-19"], "the boundary set by the scheduled version is a scheduled transition: it moves");
+    assert.deepEqual(await statusOf(x.s), ["SUPERSEDED", "2037-06-01", "2037-12-31"]);
+    await timeline(2037, { "05-31": 10, "06-01": 10, "06-10": 10, "06-19": 10, "06-20": 6, "06-21": 6, "12-31": 6 });
+    assert.equal((await cur("2037-06-10")).goal.goalId, x.p, "the scheduled version never governed 2037-06-01..2037-06-19");
+  });
+
+  await t.test("G-1b: a correction never moves an elapsed boundary or governs an elapsed day (refused, not clamped); once the scheduled version HAS started, a replacement is an ordinary supersede", async () => {
+    const x = await scheduled(2038);
+    const before = await counts();
+    // at DRAFT time: today and earlier are refused
+    for (const from of ["03-01", "02-15"]) {
+      const e = await refusal(() => correct(x, from));
+      assert.deepEqual([e.code, e.category], ["GOAL_START_ELAPSED", "INVALID_INPUT"], from);
+    }
+    // an old start date is the same refusal
+    assert.equal((await refusal(() => mk(mgr, x.D0, { effectiveFrom: "2038-01-01", effectiveTo: "2038-12-31", supersedesGoalId: x.s }))).code, "GOAL_START_ELAPSED");
+    assert.deepEqual(await counts(), before, "the refusals left no trace");
+    // at APPROVAL time: a draft that was valid when written has become elapsed -> refused with every row untouched
+    const stale = await correct(x, "05-10");
+    const mid = await counts();
+    const e = await refusal(() => ok(approver, "2038-05-20", stale.goalId));
+    assert.deepEqual([e.code, e.category], ["GOAL_START_ELAPSED", "INVALID_INPUT"]);
+    assert.deepEqual(await counts(), mid, "no boundary moved, no state changed, nothing recorded");
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2038-01-01", "2038-05-31"]);
+    assert.deepEqual(await statusOf(x.s), ["APPROVED", "2038-06-01", "2038-12-31"]);
+    // after the scheduled version started: a later-starting replacement closes it the day before (it governed its elapsed days), as any supersede does
+    const later = await correct(x, "06-15");
+    const out = await ok(approver, "2038-06-20", later.goalId);
+    assert.deepEqual([out.predecessorClosedAt, out.correctedScheduledGoalId ?? null, out.precedingClosedAt ?? null], ["2038-06-14", null, null]);
+    assert.deepEqual(await statusOf(x.s), ["SUPERSEDED", "2038-06-01", "2038-06-14"]);
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2038-01-01", "2038-05-31"], "the elapsed boundary stayed where it was");
+    await timeline(2038, { "05-31": 10, "06-01": 8, "06-14": 8, "06-15": 6, "12-31": 6 });
+    assert.equal((await cur("2038-06-10")).goal.goalId, x.s, "a version replaced AFTER it started governed its days");
+    assert.equal(stale.supersedesGoalId, x.s);
+  });
+
+  await t.test("G-1b: the corrective approval keeps the two-person and capability rules; a corrective replay writes nothing", async () => {
+    const x = await scheduled(2039);
+    const c = await correct(x, "05-10");
+    const before = await counts();
+    const self = await refusal(() => ok(mgr, x.D0, c.goalId));
+    assert.deepEqual([self.code, self.category], ["SELF_APPROVAL_FORBIDDEN", "FORBIDDEN"]);
+    // a caller who may set a first version but not replace, or who may replace but not approve, is refused before anything else
+    assert.equal((await refusal(() => mk(mgr, x.D0, { effectiveFrom: "2039-05-10", supersedesGoalId: x.s }, [CREATE, RECEIVE]))).code, "CAPABILITY_REQUIRED");
+    assert.equal((await refusal(() => ok(approver, x.D0, c.goalId, "Agreed", {}, [SUPERSEDE, CREATE, RECEIVE]))).code, "CAPABILITY_REQUIRED");
+    assert.deepEqual(await counts(), before, "every refusal left no trace");
+    assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", "2039-01-01", "2039-05-31"]);
+    // the approval applies once and replays
+    const input = { goalId: c.goalId, reason: "Agreed", idempotencyKey: "g1b-correct-replay" };
+    const first = await goals.approvePerformanceGoal(at(x.D0), actor(approver, RC), input);
+    assert.equal(first.outcome, "applied");
+    const applied = await counts();
+    const again = await goals.approvePerformanceGoal(at(x.D0), actor(approver, RC), input);
+    assert.deepEqual([again.outcome, again.precedingClosedAt, again.correctedScheduledGoalId], ["replayed", "2039-05-09", x.s]);
+    assert.deepEqual(await counts(), applied, "a replay writes nothing");
+    assert.equal((await refusal(() => goals.approvePerformanceGoal(at(x.D0), actor(approver, RC), { ...input, reason: "A different reason" }))).code, "IDEMPOTENCY_CONFLICT");
+    // a second approval of the same draft is refused as ever, and a second correction of the already-replaced scheduled version is not possible
+    assert.equal((await refusal(() => ok(approver, x.D0, c.goalId))).code, "GOAL_NOT_DRAFT");
+    const second = await correct(x, "05-20", { targetValue: 4 }).catch((err) => err);
+    assert.equal(second.code, "GOAL_NOT_SUPERSEDABLE", "the scheduled version has been replaced; the replacement is what is scheduled now");
+  });
+
+  await t.test("G-1b: an employee does not correct their own scheduled target; a manager does", async () => {
+    const metric = { metricId: "technician.workOrder.completed.cumulative.count", targetScopeType: "EMPLOYEE", targetScopeId: "e-rep", unit: "COUNT", direction: "AT_LEAST" };
+    const D0 = "2040-03-01";
+    const mkE = (who, today, input) => goals.createPerformanceGoalDraft(at(today), actor(who, W), { idempotencyKey: key("c"), ...metric, targetValue: 10, ...input });
+    const p = await mkE(mgr, D0, { effectiveFrom: "2040-01-01", effectiveTo: "2040-12-31" });
+    await goals.approvePerformanceGoal(at(D0), actor(approver, W), { goalId: p.goalId, reason: "ok", idempotencyKey: key("a") });
+    const s = await mkE(mgr, D0, { effectiveFrom: "2040-06-01", effectiveTo: "2040-12-31", targetValue: 12, supersedesGoalId: p.goalId });
+    await goals.approvePerformanceGoal(at(D0), actor(approver, W), { goalId: s.goalId, reason: "ok", idempotencyKey: key("a") });
+    const before = await counts();
+    const e = await refusal(() => mkE(rep, D0, { effectiveFrom: "2040-05-10", effectiveTo: "2040-12-31", supersedesGoalId: s.goalId }));
+    assert.deepEqual([e.code, e.category], ["SELF_TARGETING_FORBIDDEN", "FORBIDDEN"]);
+    assert.deepEqual(await counts(), before);
+    const c = await mkE(mgr, D0, { effectiveFrom: "2040-05-10", effectiveTo: "2040-12-31", supersedesGoalId: s.goalId, targetValue: 11 });
+    assert.equal((await goals.approvePerformanceGoal(at(D0), actor(approver, W), { goalId: c.goalId, reason: "ok", idempotencyKey: key("a") })).precedingClosedAt, "2040-05-09");
   });
 });

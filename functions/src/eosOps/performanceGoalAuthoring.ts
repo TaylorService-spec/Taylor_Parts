@@ -22,7 +22,12 @@
 //   * VERSIONING AS THE READ MODEL EXPECTS. Approving a successor closes its predecessor's window (status SUPERSEDED, effective_to = the day before the successor
 //     begins, never LENGTHENED) in the SAME transaction, so no instant has two APPROVED versions on one date (currentGoalFor would refuse it). A first version is
 //     refused when another APPROVED version already covers any day of its window -- that is "supersede", not "create" (Firebase left this to the data defect; EOS
-//     closes it). A retire closes the window at today (UTC) or the goal's own start, whichever is later; history is never deleted.
+//     closes it). A retire closes the window at today (UTC); history is never deleted.
+//   * SCHEDULED (G-1b; Owner option A). An approved version that has not started is SCHEDULED: it may NOT be retired (GOAL_SCHEDULED_NOT_RETIRABLE), it is corrected by a
+//     replacement draft (.supersede, two-person approval, the self rules). Approving that replacement supersedes the scheduled version in the same transaction WITHOUT
+//     touching its window -- it never governed a day, which the read derives from the approval (neverGoverned) -- and moves the preceding version's end to the day before
+//     the corrected start, earlier or later, only while that boundary is still in the future (the corrected start must be after today: GOAL_START_ELAPSED). What governs a
+//     date is decided by governingVersions (performanceGoalReads.ts), the same predicate the overlap checks use.
 //   * IDEMPOTENCY: every command carries a caller idempotencyKey, keyed per actor (eos_ops.performance_goal_commands) with a request fingerprint: the same key and
 //     request replays the stored answer and writes nothing; the same key with a different request is IDEMPOTENCY_CONFLICT.
 //   * ONE audit row per applied command (the Firebase action names: createPerformanceGoalDraft / approvePerformanceGoal / supersedePerformanceGoal /
@@ -42,7 +47,7 @@ import {
   acceptOnly, DATE_AS_TEXT, ID_SHAPE, inTransaction, reachableCompanies, recordsAudit, refuse, requireCapability, type RecordsActor,
 } from "./recordsSupport.js";
 import {
-  ALLOW, decideEmployeeSubject, decideGoalReach, decideMetricAuthority, deny, goalContextOn, goalOf, subjectEmployeeIds,
+  ALLOW, decideEmployeeSubject, decideGoalReach, decideMetricAuthority, deny, goalContextOn, goalOf, governingVersions, subjectEmployeeIds,
   withGoalContext, type Decision, type GoalContext, type GoalTargetRequest,
 } from "./performanceGoalReads.js";
 
@@ -85,6 +90,25 @@ function requireGoalId(v: unknown): string {
 }
 
 const isoToday = (now: () => Date): string => now().toISOString().slice(0, 10);
+
+/** The version a SCHEDULED one replaced (the one still governing until the scheduled start), if its record names one. */
+const precedingOf = <T extends { goalId: string }>(versions: readonly T[], scheduled: { supersedesGoalId: string | null }): T | undefined =>
+  scheduled.supersedesGoalId ? versions.find((g) => g.goalId === scheduled.supersedesGoalId) : undefined;
+
+/**
+ * The start a CORRECTION of a scheduled version may take. It must be after `today` (a correction never governs, or stops governing, an elapsed day) and after the
+ * start of the version before the scheduled one (which keeps governing until the day before). Returns the refusal, or null. Refused rather than clamped: a clamp would
+ * answer with a start date nobody typed.
+ */
+function correctionStartRefusal(start: string, today: string, preceding: { effectiveFrom: string } | undefined): { code: string; message: string } | null {
+  if (start <= today) {
+    return { code: "GOAL_START_ELAPSED", message: "A replacement for a target that has not started must take effect after today -- a day that has already passed keeps the target that governed it." };
+  }
+  if (preceding && start <= preceding.effectiveFrom) {
+    return { code: "GOAL_INVALID", message: "The replacement must take effect after the target before it began, or that target's window would be erased." };
+  }
+  return null;
+}
 
 /** The calendar day before an ISO date. Pure UTC arithmetic -- no locale, no ambient timezone. */
 export function previousIsoDate(iso: string): string {
@@ -234,6 +258,7 @@ export async function createPerformanceGoalDraft(deps: GoalAuthoringDeps, actor:
     targetScopeId: typeof i.targetScopeId === "string" && i.targetScopeId !== "" ? i.targetScopeId : null,
   };
   const now = (deps.now ?? (() => new Date()))();
+  const today = now.toISOString().slice(0, 10);
 
   return inTransaction(deps.pool, "write", async (c) => {
     const reach = await reachableCompanies(c, actor);
@@ -260,13 +285,20 @@ export async function createPerformanceGoalDraft(deps: GoalAuthoringDeps, actor:
         return refuse("GOAL_NOT_SUPERSEDABLE", "PRECONDITION_FAILED",
           `only an APPROVED version may be superseded (${supersedes} is ${predecessor.status}) -- a draft is replaced by a new draft, and a retired goal has no successor by definition`);
       }
-      if (typeof i.effectiveFrom === "string" && ISO_DATE.test(i.effectiveFrom) && i.effectiveFrom <= predecessor.effectiveFrom) {
-        return refuse("GOAL_INVALID", "INVALID_INPUT", "a successor must take effect AFTER its predecessor began, or closing the predecessor's window would erase the period it governed");
+      if (typeof i.effectiveFrom === "string" && ISO_DATE.test(i.effectiveFrom)) {
+        if (predecessor.effectiveFrom > today) {
+          // A CORRECTION of a SCHEDULED version (G-1b): it replaces a target that has not started, so it may start before or after it -- but never on an elapsed day,
+          // and never before the version that precedes the scheduled one began (that one keeps governing until the corrected start).
+          const rejection = correctionStartRefusal(i.effectiveFrom, today, precedingOf(versions, predecessor));
+          if (rejection) return refuse(rejection.code, "INVALID_INPUT", rejection.message);
+        } else if (i.effectiveFrom <= predecessor.effectiveFrom) {
+          return refuse("GOAL_INVALID", "INVALID_INPUT", "a successor must take effect AFTER its predecessor began, or closing the predecessor's window would erase the period it governed");
+        }
       }
     } else if (typeof i.effectiveFrom === "string" && ISO_DATE.test(i.effectiveFrom) && (i.effectiveTo === undefined || i.effectiveTo === null || (typeof i.effectiveTo === "string" && ISO_DATE.test(i.effectiveTo)))) {
       // (a malformed date skips the overlap probe and is refused, with its own sentence, by the record builder below)
       const to = typeof i.effectiveTo === "string" ? i.effectiveTo : null;
-      const inForce = versions.find((g) => g.status === "APPROVED" && overlaps(g, { effectiveFrom: i.effectiveFrom as string, effectiveTo: to }));
+      const inForce = governingVersions(versions).find((g) => overlaps(g, { effectiveFrom: i.effectiveFrom as string, effectiveTo: to }));
       if (inForce) {
         return refuse("GOAL_ALREADY_IN_FORCE", "CONFLICT",
           `an APPROVED target (version ${inForce.version}) already covers part of that window -- replace it by naming it as the version this one supersedes`);
@@ -356,23 +388,51 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
     }
 
     const supersededId = draft.supersedesGoalId;
+    const today = isoToday(deps.now ?? (() => new Date()));
     let closedAt: string | null = null;
+    // The versions the clash check below compares with: all but the draft and the version it replaces, with the PRECEDING version's window as corrected here.
+    let others: Stored[] = versions.filter((g) => g.goalId !== goalId && g.goalId !== supersededId);
+    let correction: { precedingGoalId: string | null; precedingClosedAt: string | null } | null = null;
     if (supersededId) {
       const predecessor = versions.find((g) => g.goalId === supersededId);
       if (!predecessor) return refuse("GOAL_NOT_FOUND", "NOT_FOUND", "the version this one supersedes no longer exists");
       if (predecessor.status !== "APPROVED") {
         return refuse("GOAL_NOT_SUPERSEDABLE", "PRECONDITION_FAILED", `the version being superseded is ${predecessor.status}, not APPROVED -- it may already have been replaced`);
       }
-      if (draft.effectiveFrom <= predecessor.effectiveFrom) {
-        return refuse("GOAL_INVALID", "INVALID_INPUT", "a successor must take effect AFTER its predecessor began");
+      if (predecessor.effectiveFrom > today) {
+        // A CORRECTION (G-1b): the version being replaced is SCHEDULED -- it has not started, so it never governed a day and its record is kept as it is (its window is not
+        // touched: "never governed" is derived from this approval, see neverGoverned). The version BEFORE it, which governs until the scheduled start, now governs until the
+        // corrected start instead. That boundary is a scheduled transition, not history: it moves only while it is still in the future, so no elapsed day changes hands.
+        const preceding = precedingOf(versions, predecessor);
+        const rejection = correctionStartRefusal(draft.effectiveFrom, today, preceding);
+        if (rejection) return refuse(rejection.code, "INVALID_INPUT", rejection.message);
+        let precedingClosedAt: string | null = null;
+        if (preceding) {
+          if (preceding.status !== "SUPERSEDED" || preceding.effectiveTo === null) {
+            return refuse("GOAL_NOT_SUPERSEDABLE", "PRECONDITION_FAILED", `the target before the scheduled one is ${preceding.status}, not the replaced target this correction expects`);
+          }
+          const wanted = previousIsoDate(draft.effectiveFrom);
+          // The boundary the scheduled version set (the day before its start) moves to the corrected one. A window that ended EARLIER on its own is only ever shortened.
+          precedingClosedAt = preceding.effectiveTo === previousIsoDate(predecessor.effectiveFrom) || preceding.effectiveTo > wanted ? wanted : preceding.effectiveTo;
+          if (precedingClosedAt !== preceding.effectiveTo) {
+            await c.query(`UPDATE ${SCHEMA}.performance_goals SET effective_to = $3 WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, preceding.goalId, precedingClosedAt]);
+          }
+          others = others.map((g) => (g.goalId === preceding.goalId ? { ...g, effectiveTo: precedingClosedAt } : g));
+        }
+        await c.query(`UPDATE ${SCHEMA}.performance_goals SET status = 'SUPERSEDED' WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, supersededId]);
+        correction = { precedingGoalId: preceding?.goalId ?? null, precedingClosedAt };
+      } else {
+        if (draft.effectiveFrom <= predecessor.effectiveFrom) {
+          return refuse("GOAL_INVALID", "INVALID_INPUT", "a successor must take effect AFTER its predecessor began");
+        }
+        closedAt = previousIsoDate(draft.effectiveFrom);
+        // Shortening a window is closing it; LENGTHENING one would extend a target over days it never governed -- the history rewrite this design refuses.
+        const effectiveTo = predecessor.effectiveTo !== null && predecessor.effectiveTo < closedAt ? predecessor.effectiveTo : closedAt;
+        await c.query(`UPDATE ${SCHEMA}.performance_goals SET status = 'SUPERSEDED', effective_to = $3 WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, supersededId, effectiveTo]);
       }
-      closedAt = previousIsoDate(draft.effectiveFrom);
-      // Shortening a window is closing it; LENGTHENING one would extend a target over days it never governed -- the history rewrite this design refuses.
-      const effectiveTo = predecessor.effectiveTo !== null && predecessor.effectiveTo < closedAt ? predecessor.effectiveTo : closedAt;
-      await c.query(`UPDATE ${SCHEMA}.performance_goals SET status = 'SUPERSEDED', effective_to = $3 WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, supersededId, effectiveTo]);
     }
-    // No OTHER approved version may cover the draft's window (the predecessor is closed above and excluded).
-    const clash = versions.find((g) => g.goalId !== goalId && g.goalId !== supersededId && g.status === "APPROVED" && overlaps(g, draft));
+    // No OTHER version that governs may cover the draft's window (the version it replaces is excluded; the preceding one is taken as corrected above).
+    const clash = governingVersions(others).find((g) => overlaps(g, draft));
     if (clash) {
       return refuse("GOAL_ALREADY_IN_FORCE", "CONFLICT", `an APPROVED target (version ${clash.version}) already covers part of this window -- approving this draft would leave two targets in force`);
     }
@@ -381,12 +441,13 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
       [actor.tenantId, goalId, approval.decidedByUid, approval.decidedAtMillis]);
 
     const approverEmployeeId = (await ctx.population()).actorEmployeeId;
-    const result = { outcome: "applied", goalId, status: "APPROVED", version: draft.version, supersededGoalId: supersededId, predecessorClosedAt: closedAt };
+    const result = { outcome: "applied", goalId, status: "APPROVED", version: draft.version, supersededGoalId: supersededId, predecessorClosedAt: closedAt,
+      ...(correction ? { correctedScheduledGoalId: supersededId, precedingGoalId: correction.precedingGoalId, precedingClosedAt: correction.precedingClosedAt } : {}) };
     await recordCommand(c, actor, key, "APPROVE", goalId, fingerprint, result);
     await recordsAudit(c, actor, supersededId ? "supersedePerformanceGoal" : "approvePerformanceGoal", "performance_goal", goalId,
       { outcome: "applied", status: "APPROVED", version: draft.version, author: draft.createdByUid, approver: actor.principalId, authorEmployeeId: draft.authorEmployeeId, approverEmployeeId,
-        reason: approval.reason, supersededGoalId: supersededId, predecessorClosedAt: closedAt },
-      `APPROVED v${draft.version} ${draft.metricId} ${draft.targetScopeType}:${draft.targetScopeId ?? "-"} target=${draft.targetValue} author=${draft.createdByUid} approver=${actor.principalId}${supersededId ? ` superseded=${supersededId} closedAt=${closedAt}` : ""} reason="${approval.reason}"`);
+        reason: approval.reason, supersededGoalId: supersededId, predecessorClosedAt: closedAt, ...(correction ? { correctedScheduledGoal: true, ...correction } : {}) },
+      `APPROVED v${draft.version} ${draft.metricId} ${draft.targetScopeType}:${draft.targetScopeId ?? "-"} target=${draft.targetValue} author=${draft.createdByUid} approver=${actor.principalId}${supersededId ? ` superseded=${supersededId} closedAt=${closedAt}` : ""}${correction ? ` correctedScheduled=true precedingClosedAt=${correction.precedingClosedAt}` : ""} reason="${approval.reason}"`);
     return result;
   });
 }
@@ -431,6 +492,12 @@ export async function retirePerformanceGoal(deps: GoalAuthoringDeps, actor: Reco
     const decision = await decideWrite(ctx, t, "retire", null);
     if (!decision.allowed) return refuseDecision(decision, true);
 
+    if (goal.status === "APPROVED" && goal.effectiveFrom > today) {
+      // G-1b (Owner, option A): an approved target that has not started is SCHEDULED, and history is immutable -- it is corrected by a replacement someone else approves,
+      // never withdrawn (a withdrawal would leave the dates after the version before it with no target, or reopen a closed window).
+      return refuse("GOAL_SCHEDULED_NOT_RETIRABLE", "PRECONDITION_FAILED",
+        "This target hasn't started yet, so it can't be retired. To change it, set a corrective replacement for someone else to approve.");
+    }
     if (goal.status === "DRAFT") {
       // Disposition of a draft: it was never a target, so no window closes and nothing was measured against it.
       await c.query(`UPDATE ${SCHEMA}.performance_goals SET status = 'RETIRED' WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, goalId]);
@@ -442,8 +509,8 @@ export async function retirePerformanceGoal(deps: GoalAuthoringDeps, actor: Reco
       return discarded;
     }
 
-    // A goal that has not started closes at its own start, never before it: a window ending before it begins is unrepresentable.
-    const closeAt = today < goal.effectiveFrom ? goal.effectiveFrom : today;
+    // (A goal that has not started was refused above: a retire always closes at today, never before the goal began.)
+    const closeAt = today;
     const effectiveTo = goal.effectiveTo !== null && goal.effectiveTo < closeAt ? goal.effectiveTo : closeAt;
     await c.query(`UPDATE ${SCHEMA}.performance_goals SET status = 'RETIRED', effective_to = $3 WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, goalId, effectiveTo]);
     const result = { outcome: "applied", goalId, status: "RETIRED", version: goal.version, closedAt: effectiveTo };

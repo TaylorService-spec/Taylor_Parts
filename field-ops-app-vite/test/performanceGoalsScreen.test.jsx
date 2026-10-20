@@ -9,7 +9,7 @@
 //   * the caller's idempotency key is kept for ONE attempt: reused after an unavailable answer, renewed after a definitive one;
 //   * nothing is optimistic: the versions are re-read after every change.
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor, cleanup } from "@testing-library/react";
 
 vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
   const actual = await vi.importActual("../src/domain/actorDisplayName");
@@ -27,6 +27,7 @@ const { PERFORMANCE_GOAL_GATE: GATE } = await import("../src/access/shellCapabil
 
 const has = (...keys) => (key) => keys.includes(key);
 const ALL = has(GATE.create, GATE.supersede, GATE.approve, GATE.retire);
+const TODAY = "2026-12-20";
 
 const options = (over = {}) => ({
   principalId: "p-me",
@@ -57,7 +58,7 @@ const fakeClient = (over = {}) => ({
 
 /** Choose a FIRM target on the past-due metric and open its versions. */
 async function openFirm(client, hasCapability = ALL) {
-  render(<PerformanceGoals hasCapability={hasCapability} client={client} />);
+  render(<PerformanceGoals today={TODAY} hasCapability={hasCapability} client={client} />);
   await screen.findByRole("region", { name: "Choose a target" });
   fireEvent.change(screen.getByLabelText(/Measure/), { target: { value: "service.workOrder.pastDue.count" } });
   fireEvent.change(screen.getByLabelText(/^For/), { target: { value: "FIRM" } });
@@ -80,17 +81,17 @@ describe("the pure helpers", () => {
 
 describe("the options", () => {
   it("states a refusal as a refusal and an outage as an outage; shows nothing to choose from when the caller has authority over no measure", async () => {
-    const { unmount } = render(<PerformanceGoals hasCapability={ALL} client={fakeClient({ loadOptions: vi.fn(async () => ({ ok: false, outcome: "denied", message: "this requires performance.goal.create" })) })} />);
+    const { unmount } = render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={fakeClient({ loadOptions: vi.fn(async () => ({ ok: false, outcome: "denied", message: "this requires performance.goal.create" })) })} />);
     expect(await screen.findByText("Goals unavailable")).toBeTruthy();
     expect(screen.getByText(/does not include setting performance goals/)).toBeTruthy();
     expect(screen.queryByText(/performance\.goal\.create/)).toBeNull();
     unmount();
-    render(<PerformanceGoals hasCapability={ALL} client={fakeClient({ loadOptions: vi.fn(async () => ({ ok: false, outcome: "unavailable", reason: null })) })} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={fakeClient({ loadOptions: vi.fn(async () => ({ ok: false, outcome: "unavailable", reason: null })) })} />);
     expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
   });
 
   it("offers exactly the measures the server states, each with only its own scopes, and the people, companies and warehouses it states", async () => {
-    render(<PerformanceGoals hasCapability={ALL} client={fakeClient()} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={fakeClient()} />);
     await screen.findByRole("region", { name: "Choose a target" });
     const measure = screen.getByLabelText(/Measure/);
     expect([...measure.options].map((o) => o.textContent)).toEqual(["Choose a measure", "Past due scheduled work", "My open assigned work", "Billed", "Purchase orders awaiting receipt"]);
@@ -111,13 +112,13 @@ describe("the options", () => {
   });
 
   it("says so when the caller has authority over no measure", async () => {
-    render(<PerformanceGoals hasCapability={ALL} client={fakeClient({ loadOptions: vi.fn(async () => ({ ok: true, options: options({ metrics: [] }) })) })} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={fakeClient({ loadOptions: vi.fn(async () => ({ ok: true, options: options({ metrics: [] }) })) })} />);
     expect(await screen.findByText("Nothing to set targets on")).toBeTruthy();
   });
 
   it("will not look up a target until the whole target is chosen", async () => {
     const client = fakeClient();
-    render(<PerformanceGoals hasCapability={ALL} client={client} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={client} />);
     await screen.findByRole("region", { name: "Choose a target" });
     fireEvent.change(screen.getByLabelText(/Measure/), { target: { value: "technician.workOrder.open.count" } });
     fireEvent.change(screen.getByLabelText(/^For/), { target: { value: "EMPLOYEE" } });
@@ -133,7 +134,7 @@ describe("the versions", () => {
   it("lists every version with its status, dates and the people who set and approved it; a FIRM target is looked up with no scope id", async () => {
     const client = fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: [
       goal({ goalId: "g1", status: "SUPERSEDED", effectiveTo: "2026-11-30" }),
-      goal({ goalId: "g2", version: 2, targetValue: 3, effectiveFrom: "2026-12-01", supersedesGoalId: "g1" }),
+      goal({ goalId: "g2", version: 2, targetValue: 3, effectiveFrom: "2026-12-01", supersedesGoalId: "g1", approvedAtMillis: Date.parse("2026-11-20T12:00:00Z") }),
       goal({ goalId: "g3", version: 3, status: "DRAFT", createdByUid: "p-other", approvedByUid: null, approvedAtMillis: null, effectiveFrom: "2027-01-01" }),
     ] })) });
     const section = await openFirm(client);
@@ -150,12 +151,73 @@ describe("the versions", () => {
     expect(within(rows[2]).getAllByText("Olive Other").length).toBeGreaterThan(0);
   });
 
+  it("G-1b: an approved version whose start is after today reads SCHEDULED (never 'In force'), on the start day it is in force; the version before it is still in force until its end", async () => {
+    const ms = (d) => Date.parse(`${d}T12:00:00Z`);
+    const list = [
+      goal({ goalId: "ga", status: "SUPERSEDED", effectiveFrom: "2026-10-20", effectiveTo: "2026-12-31", approvedAtMillis: ms("2026-10-20") }),
+      goal({ goalId: "gb", version: 2, targetValue: 3, effectiveFrom: "2027-01-01", supersedesGoalId: "ga", approvedAtMillis: ms("2026-11-30") }),
+    ];
+    const section = await openFirm(fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: list })) }));
+    const rows = within(within(section).getByRole("table", { name: "Target versions" })).getAllByRole("row").slice(1);
+    expect(within(rows[0]).getByText("In force until 2026-12-31")).toBeTruthy();
+    expect(within(rows[1]).getByText("Scheduled")).toBeTruthy();
+    expect(within(rows[1]).queryByText("In force")).toBeNull();
+    cleanup();
+    // On 2027-01-01 (its start day) the same version is in force and the predecessor is plainly replaced.
+    render(<PerformanceGoals today="2027-01-01" hasCapability={ALL} client={fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: list })) })} />);
+    await screen.findByRole("region", { name: "Choose a target" });
+    fireEvent.change(screen.getByLabelText(/Measure/), { target: { value: "service.workOrder.pastDue.count" } });
+    fireEvent.change(screen.getByLabelText(/^For/), { target: { value: "FIRM" } });
+    fireEvent.click(screen.getByRole("button", { name: "Show this target" }));
+    const next = within(await screen.findByRole("region", { name: "Target versions" }));
+    const rows2 = within(next.getByRole("table", { name: "Target versions" })).getAllByRole("row").slice(1);
+    expect(within(rows2[0]).getByText("Replaced")).toBeTruthy();
+    expect(within(rows2[1]).getByText("In force")).toBeTruthy();
+  });
+
+  it("G-1b: a scheduled version offers Replace and NO Retire (with a note); a started one offers both; a replaced-before-start version says so", async () => {
+    const ms = (d) => Date.parse(`${d}T12:00:00Z`);
+    const list = [
+      goal({ goalId: "g1", status: "SUPERSEDED", effectiveFrom: "2026-10-01", effectiveTo: "2026-12-31", approvedAtMillis: ms("2026-10-01") }),
+      goal({ goalId: "g2", version: 2, status: "SUPERSEDED", effectiveFrom: "2027-01-01", effectiveTo: null, supersedesGoalId: "g1", approvedAtMillis: ms("2026-11-01") }),
+      goal({ goalId: "g3", version: 3, status: "APPROVED", effectiveFrom: "2027-02-01", supersedesGoalId: "g2", approvedAtMillis: ms("2026-11-15") }),
+    ];
+    const section = await openFirm(fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: list })) }));
+    const rows = within(within(section).getByRole("table", { name: "Target versions" })).getAllByRole("row").slice(1);
+    expect(within(rows[1]).getByText("Replaced before it started")).toBeTruthy();
+    expect(within(rows[2]).getByText("Scheduled")).toBeTruthy();
+    expect(within(rows[2]).getByRole("button", { name: "Replace version 3" })).toBeTruthy();
+    expect(within(rows[2]).queryByRole("button", { name: "Retire version 3" })).toBeNull();
+    expect(within(rows[2]).getByRole("note").textContent).toMatch(/Starts 2027-02-01.*replace it/);
+    fireEvent.click(within(rows[2]).getByRole("button", { name: "Replace version 3" }));
+    const form = await screen.findByRole("form", { name: "Replace a target" });
+    expect(within(form).getByText(/has not started/)).toBeTruthy();
+    expect(within(form).getByText(/Must be after today \(2026-12-20\)/)).toBeTruthy();
+    cleanup();
+    // The same approved version, once started, is retirable.
+    const started = await openFirm(fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: [goal({ effectiveFrom: "2026-12-20" })] })) }));
+    expect(within(started).getByRole("button", { name: "Retire version 1" })).toBeTruthy();
+    expect(within(started).queryByRole("note")).toBeNull();
+  });
+
+  it("G-1b: approving a draft that corrects a scheduled version says what will happen to it", async () => {
+    const list = [
+      goal({ goalId: "g1", status: "APPROVED", effectiveFrom: "2027-02-01" }),
+      goal({ goalId: "g2", version: 2, status: "DRAFT", createdByUid: "p-other", approvedByUid: null, approvedAtMillis: null, effectiveFrom: "2027-01-15", supersedesGoalId: "g1" }),
+    ];
+    const section = await openFirm(fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: list })) }));
+    fireEvent.click(within(section).getByRole("button", { name: "Approve version 2" }));
+    const panel = await screen.findByRole("form", { name: "Approve a target" });
+    expect(within(panel).getByText(/never takes effect/)).toBeTruthy();
+    expect(within(panel).getByText(/continues until the day before this one starts/)).toBeTruthy();
+  });
+
   it("states no target as no target, a refusal as a refusal, an outage as an outage", async () => {
     const empty = await openFirm(fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: [] })) }));
     expect(within(empty).getByText("No target set")).toBeTruthy();
   });
   it("denied", async () => {
-    render(<PerformanceGoals hasCapability={ALL} client={fakeClient({ listVersions: vi.fn(async () => ({ ok: false, outcome: "denied" })) })} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={fakeClient({ listVersions: vi.fn(async () => ({ ok: false, outcome: "denied" })) })} />);
     await screen.findByRole("region", { name: "Choose a target" });
     fireEvent.change(screen.getByLabelText(/Measure/), { target: { value: "service.workOrder.pastDue.count" } });
     fireEvent.change(screen.getByLabelText(/^For/), { target: { value: "FIRM" } });
@@ -163,7 +225,7 @@ describe("the versions", () => {
     expect(await screen.findByText("That target is outside what you can see.")).toBeTruthy();
   });
   it("unavailable shows no server text", async () => {
-    render(<PerformanceGoals hasCapability={ALL} client={fakeClient({ listVersions: vi.fn(async () => ({ ok: false, outcome: "unavailable", message: "SELECT secret" })) })} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={fakeClient({ listVersions: vi.fn(async () => ({ ok: false, outcome: "unavailable", message: "SELECT secret" })) })} />);
     await screen.findByRole("region", { name: "Choose a target" });
     fireEvent.change(screen.getByLabelText(/Measure/), { target: { value: "service.workOrder.pastDue.count" } });
     fireEvent.change(screen.getByLabelText(/^For/), { target: { value: "FIRM" } });
@@ -244,7 +306,7 @@ describe("setting a target", () => {
 
   it("an amount is dollars and cents with a currency, sent as whole minor units; the metric's only direction is chosen for the caller", async () => {
     const client = fakeClient();
-    render(<PerformanceGoals hasCapability={ALL} client={client} />);
+    render(<PerformanceGoals today={TODAY} hasCapability={ALL} client={client} />);
     await screen.findByRole("region", { name: "Choose a target" });
     fireEvent.change(screen.getByLabelText(/Measure/), { target: { value: "sales.billed.amount" } });
     fireEvent.change(screen.getByLabelText(/^For/), { target: { value: "OPERATING_COMPANY" } });
