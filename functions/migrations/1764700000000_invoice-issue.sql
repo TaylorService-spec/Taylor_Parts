@@ -12,9 +12,14 @@
 --                                            date's basis and reason; `accounting_reference` beside the number (the provider's document reference).
 --   3. eos_finance.invoice_totals            replaced (same 14 columns, same types) so total = lines - discount + shipping + install + tax, and a new
 --                                            amount_due_minor = total - trade-in credit, which is what the receivable originates.
---   4. a deferred constraint trigger         the database refuses an invoice whose receivable is not the package's, or whose amount due differs from
---                                            the receivable's originated amount.
---   5. obligations.due_on                    may be SET ONCE, from NULL, on a package receivable (so aging begins at the invoice's due date); never changed.
+--   4. a deferred constraint trigger         AT ISSUE (when the issuing transaction commits) the database refuses an invoice whose receivable is not the
+--                                            package's, or whose amount due differs from the receivable's originated amount.
+--   5. issued-invoice immutability           AFTER ISSUE the header of an issued invoice (one that names a receivable) cannot be updated or deleted, and its
+--                                            lines cannot be inserted, updated or deleted by any later transaction. Corrections are a later governed path
+--                                            (credit memo / void, F-1b). Pre-F-1a rows (no receivable) are unaffected.
+--   6. obligations                           due_on may be SET ONCE, from NULL, on a package receivable, and only to the due date of the invoice that names
+--                                            it; never changed. An obligation cannot become VOID while a non-voided invoice names it.
+--   NOT enforced here: the receivable's origination FACTS are not guarded against a direct reversal (F-1b's concern).
 
 SET search_path = eos_finance, public;
 
@@ -126,8 +131,11 @@ $$ LANGUAGE plpgsql SET search_path = eos_finance, public;
 CREATE CONSTRAINT TRIGGER invoice_matches_obligation AFTER INSERT ON invoices
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION assert_invoice_matches_obligation();
 
--- An obligation's due date is part of its identity once set (1764490000000). It may still be SET, once, from NULL, on a Sales Order package receivable:
--- the invoice's due date starts aging. Nothing else about the identity changes, and a set date never changes or clears.
+-- An obligation's due date is part of its identity once set (1764490000000). It may still be SET, once, from NULL, on a Sales Order package receivable
+-- AND ONLY to the due date of an invoice that names it (F2): the invoice's due date starts aging. Nothing else about the identity changes, and a set date
+-- never changes or clears.
+-- B1: an obligation cannot become VOID while a non-voided invoice names it. Superseding a package voids its receivable; an issued invoice is corrected by a
+-- credit memo (F-1b), never by voiding the receivable under it.
 CREATE OR REPLACE FUNCTION refuse_obligation_identity_change() RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN
@@ -138,12 +146,75 @@ BEGIN
         RAISE EXCEPTION 'OBLIGATION_IMMUTABLE: only an obligation''s status may change';
     END IF;
     IF NEW.due_on IS DISTINCT FROM OLD.due_on
-       AND NOT (OLD.due_on IS NULL AND NEW.due_on IS NOT NULL AND NEW.kind = 'RECEIVABLE' AND NEW.source_domain = 'BILLING_PACKAGE') THEN
-        RAISE EXCEPTION 'OBLIGATION_IMMUTABLE: only an obligation''s status may change';
+       AND NOT (OLD.due_on IS NULL AND NEW.due_on IS NOT NULL AND NEW.kind = 'RECEIVABLE' AND NEW.source_domain = 'BILLING_PACKAGE'
+                AND EXISTS (SELECT 1 FROM eos_finance.invoices i
+                             WHERE i.tenant_id = NEW.tenant_id AND i.obligation_id = NEW.id AND (i.due_date AT TIME ZONE 'UTC')::date = NEW.due_on)) THEN
+        RAISE EXCEPTION 'OBLIGATION_IMMUTABLE: a due date is set once, and only to the due date of the invoice that names the obligation';
+    END IF;
+    IF NEW.status = 'VOID' AND OLD.status IS DISTINCT FROM 'VOID'
+       AND EXISTS (SELECT 1 FROM eos_finance.invoices i WHERE i.tenant_id = NEW.tenant_id AND i.obligation_id = NEW.id AND i.voided_at IS NULL) THEN
+        RAISE EXCEPTION 'OBLIGATION_INVOICED: an obligation with an issued invoice is corrected by a credit memo, never voided';
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SET search_path = eos_finance, public;
+
+-- F1: an ISSUED invoice (one that names a receivable) is immutable. No UPDATE and no DELETE of its header, so the amounts, currency, dates and all four linkage
+-- columns stay as issued; a later governed void or adjustment (F-1b) opens its own path. A pre-F-1a row (no receivable) keeps its existing behaviour, but
+-- cannot be turned into an issued one by an UPDATE.
+CREATE OR REPLACE FUNCTION refuse_issued_invoice_change() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        IF OLD.obligation_id IS NOT NULL THEN
+            RAISE EXCEPTION 'INVOICE_IMMUTABLE: an issued invoice is never deleted; it is corrected by a credit memo';
+        END IF;
+        RETURN OLD;
+    END IF;
+    IF OLD.obligation_id IS NOT NULL OR NEW.obligation_id IS NOT NULL THEN
+        RAISE EXCEPTION 'INVOICE_IMMUTABLE: an issued invoice is never changed; it is corrected by a credit memo';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = eos_finance, public;
+
+CREATE TRIGGER issued_invoice_immutable BEFORE UPDATE OR DELETE ON invoices
+    FOR EACH ROW EXECUTE FUNCTION refuse_issued_invoice_change();
+
+-- F1: the lines of an issued invoice are written ONLY by the transaction that inserted the invoice. After that, no INSERT, UPDATE or DELETE. "Same
+-- transaction" is the invoice row's xmin equalling this transaction's id (xmin is 32 bits, so the id is taken modulo 2^32).
+CREATE OR REPLACE FUNCTION invoice_lines_are_sealed(p_invoice_id TEXT) RETURNS BOOLEAN AS $$
+DECLARE
+    v_issued BOOLEAN;
+    v_same   BOOLEAN;
+BEGIN
+    SELECT (i.obligation_id IS NOT NULL), (i.xmin::text = (txid_current() % 4294967296)::text)
+      INTO v_issued, v_same
+      FROM eos_finance.invoices i WHERE i.id = p_invoice_id;
+    RETURN COALESCE(v_issued, FALSE) AND NOT COALESCE(v_same, FALSE);
+END;
+$$ LANGUAGE plpgsql STABLE SET search_path = eos_finance, public;
+
+CREATE OR REPLACE FUNCTION refuse_issued_invoice_line_change() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' OR TG_OP = 'DELETE' THEN
+        IF invoice_lines_are_sealed(OLD.invoice_id) THEN
+            RAISE EXCEPTION 'INVOICE_IMMUTABLE: the lines of an issued invoice are never changed; the invoice is corrected by a credit memo';
+        END IF;
+    END IF;
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        IF invoice_lines_are_sealed(NEW.invoice_id) THEN
+            RAISE EXCEPTION 'INVOICE_IMMUTABLE: the lines of an issued invoice are never changed; the invoice is corrected by a credit memo';
+        END IF;
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = eos_finance, public;
+
+CREATE TRIGGER issued_invoice_lines_immutable BEFORE INSERT OR UPDATE OR DELETE ON invoice_lines
+    FOR EACH ROW EXECUTE FUNCTION refuse_issued_invoice_line_change();
 
 -- Down Migration
 SET search_path = eos_finance, public;
@@ -176,6 +247,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = eos_finance, public;
 
+DROP TRIGGER IF EXISTS issued_invoice_lines_immutable ON invoice_lines;
+DROP TRIGGER IF EXISTS issued_invoice_immutable ON invoices;
+DROP FUNCTION IF EXISTS refuse_issued_invoice_line_change();
+DROP FUNCTION IF EXISTS invoice_lines_are_sealed(TEXT);
+DROP FUNCTION IF EXISTS refuse_issued_invoice_change();
 DROP TRIGGER IF EXISTS invoice_matches_obligation ON invoices;
 DROP FUNCTION IF EXISTS assert_invoice_matches_obligation();
 
