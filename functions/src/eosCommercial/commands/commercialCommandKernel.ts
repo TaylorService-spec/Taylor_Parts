@@ -23,6 +23,7 @@ import { createPostgresEmployeeAuthority } from "../../employeeIdentity/postgres
 import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
 import { RESERVED_CAPABILITY_HOLDERS } from "../../adminPolicy/roleCapabilityAdministration";
 import { qualifyingGlobalRoles } from "../../eosOps/administrationReach";
+import { recordCommandAudit, type CommandAuditSpec } from "../../eosAudit/commandAuditEvent";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
 
@@ -233,6 +234,12 @@ export interface CommercialCommandTarget {
 export interface CommercialCommandOutcome<R> {
   readonly result: R;
   readonly target: CommercialCommandTarget | null;
+  /**
+   * Q-1: the ONE audit row this applied command writes (eos_policy.audit_events), in the same transaction as the receipt.
+   * Required by the type, so a new command cannot compile without stating its audit. A replay never reaches the body and a
+   * refusal rolls the row back with everything else.
+   */
+  readonly audit: CommandAuditSpec;
 }
 
 export type CommercialReplayable<R> = R & { readonly replayed: boolean };
@@ -331,6 +338,7 @@ export async function runCommercialCommand<R extends object>(
     if (!scope.global && !channelDecided) {
       fail("OUTSIDE_SALES_CHANNEL_SCOPE", "FORBIDDEN", "this command did not establish the record's sales channel for a channel-scoped caller");
     }
+    await recordCommandAudit(client, actor.tenantId, actor.principalId, outcome.audit);
     await client.query(
       `INSERT INTO eos_commercial.command_receipts
          (id, tenant_id, principal_id, operation, idempotency_key_hash, target_family, target_id, result)
