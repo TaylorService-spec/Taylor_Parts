@@ -170,6 +170,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:no role/grant/authority change, no Firebase dependency, no merge or deploy without Owner authorization; server query validation is security-sensitive (Owner approves the contract first)
 - Lifecycle stage:     Phase 1a MERGED `fbe58115` (#2110) incl. availability-read isolation; nonprod deployed and verified 2026-10-17
 
+- Capability:          REC sign-in recovery design (Firebase exit R2) — sole-Owner break-glass and reset for a Principal with no Employee link; decision document only
+- Agent/session:       Claude Code Lane REC · Role: builder (design)
+- Branch / worktree:   `docs/rec-sign-in-recovery-design` · `.claude/worktrees/agent-a14d6c8de487bea15`
+- Base commit:         `b3d09dc3`
+- Owned paths:         `docs/architecture/rec-sign-in-recovery-design.md`
+- Shared paths req'd:  this registry
+- Dependencies:        none (docs only). Build waits on Owner rulings OD-1..OD-17
+- Expected outcome:    the Owner decides the recovery model; no auth code, MFA, session, Rules or config changes here
+- Protected boundaries:security/authorization model, credentials (Tier 3); no credential read or handled, no reset run
+- Lifecycle stage:     DESIGNED (awaiting Owner decisions)
+
 - Capability:          Cloud Agent environment — local PostgreSQL + EOS API + Vite (no Firebase)
 - Agent/session:       Cursor Cloud · Role: builder
 - Branch / worktree:   `cursor/cloud-agent-pg-vite-env-f264` · `/workspace`
