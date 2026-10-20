@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
 import { assignFinanceCompanies } from "./support/financeCompanyAccess.mjs";
+import { seedProtectedOwnerRows } from "./support/protectedOwnerFixture.mjs";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../lib/eosFinance/billingPackage.js");
@@ -653,16 +654,16 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
       /CORRECTION_EMPLOYEE_UNLINKED/, "decider");
     // the two-person CHECK: the same Principal cannot be stored as its own approver; neither can the same Employee under another Principal (triggers off, so only the CHECK speaks)
     await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-req-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k1', decision_fingerprint='f' WHERE id='icr-raw-1'`, [REQ]),
-      /invoice_correction_two_person/, "same Principal");
-    const replica = await pool.connect();
-    try {
-      await replica.query("SET session_replication_role = replica");
-      await assert.rejects(replica.query(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='someone-relinked', decided_by_employee_id='e-req-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k2', decision_fingerprint='f' WHERE id='icr-raw-1'`),
-        /invoice_correction_two_person/, "same Employee");
-    } finally {
-      await replica.query("SET session_replication_role = DEFAULT").catch(() => undefined);
-      replica.release();
-    }
+      /SELF_APPROVAL_FORBIDDEN/, "same Principal (a non-Owner): refused by the people trigger, which routes through eos_policy.protected_owner_employee -- DECISIONS #SAE");
+    // The same Employee under another Principal: that Principal's recorded Employee must be its own active link (the link trigger speaks first for a stranger), and the people trigger refuses
+    // a same-Employee decision from anyone who is not the protected Owner. (The Owner's own self-decision is proved in saeProtectedOwnerExemptionPostgres.test.mjs.)
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='someone-relinked', decided_by_employee_id='e-req-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k2', decision_fingerprint='f' WHERE id='icr-raw-1'`),
+      /CORRECTION_EMPLOYEE_UNLINKED|SELF_APPROVAL_FORBIDDEN/, "same Employee under another Principal");
+    // A basis cannot be claimed by anyone but the protected Owner: a non-Owner naming PROTECTED_OWNER is refused, and so is a basis on an ordinary two-person decision.
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-req-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k1b', decision_fingerprint='f',
+      approval_basis='PROTECTED_OWNER', approval_grant_source='PROTECTED_OWNER_MEMBERSHIP' WHERE id='icr-raw-1'`, [REQ]), /SELF_APPROVAL_FORBIDDEN/, "a claimed basis is proved by the seam, never trusted");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-app-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k1c', decision_fingerprint='f',
+      approval_basis='PROTECTED_OWNER', approval_grant_source='PROTECTED_OWNER_MEMBERSHIP' WHERE id='icr-raw-1'`, [DEC]), /CORRECTION_PEOPLE/, "an ordinary two-person decision carries no basis");
     await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-app-a', decided_at=now() WHERE id='icr-raw-1'`, [DEC]), /invoice_correction_decision_shape/, "a decision states its reason and key");
     await apply("icr-raw-1", "k3");
     // an APPLIED correction admits exactly its own fact: kind, amount and sign
@@ -716,6 +717,226 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     const row = await one(`SELECT to_jsonb(i) - 'voided_at' - 'void_reason' - 'voided_by' AS j, voided_at IS NOT NULL AS v, void_reason, voided_by FROM eos_finance.invoices i WHERE i.id=$1`, [E.invoice.id]);
     assert.deepEqual([row.v, row.void_reason, row.voided_by], [true, "Gate reason", DEC]);
     assert.deepEqual(row.j, orig, "only the three void columns moved");
+  });
+
+  // ════════════════════ SAE: the governed protected Owner (DECISIONS #SAE; Owner policy override 2026-10-20) ════════════════════
+  // The Owner may request AND approve the same correction (no second Employee). It removes ONLY the second person: the request key, the approval key, company authority, the state, the
+  // balance and invoice integrity, the reason, idempotency and audit all still apply, and every other person keeps SELF_APPROVAL_FORBIDDEN.
+  const ownerPerson = async (subject, emp, roles = ["f1bRequester", "f1bApprover"], companies = undefined) => {
+    const who = await person(subject, roles, { id: emp, name: `Owner ${emp}` });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [who], companies);
+    await seedProtectedOwnerRows(q, { tenantId: TENANT, principalId: who.principalId });
+    return who;
+  };
+  const sae = {};
+
+  await t.test("SAE-1 SEAM PARITY: the SQL seam (eos_policy.protected_owner_employee) and the TypeScript seam agree for the Owner and for every non-Owner", async () => {
+    const seam = require("../lib/access/secondaryApprovalExemption.js");
+    sae.owner = await ownerPerson("uid-sae-owner", "e-sae-owner");
+    const lookalike = await person("uid-sae-look", ["f1bRequester", "f1bApprover"], { id: "e-sae-look", name: "Look Alike" });
+    const administrator = await person("uid-sae-admin", ["admin", "f1bRequester", "f1bApprover"], { id: "e-sae-admin", name: "Ada Admin" });
+    const fm = await person("uid-sae-fm", ["financeManager", "f1bRequester", "f1bApprover"], { id: "e-sae-fm", name: "Fay Finance" });
+    const gm = await person("uid-sae-gm", ["generalManager", "f1bRequester", "f1bApprover"], { id: "e-sae-gm", name: "Glen General" });
+    const pm = await person("uid-sae-pm", ["partsManager", "f1bRequester", "f1bApprover"], { id: "e-sae-pm", name: "Pat Parts" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [lookalike, administrator, fm, gm, pm]);
+    const noEmployee = await person("uid-sae-noemp", ["f1bRequester", "f1bApprover"]);
+    await seedProtectedOwnerRows(q, { tenantId: TENANT, principalId: noEmployee.principalId });
+    sae.revoked = await ownerPerson("uid-sae-revoked", "e-sae-revoked");
+    sae.unlinked = await ownerPerson("uid-sae-unlinked", "e-sae-unlinked");
+    sae.terminated = await ownerPerson("uid-sae-terminated", "e-sae-terminated");
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [sae.revoked.principalId]);
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [sae.unlinked.principalId]);
+    await q(`UPDATE eos_workforce.employees SET employment_status = 'TERMINATED' WHERE id = 'e-sae-terminated'`);
+    const people = { owner: sae.owner, lookalike, administrator, financeManager: fm, generalManager: gm, partsManager: pm, ownerNoEmployee: noEmployee,
+      ownerRevoked: sae.revoked, ownerUnlinked: sae.unlinked, ownerTerminated: sae.terminated };
+    const exempt = [];
+    for (const [label, who] of Object.entries(people)) {
+      const sql = (await one(`SELECT eos_policy.protected_owner_employee($1, $2) AS e`, [TENANT, who.principalId])).e;
+      const ts = await seam.resolveSecondaryApprovalExemption(pool, TENANT, who.principalId, "finance.invoiceCorrection");
+      assert.equal(ts.exempt, sql !== null, `${label}: the two seams agree`);
+      if (ts.exempt) { exempt.push(label); assert.equal(ts.employeeId, sql); assert.equal(ts.basis, "PROTECTED_OWNER"); }
+      assert.equal((await one(`SELECT eos_policy.is_protected_owner_employee($1, $2, $3) AS b`, [TENANT, who.principalId, "e-sae-owner"])).b, label === "owner");
+    }
+    assert.deepEqual(exempt, ["owner"], "ONLY the governed protected Owner is exempt: not the Administrator, a General / Finance / Parts Manager, a look-alike, a revoked or unlinked or terminated Owner, or an Owner with no Employee");
+    sae.people = people;
+  });
+
+  await t.test("SAE-2 THE OWNER decides a correction they requested: credit, write-off, debit and (below) refund and void -- applied, basis + provenance on the row, the audit and the read; the invoice is exactly as issued; outstanding is derived", async () => {
+    const O = sae.owner;
+    const S = await issued({ price: 30000, account: "acct-a" });
+    const S_HASH = await invoiceHash(S.invoice.id);
+    const own = (kind, amountMinor, reason) => request(O, { kind, invoiceId: S.invoice.id, amountMinor, reason });
+    const apply = async (c, expectOutstanding) => {
+      const before = await state();
+      const r = ok(await approve(O, c, { reason: "Owner decision" }), `${c.kind} owner self-approval`);
+      assert.equal(r.outcome, "applied");
+      assert.deepEqual([r.correction.status, r.correction.requestedBy, r.correction.decidedBy, r.correction.requestedByEmployeeId, r.correction.decidedByEmployeeId],
+        ["APPLIED", O.principalId, O.principalId, "e-sae-owner", "e-sae-owner"], "the request and the decision stay separate facts, by the same Owner");
+      assert.deepEqual([r.correction.approvalBasis, r.correction.approvalScope, r.correction.approvalGrantSource], ["PROTECTED_OWNER", "FINANCIALS", "PROTECTED_OWNER_MEMBERSHIP"]);
+      const row = await one(`SELECT approval_basis, approval_scope, approval_grant_source FROM eos_finance.invoice_corrections WHERE id = $1`, [c.id]);
+      assert.deepEqual([row.approval_basis, row.approval_scope, row.approval_grant_source], ["PROTECTED_OWNER", "FINANCIALS", "PROTECTED_OWNER_MEMBERSHIP"]);
+      const audit = await one(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'finance.correction.approve' AND target_id = $2`, [TENANT, c.id]);
+      assert.deepEqual([audit.after.approvalBasis, audit.after.approvalScope, audit.after.approvalGrantSource, audit.after.decidedBy, audit.after.requestedBy],
+        ["PROTECTED_OWNER", "FINANCIALS", "PROTECTED_OWNER_MEMBERSHIP", O.principalId, O.principalId]);
+      assert.equal((await state()).audits, before.audits + 1, "ONE audit row for the applied approval");
+      if (expectOutstanding) assert.equal((await bal(S.obligation)).outstanding, expectOutstanding);
+      assert.equal(await invoiceHash(S.invoice.id), S_HASH, "the issued invoice, its number and lines are untouched");
+      return r.correction;
+    };
+    await apply(ok(await own("CREDIT_MEMO", 1000, "Pricing correction"), "credit req").correction, "29000");
+    await apply(ok(await own("WRITE_OFF", 500, "Small balance"), "wo req").correction, "28500");
+    await apply(ok(await own("DEBIT_CHARGE", 250, "Late fee per terms"), "debit req").correction, "28750");
+    const inv = await one(`SELECT t.amount_due_minor::text due, b.outstanding_minor::text out FROM eos_finance.invoice_totals t JOIN eos_finance.obligation_balances b ON b.tenant_id=t.tenant_id AND b.obligation_id=$2 WHERE t.invoice_id=$1`, [S.invoice.id, S.obligation]);
+    assert.deepEqual([inv.due, inv.out], ["30000", "28750"], "outstanding is DERIVED (original + adjustments - settled); the invoice still states what it billed");
+    // the read says the same
+    const read = ok(await fn(O, "readInvoiceCorrection", { correctionId: (await one(`SELECT id FROM eos_finance.invoice_corrections WHERE invoice_id = $1 ORDER BY requested_at LIMIT 1`, [S.invoice.id])).id }), "read");
+    assert.equal(read.correction.approvalBasis, "PROTECTED_OWNER");
+    // REFUND: records only (no payment); the Owner approves their own request
+    const R = await issued({ price: 12000, account: "acct-c" });
+    const pay = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: 12000, currency: "USD", sourceReference: "CHK-SAE", idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: R.obligation, amountMinor: 12000 }], idempotencyKey: key("app") }), "apply");
+    const appRow = await one(`SELECT id FROM eos_finance.settlement_applications WHERE tenant_id=$1 AND settlement_id=$2 AND status='APPLIED'`, [TENANT, pay.id]);
+    const R_HASH = await invoiceHash(R.invoice.id);
+    const handoffs = await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]);
+    const rf = ok(await request(O, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 3000, applicationId: appRow.id, reason: "Customer returned a unit" }), "refund req").correction;
+    const rfDone = ok(await approve(O, rf, { reason: "Return verified" }), "refund owner approval");
+    assert.deepEqual([rfDone.correction.status, rfDone.refundRecorded, rfDone.notice, rfDone.correction.approvalBasis], ["APPLIED", true, "refund recorded; no payment has been sent", "PROTECTED_OWNER"]);
+    assert.equal(await invoiceHash(R.invoice.id), R_HASH);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]), handoffs, "no external payment path: nothing is handed off or sent");
+    assert.deepEqual(await bal(R.obligation), { originated: "12000", settled: "9000", outstanding: "3000", status: "PARTIAL" });
+    // VOID: only before money moves, for the Owner too
+    const V = await issued({ price: 2200, account: "acct-a" });
+    const vr = ok(await request(O, { kind: "VOID", invoiceId: V.invoice.id, reason: "Billed to the wrong customer" }), "void req").correction;
+    const vDone = ok(await approve(O, vr, { reason: "Confirmed with the customer" }), "void owner approval").correction;
+    assert.deepEqual([vDone.status, vDone.approvalBasis], ["APPLIED", "PROTECTED_OWNER"]);
+    assert.equal((await one(`SELECT invoice_number, voided_at IS NOT NULL AS v, voided_by FROM eos_finance.invoices WHERE id = $1`, [V.invoice.id])).voided_by, O.principalId);
+    assert.equal((await bal(V.obligation)).status, "VOID");
+    const P = await issued({ price: 900, account: "acct-b" });
+    const payP = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-b" }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: 100, currency: "USD", sourceReference: "CHK-SAE-V", idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: payP.id, applications: [{ obligationId: P.obligation, amountMinor: 100 }], idempotencyKey: key("app") }), "apply");
+    const s0 = await state();
+    refused(await request(O, { kind: "VOID", invoiceId: P.invoice.id, reason: "after payment" }), 412, "VOID_AFTER_SETTLEMENT");
+    assert.deepEqual(await state(), s0, "the Owner cannot void after money moved: zero trace");
+    // the Owner cannot credit above what is owed either
+    refused(await request(O, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 801, reason: "too much" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    sae.S = S; sae.P = P;
+  });
+
+  await t.test("SAE-3 EVERYONE ELSE keeps the refusal, with zero trace: Administrator, Finance / General / Parts Manager, a look-alike, a revoked / unlinked / terminated Owner, an Owner without the approval key; a client flag is not accepted", async () => {
+    const P = sae.P;
+    const refuseSelf = async (label, who, status = 412, code = "SELF_APPROVAL_FORBIDDEN") => {
+      const c = ok(await request(who, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 3, reason: `SAE ${label}` }), `${label} request`).correction;
+      const before = await state();
+      refused(await approve(who, c), status, code, label);
+      assert.deepEqual(await state(), before, `${label}: zero trace (state hash)`);
+      assert.equal((await one(`SELECT status FROM eos_finance.invoice_corrections WHERE id = $1`, [c.id])).status, "PENDING");
+      return c;
+    };
+    for (const label of ["lookalike", "administrator", "financeManager", "generalManager", "partsManager"]) await refuseSelf(label, sae.people[label]);
+    await refuseSelf("ownerRevoked (membership ended)", sae.people.ownerRevoked);
+    // an unlinked / terminated Owner cannot even REQUEST (a requester must be an access-eligible Employee) -- the exemption is not a way round that
+    refused(await request(sae.people.ownerUnlinked, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 3, reason: "x" }), 412, "REQUESTER_EMPLOYEE_REQUIRED");
+    assert.notEqual((await request(sae.people.ownerTerminated, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 3, reason: "x" })).status, 200, "a terminated Employee resolves to no access at all");
+    // a request made while linked, then the link ended: the decider is no Employee
+    const late = await ownerPerson("uid-sae-late", "e-sae-late");
+    const lc = ok(await request(late, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 4, reason: "SAE late" }), "late req").correction;
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [late.principalId]);
+    const s1 = await state();
+    refused(await approve(late, lc), 412, "SELF_APPROVAL_FORBIDDEN", "the Owner's link ended after the request: not exempt, and not another person either");
+    assert.deepEqual(await state(), s1);
+    // relink: another Principal on the Owner's Employee (not an Owner) is not exempt
+    const imp = await person("uid-sae-imp", ["f1bApprover"]);
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [imp]);
+    const rlOwner = await ownerPerson("uid-sae-rl", "e-sae-rl");
+    const oc = ok(await request(rlOwner, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 5, reason: "SAE relink probe" }), "owner req").correction;
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [rlOwner.principalId]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ('lnk-sae-imp',$1,$2,'e-sae-rl','taylor','OPERATOR_ASSERTED','active','fixture','relinked the Owner''s Employee to another Principal')`, [TENANT, imp.principalId]);
+    const s2 = await state();
+    refused(await approve(imp, oc), 412, "SELF_APPROVAL_FORBIDDEN", "a relinked Employee is not the Owner");
+    assert.deepEqual(await state(), s2);
+    // client-supplied flags / role strings are not inputs
+    for (const extra of [{ isOwner: true }, { owner: true }, { role: "owner" }, { exempt: true }, { approvalBasis: "PROTECTED_OWNER" }]) {
+      const before = await state();
+      refused(await fn(sae.people.lookalike, "decideInvoiceCorrection", { correctionId: oc.id, decision: "REJECT", reason: "x", idempotencyKey: key("dec"), ...extra }), 400, "FIELD_NOT_ACCEPTED", JSON.stringify(extra));
+      assert.deepEqual(await state(), before);
+    }
+    // the exemption adds no authority: an Owner holding only the request key is refused the approval; one holding only the approval key cannot request
+    const reqOnly = await ownerPerson("uid-sae-reqonly", "e-sae-reqonly", ["f1bRequester"]);
+    const rc = ok(await request(reqOnly, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 6, reason: "SAE request-only Owner" }), "reqonly req").correction;
+    const s3 = await state();
+    refused(await approve(reqOnly, rc), 403, "CAPABILITY_REQUIRED", "the Owner without the approval key");
+    const appOnly = await ownerPerson("uid-sae-apponly", "e-sae-apponly", ["f1bApprover"]);
+    refused(await request(appOnly, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 6, reason: "x" }), 403, "CAPABILITY_REQUIRED", "the Owner without the request key");
+    assert.deepEqual(await state(), s3);
+    // company authority: an Owner assigned to Ventana only reads a Taylor correction as nonexistent
+    const vOwner = await ownerPerson("uid-sae-vowner", "e-sae-vowner", ["f1bRequester", "f1bApprover"], ["ventana"]);
+    refused(await approve(vOwner, rc), 404, "CORRECTION_NOT_FOUND", "a foreign company reads as nonexistent, even for the Owner");
+    refused(await request(vOwner, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 1, reason: "x" }), 404, "INVOICE_NOT_FOUND");
+    assert.deepEqual(await state(), s3);
+    ok(await decide(appA, rc.id, "REJECT", { reason: "Probe" }), "cleanup reject");
+  });
+
+  await t.test("SAE-4 REPLAY and CONCURRENCY: an Owner self-approval replays safely; the Owner's self-approval and a second Employee's approval of the same correction race -- exactly one wins", async () => {
+    const O = sae.owner;
+    const C = await issued({ price: 5000, account: "acct-a" });
+    const c = ok(await request(O, { kind: "CREDIT_MEMO", invoiceId: C.invoice.id, amountMinor: 700, reason: "Replay probe" }), "req").correction;
+    const first = ok(await decide(O, c.id, "APPROVE", { amountMinor: 700, idempotencyKey: "sae-replay" }), "first");
+    const mid = await state();
+    const again = ok(await decide(O, c.id, "APPROVE", { amountMinor: 700, idempotencyKey: "sae-replay" }), "replay");
+    assert.deepEqual([first.outcome, again.outcome, again.correction.approvalBasis], ["applied", "replayed", "PROTECTED_OWNER"]);
+    assert.deepEqual(await state(), mid, "a replay writes nothing");
+    refused(await decide(O, c.id, "APPROVE", { amountMinor: 700, idempotencyKey: "sae-replay", reason: "A different decision" }), 409, "IDEMPOTENCY_KEY_REUSED");
+    // the race
+    const race = ok(await request(O, { kind: "CREDIT_MEMO", invoiceId: C.invoice.id, amountMinor: 300, reason: "Race probe" }), "race req").correction;
+    const [a, b] = await Promise.all([decide(O, race.id, "APPROVE", { amountMinor: 300 }), decide(appA, race.id, "APPROVE", { amountMinor: 300 })]);
+    const winners = [a, b].filter((r) => r.status === 200);
+    const losers = [a, b].filter((r) => r.status !== 200);
+    assert.equal(winners.length, 1, `exactly one wins: ${JSON.stringify([a.body, b.body]).slice(0, 600)}`);
+    assert.deepEqual([losers[0].status, losers[0].body.code], [409, "CORRECTION_NOT_PENDING"]);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id = $1 AND source_record_id = $2`, [TENANT, race.id]), 1, "exactly one adjustment fact");
+    const decided = await one(`SELECT status, approval_basis, decided_by FROM eos_finance.invoice_corrections WHERE id = $1`, [race.id]);
+    assert.equal(decided.status, "APPLIED");
+    // whichever won, the row is internally consistent: a different decider carries no basis, the Owner carries PROTECTED_OWNER
+    assert.equal(decided.approval_basis, decided.decided_by === O.principalId ? "PROTECTED_OWNER" : null);
+  });
+
+  await t.test("SAE-5 THE DATABASE says it too: a same-person decision is stored only for the protected Owner with the basis; the seam is judged at the moment of the decision", async () => {
+    const O = sae.owner;
+    const D = await issued({ price: 4000, account: "acct-b" });
+    const rawPending = async (id, kind = "CREDIT_MEMO", amount = 100) => q(
+      `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
+       VALUES ($1,$2,'taylor',$3,$4,$5,$6,'USD','raw','PENDING',$7,'e-sae-owner',$1,'fp')`, [id, TENANT, D.invoice.id, D.obligation, kind, amount, O.principalId]);
+    const decideRaw = (id, basis, who = O.principalId, emp = "e-sae-owner") => q(
+      `UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$2, decided_by_employee_id=$3, decided_at=now(), decision_reason='r', decision_idempotency_key=$1, decision_fingerprint='f',
+              approval_basis=$4, approval_grant_source=$5 WHERE id=$1`, [id, who, emp, basis, basis ? "PROTECTED_OWNER_MEMBERSHIP" : null]);
+    await rawPending("icr-sae-1");
+    await assert.rejects(decideRaw("icr-sae-1", null), /SELF_APPROVAL_FORBIDDEN/, "the Owner decides their own WITHOUT recording the basis: refused");
+    await assert.rejects(decideRaw("icr-sae-1", "PROTECTED_OWNER", sae.people.administrator.principalId, "e-sae-admin"), /SELF_APPROVAL_FORBIDDEN|CORRECTION_PEOPLE|CORRECTION_EMPLOYEE_UNLINKED/, "a basis on another person's decision is refused");
+    await decideRaw("icr-sae-1", "PROTECTED_OWNER");
+    const stored = await one(`SELECT status, approval_basis, approval_scope, approval_grant_source FROM eos_finance.invoice_corrections WHERE id = 'icr-sae-1'`);
+    assert.deepEqual([stored.status, stored.approval_basis, stored.approval_grant_source], ["APPLIED", "PROTECTED_OWNER", "PROTECTED_OWNER_MEMBERSHIP"]);
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET approval_basis = NULL, approval_grant_source = NULL WHERE id = 'icr-sae-1'`), /CORRECTION_IMMUTABLE|invoice_correction_approval_basis_shape/, "a recorded basis is never erased");
+    // the fact is admitted for an Owner-approved correction (the seam is consulted again), and not once the Owner's membership has ended
+    const rawFact = (src, amount) => q(
+      `INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, counterparty_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, created_by)
+       SELECT $1::text, $2::text, o.operating_company_id, o.counterparty_id, 'OBLIGATION', 'RECEIVABLE_CREDITED', 'INVOICE_CORRECTION', $3::text, $4::bigint, o.currency, 'raw', now(), $1::text, 'fp', o.id, 'raw'
+         FROM eos_finance.obligations o WHERE o.id = $5::text`, [`ff-sae-${src}`, TENANT, src, amount, D.obligation]);
+    await rawFact("icr-sae-1", -100);
+    await rawPending("icr-sae-2");
+    await decideRaw("icr-sae-2", "PROTECTED_OWNER");
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [O.principalId]);
+    await assert.rejects(rawFact("icr-sae-2", -100), /ADJUSTMENT_NOT_APPROVED/, "judged at that moment: the Owner's membership has ended");
+    await rawPending("icr-sae-3");
+    await assert.rejects(decideRaw("icr-sae-3", "PROTECTED_OWNER"), /SELF_APPROVAL_FORBIDDEN/, "an ended Owner cannot decide their own");
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'active' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [O.principalId]);
+    await rawFact("icr-sae-2", -100);
+    // a withdrawal carries no basis
+    await rawPending("icr-sae-4");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='WITHDRAWN', decided_by=$2, decided_by_employee_id='e-sae-owner', decided_at=now(), decision_reason='r', decision_idempotency_key='w', decision_fingerprint='f',
+      approval_basis='PROTECTED_OWNER', approval_grant_source='PROTECTED_OWNER_MEMBERSHIP' WHERE id='icr-sae-4'`, [O.principalId]), /CORRECTION_PEOPLE|invoice_correction_approval_basis_shape/);
   });
 
   await t.test("NO PAYOUT PATH: the Finance transport has no operation that moves money out, and every refund record carries nothing to execute", async () => {

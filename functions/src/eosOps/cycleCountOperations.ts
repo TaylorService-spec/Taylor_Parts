@@ -48,6 +48,10 @@
 // While CYCLE_COUNT_WRITER_AUTHORITY.postgres is INACTIVE every operation refuses NOT_ACTIVATED before it
 // touches anything (the transport passes the constant; tests pass ACTIVE explicitly).
 import { lockStockLocation } from "./stockLocationLock.js";
+import { exemptionRecord, resolveSecondaryApprovalExemption, type ApprovalExemptionRecord } from "../access/secondaryApprovalExemption.js";
+
+/** This workflow's declared site in the central scope map (access/secondaryApprovalExemptionCore.ts). */
+export const CYCLE_COUNT_APPROVAL_SITE = "inventory.cycleCount" as const;
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -481,9 +485,19 @@ export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, 
         refuse("COUNT_STALE", "CONFLICT", "stock moved at this location after the count opened; cancel this line and count it again");
       }
     }
-    const decided = await reconcileLineInTransaction(db, actor.tenantId, actor.principalId, line.id, decision, reason);
+    // SEPARATION OF DUTIES: a counter does not reconcile their own variance -- except the governed protected Owner (DECISIONS #SAE), admitted ONLY by the central seam.
+    // The repository refuses a same-person reconcile without the verified resolution, so this is the single place it is asked for.
+    let exemption: ApprovalExemptionRecord | null = null;
+    let resolution: unknown;
+    if (line.submittedBy === actor.principalId && (line.variance ?? 0) !== 0) {
+      resolution = await resolveSecondaryApprovalExemption(db, actor.tenantId, actor.principalId, CYCLE_COUNT_APPROVAL_SITE);
+      exemption = exemptionRecord(resolution, actor.principalId, actor.tenantId, CYCLE_COUNT_APPROVAL_SITE);
+    }
+    const decided = await reconcileLineInTransaction(db, actor.tenantId, actor.principalId, line.id, decision, reason, resolution);
     await audit(db, actor, decision === "APPROVE" ? "cycleCount.line.reconcile" : "cycleCount.line.reject", "cycleCountLine", line.id,
-      { status: "COUNTED", variance: line.variance }, { status: decided.status, ledgerMovementId: decided.ledgerMovementId }, reason);
+      { status: "COUNTED", variance: line.variance },
+      { status: decided.status, ledgerMovementId: decided.ledgerMovementId,
+        ...(exemption ? { approvalBasis: exemption.approvalBasis, approvalScope: exemption.scopeKey, approvalGrantSource: exemption.grantSource } : {}) }, reason);
     return { outcome: "applied" as const, line: projectLine(decided) };
   }).catch(mapRepositoryError);
 }

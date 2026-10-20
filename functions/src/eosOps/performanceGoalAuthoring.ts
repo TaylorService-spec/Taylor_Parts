@@ -42,6 +42,10 @@ import type { Pool, PoolClient } from "pg";
 import { buildPerformanceGoal, GoalError, type PerformanceGoal } from "../performance/performanceGoal.js";
 import { findMetric, PERFORMANCE_METRICS, type GoalScopeType } from "../performance/performanceMetricRegistry.js";
 import { ApprovalError, buildApprovalRecord } from "../finance/financialApprovals.js";
+import { exemptionRecord, resolveSecondaryApprovalExemption, type SecondaryApprovalResolution } from "../access/secondaryApprovalExemption.js";
+
+/** This workflow's declared site in the central scope map (access/secondaryApprovalExemptionCore.ts). */
+export const GOAL_APPROVAL_SITE = "goals.performanceGoal" as const;
 import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority.js";
 import {
   acceptOnly, DATE_AS_TEXT, ID_SHAPE, inTransaction, reachableCompanies, recordsAudit, refuse, requireCapability, type RecordsActor,
@@ -191,7 +195,7 @@ async function recordCommand(c: PoolClient, actor: RecordsActor, key: string, co
  */
 interface Authored { readonly principal: string; readonly employeeId: string | null }
 
-async function decideWrite(ctx: GoalContext, t: GoalTargetRequest, verb: Verb, authored: Authored | null): Promise<Decision> {
+async function decideWrite(ctx: GoalContext, t: GoalTargetRequest, verb: Verb, authored: Authored | null, out?: { resolution?: SecondaryApprovalResolution }): Promise<Decision> {
   const metric = findMetric(t.metricId);
   // A retire is how a stranded goal is disposed of, so it is not refused because its metric was deactivated since.
   if (metric && !metric.activeForGoals && verb !== "retire") {
@@ -211,20 +215,24 @@ async function decideWrite(ctx: GoalContext, t: GoalTargetRequest, verb: Verb, a
   }
   if (verb === "approve") {
     if (authored === null || authored.principal.trim() === "") return deny("selfApproval", "the authoring principal must be known before a goal version can be approved");
+    // Same person (Principal, or one Employee behind two Principals) is admitted ONLY by the central seam: the governed protected Owner (DECISIONS #SAE, amending FIN-007).
+    const admitSelf = async (message: string): Promise<Decision> => {
+      const resolution = await resolveSecondaryApprovalExemption(ctx.db, ctx.actor.tenantId, ctx.actor.principalId, GOAL_APPROVAL_SITE);
+      if (!resolution.exempt || exemptionRecord(resolution, ctx.actor.principalId, ctx.actor.tenantId, GOAL_APPROVAL_SITE) === null) return deny("selfApproval", message);
+      if (out) out.resolution = resolution;
+      return ALLOW;
+    };
     if (authored.principal.trim() === ctx.actor.principalId.trim()) {
-      return deny("selfApproval", "the author of a goal version may not approve it -- under any policy (FIN-007)");
+      return admitSelf("the author of a goal version may not approve it, unless the governed protected Owner (FIN-007, as amended by DECISIONS #SAE)");
     }
     // Two-person approval rests on distinct EMPLOYEES: the Employee recorded at draft time, and the author Principal's link NOW, may not be the approver's Employee.
     const { actorEmployeeId } = await ctx.population();
     if (actorEmployeeId !== null) {
-      if (authored.employeeId !== null && authored.employeeId === actorEmployeeId) {
-        return deny("selfApproval", "the author of a goal version may not approve it, nor may anyone else linked to the same Employee -- under any policy (FIN-007)");
-      }
+      const shared = "the author of a goal version may not approve it, nor may anyone else linked to the same Employee, unless the governed protected Owner (FIN-007, as amended by DECISIONS #SAE)";
+      if (authored.employeeId !== null && authored.employeeId === actorEmployeeId) return admitSelf(shared);
       const { rows } = await ctx.db.query(
         `SELECT employee_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`, [ctx.actor.tenantId, authored.principal]);
-      if (rows.length > 0 && String(rows[0].employee_id) === actorEmployeeId) {
-        return deny("selfApproval", "the author of a goal version may not approve it, nor may anyone else linked to the same Employee -- under any policy (FIN-007)");
-      }
+      if (rows.length > 0 && String(rows[0].employee_id) === actorEmployeeId) return admitSelf(shared);
     }
   }
   return ALLOW;
@@ -385,8 +393,10 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
     if (draft.provenance !== "NATIVE") {
       return refuse("GOAL_AUTHOR_UNPROVABLE", "PRECONDITION_FAILED", "this draft was copied from the previous system, so its author cannot be compared with the approver; author a new draft instead");
     }
-    const decision = await decideWrite(ctx, t, "approve", { principal: draft.createdByUid, employeeId: draft.authorEmployeeId });
+    const exemptionOut: { resolution?: SecondaryApprovalResolution } = {};
+    const decision = await decideWrite(ctx, t, "approve", { principal: draft.createdByUid, employeeId: draft.authorEmployeeId }, exemptionOut);
     if (!decision.allowed) return refuseDecision(decision, true);
+    const exemption = exemptionRecord(exemptionOut.resolution, actor.principalId, actor.tenantId, GOAL_APPROVAL_SITE);
 
     const decidedAtMillis = now.getTime();
     let approval;
@@ -394,7 +404,7 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
       // FIN-007's record, built for its INVARIANTS (self-approval refusal, mandatory reason). amountMinor is null: approving a target is not a monetary action.
       approval = buildApprovalRecord({
         actionType: "PLAN_APPROVAL", targetRecordId: goalId, amountMinor: null, requestedByUid: draft.createdByUid, decidedByUid: actor.principalId,
-        decision: "APPROVED", reason, decidedAtMillis,
+        decision: "APPROVED", reason, decidedAtMillis, exemption: exemptionOut.resolution,
       });
     } catch (err) {
       if (err instanceof ApprovalError) return refuse(err.code === "SELF_APPROVAL_FORBIDDEN" ? "SELF_APPROVAL_FORBIDDEN" : "GOAL_INVALID", err.code === "SELF_APPROVAL_FORBIDDEN" ? "FORBIDDEN" : "INVALID_INPUT", err.message);
@@ -457,12 +467,14 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
       [actor.tenantId, goalId, approval.decidedByUid, approval.decidedAtMillis]);
 
     const approverEmployeeId = (await ctx.population()).actorEmployeeId;
-    const result = { outcome: "applied", goalId, status: "APPROVED", version: draft.version, supersededGoalId: supersededId, predecessorClosedAt: closedAt,
+    // SAE: the basis a same-person approval was admitted on, with its provenance, in the command record (the domain record of this decision) and in the audit row below.
+    const basis = exemption ? { approvalBasis: exemption.approvalBasis, approvalScope: exemption.scopeKey, approvalGrantSource: exemption.grantSource } : {};
+    const result = { outcome: "applied", goalId, status: "APPROVED", version: draft.version, supersededGoalId: supersededId, predecessorClosedAt: closedAt, ...basis,
       ...(correction ? { correctedScheduledGoalId: supersededId, precedingGoalId: correction.precedingGoalId, precedingClosedAt: correction.precedingClosedAt } : {}) };
     await recordCommand(c, actor, key, "APPROVE", goalId, fingerprint, result);
     await recordsAudit(c, actor, supersededId ? "supersedePerformanceGoal" : "approvePerformanceGoal", "performance_goal", goalId,
       { outcome: "applied", status: "APPROVED", version: draft.version, author: draft.createdByUid, approver: actor.principalId, authorEmployeeId: draft.authorEmployeeId, approverEmployeeId,
-        reason: approval.reason, supersededGoalId: supersededId, predecessorClosedAt: closedAt, ...(correction ? { correctedScheduledGoal: true, ...correction } : {}) },
+        reason: approval.reason, supersededGoalId: supersededId, predecessorClosedAt: closedAt, ...basis, ...(correction ? { correctedScheduledGoal: true, ...correction } : {}) },
       `APPROVED v${draft.version} ${draft.metricId} ${draft.targetScopeType}:${draft.targetScopeId ?? "-"} target=${draft.targetValue} author=${draft.createdByUid} approver=${actor.principalId}${supersededId ? ` superseded=${supersededId} closedAt=${closedAt}` : ""}${correction ? ` correctedScheduled=true precedingClosedAt=${correction.precedingClosedAt}` : ""} reason="${approval.reason}"`);
     return result;
   });

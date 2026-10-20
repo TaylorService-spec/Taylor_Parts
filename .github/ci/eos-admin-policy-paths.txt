@@ -1017,3 +1017,10 @@ functions/test/f1bInvoiceCorrectionPostgres.test.mjs
 functions/src/eosFinance/invoiceCorrection.ts
 docs/architecture/f1b-invoice-correction-grant-proposal.json
 functions/test/f1bInvoiceCorrectionDownPostgres.test.mjs
+# SAE protected-Owner exemption from secondary approval (2026-10-20): the central seam, its adapters, the suites; the migration is written by the controller from the reviewed draft.
+functions/src/access/secondaryApprovalExemptionCore.ts
+functions/src/access/secondaryApprovalExemption.ts
+functions/src/adminPolicy/ownerAdministrationExemption.ts
+functions/test/saeProtectedOwnerExemption.test.mjs
+functions/test/saeProtectedOwnerExemptionPostgres.test.mjs
+functions/test/support/protectedOwnerFixture.mjs

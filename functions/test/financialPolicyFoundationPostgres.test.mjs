@@ -191,7 +191,9 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   const ctrl = await person("uid-fp-ctrl", ["controller", "financialPolicyPreparer"], { id: "e-fp-ctrl", name: "Sage Controller" });
   const own = await person("uid-fp-owner", ["owner"], { id: "e-fp-owner", name: "Olive Owner" });
   const adm = await person("uid-fp-admin", ["admin"], { id: "e-fp-admin", name: "Rowan Administrator" });
-  const dual = await person("uid-fp-dual", ["controller", "financialPolicyPreparer", "owner"], { id: "e-fp-dual", name: "Dana Dual" });
+  // DECISIONS #SAE (2026-10-20): the governed protected OWNER may decide a version they wrote themselves, so the separation-of-duties proofs below use ORDINARY Employees who
+  // hold approve by Protected Administrator standing (`admin`); the protected Owner's own exemption is proved in saeProtectedOwnerExemptionPostgres.test.mjs. Non-Owners keep every refusal.
+  const dual = await person("uid-fp-dual", ["controller", "financialPolicyPreparer", "admin"], { id: "e-fp-dual", name: "Dana Dual" });
   const acct = await person("uid-fp-acct", ["accountingManager"], { id: "e-fp-acct", name: "Avery Accounting" });
   const gm = await person("uid-fp-gm", ["generalManager"], { id: "e-fp-gm", name: "Glen General" });
   const ctrlOnly = await person("uid-fp-ctrl-only", ["controller"], { id: "e-fp-ctrl-only", name: "Cal Controller" });
@@ -305,7 +307,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     assert.equal(submitted.status, "SUBMITTED");
     refused(await fn(ctrl, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", versionId: taylorV1.id, policy: WA }), 409, "FINANCIAL_POLICY_NOT_EDITABLE",
       "content freezes at submit");
-    // The Controller edited it: even holding approve (dual: controller + owner), an author never decides.
+    // The Controller edited it: even holding approve (dual: controller + admin standing), an author never decides.
     const dualEdit = ok(await fn(dual, "readFinancialPolicy", { operatingCompanyId: "taylor" }));
     assert.equal(dualEdit.inFlight.status, "SUBMITTED");
     refused(await fn(fm, "approveFinancialPolicy", { operatingCompanyId: "taylor", versionId: taylorV1.id }), 403, "CAPABILITY_REQUIRED");
@@ -328,7 +330,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   });
 
   await t.test("SOD: the preparer / submitter never approves or rejects their own version, even holding approve", async () => {
-    // Ventana v1: prepared and submitted by `dual` (controller + owner -- holds prepare AND approve).
+    // Ventana v1: prepared and submitted by `dual` (controller + admin standing -- holds prepare AND approve).
     const v = ok(await fn(dual, "saveFinancialPolicyDraft", { operatingCompanyId: "ventana", policy: FIFO }), "dual draft").version;
     ok(await fn(dual, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id }), "dual submit");
     refused(await fn(dual, "approveFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id }), 403, "SEPARATION_OF_DUTIES");
@@ -466,7 +468,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
   await t.test("VAL + SOD: an editor never approves; an activation re-validates -- a recognition gate that closed after approval stops it", async () => {
     const v = ok(await fn(fm, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor",
       policy: { ...WA, cogsRecognitionPointId: "EQUIPMENT_INSTALL" } }), "draft").version;
-    // `dual` (controller + owner) EDITS it; Finance Manager submits. An editor is an author: dual may not decide it.
+    // `dual` (controller + admin standing) EDITS it; Finance Manager submits. An editor is an author: dual may not decide it.
     ok(await fn(dual, "saveFinancialPolicyDraft", { operatingCompanyId: "taylor", versionId: v.id,
       policy: { ...WA, cogsRecognitionPointId: "WORK_ORDER_CONSUMPTION" } }), "WORK_ORDER_CONSUMPTION edit (gate open)");
     ok(await fn(fm, "submitFinancialPolicy", { operatingCompanyId: "taylor", versionId: v.id }));
@@ -576,7 +578,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const pT = await person("uid-fp-sc-t", [], { id: "e-fp-sc-t", name: "Tara Taylor-Controller" });
     const pV = await person("uid-fp-sc-v", [], { id: "e-fp-sc-v", name: "Vic Ventana-Controller", company: "ventana" });
     const pB = await person("uid-fp-sc-b", [], { id: "e-fp-sc-b", name: "Bea Both-Companies" });
-    const mixed = await person("uid-fp-sc-mx", ["owner"], { id: "e-fp-sc-mx", name: "Max Mixed" });
+    const mixed = await person("uid-fp-sc-mx", ["admin"], { id: "e-fp-sc-mx", name: "Max Mixed" });
     const gP = await person("uid-fp-sc-g", [], { id: "e-fp-sc-g", name: "Gil Global-Preparer" });
     await assign(pT, "policyPreparerTest", "taylor");
     await assign(pV, "policyPreparerTest", "ventana");
@@ -901,7 +903,7 @@ test("financial policy foundation over PostgreSQL", { skip: SKIP, concurrency: 1
     const vOnly = await person("uid-fp-p2-v", [], { id: "e-fp-p2-v", name: "Val Ventana-Preparer", company: "ventana" });
     const both = await person("uid-fp-p2-b", [], { id: "e-fp-p2-b", name: "Bo Both-Preparer" });
     const wPrep = await person("uid-fp-p2-w", [], { id: "e-fp-p2-w", name: "Wren Westco-Preparer" });
-    const dualW = await person("uid-fp-p2-dw", ["owner"], { id: "e-fp-p2-dw", name: "Dee Owner-and-Westco-Preparer" });
+    const dualW = await person("uid-fp-p2-dw", ["admin"], { id: "e-fp-p2-dw", name: "Dee Owner-and-Westco-Preparer" });
     await assign(tOnly, "policyPreparerTest", "taylor");
     await assign(vOnly, "policyPreparerTest", "ventana");
     await assign(both, "policyPreparerTest", "taylor");

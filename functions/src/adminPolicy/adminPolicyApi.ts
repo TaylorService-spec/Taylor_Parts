@@ -1372,8 +1372,9 @@ async function updateRoleMetadata(
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     // Decided in the transaction, under the governance lock, against the store (null = unchanged).
     // A classification moves authority, so the reason must be STATED (the request id alone is not one), like revokeRole.
+    const waived: { waiver?: import("../access/secondaryApprovalExemptionCore").ApprovalExemptionRecord | null } = {};
     const nextEffect = effect === undefined ? null
-      : await guardRoleCompanyAuthorityEffectChange(repo, tx, actor, role.key, effect, optionalString(input.reason) ? reason : null);
+      : await guardRoleCompanyAuthorityEffectChange(repo, tx, actor, role.key, effect, optionalString(input.reason) ? reason : null, waived);
     const updated = await tx.updateRole(role.id, {
       ...(name ? { name } : {}),
       ...(description === undefined ? {} : { description }),
@@ -1385,7 +1386,9 @@ async function updateRoleMetadata(
       targetKind: "role",
       targetId: role.id,
       before: { name: role.name, description: role.description, ...(nextEffect === null ? {} : { companyAuthorityEffect: role.companyAuthorityEffect }) },
-      after: { name: updated.name, description: updated.description, ...(nextEffect === null ? {} : { companyAuthorityEffect: updated.companyAuthorityEffect }) },
+      after: { name: updated.name, description: updated.description, ...(nextEffect === null ? {} : { companyAuthorityEffect: updated.companyAuthorityEffect }),
+        // SAE: the protected Owner's SELF_ADMINISTRATION waiver, with its provenance (absent for everyone else).
+        ...(waived.waiver ? { approvalBasis: waived.waiver.approvalBasis, approvalScope: waived.waiver.scopeKey, approvalGrantSource: waived.waiver.grantSource } : {}) },
       occurredAt: new Date().toISOString(),
       reason,
     });

@@ -77,6 +77,10 @@ import { admittedScopeValues, type ScopedHolding } from "../adminPolicy/assignme
 import { RESERVED_CAPABILITY_HOLDERS, reservedCapabilityAdmits } from "../adminPolicy/roleCapabilityAdministration";
 import { principalHasProtectedAdministratorStanding, qualifyingGlobalRoles } from "../eosOps/administrationReach";
 import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority";
+import { exemptionRecord, resolveSecondaryApprovalExemption, type ApprovalExemptionRecord } from "../access/secondaryApprovalExemption";
+
+/** This workflow's declared site in the central scope map (access/secondaryApprovalExemptionCore.ts). */
+export const FINANCIAL_POLICY_APPROVAL_SITE = "finance.policy" as const;
 
 export const FINANCIAL_POLICY_READ_CAPABILITY = "finance.policy.read";
 export const FINANCIAL_POLICY_PREPARE_CAPABILITY = "finance.policy.prepare";
@@ -393,12 +397,14 @@ async function lockedVersion(c: Db, actor: FinancialPolicyActor, company: string
 }
 
 async function audit(c: Db, actor: FinancialPolicyActor, action: string, before: FinancialPolicyVersion | null, after: FinancialPolicyVersion,
-  reason: string | null): Promise<void> {
+  reason: string | null, exemption: ApprovalExemptionRecord | null = null): Promise<void> {
   await c.query(
     `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,clock_timestamp(),$9)`,
     [`audit_${randomUUID()}`, actor.tenantId, action, actor.principalId, FINANCIAL_POLICY_AUDIT_TARGET, after.id,
-      before === null ? null : JSON.stringify(before), JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, after)), reason]);
+      before === null ? null : JSON.stringify(before), JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId,
+        // SAE: a same-person decision records why it was admitted and from where (stripped again by withoutAuthority, so history still rebuilds).
+        exemption ? { ...after, approvalBasis: exemption.approvalBasis, approvalScope: exemption.scopeKey, approvalGrantSource: exemption.grantSource } : after)), reason]);
 }
 
 const lockedRefusal = (status: string): never => (LOCKED_FINANCIAL_POLICY_STATUSES as readonly string[]).includes(status)
@@ -475,19 +481,26 @@ const ALLOWED: FinancialPolicyActionAnswer = Object.freeze({ allowed: true, reas
 const blocked = (reason: string): FinancialPolicyActionAnswer => Object.freeze({ allowed: false, reason });
 
 /** Resolve the caller's reach + reservation for every policy key ONCE; answer per company from it. */
+/** Authority answers computed for a caller the central seam admits as a same-person decider (DECISIONS #SAE): their offers do not hide approve / activate / cancel on a version they wrote. */
+const selfDecisionExempt = new WeakSet<object>();
 async function companyAuthorityOf(db: Db, actor: FinancialPolicyActor): Promise<(company: string) => CompanyAuthority> {
+  const ownerExempt = (await resolveSecondaryApprovalExemption(db, actor.tenantId, actor.principalId, FINANCIAL_POLICY_APPROVAL_SITE)).exempt;
   const decided = new Map<FinancialPolicyCompanyAction, { reach: CompanyReach | null; reserved: boolean }>();
   for (const action of FINANCIAL_POLICY_COMPANY_ACTIONS) {
     const reach = capabilityReach(actor, CAPABILITY_OF[action]);
     decided.set(action, { reach, reserved: reach === null ? false : await reservedAuthorityHeld(db, actor, CAPABILITY_OF[action]) });
   }
-  return (company) => Object.freeze(Object.fromEntries(FINANCIAL_POLICY_COMPANY_ACTIONS.map((action) => {
-    const { reach, reserved } = decided.get(action)!;
-    if (reach === null) return [action, blocked("CAPABILITY_REQUIRED")];
-    if (!reserved) return [action, blocked("RESERVED_CAPABILITY")];
-    if (!reachesCompany(reach, company)) return [action, blocked("OUTSIDE_OPERATING_COMPANY_SCOPE")];
-    return [action, ALLOWED];
-  })) as Record<FinancialPolicyCompanyAction, FinancialPolicyActionAnswer>);
+  return (company) => {
+    const answers = Object.freeze(Object.fromEntries(FINANCIAL_POLICY_COMPANY_ACTIONS.map((action) => {
+      const { reach, reserved } = decided.get(action)!;
+      if (reach === null) return [action, blocked("CAPABILITY_REQUIRED")];
+      if (!reserved) return [action, blocked("RESERVED_CAPABILITY")];
+      if (!reachesCompany(reach, company)) return [action, blocked("OUTSIDE_OPERATING_COMPANY_SCOPE")];
+      return [action, ALLOWED];
+    })) as Record<FinancialPolicyCompanyAction, FinancialPolicyActionAnswer>);
+    if (ownerExempt) selfDecisionExempt.add(answers);
+    return answers;
+  };
 }
 
 export const FINANCIAL_POLICY_VERSION_ACTIONS = Object.freeze(["edit", "submit", "approve", "reject", "activate", "withdraw", "cancel"] as const);
@@ -508,7 +521,7 @@ export function versionActionsFor(principalId: string, authority: CompanyAuthori
   const decide = (company: FinancialPolicyActionAnswer, state: string | null, independent: boolean, own = false): FinancialPolicyActionAnswer => {
     if (!company.allowed) return company;
     if (state !== null) return blocked(state);
-    if (independent) {
+    if (independent && !selfDecisionExempt.has(authority)) {
       const sod = independentDeciderRefusal(principalId, v);
       if (sod !== null) return blocked(sod);
     }
@@ -772,11 +785,20 @@ export function cancelState(v: Pick<FinancialPolicyVersion, "status" | "effectiv
   }
   return "FINANCIAL_POLICY_NOT_CANCELLABLE";
 }
-function assertIndependentDecider(actor: FinancialPolicyActor, v: FinancialPolicyVersion): void {
-  if (independentDeciderRefusal(actor.principalId, v) !== null) {
+/**
+ * The separation-of-duties gate for approve / reject / activate / cancel. A decider who prepared, edited or submitted the version is admitted ONLY by the central
+ * seam (the governed protected Owner; DECISIONS #SAE) and the decision then records that basis; everyone else keeps the refusal. The database holds the same line
+ * (financial_policy_decider_independent trigger).
+ */
+async function assertIndependentDecider(db: Db, actor: FinancialPolicyActor, v: FinancialPolicyVersion, what = "approved, rejected or activated"): Promise<ApprovalExemptionRecord | null> {
+  if (independentDeciderRefusal(actor.principalId, v) === null) return null;
+  const rec = exemptionRecord(await resolveSecondaryApprovalExemption(db, actor.tenantId, actor.principalId, FINANCIAL_POLICY_APPROVAL_SITE),
+    actor.principalId, actor.tenantId, FINANCIAL_POLICY_APPROVAL_SITE);
+  if (rec === null) {
     refuse("SEPARATION_OF_DUTIES", "FORBIDDEN",
-      "a financial policy version is approved, rejected or activated by someone other than the principal who prepared, edited or submitted it");
+      `a financial policy version is ${what} by someone other than the principal who prepared, edited or submitted it, unless the governed protected Owner (DECISIONS #SAE)`);
   }
+  return rec;
 }
 
 /** SUBMITTED -> APPROVED, by an independent approver. An optional note is kept as the decision reason. */
@@ -799,12 +821,12 @@ export async function approveFinancialPolicy(pool: Pool, actor: FinancialPolicyA
     if (before.status !== "SUBMITTED") {
       refuse("FINANCIAL_POLICY_NOT_SUBMITTED", "CONFLICT", `only a SUBMITTED version is approved; this one is ${before.status}`);
     }
-    assertIndependentDecider(actor, before);
+    const exemption = await assertIndependentDecider(c, actor, before);
     validateFinancialPolicyContent(company, before.policy, options);
     const { rows } = await c.query(
       `UPDATE eos_finance.financial_policy_versions SET status = 'APPROVED', approved_by = $3, approved_at = now(), decision_reason = $4, updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, before.id, actor.principalId, reason]);
-    await audit(c, actor, "finance.policy.approve", before, versionView(rows[0]), reason);
+    await audit(c, actor, "finance.policy.approve", before, versionView(rows[0]), reason, exemption);
     return outcome(rows[0], false);
   });
 }
@@ -829,11 +851,11 @@ export async function rejectFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
     if (before.status !== "SUBMITTED") {
       refuse("FINANCIAL_POLICY_NOT_SUBMITTED", "CONFLICT", `only a SUBMITTED version is rejected; this one is ${before.status}`);
     }
-    assertIndependentDecider(actor, before);
+    const exemption = await assertIndependentDecider(c, actor, before);
     const { rows } = await c.query(
       `UPDATE eos_finance.financial_policy_versions SET status = 'REJECTED', rejected_by = $3, rejected_at = now(), decision_reason = $4, updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, before.id, actor.principalId, reason]);
-    await audit(c, actor, "finance.policy.reject", before, versionView(rows[0]), reason);
+    await audit(c, actor, "finance.policy.reject", before, versionView(rows[0]), reason, exemption);
     return outcome(rows[0], false);
   });
 }
@@ -863,7 +885,7 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
       if (before.status === "ACTIVE" || before.status === "SUPERSEDED") lockedRefusal(before.status);
       refuse("FINANCIAL_POLICY_NOT_APPROVED", "CONFLICT", `only an APPROVED version is activated; this one is ${before.status}`);
     }
-    assertIndependentDecider(actor, before);
+    const exemption = await assertIndependentDecider(c, actor, before);
     validateFinancialPolicyContent(company, before.policy, options);
     const today = await businessDateOf(c, actor.tenantId, company);
     if (effectiveDate < today) {
@@ -892,7 +914,7 @@ export async function activateFinancialPolicy(pool: Pool, actor: FinancialPolicy
     const { rows } = await c.query(
       `UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', activated_by = $3, activated_at = now(), effective_date = $4::date, updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, before.id, actor.principalId, effectiveDate]);
-    await audit(c, actor, "finance.policy.activate", before, versionView(rows[0]), reason);
+    await audit(c, actor, "finance.policy.activate", before, versionView(rows[0]), reason, exemption);
     return Object.freeze({ ...outcome(rows[0], false), superseded });
   });
 }
@@ -974,14 +996,11 @@ export async function cancelFinancialPolicy(pool: Pool, actor: FinancialPolicyAc
     if (state !== null) {
       refuse(state, "CONFLICT", `only an APPROVED version, or one scheduled to take effect later, is cancelled; this one is ${before.status}`);
     }
-    if (independentDeciderRefusal(actor.principalId, before) !== null) {
-      refuse("SEPARATION_OF_DUTIES", "FORBIDDEN",
-        "an approved financial policy version is cancelled by someone other than the principal who prepared, edited or submitted it");
-    }
+    const exemption = await assertIndependentDecider(c, actor, before, "cancelled");
     const { rows } = await c.query(
       `UPDATE eos_finance.financial_policy_versions SET status = 'CANCELLED', cancelled_by = $3, cancelled_at = now(), cancellation_reason = $4, updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING ${COLUMNS}`, [actor.tenantId, before.id, actor.principalId, reason]);
-    await audit(c, actor, "finance.policy.cancel", before, versionView(rows[0]), reason);
+    await audit(c, actor, "finance.policy.cancel", before, versionView(rows[0]), reason, exemption);
     return outcome(rows[0], false);
   });
 }
@@ -1003,8 +1022,8 @@ export interface FinancialPolicyAuditEvent {
 const PHASE3_STAMPS = Object.freeze(["withdrawnBy", "withdrawnAt", "withdrawalReason", "cancelledBy", "cancelledAt", "cancellationReason"]);
 const withoutAuthority = (v: unknown): unknown => {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
-  const { authorizedBy: _a, ...rest } = v as Record<string, unknown>;
-  void _a;
+  const { authorizedBy: _a, approvalBasis: _b, approvalScope: _s, approvalGrantSource: _g, ...rest } = v as Record<string, unknown>;
+  void _a; void _b; void _s; void _g;
   for (const k of PHASE3_STAMPS) if (!(k in rest)) rest[k] = null;
   return rest;
 };

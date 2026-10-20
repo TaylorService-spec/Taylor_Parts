@@ -66,6 +66,7 @@
 // itself owns rather than trusting a caller to have checked it first.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { exemptionRecord } from "../access/secondaryApprovalExemptionCore.js";
 import {
   type OperatingCompanyKey,
   type OpsLocationType,
@@ -318,6 +319,8 @@ export async function reconcileLineInTransaction(
   lineId: string,
   decision: CycleCountReviewDecision,
   reason: string | null,
+  /** The seam's resolution (access/secondaryApprovalExemption) for the actor: the ONLY thing that admits a same-person reconcile (DECISIONS #SAE). Re-verified here. */
+  exemption?: unknown,
 ): Promise<CycleCountLineFullRecord> {
   {
     const line = await selectFull(client, tenantId, lineId);
@@ -325,8 +328,8 @@ export async function reconcileLineInTransaction(
     if (line.status !== "COUNTED") {
       throw new CycleCountRepositoryError("STATUS_INVALID", `line is ${line.status}; only a COUNTED line may be reconciled`);
     }
-    // SEPARATION OF DUTIES, inside the same transaction that would otherwise apply the adjustment.
-    if (line.submittedBy === actorId && (line.variance ?? 0) !== 0) {
+    // SEPARATION OF DUTIES, inside the same transaction that would otherwise apply the adjustment -- except the governed protected Owner (verified exemption).
+    if (line.submittedBy === actorId && (line.variance ?? 0) !== 0 && exemptionRecord(exemption, actorId, tenantId, "inventory.cycleCount") === null) {
       throw new CycleCountSelfApprovalError();
     }
 

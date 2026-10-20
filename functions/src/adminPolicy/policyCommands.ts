@@ -59,6 +59,8 @@ import {
   ROLE_ASSIGNMENT_ONLY_CAPABILITIES,
 } from "./roleCapabilityAdministration";
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
+import { exemptionRecord, type ApprovalExemptionRecord } from "../access/secondaryApprovalExemptionCore";
+import { resolveOwnerAdministrationExemption } from "./ownerAdministrationExemption";
 import { PolicyStoreError } from "./policyRepository";
 import { GOVERNED_QUALIFICATION_CODES } from "../eosOps/contextualAuthorization";
 import {
@@ -231,6 +233,19 @@ const sameVerbs = (a: CredOverride | CredSet | null | undefined, b: CredOverride
 /** Would applying this patch leave every named value exactly as it is? Patches here are flat scalars. */
 const patchChangesNothing = (current: object, patch: object): boolean =>
   Object.entries(patch).every(([key, value]) => (current as Record<string, unknown>)[key] === value);
+
+/**
+ * THE PROTECTED OWNER'S WAIVER of SELF_ADMINISTRATION and PRIVILEGE_ESCALATION (Owner policy override 2026-10-20, DECISIONS #SAE). Decided ONLY by the central seam
+ * (access/secondaryApprovalExemption via adminPolicy/ownerAdministrationExemption): the actor is the governed protected Owner with an active Employee link. Nothing else is
+ * waived: the capability that authorizes the command, the protected-Owner membership path, the last-Owner guard, Owner ruling A, the preview digest, the reason and the
+ * audit all still apply. The Administrator, General Manager and every other principal keep the refusal. Returns what the audit row records, or null (no waiver).
+ */
+async function ownerAdministrationWaiver(repo: PolicyReader, actor: AdminActor): Promise<ApprovalExemptionRecord | null> {
+  return exemptionRecord(await resolveOwnerAdministrationExemption(repo, actor.tenantId, actor.uid), actor.uid, actor.tenantId, "admin.selfAdministration");
+}
+/** The fields a waived decision adds to its audit `after`. */
+const waiverAudit = (w: ApprovalExemptionRecord | null): Record<string, unknown> =>
+  w ? { approvalBasis: w.approvalBasis, approvalScope: w.scopeKey, approvalGrantSource: w.grantSource } : {};
 
 const auditBase = (actor: AdminActor, action: string, targetKind: string, targetId: string, reason: string | null) => ({
   ...actorAuthorityOf(actor),
@@ -1016,8 +1031,12 @@ export async function assignRole(
 
   // (a) NOBODY STAFFS THEMSELVES. A Role assignment to the actor's own Principal is refused whatever
   // the Role, so the assignment authority can never be turned into a self-escalation path.
+  // Waived for the governed protected Owner ONLY (DECISIONS #SAE): the Owner's other protections below (the protected Owner Role is never assigned here, Owner ruling A,
+  // Owner and Administrator stay distinct) still apply, and the waiver is recorded on the audit event.
+  let waiver: ApprovalExemptionRecord | null = null;
   if (principalId === actor.uid) {
-    throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not assign a Role to itself");
+    waiver = await ownerAdministrationWaiver(repo, actor);
+    if (waiver === null) throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not assign a Role to itself");
   }
   // (b) ASSIGNING SECURITY-POLICY AUTHORITY NEEDS SECURITY-POLICY AUTHORITY. A Role carrying
   // admin.securityPolicy.write may be assigned only by an actor who holds it -- otherwise the
@@ -1079,7 +1098,7 @@ export async function assignRole(
     await tx.appendAudit({
       ...auditBase(actor, "assignRole", "roleAssignment", assignment.id, input.reason ?? null),
       before: null,
-      after: staffingAudit(staffing, assignment),
+      after: { ...staffingAudit(staffing, assignment), ...waiverAudit(waiver) },
     });
     return assignment;
   });
@@ -1292,7 +1311,7 @@ export async function setTenantSalesChannelStatus(
 // ════════════════════ D5(b) AND THE R1 ADMINISTRATOR STAFFING EXCEPTION ════════════════════
 
 /** Which authority admitted a change to a Role carrying admin.securityPolicy.write. */
-type SecurityPolicyStaffingAuthority = "NOT_REQUIRED" | "SECURITY_POLICY_WRITE" | "ADMINISTRATOR_STAFFING" | "PROTECTED_ADMINISTRATOR";
+type SecurityPolicyStaffingAuthority = "NOT_REQUIRED" | "SECURITY_POLICY_WRITE" | "ADMINISTRATOR_STAFFING" | "PROTECTED_ADMINISTRATOR" | "PROTECTED_OWNER";
 
 /** Recorded on the ONE audit event of a change the R1 staffing capability authorized. */
 const ADMINISTRATOR_STAFFING_AUDIT = Object.freeze({
@@ -1303,6 +1322,8 @@ const ADMINISTRATOR_STAFFING_AUDIT = Object.freeze({
 function staffingAudit<T extends object>(staffing: SecurityPolicyStaffingAuthority, record: T): T | (T & { authorizedBy: unknown }) {
   if (staffing === "ADMINISTRATOR_STAFFING") return { ...record, ...ADMINISTRATOR_STAFFING_AUDIT };
   if (staffing === "PROTECTED_ADMINISTRATOR") return { ...record, authorizedBy: PROTECTED_ADMINISTRATOR_AUTHORITY };
+  // The governed protected Owner, waived PRIVILEGE_ESCALATION / SELF_ADMINISTRATION by the central seam (DECISIONS #SAE).
+  if (staffing === "PROTECTED_OWNER") return { ...record, approvalBasis: "PROTECTED_OWNER", approvalScope: null, approvalGrantSource: "PROTECTED_OWNER_MEMBERSHIP" };
   return record;
 }
 
@@ -1347,7 +1368,9 @@ async function authorizeSecurityPolicyStaffing(
   if (!carried.has(SECURITY_POLICY_WRITE)) return "NOT_REQUIRED";
   // NOBODY APPOINTS OR REMOVES THEMSELF AS ADMINISTRATOR, BY ANY AUTHORITY (DECISIONS #223): self-removal stays governed
   // -- another Administrator or the Owner acts -- whichever path below would otherwise admit it.
-  if (isDesignatedAdministratorRole(role) && targetPrincipalId === actor.uid) {
+  // (Waived for the governed protected Owner only -- DECISIONS #SAE; the Owner and Administrator stay distinct authority types regardless: refuseProtectedRoleConflict.)
+  const ownerWaiver = (isDesignatedAdministratorRole(role) && targetPrincipalId === actor.uid) ? await ownerAdministrationWaiver(repo, actor) : null;
+  if (isDesignatedAdministratorRole(role) && targetPrincipalId === actor.uid && ownerWaiver === null) {
     throw new AdministrationRefusal("SELF_ADMINISTRATION",
       `a principal may not ${verb === "assign" ? "assign the Administrator Role to" : "remove the Administrator Role from"} itself`);
   }
@@ -1365,6 +1388,9 @@ async function authorizeSecurityPolicyStaffing(
   }
   const held = await actorCapabilities(repo, actor);
   if (held.has(SECURITY_POLICY_WRITE)) return "SECURITY_POLICY_WRITE";
+  // PRIVILEGE_ESCALATION is waived for the governed protected Owner ONLY (DECISIONS #SAE), for a GLOBAL assignment. The command's own capability gate (admin.roleAssignment.write),
+  // the protected-Owner membership path, Owner ruling A and the preview digest are decided elsewhere and still apply.
+  if (scopeType === "global" && (ownerWaiver !== null || (await ownerAdministrationWaiver(repo, actor)) !== null)) return "PROTECTED_OWNER";
   const act = verb === "assign" ? "assigning" : "removing";
   const refuse = (): never => {
     throw new AdministrationRefusal("PRIVILEGE_ESCALATION",
@@ -1517,12 +1543,16 @@ function companyGrantStore(repo: PolicyReader): void {
 }
 
 /** Nobody staffs themselves: a company-access grant to the actor's OWN linked Employee is refused. */
-async function refuseSelfCompanyGrant(repo: PolicyReader, actor: AdminActor, employeeId: string): Promise<void> {
+async function refuseSelfCompanyGrant(repo: PolicyReader, actor: AdminActor, employeeId: string): Promise<ApprovalExemptionRecord | null> {
   const fact = await repo.getLinkedEmployeeAccessFact(actor.tenantId, actor.uid);
   // An ambiguous link carries every employee id joined; the actor is any of them.
   if (fact && (fact.employeeId === employeeId || fact.employeeId.split(",").includes(employeeId))) {
-    throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not grant company access to its own Employee");
+    // Waived for the governed protected Owner ONLY (DECISIONS #SAE); returned so the audit event records it.
+    const waiver = await ownerAdministrationWaiver(repo, actor);
+    if (waiver === null) throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not grant company access to its own Employee");
+    return waiver;
   }
+  return null;
 }
 
 /**
@@ -1532,8 +1562,10 @@ async function refuseSelfCompanyGrant(repo: PolicyReader, actor: AdminActor, emp
  */
 async function decideCompanyGrant(
   repo: PolicyReader, actor: AdminActor, employeeId: string, companyId: string, from: string | null, until: string | null,
+  out?: { waiver?: ApprovalExemptionRecord | null },
 ): Promise<CompanyAuthorityGrantRecord | null> {
-  await refuseSelfCompanyGrant(repo, actor, employeeId);
+  const waiver = await refuseSelfCompanyGrant(repo, actor, employeeId);
+  if (out) out.waiver = waiver;
   const employee = await repo.readCompanyGrantEmployee!(actor.tenantId, employeeId);
   if (!employee) throw new PolicyValidationError("employee not found");
   if (employee.homeOperatingCompanyId === companyId) {
@@ -1582,7 +1614,8 @@ export async function grantCompanyAuthority(
       throw new AdministrationRefusal("COMPANY_GRANT_STORE_UNAVAILABLE", "this store has no company-access grant table; nothing was changed");
     }
     // Re-decided under the governance lock: a concurrent identical grant that committed first is returned, never duplicated.
-    const now = await decideCompanyGrant(repo, actor, employeeId, companyId, from, until);
+    const decided: { waiver?: ApprovalExemptionRecord | null } = {};
+    const now = await decideCompanyGrant(repo, actor, employeeId, companyId, from, until, decided);
     if (now) return now;
     const created = await tx.createCompanyAuthorityGrant({
       employeeId, operatingCompanyId: companyId, reason, grantedBy: actor.uid, effectiveFrom: from, effectiveUntil: until,
@@ -1590,7 +1623,7 @@ export async function grantCompanyAuthority(
     await tx.appendAudit({
       ...auditBase(actor, "grantCompanyAuthority", "companyAuthorityGrant", created.id, reason),
       before: null,
-      after: created,
+      after: decided.waiver ? { ...created, ...waiverAudit(decided.waiver) } : created,
     });
     return created;
   });
@@ -1754,6 +1787,8 @@ export type { PolicyTransaction };
 //   * widening to OPERATIONAL is the self-grant rule of grantObjectActionToRole: nobody widens a Role they hold.
 export async function guardRoleCompanyAuthorityEffectChange(
   repo: PolicyRepository, tx: PolicyTransaction, actor: AdminActor, roleKey: string, requested: unknown, reason: string | null,
+  /** Filled when the governed protected Owner's waiver admitted widening a Role they hold (DECISIONS #SAE); the caller adds it to the audit event. */
+  out?: { waiver?: ApprovalExemptionRecord | null },
 ): Promise<RoleCompanyAuthorityEffect | null> {
   if (!isRoleCompanyAuthorityEffect(requested)) {
     throw new AdministrationRefusal("COMPANY_AUTHORITY_EFFECT_INVALID", "companyAuthorityEffect is OPERATIONAL or FINANCE_ONLY");
@@ -1771,7 +1806,9 @@ export async function guardRoleCompanyAuthorityEffectChange(
     if (refusal) throw new AdministrationRefusal("FINANCE_ONLY_CLASSIFICATION_REFUSED", `${role.key} cannot be FINANCE_ONLY: ${refusal}`);
   } else if ((Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : []).includes(role.key)
       || (await repo.listAssignmentsForPrincipal(actor.tenantId, actor.uid)).some((a) => a.status === "active" && a.roleId === role.id)) {
-    throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not widen the company authority of a Role it holds (${role.key})`);
+    const waiver = await ownerAdministrationWaiver(repo, actor);
+    if (waiver === null) throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not widen the company authority of a Role it holds (${role.key})`);
+    if (out) out.waiver = waiver;
   }
   return requested;
 }
@@ -2064,9 +2101,12 @@ export async function grantObjectActionToRole(
   }
   // NOBODY WIDENS A ROLE THEY HOLD (self-grant, Pass 8 D5a) -- globally OR through a scoped assignment (Pass 9 S2:
   // heldRoleKeys is global-only, so a scoped holder would otherwise widen its own Role).
+  // (Waived for the governed protected Owner ONLY -- DECISIONS #SAE; Owner ruling A and the system invariants above/below still apply, and the audit event records the waiver.)
+  let waiver: ApprovalExemptionRecord | null = null;
   if ((Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : []).includes(role.key)
       || (await repo.listAssignmentsForPrincipal(actor.tenantId, actor.uid)).some((a) => a.status === "active" && a.roleId === role.id)) {
-    throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not grant a capability to a Role it holds (${role.key})`);
+    waiver = await ownerAdministrationWaiver(repo, actor);
+    if (waiver === null) throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not grant a capability to a Role it holds (${role.key})`);
   }
   // OWNER GOVERNANCE AT THE PRINCIPAL: no holder of this Role who also holds owner may gain an excluded key.
   // A fast refusal only; the AUTHORITATIVE decision is re-made under the governance lock below (finding F-1).
@@ -2135,6 +2175,7 @@ export async function grantObjectActionToRole(
         objectKey: capability.objectKey, actionKey: capability.actionKey,
         capabilityKey: capability.key, granteeType: "ROLE", granteeKey: role.key, grant, held: true,
         decision: "ADMIN_GRANTED", requiresCondition, condition: storedCondition?.condition ?? null,
+        ...waiverAudit(waiver),
       },
     });
     await tx.recordRoleCapabilityDecision({
@@ -2327,15 +2368,19 @@ const refuseDirectScope = (input: { readonly scopeType?: unknown; readonly scope
 };
 
 /** The direct-exception grantee must be an ACTIVE member of this tenant and never the actor itself. */
-async function requireDirectGrantee(repo: PolicyRepository, actor: AdminActor, principalId: string, what: string): Promise<void> {
+async function requireDirectGrantee(repo: PolicyRepository, actor: AdminActor, principalId: string, what: string): Promise<ApprovalExemptionRecord | null> {
   // A PRINCIPAL, NEVER AN EMPLOYEE, and a MEMBER of this tenant (tenant consistency).
   const membership = await repo.getMembership(actor.tenantId, principalId);
   if (!membership || membership.status !== "active") {
     throw new PolicyValidationError("that principal is not an active member of this tenant");
   }
   if (principalId === actor.uid) {
-    throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not ${what} itself`);
+    // Waived for the governed protected Owner ONLY (DECISIONS #SAE); returned so the audit event records it.
+    const waiver = await ownerAdministrationWaiver(repo, actor);
+    if (waiver === null) throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not ${what} itself`);
+    return waiver;
   }
+  return null;
 }
 
 const directAuditState = (capability: { key: string; objectKey: string; actionKey: string }, principalId: string,
@@ -2370,7 +2415,7 @@ export async function grantObjectActionToPrincipal(
     throw new AdministrationRefusal("ROLE_ASSIGNMENT_ONLY",
       `${capability.key} is held only through a Security Role assignment, never a direct grant (${roleOnly.ruling})`);
   }
-  await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
+  const waiver = await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
   const condition = input.condition === undefined || input.condition === null ? null : input.condition;
   if (condition !== null) {
     validateGrantCondition("PRINCIPAL", principalId, capability.key, condition);
@@ -2406,7 +2451,7 @@ export async function grantObjectActionToPrincipal(
       ...auditBase(actor, "grantObjectActionToPrincipal", "principalCapability", grant.id, reason),
       before: cell.grant ? directAuditState(capability, principalId, cell.grant, !cell.expired, cell.condition?.condition) : null,
       after: { ...directAuditState(capability, principalId, grant, true, storedCondition?.condition), exceptionReason: grant.exceptionReason ?? reason,
-        expiresAt: grant.expiresAt ?? null },
+        expiresAt: grant.expiresAt ?? null, ...waiverAudit(waiver) },
     });
     return grant;
   });
@@ -2445,7 +2490,7 @@ async function setDirectExceptionCondition(
   repo: PolicyRepository, actor: AdminActor, input: GrantConditionCommandInput, principalId: string, reason: string,
 ): Promise<GrantConditionRecord> {
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
-  await requireDirectGrantee(repo, actor, principalId, "change the condition on a direct exception held by");
+  const waiver = await requireDirectGrantee(repo, actor, principalId, "change the condition on a direct exception held by");
   if (input.condition === undefined || input.condition === null) {
     throw new AdministrationRefusal("CONDITION_INVALID", "a condition is required; retire a condition with retireGrantCondition");
   }
@@ -2464,7 +2509,7 @@ async function setDirectExceptionCondition(
       before: existing ? { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
         objectKey: capability.objectKey, actionKey: capability.actionKey, condition: existing.condition, status: "ACTIVE" } : null,
       after: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
-        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: stored.condition, status: stored.status },
+        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: stored.condition, status: stored.status, ...waiverAudit(waiver) },
     });
     return stored;
   });
@@ -2475,7 +2520,7 @@ async function retireDirectExceptionCondition(
   repo: PolicyRepository, actor: AdminActor, input: GrantConditionCommandInput, principalId: string, reason: string,
 ): Promise<GrantConditionRecord | null> {
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
-  await requireDirectGrantee(repo, actor, principalId, "retire the condition on a direct exception held by");
+  const waiver = await requireDirectGrantee(repo, actor, principalId, "retire the condition on a direct exception held by");
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
     await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
@@ -2494,7 +2539,7 @@ async function retireDirectExceptionCondition(
       before: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
         objectKey: capability.objectKey, actionKey: capability.actionKey, condition: cell.condition.condition, status: "ACTIVE" },
       after: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
-        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: retired.condition, status: retired.status },
+        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: retired.condition, status: retired.status, ...waiverAudit(waiver) },
     });
     return retired;
   });

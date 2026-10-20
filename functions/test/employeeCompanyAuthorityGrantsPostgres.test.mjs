@@ -431,6 +431,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // G-1 performance goal authoring (1764690000000): its down refuses only if a command record, an authored goal, an Administration decision or a direct grant names it, and nothing here wrote one, so it is peeled first of all.
     // F-1a issue invoice (1764700000000): its down refuses only if an issued invoice or a number counter exists, and nothing here wrote one, so it is peeled first of all.
     // F-1b invoice corrections (1764712000000): its down refuses only if a correction, a refund record, an adjustment fact or a voided invoice exists, or an approval pair was granted outside it, and nothing here wrote one.
+    // SAE protected-Owner exemption (1764716000000): its down refuses only if a decision was recorded under the exemption, and nothing here wrote one, so it is peeled first of all.
+    if ((await newest()) === "1764716000000_protected-owner-secondary-approval-exemption") migrate("down", 1);
     if ((await newest()) === "1764712000000_invoice-corrections") migrate("down", 1);
     // S1b hard stock reservations (1764710000000): its down refuses only while a commitment or an activation row exists, and nothing here wrote one.
     if ((await newest()) === "1764710000000_stock-reservation-company-warehouse") migrate("down", 1);

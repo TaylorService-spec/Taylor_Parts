@@ -1613,7 +1613,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "performance.goal.approve",
     description:
-      "Approve a DRAFT performance goal version, making it the target in force for its effective window. Self-approval is forbidden unconditionally (FIN-007) -- the author of a version may never be its approver, under any policy.",
+      "Approve a DRAFT performance goal version, making it the target in force for its effective window. Self-approval is forbidden for everyone except the governed protected Owner (FIN-007, as amended by DECISIONS #SAE) -- the author of a version may not be its approver unless the approver is the protected Owner.",
     resource: "performance.goal",
     action: "approve",
     active: false,

@@ -6,9 +6,9 @@
 
 **Where you do it:** **Financials > Credits & Adjustments** will carry the request and approve screens. Until it does, **New Correction** stays switched off there; the same steps are available to Finance as the two commands "request an invoice correction" and "decide an invoice correction", and the register is the "invoice corrections" list.
 
-## The rule: two different people, always
+## The rule: two different people, with one exception (the company Owner)
 - **One person asks. A different person decides.** Every credit, write-off, debit adjustment, refund and void needs a second, separate **Employee** to approve it. There is no minimum amount: even one cent waits for approval.
-- **You cannot approve your own request**, even if your role could approve other people's. This is checked by Employee, not just by login. If your Employee record is moved to a new login, the new login is still you and still cannot approve what you asked for.
+- **You cannot approve your own request**, even if your role could approve other people's. **The one exception is the company Owner** (the governed, protected Owner account that is also linked to an active Employee). The Owner can ask for a correction and approve it themselves, if they hold the request and approval permissions and the invoice belongs to a company they are assigned to. Nothing else is relaxed: the amount, the reason, the balance checks and "void only before money moves" all still apply, the invoice itself is never edited, and the decision is recorded as made under the Owner exemption so it can be reported. Administrators, managers and every other role still need a second person. This is checked by Employee, not just by login. If your Employee record is moved to a new login, the new login is still you and still cannot approve what you asked for.
 - **Both people must be Employees** in the system, and both must be assigned to the **operating company** of the invoice. Another company's invoice looks exactly like one that does not exist.
 - The approver states the **amount** they are approving, and a **reason**. Approving 100 is not approving 150.
 

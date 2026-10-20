@@ -20,6 +20,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { seedProtectedOwnerRows } from "./support/protectedOwnerFixture.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -897,5 +898,57 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.equal(reads.neverGoverned(dList.find((v) => v.goalId === d.s), dList), true, "neverGoverned (from approved_at) agrees with the branch");
     assert.equal((await cur("2050-06-01")).goal.goalId, d.p, "the scheduled version never governed its would-be start day");
     await everyDay(2050, (day) => (day < "2050-06-15" ? d.p : cd.goalId));
+  });
+
+  // ════════════════════ SAE: the protected Owner (DECISIONS #SAE) ════════════════════
+  await t.test("SAE: the governed protected Owner approves a goal they authored themselves, and the approval records its basis; a look-alike, a revoked Owner and an Owner with no Employee keep SELF_APPROVAL_FORBIDDEN; the Owner still needs the capability", async () => {
+    const make = async (subject, emp, owner) => {
+      const p = await principal(subject);
+      await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1,'t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`, [emp]);
+      await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+               VALUES ($1,'t1',$2,$3,'taylor','OPERATOR_ASSERTED','f','test','active')`, [`l-${emp}`, p, emp]);
+      await assign(`a-sm-${emp}`, p, "salesManager"); // the same reach as the manager fixture
+      if (owner) await seedProtectedOwnerRows(q, { tenantId: "t1", principalId: p });
+      return p;
+    };
+    const author = async (p, from) => (await create(p, W, draft({ effectiveFrom: from }))).goalId;
+    const ownerP = await make("uid-sae-owner", "e-sae-owner", true);
+    const g = await author(ownerP, "2061-01-01");
+    const before = await counts();
+    const out = await approve(ownerP, W, g);
+    assert.deepEqual([out.outcome, out.status], ["applied", "APPROVED"]);
+    assert.deepEqual([out.approvalBasis, out.approvalScope, out.approvalGrantSource], ["PROTECTED_OWNER", "GOALS", "PROTECTED_OWNER_MEMBERSHIP"]);
+    const stored = await row(g);
+    assert.deepEqual([stored.status, stored.created_by_ref, stored.approved_by_ref], ["APPROVED", ownerP, ownerP], "author and approver are both recorded, on the same row, by the same Owner");
+    const audit = (await q(`SELECT after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'approvePerformanceGoal'`, [g])).rows[0].after;
+    assert.deepEqual([audit.approvalBasis, audit.approvalScope, audit.approvalGrantSource, audit.author, audit.approver], ["PROTECTED_OWNER", "GOALS", "PROTECTED_OWNER_MEMBERSHIP", ownerP, ownerP]);
+    const after = await counts();
+    assert.deepEqual([after.g, after.c, after.a], [before.g, before.c + 1, before.a + 1], "one command record and ONE audit row for the approval");
+    // replay is safe: the stored answer, nothing written
+    const key1 = "sae-replay-key";
+    const g2 = await author(ownerP, "2062-01-01");
+    const first = await goals.approvePerformanceGoal(deps, actor(ownerP, W), { goalId: g2, reason: "Owner decision", idempotencyKey: key1 });
+    const mid = await counts();
+    const again = await goals.approvePerformanceGoal(deps, actor(ownerP, W), { goalId: g2, reason: "Owner decision", idempotencyKey: key1 });
+    assert.deepEqual([first.outcome, again.outcome, again.approvalBasis], ["applied", "replayed", "PROTECTED_OWNER"]);
+    assert.deepEqual(await counts(), mid, "a replay writes nothing");
+    // the exemption adds no authority: without the approve capability the Owner is refused first
+    const g3 = await author(ownerP, "2063-01-01");
+    assert.equal((await refusal(() => approve(ownerP, [CREATE, SUPERSEDE, RETIRE], g3))).code, "CAPABILITY_REQUIRED");
+    // everyone else keeps the refusal, with zero trace
+    const look = await make("uid-sae-look", "e-sae-look", false);
+    const gl = await author(look, "2064-01-01");
+    assert.equal((await refusal(() => approve(look, W, gl))).code, "SELF_APPROVAL_FORBIDDEN");
+    const unlinked = await make("uid-sae-nolink", "e-sae-nolink", true);
+    const gu = await author(unlinked, "2065-01-01");
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [unlinked]);
+    const revoked = await make("uid-sae-revoked", "e-sae-revoked", true);
+    const gr = await author(revoked, "2066-01-01");
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [revoked]);
+    const mark = await counts();
+    assert.equal((await refusal(() => approve(unlinked, W, gu))).code, "SELF_APPROVAL_FORBIDDEN", "an Owner with no active Employee link is not exempt");
+    assert.equal((await refusal(() => approve(revoked, W, gr))).code, "SELF_APPROVAL_FORBIDDEN", "an ended Owner membership is not exempt");
+    assert.deepEqual(await counts(), mark, "every refusal left no trace (goal rows, command records, audit rows)");
+    assert.equal((await row(gl)).status, "DRAFT");
   });
 });
