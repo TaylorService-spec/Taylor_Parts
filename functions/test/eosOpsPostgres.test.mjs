@@ -274,7 +274,8 @@ test("financial authority lives in eos_finance, and does not leak into eos_ops",
       ORDER BY 1`,
   );
   // + billing_packages (DECISIONS #196): the package states its company key beside the resolved company id.
-  assert.deepEqual(company.rows.map((r) => r.table_name), ["billing_packages", "invoices", "payments"]);
+  // + invoice_number_counters (F-1a, 1764700000000): the counter is per operating-company KEY, as the invoice number is.
+  assert.deepEqual(company.rows.map((r) => r.table_name), ["billing_packages", "invoice_number_counters", "invoices", "payments"]);
   for (const row of company.rows) {
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key must be NOT NULL`);
     assert.equal(row.column_default, null, `${row.table_name}.operating_company_key must have no default`);
