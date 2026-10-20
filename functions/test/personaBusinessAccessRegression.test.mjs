@@ -331,7 +331,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
   // 114 -> 115: 1764714000000 -- S1c Sales Order allocation (2026-10-20): salesOrder.fulfill registered and granted to admin, dispatcher, owner (3 grants); no schema.
   // 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam and database-level people rules; no capability, no grant.
-  assert.equal(files.length, 116, "the migration chain moved; re-measure before trusting anything below");
+  // 116 -> 117: 1764717000000 -- S1c holders (Owner ruling 2026-10-20): salesOrder.fulfill to generalManager, warehouseManager, fieldManager, partsManager (4 grants); no capability, no schema.
+  assert.equal(files.length, 117, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -414,13 +415,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
     // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
     // admin.administratorRole.assign.
-    assert.equal(rebuilt.length, 732, "the repository rebuild total"); // 729 -> 732: the 3 S1c Sales Order allocation grants (1764714000000). // 697 -> 729: the 32 G-1 performance goal authoring grants (1764690000000). // 689 -> 697: the 8 A6 customer-balance summary grants (1764680000000). // 659 -> 689: the 30 GRANT-1 Owner policy grants (1764670000000). // 632 -> 659: the 27 P-1 supplier purchase order grants (1764660000000). // 510 -> 632: the 122 B4 report / performance-goal parity grants (1764650000000). // 503 -> 510: the seven Warehouse racking mirror grants (1764630000000). // 488 -> 503: the fifteen Finance visibility mirror grants (1764620000000). // 482 -> 488: the six CRM activity grants (1764590000000). // 481 -> 482: the returns-intake clerk grant (1764580000000). // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
-    assert.equal(baselineDeployment.rebuildTotal, 732);
+    assert.equal(rebuilt.length, 736, "the repository rebuild total"); // 729 -> 732: the 3 S1c Sales Order allocation grants (1764714000000). // 697 -> 729: the 32 G-1 performance goal authoring grants (1764690000000). // 689 -> 697: the 8 A6 customer-balance summary grants (1764680000000). // 659 -> 689: the 30 GRANT-1 Owner policy grants (1764670000000). // 632 -> 659: the 27 P-1 supplier purchase order grants (1764660000000). // 510 -> 632: the 122 B4 report / performance-goal parity grants (1764650000000). // 503 -> 510: the seven Warehouse racking mirror grants (1764630000000). // 488 -> 503: the fifteen Finance visibility mirror grants (1764620000000). // 482 -> 488: the six CRM activity grants (1764590000000). // 481 -> 482: the returns-intake clerk grant (1764580000000). // 451 -> 481: the thirty Rental grants (1764520000000). // 415 -> 431: the sixteen Owner-ruled #204 / #205 holders (1764500000000); 431 -> 451: the twenty Finance Closure settlement grants (1764510000000)
+    assert.equal(baselineDeployment.rebuildTotal, 736);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
     assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
       "migration:1763078400000", "migration:1764500000000", "migration:1764510000000", "migration:1764520000000", "migration:1764580000000",
-      "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000", "migration:1764660000000", "migration:1764670000000", "migration:1764680000000", "migration:1764690000000", "migration:1764714000000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 345);
+      "migration:1764590000000", "migration:1764620000000", "migration:1764630000000", "migration:1764650000000", "migration:1764660000000", "migration:1764670000000", "migration:1764680000000", "migration:1764690000000", "migration:1764714000000", "migration:1764717000000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 349);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
@@ -438,12 +439,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(await stampedBy("migration:1764650000000"), 122); // Report / goal parity (B4): the 39 B4 keys to the current Firebase holders (admin 39, owner 39, reportViewer 26, reportFinanceViewer 5, reportAuthor 3, ten goal readers)
     assert.equal(await stampedBy("migration:1764660000000"), 27); // Supplier PO authoring (P-1): create 3 + send 3 + approve 4 + cancel 4 + read 13, exactly as the Owner ruled
     assert.equal(await stampedBy("migration:1764712000000"), 0); // F-1b registers the three finance approval keys and GRANTS NOTHING (Owner 2026-10-20)
+    assert.equal(await stampedBy("migration:1764717000000"), 4); // S1c holders (Owner ruling 2026-10-20): salesOrder.fulfill to generalManager, warehouseManager, fieldManager (Service Manager) and partsManager
     assert.equal(await stampedBy("migration:1764714000000"), 3); // Sales Order allocation (S1c): salesOrder.fulfill to admin, dispatcher and owner, exactly the Firebase holders (S1a OD-12)
     assert.equal(await stampedBy("migration:1764690000000"), 32); // Performance goal authoring (G-1): the four performance.goal write keys to the eight Firebase holders (admin, owner, fieldManager, generalManager, operationsManager, partsManager, salesManager, warehouseManager)
     assert.equal(await stampedBy("migration:1764680000000"), 8); // A6 customer-balance summary: finance.accountBalance.read to eight operational Roles, exactly as the Owner ruled
     assert.equal(await stampedBy("migration:1764670000000"), 30); // GRANT-1 Owner policy grants: A1 2 + A2 4 + A3a 2 + A3b 6 + A4 4 (the 4 inventory.catalog.read rows were already held) + A7 12
-    // The whole 732-vs-387 difference carries the sixteen grant-bearing migrations' provenance.
-    assert.equal(26 + 1 + 1 + 16 + 20 + 30 + 1 + 6 + 15 + 7 + 122 + 27 + 30 + 8 + 32 + 3, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    // The whole 736-vs-387 difference carries the seventeen grant-bearing migrations' provenance.
+    assert.equal(26 + 1 + 1 + 16 + 20 + 30 + 1 + 6 + 15 + 7 + 122 + 27 + 30 + 8 + 32 + 3 + 4, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
@@ -750,7 +752,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // gained receivingOrder.record.read. Reads only -- the Reorder distinction below is untouched.
     // 22 -> 23 and 13 -> 14: performance.goal.read (B4 grants, 1764650000000) -- partsManager and partsAssociate both hold it in Firebase.
     // 23 -> 26 and 14 -> 17: supplier.purchaseOrder.approve / .cancel / .read for partsManager; .create / .send / .read for partsAssociate (P-1, Owner ruling D).
-    assert.equal(manager.capabilities.size, 38); // 34 -> 38: the four performance.goal authoring keys (G-1; partsManager holds them in Firebase). // 33 -> 34: finance.accountBalance.read (A6, 1764680000000; partsManager and purchasingManager both hold it: one key). // 28 -> 33 (GRANT-1, 1764670000000): inventory.catalog.part.activate + equipment.model.manage (partsManager) and the three A7 purchasing keys (purchasingManager) = +5. // the parts-manager persona holds partsManager AND purchasingManager: approve, cancel, read + create, send (P-1) = +5
+    assert.equal(manager.capabilities.size, 39); // 38 -> 39: salesOrder.fulfill (S1c holders, 1764717000000; Owner ruling 2026-10-20: partsManager can allocate). // 34 -> 38: the four performance.goal authoring keys (G-1; partsManager holds them in Firebase). // 33 -> 34: finance.accountBalance.read (A6, 1764680000000; partsManager and purchasingManager both hold it: one key). // 28 -> 33 (GRANT-1, 1764670000000): inventory.catalog.part.activate + equipment.model.manage (partsManager) and the three A7 purchasing keys (purchasingManager) = +5. // the parts-manager persona holds partsManager AND purchasingManager: approve, cancel, read + create, send (P-1) = +5
     assert.equal(associate.capabilities.size, 18); // 17 -> 18: finance.accountBalance.read (A6, 1764680000000). // GRANT-1: partsAssociate gains inventory.stock.receive + receivingOrder.record.read, but this persona also carries inventoryReceivingClerk, which already held both: unchanged.
     assert.equal(manager.surfaces.includes("inventory.reorderQueue"), true);
     assert.equal(associate.surfaces.includes("inventory.reorderQueue"), false);
