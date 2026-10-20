@@ -1,4 +1,4 @@
-// F-1b, over real PostgreSQL -- governed credits, write-offs, adjustments, refunds and eligible voids of an ISSUED invoice (DECISIONS #F-1b; migration 1764702000000).
+// F-1b, over real PostgreSQL -- governed credits, write-offs, adjustments, refunds and eligible voids of an ISSUED invoice (DECISIONS #F-1b; migration 1764712000000).
 // Through the governed transport (/operations/finance), the people being REAL Principals linked to REAL Employees:
 //   TWO PEOPLE    every money action (credit, write-off, debit, refund, void) is REQUESTED then APPROVED by a SEPARATE authorized Employee at a $0 threshold: a 1-cent credit is
 //                 PENDING until approved; self-approval is refused (same Principal; one Principal holding both keys; a second Principal on the same Employee after a RELINK);
@@ -22,6 +22,8 @@ const require = createRequire(import.meta.url);
 const pkg = require("../lib/eosFinance/billingPackage.js");
 const sa = require("../lib/eosCommercial/commands/salesAgreementCommandService.js");
 const financeOps = require("../lib/eosFinance/financeOperations.js");
+const fin = require("../lib/eosFinance/financeFoundation.js");
+const delivery = require("../lib/eosFinance/accountingDelivery.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -45,7 +47,14 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
 
   // ── roles: exactly the request keys, exactly the approval keys (so the suite does not depend on which Roles the migration's PROPOSED grants name) ──
   const APPROVE_KEYS = ["finance.adjustment.approve", "finance.refund.approve", "finance.invoice.void.approve"];
-  assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = ANY($1)`, [APPROVE_KEYS]), 3, "migration 1764702000000 registered the three approval capabilities");
+  assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = ANY($1)`, [APPROVE_KEYS]), 3, "migration 1764712000000 registered the three approval capabilities");
+  // NO GRANTS (Owner 2026-10-20: "Do not infer refund/void approval merely from existing settlement authority"): after the migration NO Role, Principal or Administration decision names an
+  // approval key, so neither a default catalog nor Protected Administrator standing (admin, owner) holds one. The fixtures below grant them INSIDE THIS TEST ONLY.
+  assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.role_capabilities rc JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE c.key = ANY($1)`, [APPROVE_KEYS]), 0, "no Role holds an approval key");
+  assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.principal_capabilities pc JOIN eos_policy.capabilities c ON c.id = pc.capability_id WHERE c.key = ANY($1)`, [APPROVE_KEYS]), 0, "no Principal holds one directly");
+  assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.role_capability_decisions WHERE capability_key = ANY($1)`, [APPROVE_KEYS]), 0);
+  assert.deepEqual((await q(`SELECT object_key, action_key, action_kind FROM eos_policy.capabilities WHERE key = ANY($1) ORDER BY key`, [APPROVE_KEYS])).rows.map((r) => `${r.object_key}.${r.action_key}.${r.action_kind}`),
+    ["invoice.approveAdjustment.BUSINESS_ACTION", "invoice.approveVoid.BUSINESS_ACTION", "payment.approveRefund.BUSINESS_ACTION"]);
   const customRole = async (roleKey, caps) => {
     const made = await admin("createRole", { key: roleKey, name: roleKey, reason: "local test tenant only (F-1b)" });
     assert.equal(made.ok, true, JSON.stringify(made).slice(0, 300));
@@ -115,7 +124,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
   const issued = async (opts = {}) => {
     const p = await directPackage(opts);
     const invoice = ok(await fn(ctrl, "issueInvoice", { billingPackageId: p.packageId, idempotencyKey: key("iss"), dueOn: plusDays(await businessToday(opts.companyKey ?? "taylor"), 30), dueReason: "stated" }), "issue").invoice;
-    return { ...p, invoice };
+    return { ...p, invoice, account: opts.account ?? "acct-a" };
   };
 
   // ── the state hash: every table a correction may touch, and the audit rows ──
@@ -169,11 +178,16 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     refused(await decide(reqA, c1.id, "APPROVE", { amountMinor: 1 }), 403, "CAPABILITY_REQUIRED", "requester-only holder");
     refused(await decide(reqA, c1.id, "REJECT"), 403, "CAPABILITY_REQUIRED", "a requester rejects nothing: she withdraws");
     refused(await request(appA, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 1, reason: "x" }), 403, "CAPABILITY_REQUIRED", "approver-only holder requests");
-    // one Principal holding BOTH keys cannot approve (or reject) her own request
+    // nothing is inferred from existing Finance authority: a controller (settlement keys, record keys, issue key) holds no approval key
+    refused(await decide(ctrl, c1.id, "APPROVE", { amountMinor: 1 }), 403, "CAPABILITY_REQUIRED", "settlement authority is not approval authority");
+    // one Principal holding BOTH keys (the Owner's stand-in: the Owner requests, then the Owner approves) cannot approve (or reject) the request of the same Employee
     const own = ok(await request(both, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 2, reason: "Own request" }), "own").correction;
     const s1 = await state();
     refused(await decide(both, own.id, "APPROVE", { amountMinor: 2 }), 412, "SELF_APPROVAL_FORBIDDEN", "same Principal");
     refused(await decide(both, own.id, "REJECT"), 412, "SELF_APPROVAL_FORBIDDEN", "same Principal rejecting");
+    assert.deepEqual(await state(), s1, "zero trace: no mutation, no fact, no audit entry claiming a completed action");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1 AND action IN ('finance.correction.approve','finance.correction.reject') AND target_id=$2`, [TENANT, own.id]), 0);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, own.id]), 0);
     // an approver who is not an Employee: two people need two Employees
     refused(await decide(appNoEmployee, c1.id, "APPROVE", { amountMinor: 1 }), 412, "APPROVER_EMPLOYEE_REQUIRED");
     assert.deepEqual(await state(), s1, "zero trace");
@@ -320,7 +334,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     refused(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 100, reason: "x" }), 400, "APPLICATION_ID_REQUIRED");
     assert.deepEqual(await state(), before, "refusals left no trace");
     const rq = ok(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 8000, applicationId: appRow.id, reason: "Customer returned the unit" }), "refund request").correction;
-    assert.deepEqual([rq.status, rq.settlementId, rq.applicationId, rq.refundSettlementId], ["PENDING", pay.id, appRow.id, null]);
+    assert.deepEqual([rq.status, rq.settlementId, rq.applicationId, rq.refundRecordId], ["PENDING", pay.id, appRow.id, null]);
     assert.deepEqual(await bal(R.obligation), { originated: "20000", settled: "20000", outstanding: "0", status: "SETTLED" }, "a request refunds nothing");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1 AND kind='CUSTOMER_REFUND'`, [TENANT]), 0);
     // the adjustment approval key does not approve a refund; the requester cannot; the refund approval key of a separate Employee can
@@ -331,10 +345,16 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
 
     const handoffs = await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]);
     const attempts = await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoff_attempts WHERE tenant_id=$1`, [TENANT]);
-    const done = ok(await decide(appB, rq.id, "APPROVE", { amountMinor: 8000, reason: "Return verified" }), "approve refund").correction;
+    const refundResult = ok(await decide(appB, rq.id, "APPROVE", { amountMinor: 8000, reason: "Return verified" }), "approve refund");
+    const done = refundResult.correction;
     assert.equal(done.status, "APPLIED");
-    assert.ok(done.refundSettlementId);
-    const refund = await one(`SELECT kind, direction, amount_minor::text a, currency, status, method, correlation_id, notes, recorded_by FROM eos_finance.settlements WHERE id=$1`, [done.refundSettlementId]);
+    assert.ok(done.refundRecordId);
+    // A refund record is an accounting fact, NOT evidence that cash was sent: the API says so.
+    assert.deepEqual([refundResult.refundRecorded, refundResult.notice, done.refundRecorded], [true, "refund recorded; no payment has been sent", true]);
+    assert.equal((await one(`SELECT refunded_minor::text r FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [pay.id])).r, "8000");
+    const viaRead = ok(await fn(ctrl, "readSettlement", { settlementId: pay.id }), "read settlement");
+    assert.deepEqual([viaRead.appliedMinor, viaRead.refundedMinor, viaRead.unappliedMinor], ["12000", "8000", "0"], "readSettlement reports refundedMinor (F6)");
+    const refund = await one(`SELECT kind, direction, amount_minor::text a, currency, status, method, correlation_id, notes, recorded_by FROM eos_finance.settlements WHERE id=$1`, [done.refundRecordId]);
     assert.deepEqual([refund.kind, refund.direction, refund.a, refund.currency, refund.status, refund.method, refund.correlation_id, refund.notes, refund.recorded_by],
       ["CUSTOMER_REFUND", "DISBURSEMENT", "8000", "USD", "RECORDED", null, null, null, appB.principalId], "a record: no method, no instruction, nothing to execute");
     // the original application is kept (REVERSED) and the remainder is applied again
@@ -344,7 +364,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     assert.deepEqual(await bal(R.obligation), { originated: "20000", settled: "12000", outstanding: "8000", status: "PARTIAL" }, "the receivable reopens by the refund");
     const sb = await one(`SELECT applied_minor::text ap, refunded_minor::text rf, unapplied_minor::text un FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [pay.id]);
     assert.deepEqual([sb.ap, sb.rf, sb.un], ["12000", "8000", "0"], "the payment: 12000 applied + 8000 refunded = 20000; nothing left to apply");
-    const rb = await one(`SELECT applied_minor::text ap, unapplied_minor::text un FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [done.refundSettlementId]);
+    const rb = await one(`SELECT applied_minor::text ap, unapplied_minor::text un FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [done.refundRecordId]);
     assert.deepEqual([rb.ap, rb.un], ["0", "0"], "a refund record is never an unapplied exception");
     assert.equal(await invoiceHash(R.invoice.id), R_HASH, "the invoice is untouched");
     // NO external payment: no handoff, no delivery attempt, no disbursement but the record itself
@@ -353,12 +373,12 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1 AND direction='DISBURSEMENT'`, [TENANT]), 1, "the one disbursement is the refund record");
     const ws = ok(await fn(ctrl, "readFinanceWorkspace", { operatingCompanyId: "taylor" }), "workspace");
     const unapplied = Array.isArray(ws.unappliedSettlements) ? ws.unappliedSettlements : ws.unappliedSettlements.items;
-    assert.ok(!unapplied.some((s) => s.id === done.refundSettlementId), "the workspace shows no unapplied exception for the record");
+    assert.ok(!unapplied.some((s) => s.id === done.refundRecordId), "the workspace shows no unapplied exception for the record");
     // the record is reconciled like any settlement (evidence), never voided, applies to nothing; recordSettlement cannot make one
-    const rec = ok(await fn(ctrl, "reconcileSettlement", { settlementId: done.refundSettlementId, externalReference: "BANK-REF-1", externalAmountMinor: 8000, idempotencyKey: key("rec") }), "reconcile");
+    const rec = ok(await fn(ctrl, "reconcileSettlement", { settlementId: done.refundRecordId, externalReference: "BANK-REF-1", externalAmountMinor: 8000, idempotencyKey: key("rec") }), "reconcile");
     assert.equal(rec.reconciliation.outcome, "RECONCILED");
-    refused(await fn(ctrl, "voidSettlement", { settlementId: done.refundSettlementId, reason: "undo" }), 409, "SETTLEMENT_REFUND_RECORD");
-    refused(await fn(ctrl, "applySettlement", { settlementId: done.refundSettlementId, applications: [{ obligationId: R.obligation, amountMinor: 1 }], idempotencyKey: key("app") }), 409, "SETTLEMENT_KIND_MISMATCH");
+    refused(await fn(ctrl, "voidSettlement", { settlementId: done.refundRecordId, reason: "undo" }), 409, "SETTLEMENT_REFUND_RECORD");
+    refused(await fn(ctrl, "applySettlement", { settlementId: done.refundRecordId, applications: [{ obligationId: R.obligation, amountMinor: 1 }], idempotencyKey: key("app") }), 409, "SETTLEMENT_KIND_MISMATCH");
     refused(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_REFUND",
       amountMinor: 100, currency: "USD", sourceReference: "X", idempotencyKey: key("stl") }), 400, "SETTLEMENT_KIND_INVALID");
     // the refunded money is no longer there to apply again
@@ -387,14 +407,38 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     refused(await decide(appA, reqd.id, "APPROVE", { amountMinor: 2999 }), 412, "APPROVAL_AMOUNT_MISMATCH");
     assert.deepEqual(await state(), before);
     // a separate Employee approves: the invoice and its receivable are voided together; the number stays
+    const originalOf = async (id) => ({
+      header: (await one(`SELECT to_jsonb(i) - 'voided_at' - 'void_reason' - 'voided_by' AS j FROM eos_finance.invoices i WHERE i.id=$1`, [id])).j,
+      lines: (await one(`SELECT md5(coalesce(string_agg(l::text, '|' ORDER BY l.id), '')) h FROM eos_finance.invoice_lines l WHERE l.invoice_id=$1`, [id])).h,
+      totals: (await one(`SELECT total_minor::text t, amount_due_minor::text d, line_count::int n FROM eos_finance.invoice_totals WHERE invoice_id=$1`, [id])),
+    });
+    const V1_ORIGINAL = await originalOf(V1.invoice.id);
     const done = ok(await approve(appA, reqd), "void approve").correction;
     assert.equal(done.status, "APPLIED");
+    assert.deepEqual(await originalOf(V1.invoice.id), V1_ORIGINAL, "the void workflow cannot change the original invoice: header (number, amounts, currency, dates), lines and totals are exactly as issued; only the three void columns moved");
     const inv = await one(`SELECT invoice_number, voided_at, void_reason, voided_by FROM eos_finance.invoices WHERE id=$1`, [V1.invoice.id]);
     assert.deepEqual([inv.invoice_number, inv.voided_at !== null, inv.void_reason, inv.voided_by], [V1_NUMBER, true, "Billed to the wrong customer", appA.principalId], "the original number and history are preserved");
     assert.equal((await bal(V1.obligation)).status, "VOID");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2 AND reverses_fact_id IS NOT NULL`, [TENANT, V1.obligation]), 1,
       "the origination is reversed by a fact, never edited");
     refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: V1.invoice.id, amountMinor: 1, reason: "x" }), 412, "INVOICE_VOID");
+    // F3: the void does not dead-end rebilling. The package is RETIRED with the invoice (not READY over a VOID receivable), the Billing Queue does not offer it, and a re-prepare of
+    // the SAME Sales Order -- identical content -- produces a NEW package, a new receivable and a new invoice under a NEW number; the voided invoice keeps its own.
+    assert.equal((await one(`SELECT status FROM eos_finance.billing_packages WHERE id=$1`, [V1.packageId])).status, "SUPERSEDED", "the voided invoice's package is retired");
+    const queue1 = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", kind: "RECEIVABLE", invoiced: false }), "queue").items;
+    assert.ok(!queue1.some((o) => o.id === V1.obligation), "the Billing Queue does not offer the voided sale's retired receivable");
+    const again = await pkg.prepareBillingPackage(pool, sys, { salesOrderId: V1.so });
+    assert.notEqual(again.packageId, V1.packageId, "a re-prepare of the same order produces a NEW package even with identical content");
+    assert.deepEqual([again.status, again.version], ["READY", 2]);
+    assert.equal((await one(`SELECT supersedes_package_id FROM eos_finance.billing_packages WHERE id=$1`, [again.packageId])).supersedes_package_id, V1.packageId);
+    const newObligation = (await one(`SELECT id FROM eos_finance.obligations WHERE tenant_id=$1 AND source_record_id=$2 AND kind='RECEIVABLE'`, [TENANT, again.packageId])).id;
+    assert.notEqual(newObligation, V1.obligation);
+    const queue2 = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", kind: "RECEIVABLE", invoiced: false }), "queue 2").items;
+    assert.ok(queue2.some((o) => o.id === newObligation), "the corrected billing is offered");
+    const rebilled = ok(await fn(ctrl, "issueInvoice", { billingPackageId: again.packageId, idempotencyKey: key("iss"), dueOn: plusDays(await businessToday("taylor"), 30), dueReason: "stated" }), "rebill issue").invoice;
+    assert.notEqual(rebilled.invoiceNumber, V1_NUMBER, "a new invoice, a new number");
+    assert.equal((await one(`SELECT invoice_number, voided_at IS NOT NULL AS v FROM eos_finance.invoices WHERE id=$1`, [V1.invoice.id])).invoice_number, V1_NUMBER, "the voided invoice keeps its number");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, V1.so]), 2);
     // the number is never reused: the next invoice takes the next number
     const next = await issued({ price: 500, account: "acct-a" });
     assert.notEqual(next.invoice.invoiceNumber, V1_NUMBER);
@@ -424,6 +468,131 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     assert.notEqual((await bal(V4.obligation)).status, "VOID");
   });
 
+  await t.test("B1: delivery to accounting is anchored on the receivable AS ISSUED: an approved credit, debit and write-off never strand the original invoice", async () => {
+    await fin.configureAccountingDestination(pool, sys, { operatingCompanyId: "taylor", displayName: "F1B test ledger", providerKey: "f1b-test-ledger", externalCompanyRef: "F1B-TEST", activate: true });
+    const X = await issued({ price: 7000, account: "acct-a" });
+    await pkg.refreshAccountingHandoffs(pool, sys);
+    const handoffId = (await one(`SELECT id FROM eos_finance.accounting_handoffs WHERE tenant_id=$1 AND billing_package_id=$2`, [TENANT, X.packageId])).id;
+    const before = await delivery.buildAccountingPayload(pool, TENANT, handoffId);
+    assert.equal(before.payload.receivable.amountMinor, "7000");
+    for (const [kind, amountMinor] of [["CREDIT_MEMO", 700], ["DEBIT_CHARGE", 300], ["WRITE_OFF", 200]]) {
+      const c = ok(await request(reqA, { kind, invoiceId: X.invoice.id, amountMinor, reason: `${kind} after issue` }), kind).correction;
+      ok(await approve(appA, c), `${kind} approve`);
+    }
+    assert.deepEqual(await bal(X.obligation), { originated: "6400", settled: "0", outstanding: "6400", status: "OPEN" }, "the receivable is adjusted: 7000 - 700 + 300 - 200");
+    const after = await delivery.buildAccountingPayload(pool, TENANT, handoffId);
+    assert.equal(after.payload.receivable.amountMinor, "7000", "delivery still anchors on the receivable as issued (not PAYLOAD_RECEIVABLE_MISMATCH)");
+    assert.equal(after.payload.billingPackage.amounts.totalMinor, "7000");
+    assert.equal(after.fingerprint, before.fingerprint, "the original invoice's delivery payload is exactly what it was before any correction");
+  });
+
+  /** A payment recorded and applied to an invoice's receivable. */
+  const pay = async (X, amount, ref) => {
+    const s = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: X.account }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: amount, currency: "USD", sourceReference: ref, idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: s.id, applications: [{ obligationId: X.obligation, amountMinor: amount }], idempotencyKey: key("app") }), "apply");
+    return s;
+  };
+  const credit = async (X, amountMinor, who = reqA) => ok(await request(who, { kind: "CREDIT_MEMO", invoiceId: X.invoice.id, amountMinor, reason: "Credit" }), "credit request").correction;
+  const noNegatives = async () => assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.obligation_balances WHERE tenant_id=$1 AND (outstanding_minor < 0 OR originated_minor < 0)`, [TENANT]), 0, "never a negative obligation");
+
+  await t.test("CREDIT AND PAYMENT INTEGRITY: before payment, after a partial payment, equal to the remainder; collected amounts are never erased", async () => {
+    // credit BEFORE payment
+    const X1 = await issued({ price: 10000, account: "acct-a" });
+    ok(await approve(appA, await credit(X1, 1000)), "credit before payment");
+    assert.deepEqual(await bal(X1.obligation), { originated: "9000", settled: "0", outstanding: "9000", status: "OPEN" });
+    await pay(X1, 9000, "CHK-I1");
+    assert.deepEqual(await bal(X1.obligation), { originated: "9000", settled: "9000", outstanding: "0", status: "SETTLED" });
+    // credit AFTER a partial payment, then EQUAL to the remaining outstanding
+    const X2 = await issued({ price: 10000, account: "acct-a" });
+    const p2 = await pay(X2, 4000, "CHK-I2");
+    ok(await approve(appA, await credit(X2, 1000)), "credit after partial payment");
+    assert.deepEqual(await bal(X2.obligation), { originated: "9000", settled: "4000", outstanding: "5000", status: "PARTIAL" });
+    ok(await approve(appB, await credit(X2, 5000)), "credit equal to the remaining outstanding");
+    assert.deepEqual(await bal(X2.obligation), { originated: "4000", settled: "4000", outstanding: "0", status: "SETTLED" });
+    const sb = await one(`SELECT amount_minor::text a, applied_minor::text ap, unapplied_minor::text un FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [p2.id]);
+    assert.deepEqual([sb.a, sb.ap, sb.un], ["4000", "4000", "0"], "the collected 4000 is intact: still fully applied, nothing erased, no unapplied remainder created");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlement_applications WHERE settlement_id=$1 AND status='APPLIED'`, [p2.id]), 1);
+    await noNegatives();
+  });
+
+  await t.test("CREDIT EXCEEDING the outstanding is REFUSED with zero trace: never a negative obligation, never erased collections, never an unapplied payment, never a refund; a pending credit that a later payment makes excessive is refused at approval", async () => {
+    const X3 = await issued({ price: 10000, account: "acct-b" });
+    await pay(X3, 4000, "CHK-I3");
+    const s0 = await state();
+    const settlementsBefore = await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1`, [TENANT]);
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: X3.invoice.id, amountMinor: 6001, reason: "excess" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    refused(await request(reqA, { kind: "WRITE_OFF", invoiceId: X3.invoice.id, amountMinor: 6001, reason: "excess" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), s0, "zero trace: no correction row, no fact, no audit entry, no settlement");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1`, [TENANT]), settlementsBefore, "no payment (unapplied or otherwise) was created");
+    assert.deepEqual(await bal(X3.obligation), { originated: "10000", settled: "4000", outstanding: "6000", status: "PARTIAL" }, "the collected amount is untouched");
+    // the amount is valid when requested (6000) but a later payment makes it excessive: the APPROVAL is refused, the row stays PENDING
+    const pending = await credit(X3, 6000);
+    await pay(X3, 2000, "CHK-I3B");
+    const s1 = await state();
+    refused(await approve(appA, pending), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), s1, "zero trace");
+    assert.equal((await one(`SELECT status FROM eos_finance.invoice_corrections WHERE id=$1`, [pending.id])).status, "PENDING");
+    ok(await decide(appA, pending.id, "REJECT", { reason: "Overtaken by a payment" }), "reject");
+    await noNegatives();
+  });
+
+  await t.test("CUMULATIVE credits cannot exceed the outstanding; a REVERSED application does not count; DUPLICATE approval and REPLAY apply once", async () => {
+    const X4 = await issued({ price: 10000, account: "acct-b" });
+    const c1x = await credit(X4, 6000);
+    ok(await approve(appA, c1x, { idempotencyKey: "dec-cum-1" }), "first");
+    ok(await approve(appB, await credit(X4, 3000)), "second");
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: X4.invoice.id, amountMinor: 1001, reason: "cumulative excess" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    ok(await approve(appA, await credit(X4, 1000)), "third, exactly the rest");
+    assert.deepEqual(await bal(X4.obligation), { originated: "0", settled: "0", outstanding: "0", status: "SETTLED" });
+    // duplicate approval and replay: ONE fact, ONE approval audit row
+    const s = await state();
+    assert.equal(ok(await approve(appA, c1x, { idempotencyKey: "dec-cum-1" }), "replay").outcome, "replayed");
+    refused(await approve(appB, c1x), 409, "CORRECTION_NOT_PENDING");
+    assert.deepEqual(await state(), s);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, c1x.id]), 1);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='finance.correction.approve' AND target_id=$2`, [TENANT, c1x.id]), 1);
+    // a previously REVERSED application: the money is no longer applied, so the whole 10000 is outstanding -- and the reversed payment is NOT converted into a refund or an unapplied credit
+    const X5 = await issued({ price: 10000, account: "acct-c" });
+    const p5 = await pay(X5, 3000, "CHK-I5");
+    const appId = (await one(`SELECT id FROM eos_finance.settlement_applications WHERE settlement_id=$1 AND status='APPLIED'`, [p5.id])).id;
+    ok(await fn(ctrl, "reverseSettlementApplication", { applicationId: appId, reason: "wrong receivable", idempotencyKey: key("rev") }), "reverse");
+    assert.deepEqual(await bal(X5.obligation), { originated: "10000", settled: "0", outstanding: "10000", status: "OPEN" });
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: X5.invoice.id, amountMinor: 10001, reason: "excess" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    ok(await approve(appA, await credit(X5, 10000)), "credit equal to outstanding after a reversed application");
+    assert.deepEqual(await bal(X5.obligation), { originated: "0", settled: "0", outstanding: "0", status: "SETTLED" });
+    const sb5 = await one(`SELECT unapplied_minor::text un, refunded_minor::text rf FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [p5.id]);
+    assert.deepEqual([sb5.un, sb5.rf], ["3000", "0"], "the customer's reversed payment stays an ordinary unapplied payment: never converted, never refunded");
+    await noNegatives();
+  });
+
+  await t.test("CONCURRENCY: two approvals racing on one receivable pass at most once when together they would exceed the outstanding; one correction approved twice at once applies once", async () => {
+    const X6 = await issued({ price: 10000, account: "acct-a" });
+    const cA = await credit(X6, 6000), cB = await credit(X6, 6000);
+    const results = await Promise.all([approve(appA, cA), approve(appB, cB)]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 412], "exactly one passes");
+    const loser = results.find((r) => r.status !== 200);
+    assert.equal(loser.body.code, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await bal(X6.obligation), { originated: "4000", settled: "0", outstanding: "4000", status: "OPEN" });
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2 AND fact_type='RECEIVABLE_CREDITED'`, [TENANT, X6.obligation]), 1);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoice_corrections WHERE obligation_id=$1 AND status='PENDING'`, [X6.obligation]), 1, "the loser stays PENDING");
+    await noNegatives();
+    // the SAME correction approved by two people at once: one applies, the other finds it decided
+    const X7 = await issued({ price: 5000, account: "acct-a" });
+    const cC = await credit(X7, 100);
+    const twin = await Promise.all([approve(appA, cC), approve(appB, cC)]);
+    assert.deepEqual(twin.map((r) => r.status).sort(), [200, 409]);
+    assert.equal(twin.find((r) => r.status === 409).body.code, "CORRECTION_NOT_PENDING");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND source_record_id=$2`, [TENANT, cC.id]), 1);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='finance.correction.approve' AND target_id=$2`, [TENANT, cC.id]), 1);
+    // the same request raced under one actor and key: one row
+    const X8 = await issued({ price: 5000, account: "acct-a" });
+    const input = { kind: "CREDIT_MEMO", invoiceId: X8.invoice.id, amountMinor: 50, reason: "Racing request", idempotencyKey: "req-race-1" };
+    const racing = await Promise.all([fn(reqA, "requestInvoiceCorrection", input), fn(reqA, "requestInvoiceCorrection", input)]);
+    assert.ok(racing.every((r) => r.status === 200 || (r.status === 409 && r.body.code === "IDEMPOTENCY_KEY_REUSED")), JSON.stringify(racing.map((r) => r.body.code ?? r.body.result?.outcome)));
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoice_corrections WHERE invoice_id=$1`, [X8.invoice.id]), 1);
+  });
+
   await t.test("COMPANY: a foreign company reads as nonexistent for requests, decisions and reads; the register is company-scoped", async () => {
     const V = await issued({ price: 1500, companyKey: "ventana", account: "acct-b" });
     const rv = ok(await request(reqV, { kind: "CREDIT_MEMO", invoiceId: V.invoice.id, amountMinor: 11, reason: "Ventana credit" }), "ventana request").correction;
@@ -448,24 +617,40 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     assert.deepEqual([read.invoice.originalAmountDueMinor, read.receivable.outstandingMinor, read.invoice.void], ["1500", "1489", false]);
   });
 
-  await t.test("DATABASE: the two-person CHECK, the approved-fact trigger, the origination guard and the narrow void gate hold on their own", async () => {
+  await t.test("DATABASE: the two-person CHECK, the Employee-link trigger, the approved-fact trigger, the origination guard and the narrow void gate hold on their own", async () => {
     const D = await issued({ price: 6000, account: "acct-c" });
+    const REQ = reqA.principalId, DEC = appA.principalId;
     const insertPending = (id, over = {}) => q(
       `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
-       VALUES ($1,$2,'taylor',$3,$4,$5,$6,'USD','raw','PENDING','raw-req','raw-emp-req',$7,'fp')`, [id, TENANT, D.invoice.id, D.obligation, over.kind ?? "CREDIT_MEMO", over.amount ?? 100, `raw-${id}`]);
-    const apply = (id, k) => q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-other', decided_by_employee_id='raw-emp-other', decided_at=now(), decision_reason='raw', decision_idempotency_key=$2, decision_fingerprint='f' WHERE id=$1`, [id, k]);
+       VALUES ($1,$2,'taylor',$3,$4,$5,$6,'USD','raw','PENDING',$8,$9,$7,'fp')`, [id, TENANT, over.invoice ?? D.invoice.id, over.obligation ?? D.obligation, over.kind ?? "CREDIT_MEMO", over.amount ?? 100, `raw-${id}`, REQ, "e-req-a"]);
+    const apply = (id, k) => q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$3, decided_by_employee_id='e-app-a', decided_at=now(), decision_reason='raw', decision_idempotency_key=$2, decision_fingerprint='f' WHERE id=$1`, [id, k, DEC]);
     const rawFact = (src, type, amount) => q(
       `INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, counterparty_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, created_by)
        SELECT $1::text, $2::text, o.operating_company_id, o.counterparty_id, 'OBLIGATION', $3::text, 'INVOICE_CORRECTION', $4::text, $5::bigint, o.currency, 'raw', now(), $1::text, 'fp', o.id, 'raw'
          FROM eos_finance.obligations o WHERE o.id = $6::text`, [`ff-raw-${src}-${type}-${amount}`, TENANT, type, src, amount, D.obligation]);
+    // F5: the Employee a correction records IS the Principal's active link: a stranger's Employee id is refused at request and at decision
+    await assert.rejects(q(
+      `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
+       VALUES ('icr-raw-unlinked',$1,'taylor',$2,$3,'CREDIT_MEMO',100,'USD','raw','PENDING',$4,'e-someone-else','raw-unlinked','fp')`, [TENANT, D.invoice.id, D.obligation, REQ]), /CORRECTION_EMPLOYEE_UNLINKED/, "requester");
     // an adjustment fact for nothing is refused; so is one for a PENDING correction (a request is not an approval)
     await assert.rejects(rawFact("icr-none", "RECEIVABLE_CREDITED", -100), /ADJUSTMENT_NOT_APPROVED/, "no correction");
     await insertPending("icr-raw-1");
     await assert.rejects(rawFact("icr-raw-1", "RECEIVABLE_CREDITED", -100), /ADJUSTMENT_NOT_APPROVED/, "a PENDING correction is not an approval");
-    // the two-person CHECK: APPLIED by the same Principal, or the same Employee under another Principal, cannot be stored
-    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-req', decided_by_employee_id='raw-emp-other', decided_at=now(), decision_reason='r', decision_idempotency_key='k1', decision_fingerprint='f' WHERE id='icr-raw-1'`), /invoice_correction_two_person/, "same Principal");
-    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-other', decided_by_employee_id='raw-emp-req', decided_at=now(), decision_reason='r', decision_idempotency_key='k2', decision_fingerprint='f' WHERE id='icr-raw-1'`), /invoice_correction_two_person/, "same Employee");
-    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-other', decided_by_employee_id='raw-emp-other', decided_at=now() WHERE id='icr-raw-1'`), /invoice_correction_decision_shape/, "a decision states its reason and key");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-someone-else', decided_at=now(), decision_reason='r', decision_idempotency_key='k0', decision_fingerprint='f' WHERE id='icr-raw-1'`, [DEC]),
+      /CORRECTION_EMPLOYEE_UNLINKED/, "decider");
+    // the two-person CHECK: the same Principal cannot be stored as its own approver; neither can the same Employee under another Principal (triggers off, so only the CHECK speaks)
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-req-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k1', decision_fingerprint='f' WHERE id='icr-raw-1'`, [REQ]),
+      /invoice_correction_two_person/, "same Principal");
+    const replica = await pool.connect();
+    try {
+      await replica.query("SET session_replication_role = replica");
+      await assert.rejects(replica.query(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='someone-relinked', decided_by_employee_id='e-req-a', decided_at=now(), decision_reason='r', decision_idempotency_key='k2', decision_fingerprint='f' WHERE id='icr-raw-1'`),
+        /invoice_correction_two_person/, "same Employee");
+    } finally {
+      await replica.query("SET session_replication_role = DEFAULT").catch(() => undefined);
+      replica.release();
+    }
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$1, decided_by_employee_id='e-app-a', decided_at=now() WHERE id='icr-raw-1'`, [DEC]), /invoice_correction_decision_shape/, "a decision states its reason and key");
     await apply("icr-raw-1", "k3");
     // an APPLIED correction admits exactly its own fact: kind, amount and sign
     await assert.rejects(rawFact("icr-raw-1", "RECEIVABLE_WRITTEN_OFF", -100), /ADJUSTMENT_NOT_APPROVED/, "wrong kind");
@@ -477,9 +662,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET amount_minor=1 WHERE id='icr-raw-1'`), /CORRECTION_IMMUTABLE/);
     await assert.rejects(q(`DELETE FROM eos_finance.invoice_corrections WHERE id='icr-raw-1'`), /CORRECTION_IMMUTABLE/);
     // the credit can never take the receivable below what was settled (6000 - 100 credited = 5900, all of it settled)
-    const pay = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_PAYMENT",
-      amountMinor: 5900, currency: "USD", sourceReference: "CHK-D", idempotencyKey: key("stl") }), "pay").settlement;
-    ok(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: D.obligation, amountMinor: 5900 }], idempotencyKey: key("app") }), "apply");
+    await pay(D, 5900, "CHK-D");
     await insertPending("icr-raw-2", { amount: 100 });
     await apply("icr-raw-2", "k4");
     await assert.rejects(rawFact("icr-raw-2", "RECEIVABLE_CREDITED", -100), /ADJUSTMENT_EXCEEDS_OUTSTANDING/, "5900 - 100 would fall below the 5900 settled");
@@ -489,12 +672,37 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
       `INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, counterparty_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, reverses_fact_id, reason, created_by)
        SELECT 'ff-raw-rev', $1::text, f.operating_company_id, f.counterparty_id, f.fact_class, f.fact_type, f.source_domain, f.source_record_id, -f.amount_minor, f.currency, f.basis, now(), 'ff-raw-rev', 'fp', f.obligation_id, f.id, 'raw', 'raw'
          FROM eos_finance.financial_facts f WHERE f.id = $2::text`, [TENANT, orig]), /OBLIGATION_INVOICED/);
-    // THE VOID GATE: a bare void is refused; an APPROVED, two-person VOID correction is not enough once money has moved
+    // THE VOID GATE (money moved): a bare void is refused; even an APPROVED, two-person VOID correction is not enough once money has moved
     await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at=now(), void_reason='x', voided_by='y' WHERE id=$1`, [D.invoice.id]), /INVOICE_IMMUTABLE/, "no correction");
     await insertPending("icr-raw-void", { kind: "VOID", amount: 6000 });
     await apply("icr-raw-void", "k5");
-    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at=now(), void_reason='raw', voided_by='raw-other' WHERE id=$1`, [D.invoice.id]), /INVOICE_IMMUTABLE/, "money moved, so even an approved void is refused");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at=now(), void_reason='raw', voided_by=$2 WHERE id=$1`, [D.invoice.id, DEC]), /INVOICE_IMMUTABLE/, "money moved, so even an approved void is refused");
     await assert.rejects(q(`UPDATE eos_finance.invoices SET currency='EUR' WHERE id=$1`, [D.invoice.id]), /INVOICE_IMMUTABLE/, "nothing else about an issued invoice changes");
+  });
+
+  await t.test("F2 VOID GATE: with a valid APPLIED VOID and no money moved, ONLY the exact void columns may change -- never a currency or an amount, never a mismatched reason or actor; the exact void succeeds", async () => {
+    const E = await issued({ price: 2500, account: "acct-c" });
+    const REQ = reqA.principalId, DEC = appB.principalId;
+    await q(`INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
+             VALUES ('icr-gate',$1,'taylor',$2,$3,'VOID',2500,'USD','Gate reason','PENDING',$4,'e-req-a','raw-gate','fp')`, [TENANT, E.invoice.id, E.obligation, REQ]);
+    await q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$2, decided_by_employee_id='e-app-b', decided_at=now(), decision_reason='ok', decision_idempotency_key='gate-k', decision_fingerprint='f' WHERE id=$1`, ["icr-gate", DEC]);
+    const before = await invoiceHash(E.invoice.id);
+    const voidSet = "voided_at = now(), void_reason = 'Gate reason', voided_by = $2";
+    // the void columns AND another column in one UPDATE: refused, whichever column
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET ${voidSet}, currency = 'EUR' WHERE id = $1`, [E.invoice.id, DEC]), /INVOICE_IMMUTABLE|violates|invoice_correction/, "currency");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET ${voidSet}, customer_discount_minor = 1 WHERE id = $1`, [E.invoice.id, DEC]), /INVOICE_IMMUTABLE/, "an amount");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET ${voidSet}, shipping_minor = 5 WHERE id = $1`, [E.invoice.id, DEC]), /INVOICE_IMMUTABLE/, "another amount");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET ${voidSet}, invoice_number = 'INV-9999-000009' WHERE id = $1`, [E.invoice.id, DEC]), /INVOICE_IMMUTABLE/, "the number");
+    // a mismatched void_reason or voided_by
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at = now(), void_reason = 'A different reason', voided_by = $2 WHERE id = $1`, [E.invoice.id, DEC]), /INVOICE_IMMUTABLE/, "void_reason");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at = now(), void_reason = 'Gate reason', voided_by = $2 WHERE id = $1`, [E.invoice.id, appA.principalId]), /INVOICE_IMMUTABLE/, "voided_by");
+    assert.equal(await invoiceHash(E.invoice.id), before, "every refusal left the invoice exactly as issued");
+    // the exact void, with no money moved, succeeds -- and changes nothing but the three columns
+    const orig = (await one(`SELECT to_jsonb(i) - 'voided_at' - 'void_reason' - 'voided_by' AS j FROM eos_finance.invoices i WHERE i.id=$1`, [E.invoice.id])).j;
+    await q(`UPDATE eos_finance.invoices SET ${voidSet} WHERE id = $1`, [E.invoice.id, DEC]);
+    const row = await one(`SELECT to_jsonb(i) - 'voided_at' - 'void_reason' - 'voided_by' AS j, voided_at IS NOT NULL AS v, void_reason, voided_by FROM eos_finance.invoices i WHERE i.id=$1`, [E.invoice.id]);
+    assert.deepEqual([row.v, row.void_reason, row.voided_by], [true, "Gate reason", DEC]);
+    assert.deepEqual(row.j, orig, "only the three void columns moved");
   });
 
   await t.test("NO PAYOUT PATH: the Finance transport has no operation that moves money out, and every refund record carries nothing to execute", async () => {

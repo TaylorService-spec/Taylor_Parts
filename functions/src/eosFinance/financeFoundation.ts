@@ -546,7 +546,7 @@ export async function insertSettlementFactOn(c: Queryable, actor: FinanceActor, 
 /**
  * F-1b: the three obligation-adjustment fact types. An adjustment to an ISSUED invoice moves its receivable through ONE signed OBLIGATION-class fact
  * (credit and write-off negative, debit positive); obligation_balances sums OBLIGATION facts, so outstanding stays derived and the origination fact is never
- * edited. The database admits one only for an APPROVED invoice correction (assert_adjustment_fact_is_approved, migration 1764702000000).
+ * edited. The database admits one only for an APPROVED invoice correction (assert_adjustment_fact_is_approved, migration 1764712000000).
  */
 export const OBLIGATION_ADJUSTMENT_FACT_TYPES = Object.freeze(["RECEIVABLE_CREDITED", "RECEIVABLE_CHARGED", "RECEIVABLE_WRITTEN_OFF"] as const);
 export type ObligationAdjustmentFactType = (typeof OBLIGATION_ADJUSTMENT_FACT_TYPES)[number];

@@ -188,7 +188,13 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
     return Object.freeze({ outcome: "replayed" as const, packageId: String(current[0].id), version: Number(current[0].version),
       status: current[0].status, readinessExceptions: Object.freeze([...current[0].readiness_exceptions]), totalMinor: current[0].total_minor ?? null, consequence });
   }
-  const version = current[0] ? Number(current[0].version) + 1 : 1;
+  // F-1b (F3): with no current (HELD / READY) package the order may still have history -- a package whose invoice was VOIDED is retired -- so a new package takes the
+  // next version after EVERY version the order has had, and names the latest retired one it follows.
+  const { rows: prior } = await c.query(
+    `SELECT id, version FROM eos_finance.billing_packages WHERE tenant_id = $1 AND source_kind = 'SALES_ORDER' AND sales_order_id = $2 ORDER BY version DESC LIMIT 1`,
+    [actor.tenantId, input.salesOrderId]);
+  const version = current[0] ? Number(current[0].version) + 1 : prior[0] ? Number(prior[0].version) + 1 : 1;
+  const supersedesId: string | null = current[0]?.id ?? prior[0]?.id ?? null;
   if (current[0]) {
     await c.query(`UPDATE eos_finance.billing_packages SET status = 'SUPERSEDED', status_changed_at = now() WHERE tenant_id = $1 AND id = $2`,
       [actor.tenantId, current[0].id]);
@@ -203,7 +209,7 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
         trade_in_minor, balance_minor, accounting_destination_id, content_fingerprint, prepared_by, tax_evidence_status,
         financing_arrangement_id, financing_provider_counterparty_id, customer_contribution_minor, financed_amount_minor, customer_discount_minor)
      VALUES ($1,$2,'SALES_ORDER',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)`,
-    [packageId, actor.tenantId, input.salesOrderId, version, current[0]?.id ?? null, status, exceptions, companyId, o.operating_company_key,
+    [packageId, actor.tenantId, input.salesOrderId, version, supersedesId, status, exceptions, companyId, o.operating_company_key,
       o.account_id, counterpartyId, obligorBasis, disposition, o.sales_agreement_id, currency, str(subtotal), str(shipping), str(install),
       str(tax), str(total), str(down), str(tradeIn), str(balance), destination?.id ?? null, fingerprint, actor.principalId, taxEvidence,
       disposition === "FINANCED_SALE" ? o.financing_arrangement_id : null, providerCounterpartyId, str(contribution), str(financed),

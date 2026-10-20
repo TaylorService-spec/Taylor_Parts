@@ -279,7 +279,7 @@ test("an adjustment fact is written in ONE place: the approval's effect, after t
   assert.ok(callAt > src.indexOf("SET status = $3, decided_by") && src.indexOf("if (decision === \"APPROVE\") effect = await applyEffectOn(") === callAt - "if (decision === \"APPROVE\") ".length,
     "applied only for APPROVE, after the row records the decision");
   assert.ok(src.indexOf("eligibilityOn(c, actor, { kind, invoiceId: String(corr.invoice_id)") < src.indexOf("SET status = $3, decided_by"), "eligibility is re-decided before the row becomes APPLIED");
-  for (const f of readdirSync(join(ROOT, "src", "eosFinance")).filter((n) => n.endsWith(".ts") && n !== "invoiceCorrection.ts" && n !== "financeFoundation.ts")) {
+  for (const f of readdirSync(join(ROOT, "src", "eosFinance")).filter((n) => n.endsWith(".ts") && n !== "invoiceCorrection.ts" && n !== "financeFoundation.ts" && n !== "accountingDelivery.ts")) {
     assert.doesNotMatch(code(`eosFinance/${f}`), /insertObligationAdjustmentFactOn|RECEIVABLE_CREDITED|RECEIVABLE_WRITTEN_OFF|RECEIVABLE_CHARGED/, `${f} writes no adjustment fact`);
   }
   // credits and write-offs are negative, debits positive; the invoice is never updated except by the governed void
@@ -303,7 +303,7 @@ test("ONE audit row per applied command, inside the command's transaction, never
 
 // ════════════════════ a refund records, it never pays (OD-F1-11) ════════════════════
 
-test("a refund creates NO external payment: no operation, module, settlement kind or call can execute, send or initiate money", () => {
+test("a refund creates NO external payment: no operation, module, settlement kind or call can execute, send or initiate money (a refund is a recorded fact, not cash sent)", () => {
   const names = ops.FINANCE_OPERATIONS;
   assert.deepEqual(names.filter((n) => /payout|disburs|cashout|cash_out|sendmoney|send|execute|initiate|transfer|wire|release|pay[A-Z]|^pay$/i.test(n)), [],
     "the Finance table has no operation that moves money out");
@@ -317,7 +317,7 @@ test("a refund creates NO external payment: no operation, module, settlement kin
     assert.doesNotMatch(body, /fetch\(|https?:\/\/|axios|XMLHttpRequest|stripe|plaid|dwolla|bankapi|paymentprovider|initiatePayment|executePayment|sendPayment|submitPayment|achTransfer|wireTransfer/i, `${file}: no network or payment-provider call`);
   }
   const refundEffect = src.slice(src.indexOf('if (kind === "REFUND") {'), src.indexOf("const voided = await c.query("));
-  assert.ok(refundEffect.includes("recordRefundDisbursementOn("), "the refund effect is read from the right block");
+  assert.ok(refundEffect.includes("recordRefundFactOn("), "the refund effect is read from the right block");
   assert.doesNotMatch(refundEffect, /accounting|handoff|provider|deliver/i, "a refund queues nothing for any provider");
   assert.doesNotMatch(src, /(INSERT INTO|UPDATE)\s+eos_finance\.accounting|accountingDelivery/, "this module writes no accounting handoff (a void's handoff is superseded by the existing retirement path)");
   assert.doesNotMatch(src, /INSERT INTO eos_finance\.settlements/, "the refund record is written by the settlement module only");
@@ -350,26 +350,74 @@ test("VOID eligibility is decided in code AND by the database: any application (
   assert.doesNotMatch(src, /invoice_number\s*=|allocateInvoiceNumber|invoice_number_counters/, "a void never touches numbering: the number is not reused");
 });
 
-// ════════════════════ the proposed grants ════════════════════
+// ════════════════════ grants: NONE (Owner 2026-10-20) ════════════════════
 
-test("the PROPOSED approval grants are a subset of the existing record holders and exclude admin, partsManager and every A6 summary-key role", () => {
-  const proposal = JSON.parse(readFileSync(resolve(ROOT, "..", "docs/architecture/f1b-invoice-correction-grant-proposal.json"), "utf8"));
+test("NO approval key is granted to anyone: the baseline carries no pair, no catalog or Protected Administrator standing confers it, and the Owner-only proposal is recorded as UNAPPLIED", () => {
   const baseline = JSON.parse(readFileSync(join(ROOT, "src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"), "utf8"));
-  const holders = (k) => new Set(baseline.grants.filter((g) => g.capabilityKey === k).map((g) => g.roleKey));
-  assert.equal(proposal.proposedGrants.length, 15);
-  assert.equal(new Set(proposal.proposedGrants.map((g) => `${g.roleKey}|${g.capabilityKey}`)).size, 15, "no duplicate pair");
-  assert.deepEqual([...new Set(proposal.proposedGrants.map((g) => g.capabilityKey))].sort(), [...corr.CORRECTION_APPROVAL_CAPABILITIES].sort(), "exactly the three approval keys");
-  for (const cap of proposal.capabilities) {
-    const requestHolders = holders(cap.requestKey);
-    for (const g of proposal.proposedGrants.filter((x) => x.capabilityKey === cap.key)) assert.ok(requestHolders.has(g.roleKey), `${g.roleKey} already holds ${cap.requestKey}: an approver is a Finance record holder`);
+  assert.deepEqual(baseline.grants.filter((g) => corr.CORRECTION_APPROVAL_CAPABILITIES.includes(g.capabilityKey)), [], "grants +0: no baseline pair");
+  assert.equal(baseline.totalGrants, baseline.grants.length);
+  // Protected Administrator standing implies only ADMIN_ACTION / READ keys (and a named list); these are BUSINESS_ACTION and on no list.
+  const pa = require("../lib/adminPolicy/protectedAdministrator.js");
+  for (const [key, objectKey] of [["finance.adjustment.approve", "invoice"], ["finance.refund.approve", "payment"], ["finance.invoice.void.approve", "invoice"]]) {
+    assert.equal(pa.isImpliedForProtectedAdministrator({ key, objectKey, actionKind: "BUSINESS_ACTION" }), false, `${key}: not implied by Administrator standing`);
+    assert.ok(!pa.PROTECTED_ADMINISTRATOR_MANAGEMENT_CAPABILITIES.has(key));
+    // No default catalog (Firebase-compatible or governed business Role, environment overrides, client catalog) names it.
+    for (const file of ["access/compatibilityRoles.ts", "access/governedBusinessRoles.ts", "access/permissionCatalog.ts", "access/environmentCapabilityOverrides.ts"]) {
+      assert.ok(!readFileSync(join(ROOT, "src", file), "utf8").includes(key), `${file} does not name ${key}`);
+    }
   }
-  const granted = new Set(proposal.proposedGrants.map((g) => g.roleKey));
-  assert.ok(!granted.has("admin"), "administering EOS confers no Finance transaction authority (#206)");
-  assert.ok(!granted.has("partsManager"), "R3 / #193: Parts Manager Finance execution stays revoked");
-  for (const a6 of holders("finance.accountBalance.read")) assert.ok(!granted.has(a6), `${a6} holds the A6 summary key and gains no approval authority`);
-  // the same five Roles hold the settlement keys (#206): the proposal introduces no new kind of holder
-  const settlementHolders = holders("finance.settlement.correct");
-  for (const r of granted) assert.ok(settlementHolders.has(r), `${r} already holds the Finance settlement keys`);
-  // this change grants nothing by itself: the baseline carries no approval pair until the controller writes the migration
-  assert.deepEqual(baseline.grants.filter((g) => corr.CORRECTION_APPROVAL_CAPABILITIES.includes(g.capabilityKey)), []);
+  // The proposal: Owner only, three pairs, every one UNAPPLIED; the earlier 15-pair proposal is gone.
+  const proposal = JSON.parse(readFileSync(resolve(ROOT, "..", "docs/architecture/f1b-invoice-correction-grant-proposal.json"), "utf8"));
+  assert.match(proposal.status, /UNAPPLIED/);
+  assert.deepEqual(proposal.proposedGrants.map((g) => [g.roleKey, g.capabilityKey, g.applied]).sort(),
+    [["owner", "finance.adjustment.approve", false], ["owner", "finance.invoice.void.approve", false], ["owner", "finance.refund.approve", false]]);
+  assert.deepEqual([...proposal.explicitlyNotGranted].sort(), ["accountingManager", "admin", "controller", "financeManager", "generalManager", "partsManager"]);
+  for (const k of Object.values(proposal.authorityMatrix)) assert.deepEqual([k.proposedHolder, k.applied], ["owner", false]);
+});
+
+test("the Owner cannot approve the Owner's own request: same Principal (and Employee) is refused before any write", async () => {
+  const owner = { tenantId: T, principalId: "p-owner" };
+  const row = CORR({ requested_by: "p-owner", requested_by_employee_id: "e-owner" });
+  for (const decision of ["APPROVE", "REJECT"]) {
+    const pool = mockPool(decideRules({ row, employees: { "p-owner": "e-owner" }, current: { "p-owner": ["e-owner"] } }));
+    const e = await failure(decide(pool, owner, { decision, ...(decision === "REJECT" ? { amountMinor: undefined } : {}) }));
+    assert.deepEqual([e?.code, writes(pool.log)], ["SELF_APPROVAL_FORBIDDEN", []], decision);
+  }
+});
+
+// ════════════════════ delivery, rebill, lines, vocabulary ════════════════════
+
+test("B1: accounting delivery anchors on the receivable AS ISSUED (origination facts), never the adjusted total", () => {
+  const src = code("eosFinance/accountingDelivery.ts");
+  assert.match(src, /export const ORIGINATED_AS_ISSUED_SQL/);
+  assert.equal(count(src, "${ORIGINATED_AS_ISSUED_SQL} AS originated_minor"), 2, "the direct / rental anchor and the financed customer receivable");
+  assert.doesNotMatch(src, /obligation_balances/, "delivery no longer reads the adjusted balance");
+  assert.match(src, /NOT IN \('RECEIVABLE_CREDITED', 'RECEIVABLE_CHARGED', 'RECEIVABLE_WRITTEN_OFF'\)/);
+});
+
+test("F3: a void RETIRES the package and a re-prepare takes the next version even when no package is current", () => {
+  assert.match(code("eosFinance/invoiceCorrection.ts"), /UPDATE eos_finance\.billing_packages SET status = 'SUPERSEDED'/);
+  const bp = code("eosFinance/billingPackage.ts");
+  assert.match(bp, /ORDER BY version DESC LIMIT 1/);
+  assert.match(bp, /const version = current\[0\] \? Number\(current\[0\]\.version\) \+ 1 : prior\[0\] \? Number\(prior\[0\]\.version\) \+ 1 : 1;/);
+});
+
+test("F4: no correction path writes invoice lines (or the invoice's amounts) in any transaction", () => {
+  const src = code("eosFinance/invoiceCorrection.ts");
+  assert.doesNotMatch(src, /invoice_lines/, "no read-modify-write of lines at all");
+  assert.equal(count(src, "UPDATE eos_finance.invoices"), 1);
+  assert.match(src, /UPDATE eos_finance\.invoices SET voided_at = now\(\), void_reason = \$3, voided_by = \$4 WHERE/, "the only invoice write sets the three void columns");
+});
+
+test("F6 and refund vocabulary: the refund is a recorded fact, never a payment; the result says so; settlements report refundedMinor", () => {
+  assert.equal(corr.REFUND_NOTICE, "refund recorded; no payment has been sent");
+  const view = corr.correctionView({ id: "i", operating_company_id: "taylor", invoice_id: "v", invoice_number: "INV-1", obligation_id: "o", kind: "REFUND", amount_minor: "5", currency: "USD", reason: "r",
+    status: "APPLIED", requested_by: "a", requested_by_employee_id: "e1", requested_at: "2026-10-20T00:00:00Z", decided_by: "b", decided_by_employee_id: "e2", decided_at: "2026-10-20T00:00:00Z",
+    decision_reason: "r", refund_settlement_id: "stl1", settlement_id: "stl0", application_id: "sap" });
+  assert.deepEqual([view.refundRecorded, view.notice, view.refundRecordId], [true, "refund recorded; no payment has been sent", "stl1"]);
+  assert.equal(corr.correctionView({ ...view, id: "i", invoice_id: "v", operating_company_id: "taylor", obligation_id: "o", invoice_number: "n", kind: "REFUND", amount_minor: "5", currency: "USD", reason: "r", status: "PENDING",
+    requested_by: "a", requested_by_employee_id: "e1", requested_at: "2026-10-20T00:00:00Z" }).refundRecorded, false);
+  const src = code("eosFinance/invoiceCorrection.ts") + code("eosFinance/settlement.ts");
+  assert.doesNotMatch(src, /payout|pay_out|cashOut|cash_out|sendMoney|disburseNow|executeRefund|issueRefundPayment/i);
+  assert.match(code("eosFinance/settlement.ts"), /refundedMinor: String\(b\.refunded_minor \?\? 0\)/);
 });

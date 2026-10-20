@@ -95,7 +95,7 @@ const settlementView = (r: Record<string, any>, b?: Record<string, any>) => Obje
   recordedAt: new Date(r.recorded_at).toISOString(), sourceReference: String(r.source_reference), method: r.method ?? null, status: String(r.status),
   correlationId: r.correlation_id ?? null, replacesSettlementId: r.replaces_settlement_id ?? null, notes: r.notes ?? null, recordedBy: String(r.recorded_by),
   voidReason: r.void_reason ?? null,
-  ...(b ? { appliedMinor: String(b.applied_minor), unappliedMinor: String(b.unapplied_minor) } : {}),
+  ...(b ? { appliedMinor: String(b.applied_minor), unappliedMinor: String(b.unapplied_minor), refundedMinor: String(b.refunded_minor ?? 0) } : {}),
 });
 
 // ════════════════════ record ════════════════════
@@ -134,7 +134,7 @@ export async function recordFinancialSettlement(pool: Pool, actor: FinanceActor,
   const fingerprint = createHash("sha256").update(JSON.stringify([input.operatingCompanyId, cp, kind, String(amount), input.currency, input.businessDate ?? null,
     reference, method, input.correlationId ?? null, input.notes ?? null, input.replacesSettlementId ?? null])).digest("hex");
   return tx(pool, async (c) => {
-    const { rows: prior } = await c.query(`SELECT s.*, b.applied_minor, b.unapplied_minor FROM eos_finance.settlements s
+    const { rows: prior } = await c.query(`SELECT s.*, b.applied_minor, b.unapplied_minor, b.refunded_minor FROM eos_finance.settlements s
       JOIN eos_finance.settlement_balances b ON b.tenant_id = s.tenant_id AND b.settlement_id = s.id WHERE s.tenant_id = $1 AND s.idempotency_key = $2`, [actor.tenantId, key]);
     if (prior[0]) {
       if (prior[0].request_fingerprint !== fingerprint) refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that idempotency key recorded a different settlement");
@@ -306,7 +306,7 @@ export const CUSTOMER_REFUND_KIND = "CUSTOMER_REFUND";
  * nothing is sent anywhere. It takes no application (the database pairs no obligation kind with it) and shows no unapplied remainder; it can be reconciled like
  * any settlement, and it can never be voided (SETTLEMENT_REFUND_RECORD).
  */
-export async function recordRefundDisbursementOn(c: Queryable, actor: FinanceActor, input: {
+export async function recordRefundFactOn(c: Queryable, actor: FinanceActor, input: {
   operatingCompanyId: string; counterpartyId: string; amountMinor: bigint; currency: string; businessDate: string; correctionId: string;
 }): Promise<string> {
   const id = `stl_${randomUUID()}`;
@@ -358,7 +358,7 @@ const reconciliationView = (r: Record<string, any>) => Object.freeze({
 // ════════════════════ reads ════════════════════
 
 export async function readSettlementOn(db: Queryable, tenantId: string, settlementId: string) {
-  const { rows } = await db.query(`SELECT s.*, b.applied_minor, b.unapplied_minor, cp.kind AS counterparty_kind, cp.crm_account_id AS counterparty_crm_account_id,
+  const { rows } = await db.query(`SELECT s.*, b.applied_minor, b.unapplied_minor, b.refunded_minor, cp.kind AS counterparty_kind, cp.crm_account_id AS counterparty_crm_account_id,
       cp.operating_company_id AS counterparty_company, a.name AS counterparty_name
     FROM eos_finance.settlements s
     JOIN eos_finance.settlement_balances b ON b.tenant_id = s.tenant_id AND b.settlement_id = s.id

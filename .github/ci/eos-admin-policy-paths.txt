@@ -1012,3 +1012,4 @@ functions/test/f1bInvoiceCorrection.test.mjs
 functions/test/f1bInvoiceCorrectionPostgres.test.mjs
 functions/src/eosFinance/invoiceCorrection.ts
 docs/architecture/f1b-invoice-correction-grant-proposal.json
+functions/test/f1bInvoiceCorrectionDownPostgres.test.mjs

@@ -24,7 +24,11 @@
 A receivable credited down to nothing shows as **Settled**.
 
 ## A refund is a record, not a payment
-Approving a refund records the refund and lets Finance reconcile it. **It does not pay anyone.** No money is sent, no payment is started, and nothing is queued for an accounting provider. The payment the customer originally made is shown as partly refunded, and the refund appears as a **Customer Refund (Record)** on the Payments page. Paying the customer is a separate step outside this system.
+Approving a refund records the refund and lets Finance reconcile it. The result says "refund recorded; no payment has been sent". **A refund record is an accounting fact, not evidence that cash was sent.** No money is sent, no payment is started, and nothing is queued for an accounting provider; there is no payout provider or bank instruction in the system. The payment the customer originally made is shown as partly refunded, and the refund appears as a **Customer Refund (Record)** on the Payments page. Paying the customer is a separate step outside this system.
+
+## What is not finished
+- **Accounting integration is not complete.** An invoice that is sent to the accounting provider is still sent for the **original** amount it was issued for; a credit, write-off or debit never blocks that. Sending the **correction itself** (a credit note, write-off or debit) to the accounting provider is **not built yet**. It is an explicit, tracked, unfinished requirement, so corrections are not yet visible to the accounting provider.
+- A voided invoice can be billed again: the sale is prepared again, which produces a new billing package and a **new invoice number**. The voided invoice keeps its own number.
 
 ## When a void is allowed
 A void is allowed only **before any payment or adjustment has been applied** to the invoice, and it needs a reason and two people. If **any** payment has been applied (even one that was later reversed), or any credit, write-off or adjustment has been approved, the invoice cannot be voided: use a credit memo instead. An invoice already sent on to an accounting provider cannot be voided here either.
@@ -55,5 +59,5 @@ If you press the button twice, or the connection drops and you try again, you ge
 
 ## Who can do it
 - **Ask:** the people who can already record adjustments or refunds (Owner, General Manager, Controller, Accounting Manager, Finance Manager).
-- **Approve:** the people the Owner gives the new approval permissions to (**approve invoice adjustments**, **approve refund records**, **approve invoice voids**). Nobody is granted them until the Owner's Finance policy review confirms who holds them, and the Parts Manager role stays without any Finance execution.
+- **Approve:** only people the Owner gives the new approval permissions to (**approve invoice adjustments**, **approve refund records**, **approve invoice voids**). **Nobody has them yet.** The Owner has not decided who approves corrections, so until an Administrator grants a permission on the Owner's explicit instruction, no correction can be approved. The Owner can never approve a correction the Owner asked for. The Parts Manager role stays without any Finance execution.
 - Neither is enough without being assigned to the invoice's operating company.

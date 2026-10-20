@@ -20,7 +20,7 @@
 //     obligation_balances sums OBLIGATION facts, so OUTSTANDING STAYS DERIVED FROM THE OBLIGATION (OD-F1-2): the invoice stores no balance, and its own totals are the
 //     original, unchanged. The database admits such a fact only for an APPLIED correction decided by a separate Employee (assert_adjustment_fact_is_approved).
 //   REFUND                   RECORDS the refund obligation and its reconciliation only: the chosen application of a customer payment is reversed (the original kept) and
-//     re-applied for what the refund leaves, and a CUSTOMER_REFUND DISBURSEMENT RECORD is written (settlement.ts). NOTHING IS PAID: no cash-out, no payment execution, no
+//     re-applied for what the refund leaves, and a CUSTOMER_REFUND accounting fact is written (settlement.ts): a refund RECORDED, NOT evidence that cash was sent. NOTHING IS PAID: no cash-out, no payment execution, no
 //     provider call, no bank instruction exists anywhere in this module or in the Finance operations (OD-F1-11: "a new settlement kind is not permission to pay out").
 //   VOID                     only BEFORE any money moves: no application (reversed or not), no settlement fact, no applied adjustment. The invoice's void columns are set (the
 //     database admits that single change only for an APPLIED, two-person VOID correction and refuses it once anything moved), then the receivable is voided with reversing
@@ -37,7 +37,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   FinanceFoundationError, insertObligationAdjustmentFactOn, readObligationBalance, type FinanceActor, type FinanceFoundationCategory, type ObligationBalance,
 } from "./financeFoundation";
-import { applySettlementAmountOn, recordRefundDisbursementOn, reverseApplicationOn } from "./settlement";
+import { applySettlementAmountOn, recordRefundFactOn, reverseApplicationOn } from "./settlement";
 import { retirePackageReceivableOn } from "./billingPackage";
 import { businessToday } from "./invoiceIssue";
 import { linkedEmployeeId } from "./financeVisibility";
@@ -55,7 +55,7 @@ export const INVOICE_CORRECTION_STATUSES = Object.freeze(["PENDING", "APPLIED", 
 export const CORRECTION_REQUEST_CAPABILITY: Readonly<Record<InvoiceCorrectionKind, string>> = Object.freeze({
   CREDIT_MEMO: "finance.adjustment.record", DEBIT_CHARGE: "finance.adjustment.record", WRITE_OFF: "finance.adjustment.record", VOID: "finance.adjustment.record", REFUND: "finance.refund.record",
 });
-/** The explicit Finance APPROVAL capabilities (migration 1764702000000): held by a different Employee than the requester, with the same company authority. */
+/** The explicit Finance APPROVAL capabilities (migration 1764712000000): held by a different Employee than the requester, with the same company authority. */
 export const CORRECTION_APPROVE_CAPABILITY: Readonly<Record<InvoiceCorrectionKind, string>> = Object.freeze({
   CREDIT_MEMO: "finance.adjustment.approve", DEBIT_CHARGE: "finance.adjustment.approve", WRITE_OFF: "finance.adjustment.approve",
   REFUND: "finance.refund.approve", VOID: "finance.invoice.void.approve",
@@ -66,6 +66,8 @@ export const CORRECTION_REQUEST_CAPABILITIES: readonly string[] = Object.freeze(
 export const CORRECTION_APPROVAL_THRESHOLD_MINOR = 0n;
 /** The governed reason limit (the Commercial reason limit, as issuing an invoice). */
 export const CORRECTION_REASON_MAX = 500;
+/** The one sentence a refund result carries: it is a record, never a payment. */
+export const REFUND_NOTICE = "refund recorded; no payment has been sent";
 
 const FACT_TYPE: Readonly<Record<"CREDIT_MEMO" | "DEBIT_CHARGE" | "WRITE_OFF", "RECEIVABLE_CREDITED" | "RECEIVABLE_CHARGED" | "RECEIVABLE_WRITTEN_OFF">> = Object.freeze({
   CREDIT_MEMO: "RECEIVABLE_CREDITED", DEBIT_CHARGE: "RECEIVABLE_CHARGED", WRITE_OFF: "RECEIVABLE_WRITTEN_OFF",
@@ -128,7 +130,10 @@ export const correctionView = (r: Record<string, any>) => Object.freeze({
   settlementId: r.settlement_id ?? null, applicationId: r.application_id ?? null,
   requestedBy: String(r.requested_by), requestedByEmployeeId: String(r.requested_by_employee_id), requestedAt: iso(r.requested_at) as string,
   decidedBy: r.decided_by ?? null, decidedByEmployeeId: r.decided_by_employee_id ?? null, decidedAt: iso(r.decided_at), decisionReason: r.decision_reason ?? null,
-  factId: r.fact_id ?? null, refundSettlementId: r.refund_settlement_id ?? null,
+  factId: r.fact_id ?? null, refundRecordId: r.refund_settlement_id ?? null,
+  // A refund is an ACCOUNTING FACT, never evidence that cash was sent.
+  refundRecorded: r.kind === "REFUND" && r.status === "APPLIED" && r.refund_settlement_id != null,
+  ...(r.kind === "REFUND" && r.status === "APPLIED" ? { notice: REFUND_NOTICE } : {}),
 });
 
 export async function readInvoiceCorrectionOn(db: Queryable, tenantId: string, correctionId: string) {
@@ -379,7 +384,7 @@ export async function decideInvoiceCorrection(pool: Pool, actor: FinanceActor, i
         decidedBy: actor.principalId, decidedByEmployeeId: approverEmployee, ...effect },
       reason,
     });
-    return Object.freeze({ outcome, correction });
+    return Object.freeze({ outcome, correction, ...(correction.refundRecorded ? { refundRecorded: true, notice: REFUND_NOTICE } : {}) });
   });
 }
 
@@ -411,13 +416,13 @@ async function applyEffectOn(c: Queryable, actor: FinanceActor, corr: Record<str
       const { rows: st } = await c.query(`SELECT * FROM eos_finance.settlements WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, a.settlement_id]);
       reappliedApplicationId = await applySettlementAmountOn(c, actor, st[0], obligationId, remainder, `invcorr:${id}:reapply`);
     }
-    // 3. ... and the refund is RECORDED. A disbursement RECORD only: nothing is paid, sent or initiated (OD-F1-11).
+    // 3. ... and the refund is RECORDED. An accounting fact only (refund recorded; no payment has been sent): nothing is paid, sent or initiated (OD-F1-11).
     const today = await businessToday(c, actor.tenantId, String(corr.operating_company_id));
-    const refundSettlementId = await recordRefundDisbursementOn(c, actor, {
+    const refundRecordId = await recordRefundFactOn(c, actor, {
       operatingCompanyId: String(corr.operating_company_id), counterpartyId: String(a.settlement_counterparty), amountMinor: amount, currency: String(corr.currency), businessDate: today, correctionId: id,
     });
-    await c.query(`UPDATE eos_finance.invoice_corrections SET refund_settlement_id = $3 WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, id, refundSettlementId]);
-    return { refundSettlementId, paymentSettlementId: String(a.settlement_id), reversedApplicationId: String(a.id), reappliedApplicationId, outstandingBeforeMinor: before.toString(), outstandingAfterMinor: await outstandingAfter() };
+    await c.query(`UPDATE eos_finance.invoice_corrections SET refund_settlement_id = $3 WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, id, refundRecordId]);
+    return { refundRecordId, paymentSettlementId: String(a.settlement_id), reversedApplicationId: String(a.id), reappliedApplicationId, outstandingBeforeMinor: before.toString(), outstandingAfterMinor: await outstandingAfter() };
   }
 
   // VOID: the invoice's void columns (the database admits this one change only for this APPLIED, two-person VOID correction, and only while nothing has moved) ...
@@ -427,5 +432,9 @@ async function applyEffectOn(c: Queryable, actor: FinanceActor, corr: Record<str
   if (voided.rowCount !== 1) refuse("INVOICE_VOID", "PRECONDITION_FAILED", "the invoice is already void");
   // ... then the receivable is voided with reversing facts (never edited), and the package's accounting handoff superseded. The number is never reused.
   await retirePackageReceivableOn(c, actor, String(e.inv.billing_package_id), String(corr.reason));
+  // ... and the package is RETIRED with them (F3): it must not stay READY with a VOID receivable, or the order could never be re-billed. A re-prepare of the same Sales Order
+  // then produces a NEW package (next version) with a NEW receivable, which can be invoiced under a new number; the voided invoice keeps its own.
+  await c.query(`UPDATE eos_finance.billing_packages SET status = 'SUPERSEDED', status_changed_at = now() WHERE tenant_id = $1 AND id = $2 AND status IN ('HELD', 'READY')`,
+    [actor.tenantId, e.inv.billing_package_id]);
   return { voidedInvoiceId: String(corr.invoice_id), outstandingBeforeMinor: before.toString() };
 }

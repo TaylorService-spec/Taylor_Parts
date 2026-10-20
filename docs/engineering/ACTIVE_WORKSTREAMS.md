@@ -505,7 +505,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Base commit:         `5c1fe280`
 - Owned paths:         `functions/src/eosFinance/invoiceCorrection.ts` · `functions/src/eosFinance/settlement.ts` (shared apply/reverse helpers, the refund RECORD) · `functions/src/eosFinance/financeOperations.ts` (the four correction operations) · `functions/test/f1bInvoiceCorrection*.test.mjs` · `docs/architecture/f1b-invoice-correction-grant-proposal.json`
 - Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/governance/precedence-sweep.json` · `functions/test/adminPolicySuites.json` · `functions/src/adminPolicy/assignmentScopeRuntime.ts` · `field-ops-app-vite/src/services/financeApiClient.js`
-- Dependencies:        migration `1764702000000_invoice-corrections` (SQL saved as a `.txt`, written by the controller; its grant section is a PROPOSAL verified against nonprod first); F-1a (#2184)
+- Dependencies:        migration `1764712000000_invoice-corrections` (SQL saved as a `.txt`, written by the controller; registers the approval capabilities with NO grants); F-1a (#2184)
 - Expected outcome:    every money correction of an issued invoice is requested by one Employee and applied only on a different Employee's approval; outstanding stays derived from the receivable
-- Protected boundaries:capability registration and the 15 PROPOSED grants (controller verifies against nonprod; no activation here); no production, Rules, deploy, Firebase or external-payment action
+- Protected boundaries:capability registration only, NO grants (Owner-only proposal recorded, unapplied); no production, Rules, deploy, Firebase or external-payment action
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)

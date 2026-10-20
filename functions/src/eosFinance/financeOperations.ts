@@ -67,7 +67,7 @@ export const RECONCILIATION_RECORD_CAPABILITY = "finance.reconciliation.record";
 export { INVOICE_ISSUE_CAPABILITY };
 /**
  * F-1b: request / decide a credit, write-off, debit, refund or void of an ISSUED invoice (invoiceCorrection.ts). The request keys are the existing Firebase keys; the
- * three APPROVAL keys are new (migration 1764702000000) and are held by a different Employee than the requester.
+ * three APPROVAL keys are new (migration 1764712000000) and are held by a different Employee than the requester.
  */
 export { CORRECTION_APPROVE_CAPABILITY, CORRECTION_REQUEST_CAPABILITY };
 /**

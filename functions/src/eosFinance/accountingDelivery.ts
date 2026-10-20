@@ -21,6 +21,16 @@ import { buildObligationPayload, type ObligationPayloadV1 } from "./obligationHa
 
 type Queryable = Pick<PoolClient, "query">;
 
+/**
+ * F-1b (B1): delivery anchors on the receivable AS ISSUED -- the sum of its ORIGINATION facts -- not on the adjusted total. An approved credit, write-off or debit
+ * (RECEIVABLE_CREDITED / _CHARGED / _WRITTEN_OFF) is a separate record: the original invoice and its package stay deliverable for the original amount, never stranded
+ * as PAYLOAD_RECEIVABLE_MISMATCH. Delivery of a CORRECTION to the accounting provider is not built (accounting delivery is inactive; tracked gap, DECISIONS #F-1b).
+ * Requires the obligation row aliased `o`.
+ */
+export const ORIGINATED_AS_ISSUED_SQL = `(SELECT COALESCE(SUM(f.amount_minor), 0)::bigint FROM eos_finance.financial_facts f
+   WHERE f.tenant_id = o.tenant_id AND f.obligation_id = o.id AND f.fact_class = 'OBLIGATION'
+     AND f.fact_type NOT IN ('RECEIVABLE_CREDITED', 'RECEIVABLE_CHARGED', 'RECEIVABLE_WRITTEN_OFF'))`;
+
 export const ACCOUNTING_PAYLOAD_CONTRACT = "eos.accounting.operational-billing-package";
 /** The direct-sale contract version (v1). A financed sale uses v2 (its two-party composition). */
 export const ACCOUNTING_PAYLOAD_CONTRACT_VERSION = 1;
@@ -199,7 +209,7 @@ export async function buildAccountingPayload(db: Queryable, tenantId: string, ha
     refuse("PAYLOAD_SOURCE_NOT_AUTHORITATIVE", "PRECONDITION_FAILED", "only a READY direct sale, financed sale or rental package with DETERMINED tax is delivered");
   }
   const { rows: or } = await db.query(
-    `SELECT o.*, b.originated_minor FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
+    `SELECT o.*, ${ORIGINATED_AS_ISSUED_SQL} AS originated_minor FROM eos_finance.obligations o
       WHERE o.tenant_id = $1 AND o.id = $2`, [tenantId, h.obligation_id]);
   const o = or[0];
   // The handoff's anchoring receivable: a direct sale's customer RECEIVABLE for the total, or a financed sale's provider
@@ -289,8 +299,7 @@ async function financedComposition(db: Queryable, tenantId: string, p: Record<st
   const contribution = BigInt(p.customer_contribution_minor);
   const financed = BigInt(p.financed_amount_minor);
   const { rows: cr } = await db.query(
-    `SELECT o.id, o.counterparty_id, o.currency, o.status, b.originated_minor FROM eos_finance.obligations o
-       JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
+    `SELECT o.id, o.counterparty_id, o.currency, o.status, ${ORIGINATED_AS_ISSUED_SQL} AS originated_minor FROM eos_finance.obligations o
       WHERE o.tenant_id = $1 AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = $2 AND o.kind = 'RECEIVABLE'`, [tenantId, p.id]);
   const ar = cr[0];
   const arValid = contribution === 0n ? !ar
