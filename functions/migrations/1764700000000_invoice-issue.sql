@@ -192,7 +192,7 @@ BEGIN
       FROM eos_finance.invoices i WHERE i.id = p_invoice_id;
     RETURN COALESCE(v_issued, FALSE) AND NOT COALESCE(v_same, FALSE);
 END;
-$$ LANGUAGE plpgsql STABLE SET search_path = eos_finance, public;
+$$ LANGUAGE plpgsql VOLATILE SET search_path = eos_finance, public;
 
 CREATE OR REPLACE FUNCTION refuse_issued_invoice_line_change() RETURNS trigger AS $$
 BEGIN
