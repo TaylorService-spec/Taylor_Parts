@@ -114,6 +114,7 @@ import type {
 } from "./types";
 import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
+import { requireGrantAuthority } from "./exemptionAdministration";
 import {
   AUTHORITY_CHANGE_GATE,
   isAuthorityChangeOperation,
@@ -730,7 +731,8 @@ async function previewAuthorityChange(
   }
   const changeInput = rawInput as Record<string, unknown>;
   // THE GATE, before anything is simulated or read about anybody else.
-  await requireSecurityAdministrationCapability(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  // The exemption family (SAE Rule 2) is gated on the verified protected Owner, every other change on its own capability (exemptionAdministration.requireGrantAuthority).
+  await requireGrantAuthority(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation], changeInput.objectKey, changeInput.actionKey);
   if (typeof deps.previewAuthorityChange !== "function") {
     throw new Error("previewAuthorityChange is not composed on this server");
   }
@@ -772,7 +774,7 @@ async function commitPreviewedAuthorityChange(
   input: Record<string, unknown>,
   reason: string | null,
 ): Promise<unknown> {
-  await requireSecurityAdministrationCapability(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  await requireGrantAuthority(deps.repo, actor, AUTHORITY_CHANGE_GATE[operation], input.objectKey, input.actionKey);
   const { previewDigest, ...changeInput } = input;
   if (previewDigest === undefined || previewDigest === null || previewDigest === "") {
     throw new AuthorityPreviewRefusal("PREVIEW_REQUIRED",

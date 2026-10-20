@@ -117,9 +117,10 @@ test("the reconciliation adds up: 28 entities and 400 fields, all seeded", () =>
   // 49 -> 50, objectsFromCapabilityAuthority 15 -> 16: Returns intake (#242, F7a) -- `inventoryReturn`, named by inventory.returns.intake (migration 1764580000000); a BUSINESS_ACTION-only security subject with no EntityDefinition, the same shape as settlement and rentalEquipment.
   // 50 -> 51, objectsFromCapabilityAuthority 16 -> 17: CRM activity (#243, F7b) -- `crmActivity`, named by crm.activity.read / crm.activity.create (migration 1764590000000); a security subject with no EntityDefinition and no CRED verb (reading it also needs customer.record.read, so a derived R cell would overstate it).
   // 51 -> 53, objectsFromCapabilityAuthority 17 -> 19: Records and reporting on EOS (Firebase exit B4, migration 1764640000000) -- `report` (the 38 report.* ids) and `performanceGoal` (performance.goal.read); BUSINESS_ACTION-only security subjects with no EntityDefinition. `reportDefinition` was already registered.
-  assert.equal(ledger.seeded.objects, 53);
+  // 53 -> 54, objectsFromCapabilityAuthority 19 -> 20: the delegated self-approval exemption (SAE Rule 2, migration 1764718000000) -- `selfApprovalExemption`, named by the seven approval.selfApproval.exempt* capabilities; a security subject with no EntityDefinition and no CRED
+  assert.equal(ledger.seeded.objects, 54);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 19);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 20);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

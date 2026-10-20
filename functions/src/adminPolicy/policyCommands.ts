@@ -59,6 +59,7 @@ import {
   ROLE_ASSIGNMENT_ONLY_CAPABILITIES,
 } from "./roleCapabilityAdministration";
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
+import { requireGrantAuthority, requireOwnerToAssignExemptionCarryingRole } from "./exemptionAdministration";
 import { PolicyStoreError } from "./policyRepository";
 import { GOVERNED_QUALIFICATION_CODES } from "../eosOps/contextualAuthorization";
 import {
@@ -1004,6 +1005,8 @@ export async function assignRole(
 
   const role = (await repo.listRoles(actor.tenantId)).find((r) => r.id === roleId);
   if (!role) throw new PolicyValidationError("role not found");
+  // STAFFING A ROLE THAT CARRIES A SELF-APPROVAL EXEMPTION KEY is the protected Owner's act, like the grant itself (SAE Rule 2): the Administrator cannot hand the exemption out through staffing.
+  await requireOwnerToAssignExemptionCarryingRole(repo, actor, roleId);
   // PROTECTED OWNER (Controller ruling 2026-09-27): never appointed through ordinary role administration --
   // not by admin.roleAssignment.write, admin.securityPolicy.write or R1, whoever the target. Decided before
   // anything else about the request, so no caller can learn more than the refusal.
@@ -2052,7 +2055,7 @@ async function refuseIfLastAdministrationPath(
 export async function grantObjectActionToRole(
   repo: PolicyRepository, actor: AdminActor, input: ObjectActionRoleGrantInput,
 ): Promise<RoleCapabilityRecord> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey, input.actionKey);
   const reason = requireReason(input.reason, "a Role grant");
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
@@ -2156,7 +2159,7 @@ export async function grantObjectActionToRole(
 export async function revokeObjectActionFromRole(
   repo: PolicyRepository, actor: AdminActor, input: ObjectActionRoleGrantInput,
 ): Promise<RoleCapabilityRecord | null> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey, input.actionKey);
   const reason = requireReason(input.reason, "a Role revoke");
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
@@ -2349,7 +2352,7 @@ const directAuditState = (capability: { key: string; objectKey: string; actionKe
 export async function grantObjectActionToPrincipal(
   repo: PolicyRepository, actor: AdminActor, input: ObjectActionPrincipalGrantInput,
 ): Promise<PrincipalCapabilityRecord> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey, input.actionKey);
   const reason = requireReason(input.reason, "a direct Principal grant (a governed exception)");
   refuseDirectScope(input);
   let expiresAt: string | null = null;
@@ -2415,7 +2418,7 @@ export async function grantObjectActionToPrincipal(
 export async function revokeObjectActionFromPrincipal(
   repo: PolicyRepository, actor: AdminActor, input: ObjectActionPrincipalGrantInput,
 ): Promise<PrincipalCapabilityRecord | null> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey, input.actionKey);
   const reason = requireReason(input.reason, "revoking a direct Principal grant");
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const principalId = nonEmpty(input.principalId, "principalId");
