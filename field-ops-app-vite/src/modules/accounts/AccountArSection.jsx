@@ -95,16 +95,53 @@ export default function AccountArSection({ accountId }) {
       {view.kind === ACCOUNT_AR_STATE.UNAVAILABLE && (
         <p className="ns-state">Receivables couldn’t be read. Try again later.</p>
       )}
-      {view.kind === ACCOUNT_AR_STATE.EMPTY && (
+      {view.kind === ACCOUNT_AR_STATE.EMPTY && view.summaryOnly && (
+        <p className="ns-state">No open {nounLower}s on this account within your companies{view.restricted ? " (limited to the receivables credited to you or your team)" : ""}.</p>
+      )}
+      {view.kind === ACCOUNT_AR_STATE.EMPTY && !view.summaryOnly && (
         <p className="ns-state">No {nounLower}s on this account{view.restricted ? " within your Finance visibility (limited to the receivables credited to you or your team)" : ""}.</p>
       )}
-      {view.kind === ACCOUNT_AR_STATE.READY && view.restricted && (
+      {view.kind === ACCOUNT_AR_STATE.READY && view.summaryOnly && (
+        // A6 -- the customer-balance SUMMARY. Five numbers per company and currency; there are no rows to list, and none is hinted at.
+        <>
+          <p className="ns-state" role="note">
+            <strong>A summary of this account&rsquo;s balance.</strong> Your role sees the totals for your companies, not the individual {nounLower}s.{view.restricted ? " They cover only the receivables credited to you or your team." : ""}
+          </p>
+          <div className="ns-table-wrap">
+            <table className="ns-table ns-table--cards">
+              <caption className="fo-sr-only">Balance summary for this account</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Company</th>
+                  <th scope="col" className="ns-num">Open</th>
+                  <th scope="col" className="ns-num">Outstanding</th>
+                  <th scope="col" className="ns-num">Overdue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.summaryRows.map((row) => (
+                  <tr key={row.key}>
+                    <td data-label="Company">{row.companyLabel}</td>
+                    <td data-label="Open" className="ns-num">{row.openCount}</td>
+                    <td data-label="Outstanding" className="ns-num">{row.outstandingText}</td>
+                    <td data-label="Overdue" className="ns-num">{row.overdueCount > 0 ? `${row.overdueCount} · ${row.overdueText}` : "None"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="ns-table__note">
+            {view.openCount} open, {view.overdueCount} overdue.
+          </p>
+        </>
+      )}
+      {view.kind === ACCOUNT_AR_STATE.READY && !view.summaryOnly && view.restricted && (
         <p className="ns-state" role="note">
           <strong>A part of this account&rsquo;s receivables.</strong> Your Finance visibility is limited to the receivables credited to you or
           your team, so the rows and balances below cover only those.
         </p>
       )}
-      {view.kind === ACCOUNT_AR_STATE.READY && (
+      {view.kind === ACCOUNT_AR_STATE.READY && !view.summaryOnly && (
         <>
           {showCompany ? (
             // Deliberately `ns-state` — the Account North Star's own vocabulary for a situation

@@ -243,7 +243,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // P-1 governed supplier purchase order authoring (DECISIONS #P-1, resolves OD-B3-1): five supplier.purchaseOrder.* capabilities, 27 Owner-ruled grants, the order's receiving warehouse and stamps, the lines' source request / price / release, the SPO number counter and the authoring idempotency record.
     "1764660000000_supplier-po-authoring.sql",
     // GRANT-1 Owner policy grants (2026-10-19): one capability (inventory.catalog.part.activate, the Part / Manufacturer status key split from inventory.catalog.activate) and 30 Owner-ruled grants (A1, A2, A3a, A3b, A4, A7). No schema.
-    "1764670000000_owner-policy-grants.sql"],
+    "1764670000000_owner-policy-grants.sql",
+    // A6 customer-balance summary (2026-10-19): one capability (finance.accountBalance.read, a READ key) and 8 Owner-ruled grants. No schema.
+    "1764680000000_account-balance-summary.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -486,6 +488,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // A6 customer-balance summary (1764680000000): -1 capability (finance.accountBalance.read), -8 grants, no schema; its down refuses while an Administration decision or a direct grant names the new key or one of its pairs
+    assert.deepEqual(await counts(), { caps: 194, grants: 689, mine: 26 });
     runMigrate(url, "down", 1); // GRANT-1 Owner policy grants (1764670000000): -1 capability (inventory.catalog.part.activate), -30 grants, no schema; its down refuses while an Administration decision or a direct grant names the new key or one of its pairs
     assert.deepEqual(await counts(), { caps: 193, grants: 659, mine: 26 });
     runMigrate(url, "down", 1); // P-1 supplier PO authoring (1764660000000): -5 capabilities (supplier.purchaseOrder.*), -27 grants, two new tables and the new columns dropped; its down refuses while an order, a number, a command record, a decision or a direct grant exists
@@ -631,7 +635,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the GRANT-1 Owner policy grants (1764670000000) first -- 1 capability, 30 grants
+    runMigrate(url, "down", 1); // peel the A6 customer-balance summary (1764680000000) first -- 1 capability, 8 grants
+    runMigrate(url, "down", 1); // then the GRANT-1 Owner policy grants (1764670000000) -- 1 capability, 30 grants
     runMigrate(url, "down", 1); // then the P-1 supplier PO authoring migration (1764660000000) -- 5 capabilities, 27 grants, two tables
     runMigrate(url, "down", 1); // then the B4 report / goal parity grants (1764650000000) -- 122 grants, no capability
     runMigrate(url, "down", 1); // then the Records and reporting migration (1764640000000, B4) -- 39 capabilities, no grant, four empty tables

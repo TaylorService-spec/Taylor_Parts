@@ -9,6 +9,7 @@
 //   reconcile   finance.reconciliation.record
 //   cost        inventory.receipt.correct + WAREHOUSE scope (late cost evidence -- costEvidenceSupplyCommand.ts)
 //   relief      inventory.transfer.dispatch + WAREHOUSE scope (intercompany inventory relief -- intercompanyInventoryRelief.ts)
+//   balance     finance.accountBalance.read         (A6: readAccountBalanceSummary -- five numbers per company and currency for ONE customer; no ids, no rows)
 //   policy      finance.policy.read / .prepare / .approve / .activate -- the Financial Policy lifecycle (financialPolicy.ts, #232),
 //               plus readMyFinancialPolicyAuthority (finance.policy.read): the caller's own reach, for the Administration screen
 // Configuration stays finance.configuration.manage on /admin/policy. A Sales or Technician principal holds none of the
@@ -45,6 +46,7 @@ import {
   type FinanceVisibility,
 } from "./financeVisibility";
 import { operatingCompanyDisplayName } from "../ownership/operatingCompanyAuthority";
+import { resolveInventoryCompanyAuthority } from "../eosOps/inventoryCompanyAuthority";
 
 export const FINANCE_ROUTE = "/operations/finance";
 export const FINANCE_VIEW_CAPABILITY = "finance.payment.read";
@@ -52,6 +54,12 @@ export const SETTLEMENT_RECORD_CAPABILITY = "finance.settlement.record";
 export const SETTLEMENT_APPLY_CAPABILITY = "finance.settlement.apply";
 export const SETTLEMENT_CORRECT_CAPABILITY = "finance.settlement.correct";
 export const RECONCILIATION_RECORD_CAPABILITY = "finance.reconciliation.record";
+/**
+ * A6: the customer-balance SUMMARY key (migration 1764680000000, PostgreSQL-native). It opens ONE operation, readAccountBalanceSummary, and nothing else: no
+ * obligation, settlement, handoff or package row, no payable / funding / intercompany section, and no write path. The full receivable detail stays on
+ * FINANCE_VIEW_CAPABILITY.
+ */
+export const ACCOUNT_BALANCE_READ_CAPABILITY = "finance.accountBalance.read";
 /** The existing cost-read authority (inventory.catalog.cost.read, DECISIONS #230; excluded from Protected Administrator standing). */
 export const COST_READ_CAPABILITY = "inventory.catalog.cost.read";
 
@@ -552,6 +560,68 @@ async function readFinanceOverview(deps: WorkOrderOperationDeps, caller: WorkOrd
   });
 }
 
+/**
+ * readAccountBalanceSummary { crmAccountId } -- A6 (Owner ruling 2026-10-19): the customer-balance SUMMARY for operational roles that were never given the Finance
+ * workspace. Held through its OWN key (finance.accountBalance.read), it returns, per reached company and currency, ONLY five numbers: how many receivables are open, what
+ * is outstanding, how many are overdue and what is overdue, as of now. It never returns an id (obligation, settlement, handoff, billing package), an invoice number, a
+ * payment or settlement row, or anything about payables, funding or intercompany, and it has no write path.
+ *
+ *   REACH   the Employee's company authority (home company, OPERATIONAL company-scoped Roles, explicit company-access grants; a PROTECTED ADMINISTRATOR holds every
+ *           company -- eosOps/inventoryCompanyAuthority.ts) UNION the explicit Finance company assignments (financeCompanyAccess.ts). A customer's balance in any other
+ *           company reads as NO DATA, exactly like a customer that owes nothing: the answer is the same empty list, so nothing says the account exists elsewhere.
+ *   ROWS    RECEIVABLE obligations, open (OPEN / PARTIAL, a balance outstanding), VOID and settled excluded, of that one CRM Account.
+ *   INNER   the same financeVisibility.ts decision every other Finance read asks: a sales role keeps its self / team restriction (INACTIVE today, so it reads nothing),
+ *           and Finance's exclusions and company isolation are inherited, not restated. A non-sales role holds no visibility key and so reads ALL customers in its reach.
+ *   TRUNCATED  a visible set beyond financeVisibility.ts's cap answers UNAVAILABLE, never a confident partial balance (the totals themselves are summed in SQL over every
+ *           row, so there is no page to truncate).
+ */
+async function readAccountBalanceSummary(deps: WorkOrderOperationDeps, caller: WorkOrderCaller, input: Record<string, unknown>) {
+  const assigned = financeCompanyReach(reachActor(caller), ACCOUNT_BALANCE_READ_CAPABILITY);
+  if (assigned === null) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this operation requires ${ACCOUNT_BALANCE_READ_CAPABILITY}`);
+  const extra = Object.keys(input ?? {}).filter((k) => k !== "crmAccountId");
+  if (extra.length > 0) refuse("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+  if (typeof input.crmAccountId !== "string" || input.crmAccountId.trim() === "") refuse("ACCOUNT_INVALID", "INVALID_INPUT", "crmAccountId is a non-empty account id");
+  const tenantId = caller.actor.tenantId;
+  const own = await resolveInventoryCompanyAuthority(deps.pool, tenantId, caller.actor.principalId);
+  const ownIds = own.companyKeys.length === 0 ? [] : (await deps.pool.query(
+    `SELECT DISTINCT operating_company_id AS id FROM eos_policy.tenant_operating_company_keys
+      WHERE tenant_id = $1 AND status = 'ACTIVE' AND operating_company_key = ANY($2::text[])`, [tenantId, [...own.companyKeys]])).rows.map((r) => String(r.id));
+  const reach = new Set([...ownIds, ...(assigned ?? [])]);
+  const companies = (await activeCompanies(deps.pool, tenantId)).filter((c) => reach.has(c));
+  const asOf = new Date().toISOString();
+  if (companies.length === 0) return Object.freeze({ status: "READY", asOf, restricted: false, summaries: Object.freeze([]) });
+  let vis: FinanceVisibility;
+  try {
+    vis = await visibilityOver(deps, caller, companies);
+  } catch (err) {
+    if (err instanceof FinanceOperationError && err.code === "FINANCE_VISIBILITY_TOO_WIDE") {
+      return Object.freeze({ status: "UNAVAILABLE", reason: "VISIBILITY_TOO_WIDE", asOf, restricted: false, summaries: Object.freeze([]) });
+    }
+    throw err;
+  }
+  const params: unknown[] = [tenantId];
+  const visible = obligationVisibilityClause(vis, "o", params);
+  params.push(companies); const inReach = params.length;
+  params.push(input.crmAccountId); const account = params.length;
+  const { rows } = await deps.pool.query(
+    `SELECT x.company, x.currency, count(*)::int AS open_count, coalesce(sum(x.outstanding), 0)::text AS outstanding,
+            (count(*) FILTER (WHERE x.overdue))::int AS overdue_count, coalesce(sum(x.outstanding) FILTER (WHERE x.overdue), 0)::text AS overdue_minor
+       FROM (SELECT o.operating_company_id AS company, o.currency, b.outstanding_minor AS outstanding, (${OVERDUE_SQL}) AS overdue
+               FROM eos_finance.obligations o
+               JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
+               JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
+              WHERE o.tenant_id = $1 AND ${visible} AND o.operating_company_id = ANY($${inReach}) AND o.kind = 'RECEIVABLE' AND o.status IN ('OPEN', 'PARTIAL')
+                AND b.outstanding_minor > 0 AND cp.kind = 'EXTERNAL_ORGANIZATION' AND cp.crm_account_id = $${account}) x
+      GROUP BY x.company, x.currency ORDER BY x.company, x.currency`, params);
+  return Object.freeze({
+    status: "READY", asOf, restricted: vis.restricted,
+    summaries: Object.freeze(rows.map((r) => Object.freeze({
+      operatingCompanyId: String(r.company), currency: String(r.currency), openReceivableCount: Number(r.open_count), outstandingMinor: String(r.outstanding),
+      overdueCount: Number(r.overdue_count), overdueMinor: String(r.overdue_minor),
+    }))),
+  });
+}
+
 const consolidatedRefused = (input: Record<string, unknown>) => {
   if (typeof input.operatingCompanyId === "string" && input.operatingCompanyId.toLowerCase() === "consolidated") {
     refuse("CONSOLIDATED_NOT_A_COMPANY", "INVALID_INPUT", "CONSOLIDATED is a reporting projection; it owns no settlement");
@@ -565,6 +635,7 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
   listSettlements,
   readMyFinanceCompanyAccess,
   readFinanceOverview,
+  readAccountBalanceSummary,
   readSettlement: async (deps, caller, input) => {
     requireView(caller);
     await requireSettlementVisible(deps, caller, input.settlementId);

@@ -1216,6 +1216,7 @@
       "equipment.model.manage",
       "equipment.record.manage",
       "equipment.record.read",
+      "finance.accountBalance.read",
       "finance.adjustment.record",
       "finance.configuration.manage",
       "finance.invoice.issue",

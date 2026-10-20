@@ -86,6 +86,36 @@ export function accountArFromObligations(pages) {
   return Object.freeze({ status: "ready", invoices, summary: summarize(invoices), recordNoun: EOS_RECORD_NOUN });
 }
 
+/**
+ * A6: the same envelope from the customer-balance SUMMARY (`readAccountBalanceSummary`, finance.accountBalance.read), for a caller who holds no
+ * Finance workspace. There are NO rows -- the server returns five numbers per company and currency and nothing else -- so `invoices` is empty and
+ * `summaryOnly` tells accountArView to render the totals instead of reading an empty list as "nothing owed". Money is only ever added within one
+ * currency. A non-READY answer (the server's UNAVAILABLE) or an unsafe amount is "unavailable", never a confident partial figure.
+ */
+export function accountArFromBalanceSummary(answer) {
+  if (!answer || answer.status !== "READY" || !Array.isArray(answer.summaries)) return UNAVAILABLE;
+  const summaryRows = [];
+  const outstandingByCurrency = {};
+  let openCount = 0;
+  let overdueCount = 0;
+  for (const s of answer.summaries) {
+    const outstanding = safeMinor(s?.outstandingMinor);
+    const overdue = safeMinor(s?.overdueMinor);
+    if (typeof s?.operatingCompanyId !== "string" || typeof s.currency !== "string" || outstanding === null || overdue === null
+      || !Number.isSafeInteger(s.openReceivableCount) || !Number.isSafeInteger(s.overdueCount)) return UNAVAILABLE;
+    summaryRows.push({ companyId: s.operatingCompanyId, currency: s.currency, openCount: s.openReceivableCount, outstandingMinor: outstanding,
+      overdueCount: s.overdueCount, overdueMinor: overdue });
+    openCount += s.openReceivableCount;
+    overdueCount += s.overdueCount;
+    add(outstandingByCurrency, s.currency, outstanding);
+  }
+  return Object.freeze({
+    status: "ready", invoices: [], summaryOnly: true, summaryRows, recordNoun: EOS_RECORD_NOUN,
+    summary: { count: openCount, openCount, overdueCount, outstandingByCurrency },
+    ...(answer.restricted === true ? { restricted: true } : {}),
+  });
+}
+
 const UNATTRIBUTED = "UNATTRIBUTED";
 
 /** Mirrors summarizeAccountAr (functions/src/finance/financeReadProjection.ts), except VOID rows are excluded from open: a void record is never owed. */

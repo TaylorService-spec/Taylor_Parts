@@ -30,6 +30,26 @@ There the same section reads the **Finance register** instead of issued invoices
 
 The Outstanding AR and Past due figures at the top, and the overdue rows in the Attention box, come from the same Finance register.
 
+## If you see a summary instead of a list
+
+Some roles — Field Manager, Parts Associate, Parts Manager, Purchasing Manager, Sales Manager, Salesperson, Shop Associate and Shop Manager — can see **how much a customer owes** without being given the Finance workspace. For them the **Accounts receivable** section shows a short **summary** under the line "A summary of this account's balance":
+
+| Column | What it means |
+|---|---|
+| **Company** | The operating company the money is owed to. |
+| **Open** | How many receivables are still open. |
+| **Outstanding** | The total still owed (one line per currency — currencies are never added together). |
+| **Overdue** | How many are past due, and the amount past due. |
+
+What the summary does **not** show: individual receivables, invoice or reference numbers, payments, or anything about settlements, payables or intercompany. You cannot change anything from it, and the Attention box does not list individual overdue items for you.
+
+Two rules decide what the summary covers:
+
+- **Your companies only.** It covers the operating company you work in, plus any company an administrator has also assigned you to in Finance. A customer who owes money only to a company outside yours looks exactly like a customer who owes nothing: **No open receivables on this account within your companies.** That is not a statement about the customer — it only means nothing is visible to you.
+- **Sales roles are limited to their own.** A Salesperson is limited to the receivables credited to them and a Sales Manager to those credited to their team, exactly as for the full list. Until your organization switches that reach on, a sales role's summary can show nothing; the section then says it is limited to the receivables credited to you or your team.
+
+If you also have Finance access with a company assignment, you see the full list described above instead.
+
 ## If it says "Not available to you"
 
 The receivables section, and the Outstanding AR and Past due figures, need finance access. Without it the section stays on the page and says **Not available to you**.

@@ -93,6 +93,8 @@ export function accountArAttentionItems(arView, { accountId } = {}) {
       // Confirmed healthy: the AR read succeeded and found zero invoices at all.
       return { items: [], sourceStatus: ACCOUNT_ATTENTION_SOURCE_STATUS.READY };
     case ACCOUNT_AR_STATE.READY: {
+      // A6: a balance SUMMARY has no receivables to attend to one by one. "Ready" with no items would read as "nothing overdue" while the summary says otherwise.
+      if (arView.summaryOnly === true) return { items: [], sourceStatus: ACCOUNT_ATTENTION_SOURCE_STATUS.DENIED };
       const rows = Array.isArray(arView.rows) ? arView.rows : [];
       const items = rows
         .filter((r) => r && r.position === "OVERDUE" && isNonEmptyString(r.key))

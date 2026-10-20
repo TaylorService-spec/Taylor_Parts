@@ -18,6 +18,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/accountBalanceSummary.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/accountLineOfBusiness.test.mjs",
       "runner": "node"
     },
