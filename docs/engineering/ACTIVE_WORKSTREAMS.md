@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
+- Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
+- Branch / worktree:   `docs/r1-production-recovery-release` · `.claude/worktrees/agent-ad1865bb5a1b23704`
+- Base commit:         `2f8be86f`
+- Owned paths:         `docs/operations/production-recovery-release-r1.md`
+- Shared paths req'd:  this registry
+- Dependencies:        none (git history + `evidence/firebase-deployed-inventory-20261019/` only)
+- Expected outcome:    Hosting `4f30ab3a`, Pages `6cac0423`, Functions `4f30ab3a` (84/84 export match) and Rules `0526140d` pinned, with tag commands for the controller
+- Protected boundaries:none reached (no deploy, tag push, cloud call, credential or workflow edit)
+- Lifecycle stage:     INTEGRATION (docs PR open; controller creates the tags after review)
+
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
 - Branch / worktree:   PR #2120 · Lane Firebase clone (private PG :55507)
@@ -371,6 +382,28 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Capability:          [CLOSED — AT REST 2026-08-07] Part Master in-app governed catalog write (ADR-009 G2). Phase 1 callables (createPart/updatePart/changePartStatus, PR #617, inert) + Phase 2 write workspace (PR #619, main c4121f6: PartMasterList evolved in-place + fail-closed partMasterWriteReadiness + partMasterCommandClient + partMasterWrite domain + usePartMasterWrite). Invariants verified (ONE Part authority / ONE trusted command path / NO client Firestore writes / NO parallel validator / NO parallel status vocab / actor server-derived / readiness fail-closed / honest states). RC `docs/releases/part-master-write-rc.md`; handoff `docs/releases/part-master-sandbox-handoff.md`. Authority reuses inventory.catalog.manage/.activate + the accepted inventoryCatalogAdministrator role design. PART_MASTER_WRITE_READY=false. Repo-complete; no further Product Engineering work. Reactivates only on integrated-sandbox experience review or a protected promotion authorization. (Merging remediated an inherited O-3 CI regression — see `docs/engineering/config-change-ci-coverage-contract.md`.)
 - Capability:          [CLOSED — REPO-COMPLETE, READ-BLOCKED 2026-08-07] Manufacturer in-app governed catalog write (catalog reference object Parts link to). Phase 1 callables (createManufacturer/updateManufacturer/changeManufacturerStatus, PR #625, inert) + Phase 2 workspace (PR #626, main a872f92: Manufacturers.jsx + fail-closed manufacturerWriteReadiness + manufacturerCommandClient + manufacturerWrite/manufacturersView domain + useManufacturerWrite). Invariants verified (ONE authority / ONE trusted command path / NO client writes / NO parallel validator/status / actor server-derived / honest states); design-code-review clean. Reuses inventory.catalog.manage/.activate + inventoryCatalogAdministrator design. RC `docs/releases/manufacturer-write-rc.md`; handoff `docs/releases/manufacturer-sandbox-handoff.md`. **READ AUTHORITY WAITING ON R-1** (Owner decision 2026-08-07 option (b) — WAIT: no new legacy isAdminOrDispatcher read site; manufacturers stays `read,write:if false`, workspace read fails closed). Requirement fed to R-1: `docs/assessments/r1-catalog-read-authority-requirement.md` (proposes durable `inventory.catalog.read` for parts/manufacturers/suppliers/part_supplier_items; permission catalog has NO catalog-read cap today). No production/deploy/grant/Rules. Reactivates on the governed catalog-read model + a promotion authorization.
 - Capability:          [CLOSED — WRITE/PROJECTION COMPLETE; READ WAITING ON R-1, 2026-08-07] Part↔Supplier procurement terms (`part_supplier_items`) — close the procure-to-stock gap (governed preferred-supplier + cost + lead time instead of free-form). Owner ratified the design + all 5 decisions (cost = SEPARATE `inventory.catalog.cost.read`; personas catalog-admin+purchasing-operator get cost / finance-future / others no-cost / owner-not-inferred; preferred = decision-support-no-auto-select; build write layer now = option (i)). Design `docs/architecture/part-supplier-items-procurement-terms-design.md`; RC `docs/releases/part-supplier-items-rc.md`. **WRITE LAYER MERGED (PR #629, main 77d23b2):** 4 callable adapters (createPartSupplierItem/updatePartSupplierItem/changePartSupplierItemStatus/setPreferredSupplier, inert) + PURE projection contract (`partSupplierItemProjections.ts`: relationship vs cost tiers per Owner §1; cost never leaks; fail-closed) + 13 emu/4 proj/2 export tests; design-review clean (HIGH cost-tier drift fixed). READ SERVICE + Purchasing UI **GATED ON R-1** (`inventory.catalog.read` + `.cost.read`; requirement fed via `docs/assessments/r1-catalog-read-authority-requirement.md`). `part_supplier_items` stays `read,write:if false` (no legacy read site). ALSO fixed a latent main break in #629: #626's repo-only comment in firestore.rules had diverged it from the live-deployed governed hash (ec1f0a9b) — restored byte-identical (LESSON: firestore.rules is hash-anchored to the deploy; no repo-only comments). Next: R-1 read capabilities → build read/projection service → Purchasing UI (all repo-only once R-1 lands) → protected promotion.
+
+- Capability:          Finance F-2 — the EOS finance reads serve every fact family the Firebase AR / Financials surfaces show (payment receipts and applications, the account-narrowed totals, the Sales Order reference), then the F-1 invoicing spec (docs only)
+- Agent/session:       Claude Code Lane F · Role: builder; controller merges
+- Branch / worktree:   `lane-f/f2-finance-read-families` (PR 1), then `lane-f/f1-invoicing-spec` (PR 2) · `D:/Taylor_Parts/.claude/worktrees/agent-a9e59098281003465`
+- Base commit:         `09a82d3e`
+- Owned paths:         `field-ops-app-vite/src/services/eosFinancialsClient.js` · `field-ops-app-vite/src/domain/{financialsEos,accountReceivablesEos}.js` · `functions/src/eosFinance/{financeOperations,settlement}.ts` (read shapes only) · `field-ops-app-vite/test/financeFactFamiliesEos.test.mjs` · `docs/architecture/f1-invoicing-spec.md`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `field-ops-app-vite/test/suites.json`
+- Dependencies:        none (read-only; no capability, migration or grant)
+- Expected outcome:    `financeReadCallableClient` has no consumer the EOS path cannot serve; the F-1 decisions are numbered for the Owner
+- Protected boundaries:none reached (F-1 build waits on the Owner's answers)
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+
+- Capability:          Lane Q-1 — quotes and approvals: PR 1 audit on every applied Commercial and CRM command (build); PR 2 the quote / discount approval specification (docs, Owner decisions; nothing of the workflow is built) (B5 matrix stage 6; scenarios A and E)
+- Agent/session:       Claude Code lane Q-1 · Role: builder; controller merges
+- Branch / worktree:   `q1-commercial-audit` (PR 1) then `q1-quote-approval-spec` (PR 2) · isolated agent worktree
+- Base commit:         `b3d09dc3`
+- Owned paths:         `functions/src/eosAudit/commandAuditEvent.ts` · the audit calls in `eosCommercial/commands/*CommandService.ts`, the `audit` field of `commercialCommandKernel.ts`, `eosCrm/accountAuthority.ts`, `contactAuthority.ts`, `accountLocationAuthority.ts` · `functions/test/q1*.test.mjs` · `docs/architecture/q1-quote-approval-spec.md`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/governance/precedence-sweep.json` · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` (lanes F and RES run in parallel; merge main, never drop their entries)
+- Dependencies:        none
+- Expected outcome:    every applied Commercial / CRM command is audited; the quote and discount approval choices are numbered Owner decisions
+- Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
+- Lifecycle stage:     INTEGRATION (PR 1) · DESIGNED (PR 2)
 
 ## Ready for assignment
 

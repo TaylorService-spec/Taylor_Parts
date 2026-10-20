@@ -16,6 +16,7 @@
 // TENANCY: the parent Account is read in the actor's tenant only, and `account_locations_account_same_tenant` makes a
 // cross-tenant link unrepresentable.
 import { randomUUID } from "node:crypto";
+import { recordCommandAudit, textLength } from "../eosAudit/commandAuditEvent.js";
 import { assertNoInventoryLocationDiscriminator, inheritOwnerFromAccount } from "../crm/customerIdentity.js";
 import {
   CRM_CAPABILITIES,
@@ -73,6 +74,15 @@ interface AccountLocationRow {
 
 const COLUMNS =
   "id, account_id, name, address_street, address_city, address_state, address_postal_code, access_notes, owner_employee_id, created_by, created_at, updated_by, updated_at";
+
+/**
+ * Q-1 audit view of a customer site: the name identifies it; the street address is recorded as presence and the access notes as a
+ * length, never as text (audit_events is append-only).
+ */
+const auditView = (p: AccountLocationProjection): Record<string, unknown> => {
+  const { addressStreet, addressCity, addressState, addressPostalCode, accessNotes, ...rest } = p;
+  return { ...rest, addressPresent: [addressStreet, addressCity, addressState, addressPostalCode].some((v) => v !== null), accessNotesLength: textLength(accessNotes) };
+};
 
 const project = (row: AccountLocationRow): AccountLocationProjection => ({
   accountLocationId: row.id,
@@ -143,6 +153,7 @@ export function createAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
           fields.get("addressState") ?? null, fields.get("addressPostalCode") ?? null, fields.get("accessNotes") ?? null,
           inheritOwnerFromAccount(parent.ownerEmployeeId), principalId],
       );
+      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createAccountLocation", targetKind: "crm_account_location", targetId: rows[0].id, before: null, after: auditView(project(rows[0])) });
       return { result: project(rows[0]), targetType: "ACCOUNT_LOCATION", targetId: rows[0].id };
     },
   );
@@ -161,6 +172,8 @@ export function updateAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
     },
     async (db, { tenantId, principalId }, { accountLocationId, changes }) => {
       const set = assignmentsOf(changes, LOCATION_UPDATE_COLUMNS, 4);
+      const prior = await db.query<AccountLocationRow>(`SELECT ${COLUMNS} FROM eos_crm.account_locations WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, accountLocationId]);
+      if (prior.rows.length === 0) fail("ACCOUNT_LOCATION_NOT_FOUND", "NOT_FOUND", "the customer site does not exist in this tenant");
       const { rows } = await db.query<AccountLocationRow>(
         `UPDATE eos_crm.account_locations SET ${set.sql}, updated_by = $3, updated_at = now()
           WHERE tenant_id = $1 AND id = $2
@@ -168,6 +181,15 @@ export function updateAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
         [tenantId, accountLocationId, principalId, ...set.values],
       );
       if (rows.length === 0) fail("ACCOUNT_LOCATION_NOT_FOUND", "NOT_FOUND", "the customer site does not exist in this tenant");
+      await recordCommandAudit(db, tenantId, principalId, {
+        action: "crm.updateAccountLocation", targetKind: "crm_account_location", targetId: accountLocationId,
+        before: auditView(project(prior.rows[0])),
+        after: {
+          ...auditView(project(rows[0])),
+          addressChanged: (["address_street", "address_city", "address_state", "address_postal_code"] as const).some((c) => prior.rows[0][c] !== rows[0][c]),
+          accessNotesChanged: prior.rows[0].access_notes !== rows[0].access_notes,
+        },
+      });
       return project(rows[0]);
     },
   );

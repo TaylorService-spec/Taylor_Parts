@@ -1298,6 +1298,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/financeFactFamiliesEos.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/b2EosOnlySignIn.test.mjs",
       "runner": "node --test"
     },

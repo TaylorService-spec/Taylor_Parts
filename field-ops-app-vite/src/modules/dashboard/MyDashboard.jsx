@@ -482,8 +482,8 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   const financeFilters = useMemo(
     () =>
       financePeriod
-        ? { periodStartMillis: financePeriod.startMillis, periodEndMillis: financePeriod.endInclusiveMillis }
-        : {},
+        ? { factTypes: ["INVOICE"], periodStartMillis: financePeriod.startMillis, periodEndMillis: financePeriod.endInclusiveMillis }
+        : { factTypes: ["INVOICE"] },
     [financePeriod],
   );
   const finance = useFinancialFacts(financeFilters, { enabled: wantsFinance });

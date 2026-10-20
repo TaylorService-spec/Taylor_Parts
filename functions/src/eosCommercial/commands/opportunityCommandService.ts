@@ -16,6 +16,7 @@ import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { isCommercialHandoffSource } from "../commercialOwnershipAuthority";
 import { stageCommercialOwnershipTransfer } from "../commercialOwnershipRepository";
 import { allocateCommercialNumber } from "../commercialNumbering";
+import { lineFacts, pickFields } from "../../eosAudit/commandAuditEvent";
 import {
   ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveSalesChannel, requireActiveTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
@@ -65,6 +66,14 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
     return {
       result: { opportunityId: id, opportunityNumber: number.number, stage: built.stage, editVersion: 1, ...accountable },
       target: target(id),
+      audit: {
+        action: "opportunity.create", targetKind: "opportunity", targetId: id, before: null,
+        after: {
+          opportunityNumber: number.number, accountId: built.accountId, ownerEmployeeId: built.ownerEmployeeId, operatingCompanyId: built.operatingCompanyId,
+          salesChannel: built.salesChannel, stage: built.stage, creditedSalespersonId: built.creditedSalespersonId, expectedValue: built.expectedValue,
+          lines: lineFacts(built.lines), ...accountable,
+        },
+      },
     };
   });
 }
@@ -158,9 +167,24 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       });
       ownershipHandoffId = recorded.id;
     }
+    // Q-1 audit: only what changed, by the builder's own field names (the values the record held, and the values it now holds).
+    const was: Record<string, unknown> = {
+      accountId: current.accountId, ownerEmployeeId: current.ownerEmployeeId, creditedSalespersonId: current.creditedSalespersonId,
+      salesChannel: current.salesChannel, need: current.need, expectedValue: current.expectedValue, expectedCloseAt: current.expectedCloseAtMillis,
+      nextAction: current.nextAction, lines: lineFacts(current.lines),
+    };
+    const changedKeys = Object.keys(patch).filter((k) => k in was);
+    const FREE_TEXT = ["need", "nextAction"]; // recorded as <field>Length, never the text
+    const patchView = "lines" in patch ? { ...patch, lines: lineFacts(patch.lines) } : patch;
     return {
       result: { opportunityId: current.id, changed: changes.map((c) => c.field), editVersion: (expected as number) + 1, ownershipHandoffId },
       target: target(current.id),
+      audit: {
+        action: "opportunity.update", targetKind: "opportunity", targetId: current.id,
+        before: { ...pickFields(was, changedKeys, FREE_TEXT), editVersion: expected },
+        after: { ...pickFields(patchView, changedKeys, FREE_TEXT), editVersion: (expected as number) + 1, ownershipHandoffId },
+        reason: handoffReason,
+      },
     };
   }, { family: "opportunity", id: input?.opportunityId });
 }
@@ -184,6 +208,11 @@ export function transitionOpportunity(deps: CommercialCommandDeps, actor: Commer
     return {
       result: { opportunityId: current.id, stage: patch.stage, outcome: patch.outcome, editVersion: current.editVersion + 1 },
       target: target(current.id),
+      audit: {
+        action: "opportunity.transition", targetKind: "opportunity", targetId: current.id,
+        before: { stage: current.stage, outcome: current.outcome, editVersion: current.editVersion },
+        after: { stage: patch.stage, outcome: patch.outcome, editVersion: current.editVersion + 1 },
+      },
     };
   }, { family: "opportunity", id: input?.opportunityId });
 }
@@ -229,6 +258,14 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
           editVersion: patch ? opportunity.editVersion + 1 : opportunity.editVersion,
         },
         target: target(opportunity.id),
+        audit: {
+          action: "opportunity.closeAsWon", targetKind: "opportunity", targetId: opportunity.id,
+          before: { stage: opportunity.stage, outcome: opportunity.outcome, editVersion: opportunity.editVersion },
+          after: {
+            stage: patch ? patch.stage : opportunity.stage, outcome: "WON", editVersion: patch ? opportunity.editVersion + 1 : opportunity.editVersion,
+            salesOrderId: order.salesOrderId, salesOrderNumber: order.salesOrderNumber, recovered: alreadyWon,
+          },
+        },
       };
     }, { family: "opportunity", id: input?.opportunityId });
 }

@@ -997,3 +997,7 @@ functions/migrations/1764690000000_performance-goal-authoring.sql
 docs/architecture/g1-goal-authoring-grant-parity.json
 functions/src/eosOps/performanceGoalAuthoring.ts
 functions/src/eosOps/performanceGoalReads.ts
+# Q-1 commercial and CRM command audit (2026-10-20): the suites; the command modules are covered by the eosCommercial/commands, eosCrm and eosAudit globs above.
+functions/test/q1CommandAuditInventory.test.mjs
+functions/test/q1CommercialCrmAuditPostgres.test.mjs
+functions/src/eosAudit/commandAuditEvent.ts
