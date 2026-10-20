@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SUPPLIER_PURCHASE_ORDER_GATE } from "../../access/shellCapabilityGates.js";
 import { newIdempotencyKey, supplierPurchasingClient, SUPPLIER_PO_OUTCOME } from "../../services/eosSupplierPurchasingClient.js";
-import { resolveActorDisplayName, useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -79,7 +79,8 @@ export default function SupplierPurchaseOrders({ hasCapability, client = supplie
     return [...ids].filter(Boolean);
   }, [list.orders, detail.order]);
   const { byUserId } = useGovernedEmployeeDirectory({ actorIds });
-  const nameOf = (id) => (id ? resolveActorDisplayName(id, byUserId) : "—");
+  // A recorded actor the directory cannot name (a former member) is "Name unavailable" -- the fact was recorded.
+  const nameOf = (id) => (id ? (byUserId?.get(id)?.displayName ?? "Name unavailable") : "—");
 
   const active = FILTERS.find((f) => f.key === filterKey) ?? FILTERS[0];
   const rows = active.statuses ? list.orders.filter((o) => active.statuses.includes(o.status)) : list.orders;

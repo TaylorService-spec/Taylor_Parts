@@ -324,6 +324,19 @@ describe("PartDetail -- the cards name who and when", () => {
     expect(rowText("Ordered By")).toContain("Logan Associate");
   });
 
+  it("Received: a recorded receiver the server cannot name (a former member) says Name unavailable, never Not recorded", async () => {
+    await show({ id: "r4b", status: "RECEIVED", receivedByName: null, receivedByRecorded: true, receivedAt: "2026-10-19T15:00:00.000Z" });
+    expect(rowText("Received By")).toContain("Name unavailable");
+    expect(rowText("Received By")).not.toContain("Not recorded");
+  });
+
+  it("Ordered: a recorded orderer the server cannot name (a former member) says Name unavailable, never Not recorded", async () => {
+    purchaseOrderState.current = { loading: false, data: { supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 3, orderedDate: "2026-10-19", createdAt: null, createdByName: null, createdByRecorded: true } };
+    await show({ id: "r6b", status: "ORDERED" });
+    expect(rowText("Ordered By")).toContain("Name unavailable");
+    expect(rowText("Ordered By")).not.toContain("Not recorded");
+  });
+
   it("Ordered: no recorded name says Not recorded", async () => {
     purchaseOrderState.current = { loading: false, data: { supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 3, orderedDate: "2026-10-19", createdAt: null, createdByName: null } };
     await show({ id: "r7", status: "ORDERED" });

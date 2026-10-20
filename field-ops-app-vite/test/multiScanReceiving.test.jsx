@@ -247,6 +247,30 @@ describe("Multi-scan receiving (submission and receipt)", () => {
     expect(screen.getByRole("button", { name: /receive another order/i })).toBeTruthy();
   });
 
+  it("an accepted receipt WITHOUT a receipt body still completes the order from the re-read status: no false not-receivable warning", async () => {
+    const complete = progress({ lines: [progressLine({ receivedQuantity: 5, remainingQuantity: 0, state: "RECEIVED" })], receivable: false, storedStatus: "RECEIVED", derivedState: "RECEIVED" });
+    const fetchPurchaseOrderProgress = vi.fn()
+      .mockResolvedValueOnce({ status: RECEIVING_OUTCOME.READY, progress: progress() })
+      .mockResolvedValue({ status: RECEIVING_OUTCOME.READY, progress: complete });
+    const d = deps({ fetchPurchaseOrderProgress, submitCanonicalReceive: vi.fn().mockResolvedValue({ status: RECEIVING_OUTCOME.APPLIED }) });
+    await readyToSubmit(d);
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    await screen.findByRole("button", { name: /receive another order/i });
+    expect(within(screen.getByRole("status", { name: "Receipt" })).getByText(/no receipt details were returned/i)).toBeTruthy();
+    expect(screen.queryByText(/not in a state that accepts a receipt/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /submit receipt/i })).toBeNull();
+  });
+
+  it("a receipt that leaves the order NOT receivable and not complete still says the order does not accept a receipt", async () => {
+    const closed = progress({ receivable: false, storedStatus: "CANCELLED", derivedState: "PARTIALLY_RECEIVED" });
+    const fetchPurchaseOrderProgress = vi.fn()
+      .mockResolvedValueOnce({ status: RECEIVING_OUTCOME.READY, progress: progress() })
+      .mockResolvedValue({ status: RECEIVING_OUTCOME.READY, progress: closed });
+    await readyToSubmit(deps({ fetchPurchaseOrderProgress }));
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    expect(await screen.findByText(/not in a state that accepts a receipt/i)).toBeTruthy();
+  });
+
   it("a PARTIAL receipt leaves the order receivable: the controls stay so the rest can be received", async () => {
     const d = deps();
     await readyToSubmit(d);

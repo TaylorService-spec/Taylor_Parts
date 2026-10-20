@@ -315,7 +315,7 @@ function OrderedCard({ request, resolveName }) {
             </tr>
             <tr>
               <td>Ordered By</td>
-              <td>{purchaseOrder.createdByName ?? <span className="fo-muted">Not recorded</span>}</td>
+              <td>{purchaseOrder.createdByName ?? (purchaseOrder.createdByRecorded ? "Name unavailable" : <span className="fo-muted">Not recorded</span>)}</td>
             </tr>
             <tr>
               <td>Recorded</td>
