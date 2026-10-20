@@ -25,6 +25,9 @@ SET search_path = eos_policy, public;
 
 -- ════════════════════ 1. the SQL seam ════════════════════
 
+-- COUPLING (review L5): the employment-status list below ('ACTIVE', 'CONTRACTOR') is a HARD-CODED COPY of ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES
+-- (functions/src/adminPolicy/employmentAccessEligibility.ts). The TypeScript seam reads that constant; this function cannot. If the constant ever changes, this function
+-- MUST be replaced in a new migration in the same change, or the SQL and TypeScript seams disagree.
 CREATE OR REPLACE FUNCTION eos_policy.protected_owner_employee(p_tenant TEXT, p_principal TEXT) RETURNS TEXT AS $$
     SELECT l.employee_id
       FROM eos_policy.employee_principal_links l
@@ -45,8 +48,10 @@ CREATE OR REPLACE FUNCTION eos_policy.protected_owner_employee(p_tenant TEXT, p_
      LIMIT 1
 $$ LANGUAGE sql STABLE;
 
+-- NEVER NULL: a non-Owner makes protected_owner_employee() NULL, and NULL = employee is NULL. A trigger written as NOT is_protected_owner_employee(...) inside an OR / IF would then NOT raise
+-- (a NULL condition is not true), which let a forged PROTECTED_OWNER basis through in CI. The COALESCE makes the answer TRUE or FALSE, so every caller is safe.
 CREATE OR REPLACE FUNCTION eos_policy.is_protected_owner_employee(p_tenant TEXT, p_principal TEXT, p_employee TEXT) RETURNS BOOLEAN AS $$
-    SELECT p_employee IS NOT NULL AND eos_policy.protected_owner_employee(p_tenant, p_principal) = p_employee
+    SELECT COALESCE(p_employee IS NOT NULL AND eos_policy.protected_owner_employee(p_tenant, p_principal) = p_employee, FALSE)
 $$ LANGUAGE sql STABLE;
 
 COMMENT ON FUNCTION eos_policy.protected_owner_employee(TEXT, TEXT) IS
