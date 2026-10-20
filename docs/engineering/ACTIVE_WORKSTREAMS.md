@@ -498,3 +498,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    a READY package's receivable gets exactly one invoice with an `INV-YYYY-######` number; issuing is one step for an authorized person
 - Protected boundaries:none reached (no capability, grant, Rules, deploy or production change)
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+
+- Capability:          Finance F-1b — governed credits, write-offs, adjustments, refunds and eligible voids of an issued invoice: request then separate-Employee approval at a $0 threshold; refund RECORDS only (no cash-out); void only before any money moves. Not the screen.
+- Agent/session:       Claude Code lane F-1b · Role: builder; controller merges and writes the migration
+- Branch / worktree:   `lane-f/f1b-invoice-corrections` · `D:/Taylor_Parts/.claude/worktrees/agent-a628440b8f1001ff4`
+- Base commit:         `5c1fe280`
+- Owned paths:         `functions/src/eosFinance/invoiceCorrection.ts` · `functions/src/eosFinance/settlement.ts` (shared apply/reverse helpers, the refund RECORD) · `functions/src/eosFinance/financeOperations.ts` (the four correction operations) · `functions/test/f1bInvoiceCorrection*.test.mjs` · `docs/architecture/f1b-invoice-correction-grant-proposal.json`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/governance/precedence-sweep.json` · `functions/test/adminPolicySuites.json` · `functions/src/adminPolicy/assignmentScopeRuntime.ts` · `field-ops-app-vite/src/services/financeApiClient.js`
+- Dependencies:        migration `1764702000000_invoice-corrections` (SQL saved as a `.txt`, written by the controller; its grant section is a PROPOSAL verified against nonprod first); F-1a (#2184)
+- Expected outcome:    every money correction of an issued invoice is requested by one Employee and applied only on a different Employee's approval; outstanding stays derived from the receivable
+- Protected boundaries:capability registration and the 15 PROPOSED grants (controller verifies against nonprod; no activation here); no production, Rules, deploy, Firebase or external-payment action
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)

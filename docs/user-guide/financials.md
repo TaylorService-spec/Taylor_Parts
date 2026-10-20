@@ -58,7 +58,10 @@ The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an ho
   otherwise the "Create invoices" button stays disabled and a note under it says who can issue.
 - **Credits & Adjustments** — the correction workspace. Its rule is printed on the page:
   corrections create new governed events; the original event remains history. "New
-  correction" stays disabled until correction commands and an approval policy are activated.
+  correction" stays disabled until the request and approve screen is added. The rules and the
+  commands are built: one person requests, a different Employee approves, a refund is recorded and
+  never paid, and a void is allowed only before any money moves
+  ([Correct an issued invoice](./financials/correct-an-invoice.md)).
   Declined corrections are always shown, never hidden.
 
 ## Third wave: plans and forecasts

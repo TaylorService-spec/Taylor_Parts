@@ -1007,3 +1007,8 @@ functions/test/f1aInvoiceIssuePostgres.test.mjs
 functions/migrations/1764700000000_invoice-issue.sql
 functions/src/eosFinance/invoiceIssue.ts
 field-ops-app-vite/src/modules/financials/InvoiceIssueQueue.jsx
+# F-1b governed credits, write-offs, adjustments, refunds and voids (2026-10-20): the suites and the module; the migration is written by the controller from the reviewed draft.
+functions/test/f1bInvoiceCorrection.test.mjs
+functions/test/f1bInvoiceCorrectionPostgres.test.mjs
+functions/src/eosFinance/invoiceCorrection.ts
+docs/architecture/f1b-invoice-correction-grant-proposal.json

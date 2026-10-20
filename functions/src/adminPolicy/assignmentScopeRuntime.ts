@@ -152,9 +152,11 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     capabilityKey: "finance.payment.read",
     // DOCUMENTATION for Administration, not behaviour: every operation whose company reach is this explicit assignment (financeCompanyAccess.ts). Each settlement
     // command is listed although it also needs its own key; issueInvoice (F-1a, finance.invoice.issue) is the same case -- its company is decided by this assignment.
+    // F-1b: the invoice-correction request / decision commands and their two reads are decided the same way (each also needs its own record or approval key).
     consumers:Object.freeze(["operations.readFinanceWorkspace", "operations.listObligations", "operations.readObligation", "operations.listSettlements",
       "operations.readSettlement", "operations.readMyFinanceCompanyAccess", "operations.recordSettlement", "operations.applySettlement",
       "operations.reverseSettlementApplication", "operations.voidSettlement", "operations.reconcileSettlement", "operations.issueInvoice",
+      "operations.requestInvoiceCorrection", "operations.decideInvoiceCorrection", "operations.listInvoiceCorrections", "operations.readInvoiceCorrection",
       "analysis.readAnalysisWorkspace", "analysis.readMeasureAnalysis"]),
   }),
   Object.freeze({

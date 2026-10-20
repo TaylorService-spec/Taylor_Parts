@@ -192,6 +192,22 @@ async function markFundedIfFullyReceived(c: Queryable, actor: FinanceActor, obli
   return String(fa.id);
 }
 
+/**
+ * ONE application of `amount` of a settlement (its locked row `st`) to an obligation, inside the caller's transaction: the obligation's SETTLEMENT fact and the
+ * application row, keyed `appKey`. The database floor (company, counterparty, currency, kind, unapplied amount) still decides. Shared by applySettlement and
+ * the refund path (F-1b re-applies what a refund leaves of a reversed application).
+ */
+export async function applySettlementAmountOn(c: Queryable, actor: FinanceActor, st: Record<string, any>, obligationId: string, amount: bigint, appKey: string): Promise<string> {
+  const applicationId = `sap_${randomUUID()}`;
+  const fact = await insertSettlementFactOn(c, actor, { obligationId, amountMinor: amount, effectiveAt: new Date(`${dateOnly(st.business_date)}T00:00:00Z`),
+    idempotencyKey: `stlapp:${applicationId}`, sourceRecordId: String(st.id), correlationId: st.correlation_id ?? null });
+  await c.query(
+    `INSERT INTO eos_finance.settlement_applications (id, tenant_id, settlement_id, obligation_id, amount_minor, settlement_fact_id, idempotency_key, applied_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [applicationId, actor.tenantId, st.id, obligationId, amount.toString(), fact.fact.id, appKey, actor.principalId]);
+  return applicationId;
+}
+
 export async function applyFinancialSettlement(pool: Pool, actor: FinanceActor, input: { settlementId: unknown; applications: unknown; idempotencyKey: unknown }) {
   only(input as Record<string, unknown>, ["settlementId", "applications", "idempotencyKey"]);
   const settlementId = text(input.settlementId, "settlementId");
@@ -218,14 +234,7 @@ export async function applyFinancialSettlement(pool: Pool, actor: FinanceActor, 
         out.push({ outcome: "replayed", applicationId: String(done[0].id), obligationId: item.obligationId });
         continue;
       }
-      const applicationId = `sap_${randomUUID()}`;
-      const fact = await insertSettlementFactOn(c, actor, { obligationId: item.obligationId, amountMinor: item.amount,
-        effectiveAt: new Date(`${dateOnly(st.business_date)}T00:00:00Z`),
-        idempotencyKey: `stlapp:${applicationId}`, sourceRecordId: settlementId, correlationId: st.correlation_id ?? null });
-      await c.query(
-        `INSERT INTO eos_finance.settlement_applications (id, tenant_id, settlement_id, obligation_id, amount_minor, settlement_fact_id, idempotency_key, applied_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [applicationId, actor.tenantId, settlementId, item.obligationId, item.amount.toString(), fact.fact.id, appKey, actor.principalId]);
+      const applicationId = await applySettlementAmountOn(c, actor, st, item.obligationId, item.amount, appKey);
       const f = await markFundedIfFullyReceived(c, actor, item.obligationId, settlementId);
       if (f) funded.push(f);
       out.push({ outcome: "recorded", applicationId, obligationId: item.obligationId });
@@ -243,23 +252,30 @@ export async function reverseSettlementApplication(pool: Pool, actor: FinanceAct
   const applicationId = text(input.applicationId, "applicationId");
   const reason = text(input.reason, "reason", 500);
   const key = text(input.idempotencyKey, "idempotencyKey");
-  return tx(pool, async (c) => {
-    const { rows } = await c.query(`SELECT * FROM eos_finance.settlement_applications WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, applicationId]);
-    const a = rows[0] ?? refuse("APPLICATION_NOT_FOUND", "NOT_FOUND", "no settlement application with that id");
-    if (a.status === "REVERSED") return Object.freeze({ outcome: "replayed" as const, applicationId, settlement: await readSettlementOn(c, actor.tenantId, a.settlement_id) });
-    // A FUNDED arrangement is terminal: un-receiving provider money is a provider-side correction, never an EOS rewrite.
-    const { rows: fa } = await c.query(
-      `SELECT fa.status FROM eos_finance.obligations o JOIN eos_finance.billing_packages p ON p.tenant_id = o.tenant_id AND p.id = o.source_record_id
-         JOIN eos_commercial.financing_arrangements fa ON fa.tenant_id = p.tenant_id AND fa.id = p.financing_arrangement_id
-        WHERE o.tenant_id = $1 AND o.id = $2 AND o.kind = 'FUNDING_RECEIVABLE'`, [actor.tenantId, a.obligation_id]);
-    if (fa[0]?.status === "FUNDED") refuse("FINANCING_FUNDED", "CONFLICT", "the arrangement is FUNDED; reversing provider funding is a provider-side correction");
-    const reversal = await reverseFactOn(c, actor, { factId: String(a.settlement_fact_id), reason, idempotencyKey: `stlrev:${applicationId}:${key}` });
-    await c.query(`UPDATE eos_finance.settlement_applications SET status = 'REVERSED', reversal_fact_id = $3, reversed_by = $4, reversed_at = now(), reversal_reason = $5
-      WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, applicationId, reversal.fact.id, actor.principalId, reason]);
-    const b = await readObligationBalance(c, actor.tenantId, String(a.obligation_id));
-    return Object.freeze({ outcome: "reversed" as const, applicationId, reversalFactId: reversal.fact.id, settlement: await readSettlementOn(c, actor.tenantId, a.settlement_id),
-      obligation: b && { obligationId: b.obligationId, status: b.status, outstandingMinor: b.outstandingMinor.toString() } });
-  });
+  return tx(pool, async (c) => reverseApplicationOn(c, actor, { applicationId, reason, key }));
+}
+
+/**
+ * REVERSE one application inside the caller's transaction (an equal-and-opposite fact; the original is kept). A REVERSED application replays. Shared by
+ * reverseSettlementApplication and the refund path (F-1b), so a refund reverses an application by exactly the rule a correction does.
+ */
+export async function reverseApplicationOn(c: Queryable, actor: FinanceActor, input: { applicationId: string; reason: string; key: string }) {
+  const { applicationId, reason, key } = input;
+  const { rows } = await c.query(`SELECT * FROM eos_finance.settlement_applications WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, applicationId]);
+  const a = rows[0] ?? refuse("APPLICATION_NOT_FOUND", "NOT_FOUND", "no settlement application with that id");
+  if (a.status === "REVERSED") return Object.freeze({ outcome: "replayed" as const, applicationId, settlement: await readSettlementOn(c, actor.tenantId, a.settlement_id) });
+  // A FUNDED arrangement is terminal: un-receiving provider money is a provider-side correction, never an EOS rewrite.
+  const { rows: fa } = await c.query(
+    `SELECT fa.status FROM eos_finance.obligations o JOIN eos_finance.billing_packages p ON p.tenant_id = o.tenant_id AND p.id = o.source_record_id
+       JOIN eos_commercial.financing_arrangements fa ON fa.tenant_id = p.tenant_id AND fa.id = p.financing_arrangement_id
+      WHERE o.tenant_id = $1 AND o.id = $2 AND o.kind = 'FUNDING_RECEIVABLE'`, [actor.tenantId, a.obligation_id]);
+  if (fa[0]?.status === "FUNDED") refuse("FINANCING_FUNDED", "CONFLICT", "the arrangement is FUNDED; reversing provider funding is a provider-side correction");
+  const reversal = await reverseFactOn(c, actor, { factId: String(a.settlement_fact_id), reason, idempotencyKey: `stlrev:${applicationId}:${key}` });
+  await c.query(`UPDATE eos_finance.settlement_applications SET status = 'REVERSED', reversal_fact_id = $3, reversed_by = $4, reversed_at = now(), reversal_reason = $5
+    WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, applicationId, reversal.fact.id, actor.principalId, reason]);
+  const b = await readObligationBalance(c, actor.tenantId, String(a.obligation_id));
+  return Object.freeze({ outcome: "reversed" as const, applicationId, reversalFactId: reversal.fact.id, settlement: await readSettlementOn(c, actor.tenantId, a.settlement_id),
+    obligation: b && { obligationId: b.obligationId, status: b.status, outstandingMinor: b.outstandingMinor.toString() } });
 }
 
 export async function voidFinancialSettlement(pool: Pool, actor: FinanceActor, input: { settlementId: unknown; reason: unknown }) {
@@ -274,6 +290,35 @@ export async function voidFinancialSettlement(pool: Pool, actor: FinanceActor, i
       [actor.tenantId, settlementId, actor.principalId, reason]);
     return Object.freeze({ outcome: "voided" as const, settlement: await readSettlementOn(c, actor.tenantId, settlementId) });
   });
+}
+
+// ════════════════════ refund RECORD (F-1b) ════════════════════
+
+/**
+ * The settlement kind of a recorded customer refund (DECISIONS #F-1b, Owner ruling OD-F1-11). It is NOT in SETTLEMENT_KINDS, so recordSettlement can never create one:
+ * the only writer is the approved refund (invoiceCorrection.ts), and it records EVIDENCE that a refund was owed and approved -- it executes, initiates and authorizes
+ * NO payment. "A new settlement kind is not to be read as permission to pay out."
+ */
+export const CUSTOMER_REFUND_KIND = "CUSTOMER_REFUND";
+
+/**
+ * Record the refund as a DISBURSEMENT settlement of the customer's counterparty, inside the caller's transaction. A record only: no method, no external reference,
+ * nothing is sent anywhere. It takes no application (the database pairs no obligation kind with it) and shows no unapplied remainder; it can be reconciled like
+ * any settlement, and it can never be voided (SETTLEMENT_REFUND_RECORD).
+ */
+export async function recordRefundDisbursementOn(c: Queryable, actor: FinanceActor, input: {
+  operatingCompanyId: string; counterpartyId: string; amountMinor: bigint; currency: string; businessDate: string; correctionId: string;
+}): Promise<string> {
+  const id = `stl_${randomUUID()}`;
+  const key = `refund:${input.correctionId}`;
+  const fingerprint = createHash("sha256").update(JSON.stringify([input.operatingCompanyId, input.counterpartyId, CUSTOMER_REFUND_KIND, input.amountMinor.toString(), input.currency, input.correctionId])).digest("hex");
+  await c.query(
+    `INSERT INTO eos_finance.settlements (id, tenant_id, operating_company_id, counterparty_id, kind, direction, amount_minor, currency, business_date,
+        source_reference, method, correlation_id, replaces_settlement_id, notes, idempotency_key, request_fingerprint, recorded_by)
+     VALUES ($1,$2,$3,$4,$5,'DISBURSEMENT',$6,$7,$8,$9,NULL,NULL,NULL,NULL,$10,$11,$12)`,
+    [id, actor.tenantId, input.operatingCompanyId, input.counterpartyId, CUSTOMER_REFUND_KIND, input.amountMinor.toString(), input.currency, input.businessDate,
+      key, key, fingerprint, actor.principalId]);
+  return id;
 }
 
 // ════════════════════ reconcile ════════════════════

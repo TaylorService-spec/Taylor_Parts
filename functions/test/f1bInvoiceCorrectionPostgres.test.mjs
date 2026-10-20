@@ -1,0 +1,507 @@
+// F-1b, over real PostgreSQL -- governed credits, write-offs, adjustments, refunds and eligible voids of an ISSUED invoice (DECISIONS #F-1b; migration 1764702000000).
+// Through the governed transport (/operations/finance), the people being REAL Principals linked to REAL Employees:
+//   TWO PEOPLE    every money action (credit, write-off, debit, refund, void) is REQUESTED then APPROVED by a SEPARATE authorized Employee at a $0 threshold: a 1-cent credit is
+//                 PENDING until approved; self-approval is refused (same Principal; one Principal holding both keys; a second Principal on the same Employee after a RELINK);
+//                 a requester-only holder cannot approve; a non-holder is refused; every refusal leaves the whole state unchanged (a state hash).
+//   THE INVOICE   its number, header, lines and totals are exactly as issued after every correction; the correction is its OWN row; OUTSTANDING is read from the receivable
+//                 and always equals the invoice's amount due plus the applied adjustments minus what was settled.
+//   REFUND        records the refund and its reconciliation only: the application is reversed (the original kept) and re-applied for the remainder, a CUSTOMER_REFUND
+//                 DISBURSEMENT RECORD is written, and NOTHING else happens -- no handoff, no payment, no execution path; the kind is not creatable through recordSettlement.
+//   VOID          only before any money moves (any application -- even a reversed one -- or any applied adjustment refuses it), with a reason and two people; the number is
+//                 kept, never reused; the database itself refuses a void after settlement even for an approved correction.
+//   COMPANY       a foreign company reads as nonexistent (identical to missing); a non-holder is refused; both before any write.
+//   REPLAY        the same key and request writes nothing; a different request under the key is refused; ONE audit row per applied command.
+//   DATABASE      the two-person CHECK, the approved-fact trigger, the origination-reversal guard and the narrow void gate hold on their own.
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
+import { assignFinanceCompanies } from "./support/financeCompanyAccess.mjs";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../lib/eosFinance/billingPackage.js");
+const sa = require("../lib/eosCommercial/commands/salesAgreementCommandService.js");
+const financeOps = require("../lib/eosFinance/financeOperations.js");
+
+const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
+const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
+const TENANT = "t-f1b";
+const FIN = "/operations/finance";
+
+test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const { q, admin, person, pool, call } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: TENANT, prefix: "f1b" });
+  const one = async (sql, v = []) => (await q(sql, v)).rows[0];
+  const count = async (sql, v = []) => Number((await one(sql, v)).n);
+  const ok = (r, what = "") => { assert.equal(r.status, 200, `${what} ${JSON.stringify(r.body).slice(0, 700)}`); return r.body.result; };
+  const refused = (r, status, code, what = "") => { assert.deepEqual([r.status, r.body.code], [status, code], `${what} ${JSON.stringify(r.body).slice(0, 500)}`); return r.body; };
+  const fn = (who, operation, input) => call(who, FIN, operation, input);
+  const sys = { tenantId: TENANT, principalId: "finance-system" };
+  let sk = 0;
+  const key = (k) => `${k}-${++sk}`;
+  const YEAR = Number((await one(`SELECT extract(year FROM now() AT TIME ZONE 'UTC')::int AS n`)).n);
+  const number = (n) => `INV-${YEAR}-${String(n).padStart(6, "0")}`;
+  const businessToday = async (company) => (await one(`SELECT to_char(eos_policy.operating_company_business_date($1,$2,now()),'YYYY-MM-DD') d`, [TENANT, company])).d;
+  const plusDays = (day, n) => { const [y, m, d] = day.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+
+  // ── roles: exactly the request keys, exactly the approval keys (so the suite does not depend on which Roles the migration's PROPOSED grants name) ──
+  const APPROVE_KEYS = ["finance.adjustment.approve", "finance.refund.approve", "finance.invoice.void.approve"];
+  assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = ANY($1)`, [APPROVE_KEYS]), 3, "migration 1764702000000 registered the three approval capabilities");
+  const customRole = async (roleKey, caps) => {
+    const made = await admin("createRole", { key: roleKey, name: roleKey, reason: "local test tenant only (F-1b)" });
+    assert.equal(made.ok, true, JSON.stringify(made).slice(0, 300));
+    for (const cap of caps) {
+      await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+               SELECT 'rc_' || substr(md5($1 || r.id || c.id), 1, 24), $1, r.id, c.id, 'f1b-test', 'f1b-test', 'f1b-test'
+                 FROM eos_policy.roles r, eos_policy.capabilities c WHERE r.tenant_id = $1 AND r.key = $2 AND c.key = $3
+               ON CONFLICT (tenant_id, role_id, capability_id) DO NOTHING`, [TENANT, roleKey, cap]);
+    }
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id=rc.role_id JOIN eos_policy.capabilities c ON c.id=rc.capability_id
+      WHERE r.tenant_id=$1 AND r.key=$2 AND c.key = ANY($3)`, [TENANT, roleKey, caps]), caps.length, `${roleKey} holds exactly what it was given`);
+  };
+  await customRole("f1bRequester", ["finance.adjustment.record", "finance.refund.record"]);
+  await customRole("f1bApprover", APPROVE_KEYS);
+  await customRole("f1bAdjApprover", ["finance.adjustment.approve"]);
+
+  // ── people: an issuer, a requester, three approvers, one holding both keys, an approver who is no Employee, company-narrowed ones, a relink pair, non-holders ──
+  const ctrl = await person("uid-ctrl", ["controller"], { id: "e-ctrl", name: "Sage Controller" });
+  const reqA = await person("uid-reqa", ["f1bRequester"], { id: "e-req-a", name: "Rita Requester" });
+  const appA = await person("uid-appa", ["f1bApprover"], { id: "e-app-a", name: "Alan Approver" });
+  const appB = await person("uid-appb", ["f1bApprover"], { id: "e-app-b", name: "Beth Approver" });
+  const both = await person("uid-both", ["f1bRequester", "f1bApprover"], { id: "e-both", name: "Bo Both" });
+  const adjApprover = await person("uid-adjapp", ["f1bAdjApprover"], { id: "e-adj", name: "Adam Adjustments" });
+  const appNoEmployee = await person("uid-appnoemp", ["f1bApprover"]);
+  const reqV = await person("uid-reqv", ["f1bRequester"], { id: "e-req-v", name: "Vera Requester" });
+  const appV = await person("uid-appv", ["f1bApprover"], { id: "e-app-v", name: "Vic Approver" });
+  const appT = await person("uid-appt", ["f1bApprover"], { id: "e-app-t", name: "Tara Taylor-only" });
+  const reqT = await person("uid-reqt", ["f1bRequester"], { id: "e-req-t", name: "Theo Taylor-only" });
+  const rl1 = await person("uid-rl1", ["f1bRequester"], { id: "e-rl", name: "Rey Link" });
+  const rl2 = await person("uid-rl2", ["f1bApprover"]);
+  const salesP = await person("uid-sales", ["salesperson"], { id: "e-sales", name: "Riley Retail" });
+  const techP = await person("uid-tech", ["technician"], { id: "e-tech", name: "Finley Tech", technician: true });
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [ctrl, reqA, appA, appB, both, adjApprover, appNoEmployee, rl1, rl2]);
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [reqV, appV], ["ventana"]);
+  await assignFinanceCompanies({ admin, q, tenant: TENANT }, [appT, reqT], ["taylor"]);
+
+  // ── customers, commercial helpers: a direct sale made READY, as F-1a ──
+  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-a',$1,'Harbor Grill','ACTIVE','f','f'),
+           ('acct-b',$1,'Other Diner','ACTIVE','f','f'), ('acct-c',$1,'Third Cafe','ACTIVE','f','f')`, [TENANT]);
+  await q(`INSERT INTO eos_crm.account_relationship_types (tenant_id, account_id, relationship_type) VALUES ($1,'acct-a','CUSTOMER'), ($1,'acct-b','CUSTOMER'), ($1,'acct-c','CUSTOMER')`, [TENANT]);
+  await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1,'RETAIL','ACTIVE','f','f','f') ON CONFLICT DO NOTHING`, [TENANT]);
+  const seller = await person("uid-seller", [], { id: "e-seller", name: "Sam Seller" });
+  const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) };
+  const deps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  let gn = 0;
+  const directPackage = async ({ account = "acct-a", price = 40000, tax = 0, companyKey = "taylor" } = {}) => {
+    const opp = `opp-f1b-${++gn}`;
+    await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, sales_channel, stage, operating_company_key,
+               credited_salesperson_employee_id, created_by, updated_by) VALUES ($1,$2,$1,$3,'e-seller','RETAIL','DECISION',$4,'e-seller','f','f')`, [opp, TENANT, account, companyKey]);
+    const ag = await sa.createSalesAgreement(deps, sellerActor, { idempotencyKey: `sa-${gn}`, opportunityId: opp, ownerEmployeeId: "e-seller", isLease: false,
+      taxEvidence: { status: "DETERMINED", amountMinor: tax, currency: "USD" },
+      lines: [{ kind: "SERVICE", ref: "SVC-X", quantity: 1, unitPrice: price, businessUnitId: "SERVICE" }] });
+    const agreementId = (ag.result ?? ag).salesAgreementId;
+    await sa.acceptSalesAgreement(deps, sellerActor, { idempotencyKey: `acc-${gn}`, salesAgreementId: agreementId });
+    const so = `so-f1b-${gn}`;
+    await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, state, sales_channel, currency, sales_agreement_id, created_by, updated_by)
+             VALUES ($1,$2,$1,$3,'e-seller',$4,'IN_FULFILLMENT','RETAIL','USD',$5,'f','f')`, [so, TENANT, account, companyKey, agreementId]);
+    await q(`INSERT INTO eos_commercial.sales_order_lines (tenant_id, sales_order_id, line_number, kind, ref, business_unit, ordered_qty, unit_price_minor) VALUES ($1,$2,1,'SERVICE','SVC-X','INSTALLATION',1,$3)`, [TENANT, so, price]);
+    await q(`INSERT INTO eos_commercial.sales_order_fulfillments (id, tenant_id, sales_order_id, line_number, line_kind, line_ref, quantity, source_kind, source_work_order_id, evidence_kind, operating_company_key, operating_company_id, account_id, fulfilled_at, recorded_by)
+             VALUES ($1,$2,$3,1,'SERVICE','SVC-X',1,'WORK_ORDER_COMPLETION',$4,'SERVICE_PERFORMED',$5,$5,$6,now(),'f')`, [`ful-${so}`, TENANT, so, `wo-${so}`, companyKey, account]);
+    const out = await pkg.prepareBillingPackage(pool, sys, { salesOrderId: so });
+    assert.equal(out.status, "READY");
+    const obligation = (await one(`SELECT id FROM eos_finance.obligations WHERE tenant_id=$1 AND source_record_id=$2 AND kind='RECEIVABLE'`, [TENANT, out.packageId]))?.id ?? null;
+    return { so, packageId: out.packageId, obligation };
+  };
+  /** An invoice issued the F-1a way (the issuer is the controller, assigned to both companies), with its receivable. */
+  const issued = async (opts = {}) => {
+    const p = await directPackage(opts);
+    const invoice = ok(await fn(ctrl, "issueInvoice", { billingPackageId: p.packageId, idempotencyKey: key("iss"), dueOn: plusDays(await businessToday(opts.companyKey ?? "taylor"), 30), dueReason: "stated" }), "issue").invoice;
+    return { ...p, invoice };
+  };
+
+  // ── the state hash: every table a correction may touch, and the audit rows ──
+  const hashOf = async (table, order) => (await one(`SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY ${order}), '')) h FROM eos_finance.${table} x WHERE x.tenant_id = $1`, [TENANT])).h;
+  const state = async () => ({
+    invoices: await hashOf("invoices", "x.id"), lines: await hashOf("invoice_lines", "x.id"), corrections: await hashOf("invoice_corrections", "x.id"),
+    facts: await hashOf("financial_facts", "x.id"), obligations: await hashOf("obligations", "x.id"), settlements: await hashOf("settlements", "x.id"),
+    applications: await hashOf("settlement_applications", "x.id"), handoffs: await hashOf("accounting_handoffs", "x.id"),
+    counters: await hashOf("invoice_number_counters", "x.year, x.operating_company_key"),
+    audits: await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1 AND action LIKE 'finance.correction.%'`, [TENANT]),
+  });
+  const bal = async (obligationId) => {
+    const b = await one(`SELECT originated_minor::text o, settled_minor::text s, outstanding_minor::text d, status FROM eos_finance.obligation_balances WHERE tenant_id=$1 AND obligation_id=$2`, [TENANT, obligationId]);
+    return { originated: b.o, settled: b.s, outstanding: b.d, status: b.status };
+  };
+  const invoiceHash = async (invoiceId) => (await one(`SELECT md5(i::text) h FROM eos_finance.invoices i WHERE i.id=$1`, [invoiceId])).h
+    + (await one(`SELECT md5(coalesce(string_agg(l::text, '|' ORDER BY l.id), '')) h FROM eos_finance.invoice_lines l WHERE l.invoice_id=$1`, [invoiceId])).h;
+  const request = (who, input) => fn(who, "requestInvoiceCorrection", { idempotencyKey: key("req"), ...input });
+  const decide = (who, correctionId, decision, over = {}) => fn(who, "decideInvoiceCorrection", { correctionId, decision, reason: "Reviewed against the order", idempotencyKey: key("dec"), ...over });
+  const approve = (who, c, over = {}) => decide(who, c.id, "APPROVE", { amountMinor: Number(c.amountMinor), ...over });
+
+  // ═══════════ the main invoice ═══════════
+  const A = await issued({ price: 40000, account: "acct-a" });
+  assert.equal(A.invoice.invoiceNumber, number(1));
+  const A_HASH = await invoiceHash(A.invoice.id);
+  let c1;
+
+  await t.test("$0 THRESHOLD: a 1-cent credit is only PENDING -- nothing moves until a separate Employee approves", async () => {
+    const before = await state();
+    const r = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 1, reason: "Pricing correction" }), "request");
+    assert.equal(r.outcome, "requested");
+    c1 = r.correction;
+    assert.deepEqual([c1.status, c1.kind, c1.amountMinor, c1.currency, c1.invoiceNumber, c1.requestedBy, c1.requestedByEmployeeId, c1.decidedBy],
+      ["PENDING", "CREDIT_MEMO", "1", "USD", number(1), reqA.principalId, "e-req-a", null]);
+    const after = await state();
+    assert.deepEqual([after.facts, after.obligations, after.invoices, after.lines, after.settlements, after.applications, after.handoffs],
+      [before.facts, before.obligations, before.invoices, before.lines, before.settlements, before.applications, before.handoffs], "a request moves nothing: no fact, no receivable, no invoice change");
+    assert.equal(after.audits, before.audits + 1, "ONE audit row for the applied request");
+    assert.deepEqual(await bal(A.obligation), { originated: "40000", settled: "0", outstanding: "40000", status: "OPEN" });
+    // $0 is not an amount; a negative or fractional amount is not either
+    for (const bad of [0, -5, 1.5]) refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: bad, reason: "x" }), 400, "AMOUNT_INVALID");
+    assert.deepEqual(await state(), after, "refusals left no trace");
+  });
+
+  await t.test("SEPARATE APPROVER REQUIRED: non-holders, a requester-only holder, self-approval (one Principal holding both keys), a RELINKED Employee and an approver who is no Employee are all refused with zero trace", async () => {
+    for (const who of [salesP, techP]) {
+      refused(await request(who, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 1, reason: "x" }), 403, "CAPABILITY_REQUIRED", "request by a non-holder");
+      refused(await decide(who, c1.id, "APPROVE", { amountMinor: 1 }), 403, "CAPABILITY_REQUIRED", "decision by a non-holder");
+    }
+    // the requester-only holder holds the RECORD keys, not the approval key; an approval key is not a request key
+    refused(await decide(reqA, c1.id, "APPROVE", { amountMinor: 1 }), 403, "CAPABILITY_REQUIRED", "requester-only holder");
+    refused(await decide(reqA, c1.id, "REJECT"), 403, "CAPABILITY_REQUIRED", "a requester rejects nothing: she withdraws");
+    refused(await request(appA, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 1, reason: "x" }), 403, "CAPABILITY_REQUIRED", "approver-only holder requests");
+    // one Principal holding BOTH keys cannot approve (or reject) her own request
+    const own = ok(await request(both, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 2, reason: "Own request" }), "own").correction;
+    const s1 = await state();
+    refused(await decide(both, own.id, "APPROVE", { amountMinor: 2 }), 412, "SELF_APPROVAL_FORBIDDEN", "same Principal");
+    refused(await decide(both, own.id, "REJECT"), 412, "SELF_APPROVAL_FORBIDDEN", "same Principal rejecting");
+    // an approver who is not an Employee: two people need two Employees
+    refused(await decide(appNoEmployee, c1.id, "APPROVE", { amountMinor: 1 }), 412, "APPROVER_EMPLOYEE_REQUIRED");
+    assert.deepEqual(await state(), s1, "zero trace");
+    // RELINK: Rey requests; the same human (Employee e-rl) is moved to a NEW Principal, who holds the approval key -- still the same Employee
+    const viaRl = ok(await request(rl1, { kind: "CREDIT_MEMO", invoiceId: A.invoice.id, amountMinor: 3, reason: "Relink case" }), "rl request").correction;
+    assert.equal(viaRl.requestedByEmployeeId, "e-rl");
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE tenant_id=$1 AND principal_id=$2 AND status='active'`, [TENANT, rl1.principalId]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ('lnk-e-rl-2',$1,$2,'e-rl','taylor','OPERATOR_ASSERTED','active','fixture','relinked the same human')`, [TENANT, rl2.principalId]);
+    const s2 = await state();
+    refused(await decide(rl2, viaRl.id, "APPROVE", { amountMinor: 3 }), 412, "SELF_APPROVAL_FORBIDDEN", "a second Principal on the SAME Employee after a relink");
+    assert.deepEqual(await state(), s2, "zero trace");
+    // company: an approver assigned to Ventana only reads this Taylor correction as nonexistent
+    refused(await decide(appV, c1.id, "APPROVE", { amountMinor: 1 }), 404, "CORRECTION_NOT_FOUND", "foreign-company approver");
+    // the amount approved is the amount requested, and every decision states its reason
+    refused(await decide(appA, c1.id, "APPROVE", { amountMinor: 2 }), 412, "APPROVAL_AMOUNT_MISMATCH");
+    refused(await decide(appA, c1.id, "APPROVE", { amountMinor: 1, reason: " " }), 400, "REASON_REQUIRED");
+    assert.deepEqual(await state(), s2, "no refusal wrote anything");
+    assert.equal((await one(`SELECT status FROM eos_finance.invoice_corrections WHERE id=$1`, [c1.id])).status, "PENDING");
+    // clean up the two probes so later totals stay legible
+    ok(await decide(appA, own.id, "REJECT", { reason: "Probe" }), "reject own");
+    ok(await decide(appA, viaRl.id, "REJECT", { reason: "Probe" }), "reject relink");
+  });
+
+  await t.test("APPROVED by a separate Employee: the credit moves the receivable only; the invoice (number, header, lines, totals) is exactly as issued; ONE audit row; replay writes nothing", async () => {
+    const before = await state();
+    const decided = ok(await approve(appA, c1, { idempotencyKey: "dec-c1" }), "approve");
+    assert.equal(decided.outcome, "applied");
+    const c = decided.correction;
+    assert.deepEqual([c.status, c.decidedBy, c.decidedByEmployeeId, c.requestedByEmployeeId, c.decisionReason], ["APPLIED", appA.principalId, "e-app-a", "e-req-a", "Reviewed against the order"]);
+    assert.notEqual(c.decidedByEmployeeId, c.requestedByEmployeeId);
+    assert.ok(c.factId, "the adjustment fact is recorded on the correction");
+    assert.deepEqual(await bal(A.obligation), { originated: "39999", settled: "0", outstanding: "39999", status: "OPEN" }, "outstanding is read from the receivable and reflects the credit");
+    const fact = await one(`SELECT fact_class, fact_type, amount_minor::text a, source_domain, source_record_id FROM eos_finance.financial_facts WHERE id=$1`, [c.factId]);
+    assert.deepEqual([fact.fact_class, fact.fact_type, fact.a, fact.source_domain, fact.source_record_id], ["OBLIGATION", "RECEIVABLE_CREDITED", "-1", "INVOICE_CORRECTION", c1.id]);
+    assert.equal(await invoiceHash(A.invoice.id), A_HASH, "the issued invoice and its lines are untouched");
+    const totals = await one(`SELECT total_minor::text t, amount_due_minor::text d, is_void FROM eos_finance.invoice_totals WHERE invoice_id=$1`, [A.invoice.id]);
+    assert.deepEqual([totals.t, totals.d, totals.is_void], ["40000", "40000", false], "the invoice states what it ORIGINALLY billed");
+    assert.equal((await one(`SELECT invoice_number FROM eos_finance.invoices WHERE id=$1`, [A.invoice.id])).invoice_number, number(1), "the number is preserved");
+    const after = await state();
+    assert.equal(after.audits, before.audits + 1, "ONE audit row for the applied approval");
+    const audit = await one(`SELECT actor_uid, target_kind, before, after, reason FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='finance.correction.approve' AND target_id=$2`, [TENANT, c1.id]);
+    assert.deepEqual([audit.actor_uid, audit.target_kind, audit.before.status, audit.after.status, audit.after.requestedByEmployeeId, audit.after.decidedByEmployeeId, audit.reason],
+      [appA.principalId, "invoice_correction", "PENDING", "APPLIED", "e-req-a", "e-app-a", "Reviewed against the order"]);
+    assert.deepEqual(Object.keys(audit.after).filter((k) => /notes|description|instructions|comment/i.test(k)), [], "no free text beyond the governed reason");
+    // REPLAY: same approver, same key and request -> the stored answer, nothing written
+    const replay = ok(await approve(appA, c1, { idempotencyKey: "dec-c1" }), "replay");
+    assert.equal(replay.outcome, "replayed");
+    assert.deepEqual(await state(), after, "a replay writes nothing: no fact, no row, no audit");
+    refused(await approve(appA, c1, { idempotencyKey: "dec-c1", reason: "A different decision" }), 409, "IDEMPOTENCY_KEY_REUSED");
+    refused(await approve(appB, c1), 409, "CORRECTION_NOT_PENDING", "another approver finds it already decided");
+    refused(await approve(appA, c1, { idempotencyKey: key("again") }), 409, "CORRECTION_NOT_PENDING");
+    assert.deepEqual(await state(), after, "neither refusal left a trace");
+  });
+
+  await t.test("REQUEST REPLAY: the same key and request writes nothing; the same key with another request is refused; a foreign company and a missing invoice read alike", async () => {
+    const input = { kind: "WRITE_OFF", invoiceId: A.invoice.id, amountMinor: 7, reason: "Uncollectible remainder", idempotencyKey: "req-wo-1" };
+    const first = ok(await fn(reqA, "requestInvoiceCorrection", input), "first");
+    const before = await state();
+    const again = ok(await fn(reqA, "requestInvoiceCorrection", input), "again");
+    assert.deepEqual([again.outcome, again.correction.id], ["replayed", first.correction.id]);
+    assert.deepEqual(await state(), before);
+    refused(await fn(reqA, "requestInvoiceCorrection", { ...input, amountMinor: 8 }), 409, "IDEMPOTENCY_KEY_REUSED");
+    assert.deepEqual(await state(), before);
+    ok(await decide(appA, first.correction.id, "REJECT", { reason: "Not needed" }), "reject");
+    // foreign / missing
+    const V = await issued({ price: 1000, companyKey: "ventana", account: "acct-b" });
+    const mine = await state();
+    const missing = refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: "inv-does-not-exist", amountMinor: 1, reason: "x" }), 404, "INVOICE_NOT_FOUND");
+    const foreign = refused(await request(reqT, { kind: "CREDIT_MEMO", invoiceId: V.invoice.id, amountMinor: 1, reason: "x" }), 404, "INVOICE_NOT_FOUND", "Ventana invoice, Taylor-only requester");
+    assert.equal(foreign.message, missing.message, "a foreign company reads exactly like a missing invoice");
+    assert.deepEqual(await state(), mine, "neither wrote");
+  });
+
+  await t.test("EVERY MONEY ACTION needs a separate approver: write-off, debit, credit above outstanding refused, REJECT and WITHDRAW paths; outstanding always equals the invoice amount plus the applied adjustments", async () => {
+    const B = await issued({ price: 10000, account: "acct-b" });
+    const B_HASH = await invoiceHash(B.invoice.id);
+    const s0 = await state();
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 10001, reason: "too much" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    refused(await request(reqA, { kind: "WRITE_OFF", invoiceId: B.invoice.id, amountMinor: 10001, reason: "too much" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), s0);
+    // write-off (the both-holder cannot approve her own)
+    const wo = ok(await request(both, { kind: "WRITE_OFF", invoiceId: B.invoice.id, amountMinor: 2500, reason: "Small balance write-off" }), "wo").correction;
+    refused(await decide(both, wo.id, "APPROVE", { amountMinor: 2500 }), 412, "SELF_APPROVAL_FORBIDDEN");
+    assert.deepEqual(await bal(B.obligation), { originated: "10000", settled: "0", outstanding: "10000", status: "OPEN" }, "not applied");
+    const woDone = ok(await approve(appA, wo), "approve wo").correction;
+    assert.equal(woDone.status, "APPLIED");
+    assert.equal((await one(`SELECT fact_type FROM eos_finance.financial_facts WHERE id=$1`, [woDone.factId])).fact_type, "RECEIVABLE_WRITTEN_OFF");
+    assert.deepEqual(await bal(B.obligation), { originated: "7500", settled: "0", outstanding: "7500", status: "OPEN" });
+    // debit charge (positive); the requester cannot decide it
+    const dc = ok(await request(reqA, { kind: "DEBIT_CHARGE", invoiceId: B.invoice.id, amountMinor: 400, reason: "Late fee per terms" }), "dc").correction;
+    refused(await decide(reqA, dc.id, "APPROVE", { amountMinor: 400 }), 403, "CAPABILITY_REQUIRED");
+    ok(await approve(appB, dc), "approve dc");
+    assert.deepEqual(await bal(B.obligation), { originated: "7900", settled: "0", outstanding: "7900", status: "OPEN" });
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 7901, reason: "too much" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    // two pending credits whose SUM exceeds outstanding: the second APPROVAL is refused (eligibility is re-decided under the lock)
+    const p1 = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 5000, reason: "First credit" }), "p1").correction;
+    const p2 = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 5000, reason: "Second credit" }), "p2").correction;
+    ok(await approve(appA, p1), "approve p1");
+    const mid = await state();
+    refused(await approve(appA, p2), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), mid, "the refused approval wrote nothing; p2 is still PENDING");
+    assert.equal((await one(`SELECT status FROM eos_finance.invoice_corrections WHERE id=$1`, [p2.id])).status, "PENDING");
+    // REJECT by a separate person; a rejected correction is terminal
+    ok(await decide(appA, p2.id, "REJECT", { reason: "Exceeds what is owed" }), "reject");
+    refused(await approve(appB, p2), 409, "CORRECTION_NOT_PENDING", "a rejected correction is terminal");
+    // WITHDRAW is the requester's own, with the request key
+    const w = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 100, reason: "Withdrawn later" }), "w").correction;
+    refused(await decide(appA, w.id, "WITHDRAW", { reason: "not mine" }), 403, "CAPABILITY_REQUIRED", "an approver holds no request key to withdraw with");
+    refused(await decide(both, w.id, "WITHDRAW", { reason: "not mine" }), 412, "WITHDRAW_BY_REQUESTER_ONLY");
+    const wd = ok(await decide(reqA, w.id, "WITHDRAW", { reason: "Entered in error" }), "withdraw").correction;
+    assert.deepEqual([wd.status, wd.decidedBy], ["WITHDRAWN", reqA.principalId]);
+    // the invariant: the invoice states what it originally billed; the receivable = that + applied adjustments - settled
+    assert.equal(await invoiceHash(B.invoice.id), B_HASH, "the invoice is untouched by the corrections");
+    const inv = await one(`SELECT t.amount_due_minor::text due, b.outstanding_minor::text out,
+        (SELECT COALESCE(sum(f.amount_minor),0)::text FROM eos_finance.financial_facts f WHERE f.tenant_id=t.tenant_id AND f.obligation_id=b.obligation_id
+          AND f.fact_type IN ('RECEIVABLE_CREDITED','RECEIVABLE_CHARGED','RECEIVABLE_WRITTEN_OFF')) adj
+      FROM eos_finance.invoice_totals t JOIN eos_finance.obligation_balances b ON b.tenant_id=t.tenant_id AND b.obligation_id=$2 WHERE t.invoice_id=$1`, [B.invoice.id, B.obligation]);
+    assert.equal(BigInt(inv.out), BigInt(inv.due) + BigInt(inv.adj), "invoice and obligation never diverge: outstanding = amount due + adjustments - settled (0)");
+    // a credit to nothing settles the receivable: it owes nothing and shows as SETTLED, not OPEN
+    const rest = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 2900, reason: "Remainder credited" }), "rest").correction;
+    ok(await approve(appA, rest), "approve rest");
+    assert.deepEqual(await bal(B.obligation), { originated: "0", settled: "0", outstanding: "0", status: "SETTLED" });
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: B.invoice.id, amountMinor: 1, reason: "nothing left" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    // ONE audit row per applied command on this invoice: 6 requests, 4 approvals, 1 rejection, 1 withdrawal (the refusals wrote none)
+    const rows = (await q(`SELECT action, count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1 AND action LIKE 'finance.correction.%'
+        AND target_id IN (SELECT id FROM eos_finance.invoice_corrections WHERE invoice_id=$2) GROUP BY action ORDER BY action`, [TENANT, B.invoice.id])).rows;
+    assert.deepEqual(rows.map((r) => [r.action, r.n]), [["finance.correction.approve", 4], ["finance.correction.reject", 1], ["finance.correction.request", 6], ["finance.correction.withdraw", 1]]);
+  });
+
+  await t.test("REFUND records only: the application is reversed and re-applied for the remainder, a CUSTOMER_REFUND disbursement RECORD is written, nothing is paid or queued, and the kind cannot be created any other way", async () => {
+    const R = await issued({ price: 20000, account: "acct-c" });
+    const pay = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: 20000, currency: "USD", sourceReference: "CHK-F1B", idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: R.obligation, amountMinor: 20000 }], idempotencyKey: key("app") }), "apply");
+    const appRow = await one(`SELECT id FROM eos_finance.settlement_applications WHERE tenant_id=$1 AND settlement_id=$2 AND status='APPLIED'`, [TENANT, pay.id]);
+    assert.deepEqual(await bal(R.obligation), { originated: "20000", settled: "20000", outstanding: "0", status: "SETTLED" });
+    const R_HASH = await invoiceHash(R.invoice.id);
+    // the refund names an application of THIS invoice, for no more than was applied
+    const before = await state();
+    refused(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 20001, applicationId: appRow.id, reason: "too much" }), 412, "REFUND_EXCEEDS_APPLIED");
+    refused(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 100, applicationId: "sap-nope", reason: "x" }), 404, "APPLICATION_NOT_FOUND");
+    refused(await request(reqA, { kind: "REFUND", invoiceId: A.invoice.id, amountMinor: 100, applicationId: appRow.id, reason: "another invoice's application" }), 404, "APPLICATION_NOT_FOUND");
+    refused(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 100, reason: "x" }), 400, "APPLICATION_ID_REQUIRED");
+    assert.deepEqual(await state(), before, "refusals left no trace");
+    const rq = ok(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 8000, applicationId: appRow.id, reason: "Customer returned the unit" }), "refund request").correction;
+    assert.deepEqual([rq.status, rq.settlementId, rq.applicationId, rq.refundSettlementId], ["PENDING", pay.id, appRow.id, null]);
+    assert.deepEqual(await bal(R.obligation), { originated: "20000", settled: "20000", outstanding: "0", status: "SETTLED" }, "a request refunds nothing");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1 AND kind='CUSTOMER_REFUND'`, [TENANT]), 0);
+    // the adjustment approval key does not approve a refund; the requester cannot; the refund approval key of a separate Employee can
+    refused(await decide(adjApprover, rq.id, "APPROVE", { amountMinor: 8000 }), 403, "CAPABILITY_REQUIRED", "finance.adjustment.approve does not approve a refund");
+    refused(await decide(reqA, rq.id, "APPROVE", { amountMinor: 8000 }), 403, "CAPABILITY_REQUIRED", "the requester");
+    refused(await decide(appB, rq.id, "APPROVE", { amountMinor: 7999 }), 412, "APPROVAL_AMOUNT_MISMATCH");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1 AND kind='CUSTOMER_REFUND'`, [TENANT]), 0);
+
+    const handoffs = await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]);
+    const attempts = await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoff_attempts WHERE tenant_id=$1`, [TENANT]);
+    const done = ok(await decide(appB, rq.id, "APPROVE", { amountMinor: 8000, reason: "Return verified" }), "approve refund").correction;
+    assert.equal(done.status, "APPLIED");
+    assert.ok(done.refundSettlementId);
+    const refund = await one(`SELECT kind, direction, amount_minor::text a, currency, status, method, correlation_id, notes, recorded_by FROM eos_finance.settlements WHERE id=$1`, [done.refundSettlementId]);
+    assert.deepEqual([refund.kind, refund.direction, refund.a, refund.currency, refund.status, refund.method, refund.correlation_id, refund.notes, refund.recorded_by],
+      ["CUSTOMER_REFUND", "DISBURSEMENT", "8000", "USD", "RECORDED", null, null, null, appB.principalId], "a record: no method, no instruction, nothing to execute");
+    // the original application is kept (REVERSED) and the remainder is applied again
+    const apps = (await q(`SELECT id, status, amount_minor::text a FROM eos_finance.settlement_applications WHERE tenant_id=$1 AND settlement_id=$2`, [TENANT, pay.id])).rows;
+    assert.deepEqual(apps.map((a) => `${a.status}:${a.a}`).sort(), ["APPLIED:12000", "REVERSED:20000"]);
+    assert.equal(apps.find((a) => a.id === appRow.id).status, "REVERSED", "the original is kept, reversed");
+    assert.deepEqual(await bal(R.obligation), { originated: "20000", settled: "12000", outstanding: "8000", status: "PARTIAL" }, "the receivable reopens by the refund");
+    const sb = await one(`SELECT applied_minor::text ap, refunded_minor::text rf, unapplied_minor::text un FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [pay.id]);
+    assert.deepEqual([sb.ap, sb.rf, sb.un], ["12000", "8000", "0"], "the payment: 12000 applied + 8000 refunded = 20000; nothing left to apply");
+    const rb = await one(`SELECT applied_minor::text ap, unapplied_minor::text un FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [done.refundSettlementId]);
+    assert.deepEqual([rb.ap, rb.un], ["0", "0"], "a refund record is never an unapplied exception");
+    assert.equal(await invoiceHash(R.invoice.id), R_HASH, "the invoice is untouched");
+    // NO external payment: no handoff, no delivery attempt, no disbursement but the record itself
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]), handoffs);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoff_attempts WHERE tenant_id=$1`, [TENANT]), attempts);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.settlements WHERE tenant_id=$1 AND direction='DISBURSEMENT'`, [TENANT]), 1, "the one disbursement is the refund record");
+    const ws = ok(await fn(ctrl, "readFinanceWorkspace", { operatingCompanyId: "taylor" }), "workspace");
+    const unapplied = Array.isArray(ws.unappliedSettlements) ? ws.unappliedSettlements : ws.unappliedSettlements.items;
+    assert.ok(!unapplied.some((s) => s.id === done.refundSettlementId), "the workspace shows no unapplied exception for the record");
+    // the record is reconciled like any settlement (evidence), never voided, applies to nothing; recordSettlement cannot make one
+    const rec = ok(await fn(ctrl, "reconcileSettlement", { settlementId: done.refundSettlementId, externalReference: "BANK-REF-1", externalAmountMinor: 8000, idempotencyKey: key("rec") }), "reconcile");
+    assert.equal(rec.reconciliation.outcome, "RECONCILED");
+    refused(await fn(ctrl, "voidSettlement", { settlementId: done.refundSettlementId, reason: "undo" }), 409, "SETTLEMENT_REFUND_RECORD");
+    refused(await fn(ctrl, "applySettlement", { settlementId: done.refundSettlementId, applications: [{ obligationId: R.obligation, amountMinor: 1 }], idempotencyKey: key("app") }), 409, "SETTLEMENT_KIND_MISMATCH");
+    refused(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_REFUND",
+      amountMinor: 100, currency: "USD", sourceReference: "X", idempotencyKey: key("stl") }), 400, "SETTLEMENT_KIND_INVALID");
+    // the refunded money is no longer there to apply again
+    refused(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: R.obligation, amountMinor: 1 }], idempotencyKey: key("app") }), 409, "SETTLEMENT_OVER_APPLIED");
+    // a payment with a recorded refund is not voided (even after its applications are reversed)
+    const live = (await one(`SELECT id FROM eos_finance.settlement_applications WHERE tenant_id=$1 AND settlement_id=$2 AND status='APPLIED'`, [TENANT, pay.id])).id;
+    ok(await fn(ctrl, "reverseSettlementApplication", { applicationId: live, reason: "unwind", idempotencyKey: key("rev") }), "reverse");
+    refused(await fn(ctrl, "voidSettlement", { settlementId: pay.id, reason: "undo" }), 409, "SETTLEMENT_HAS_REFUNDS");
+    // a refunded invoice cannot be voided: money moved
+    refused(await request(reqA, { kind: "VOID", invoiceId: R.invoice.id, reason: "after refund" }), 412, "VOID_AFTER_SETTLEMENT");
+    // a refunded payment's application is only refundable once: the reversed original is not
+    refused(await request(reqA, { kind: "REFUND", invoiceId: R.invoice.id, amountMinor: 1, applicationId: appRow.id, reason: "again" }), 412, "APPLICATION_NOT_APPLIED");
+  });
+
+  await t.test("VOID: only before any settlement or adjustment is applied, with a reason and two people; the number is kept and never reused", async () => {
+    const V1 = await issued({ price: 3000, account: "acct-a" });
+    const V1_NUMBER = V1.invoice.invoiceNumber;
+    const reqd = ok(await request(reqA, { kind: "VOID", invoiceId: V1.invoice.id, reason: "Billed to the wrong customer" }), "void request").correction;
+    assert.equal(reqd.amountMinor, "3000", "a void is of the whole invoice");
+    assert.deepEqual(await bal(V1.obligation), { originated: "3000", settled: "0", outstanding: "3000", status: "OPEN" }, "a request voids nothing");
+    refused(await request(reqA, { kind: "VOID", invoiceId: V1.invoice.id, reason: "again" }), 409, "VOID_ALREADY_REQUESTED", "one void request per invoice");
+    // the void approval key, not the adjustment approval key; the requester cannot
+    refused(await decide(adjApprover, reqd.id, "APPROVE", { amountMinor: 3000 }), 403, "CAPABILITY_REQUIRED", "finance.adjustment.approve does not approve a void");
+    refused(await decide(reqA, reqd.id, "APPROVE", { amountMinor: 3000 }), 403, "CAPABILITY_REQUIRED");
+    const before = await state();
+    refused(await decide(appA, reqd.id, "APPROVE", { amountMinor: 2999 }), 412, "APPROVAL_AMOUNT_MISMATCH");
+    assert.deepEqual(await state(), before);
+    // a separate Employee approves: the invoice and its receivable are voided together; the number stays
+    const done = ok(await approve(appA, reqd), "void approve").correction;
+    assert.equal(done.status, "APPLIED");
+    const inv = await one(`SELECT invoice_number, voided_at, void_reason, voided_by FROM eos_finance.invoices WHERE id=$1`, [V1.invoice.id]);
+    assert.deepEqual([inv.invoice_number, inv.voided_at !== null, inv.void_reason, inv.voided_by], [V1_NUMBER, true, "Billed to the wrong customer", appA.principalId], "the original number and history are preserved");
+    assert.equal((await bal(V1.obligation)).status, "VOID");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2 AND reverses_fact_id IS NOT NULL`, [TENANT, V1.obligation]), 1,
+      "the origination is reversed by a fact, never edited");
+    refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: V1.invoice.id, amountMinor: 1, reason: "x" }), 412, "INVOICE_VOID");
+    // the number is never reused: the next invoice takes the next number
+    const next = await issued({ price: 500, account: "acct-a" });
+    assert.notEqual(next.invoice.invoiceNumber, V1_NUMBER);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1 AND invoice_number=$2`, [TENANT, V1_NUMBER]), 1);
+    // after a SETTLEMENT (even one later reversed) a void is refused
+    const V2 = await issued({ price: 4000, account: "acct-b" });
+    const pay = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-b" }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: 100, currency: "USD", sourceReference: "CHK-V2", idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: V2.obligation, amountMinor: 100 }], idempotencyKey: key("app") }), "apply");
+    const s0 = await state();
+    refused(await request(reqA, { kind: "VOID", invoiceId: V2.invoice.id, reason: "after payment" }), 412, "VOID_AFTER_SETTLEMENT");
+    assert.deepEqual(await state(), s0, "zero trace");
+    const appId = (await one(`SELECT id FROM eos_finance.settlement_applications WHERE tenant_id=$1 AND settlement_id=$2`, [TENANT, pay.id])).id;
+    ok(await fn(ctrl, "reverseSettlementApplication", { applicationId: appId, reason: "unwind", idempotencyKey: key("rev") }), "reverse");
+    refused(await request(reqA, { kind: "VOID", invoiceId: V2.invoice.id, reason: "after a reversed payment" }), 412, "VOID_AFTER_SETTLEMENT", "a reversed application still means money moved");
+    // after an APPLIED ADJUSTMENT a void is refused (the credit path applies)
+    const V3 = await issued({ price: 900, account: "acct-b" });
+    const cr = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: V3.invoice.id, amountMinor: 10, reason: "Goodwill" }), "credit").correction;
+    ok(await approve(appA, cr), "credit approve");
+    refused(await request(reqA, { kind: "VOID", invoiceId: V3.invoice.id, reason: "after a credit" }), 412, "VOID_AFTER_ADJUSTMENT");
+    // a void PENDING when a credit lands is refused at APPROVAL (eligibility is re-decided)
+    const V4 = await issued({ price: 800, account: "acct-b" });
+    const pv = ok(await request(reqA, { kind: "VOID", invoiceId: V4.invoice.id, reason: "Duplicate" }), "pv").correction;
+    const cr4 = ok(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: V4.invoice.id, amountMinor: 5, reason: "Goodwill" }), "cr4").correction;
+    ok(await approve(appA, cr4), "cr4 approve");
+    refused(await approve(appB, pv), 412, "VOID_AFTER_ADJUSTMENT");
+    assert.notEqual((await bal(V4.obligation)).status, "VOID");
+  });
+
+  await t.test("COMPANY: a foreign company reads as nonexistent for requests, decisions and reads; the register is company-scoped", async () => {
+    const V = await issued({ price: 1500, companyKey: "ventana", account: "acct-b" });
+    const rv = ok(await request(reqV, { kind: "CREDIT_MEMO", invoiceId: V.invoice.id, amountMinor: 11, reason: "Ventana credit" }), "ventana request").correction;
+    assert.equal(rv.operatingCompanyId, "ventana");
+    const before = await state();
+    // a Taylor-only approver: the Ventana correction reads exactly like a missing one
+    const f = refused(await decide(appT, rv.id, "APPROVE", { amountMinor: 11 }), 404, "CORRECTION_NOT_FOUND", "foreign");
+    const m = refused(await decide(appT, "icr-nowhere", "APPROVE", { amountMinor: 11 }), 404, "CORRECTION_NOT_FOUND", "missing");
+    assert.equal(f.message, m.message);
+    refused(await fn(appT, "readInvoiceCorrection", { correctionId: rv.id }), 404, "CORRECTION_NOT_FOUND");
+    refused(await fn(ctrl, "readInvoiceCorrection", { correctionId: "icr-nowhere" }), 404, "CORRECTION_NOT_FOUND");
+    assert.deepEqual(await state(), before);
+    // the register shows each company its own
+    const taylorList = ok(await fn(ctrl, "listInvoiceCorrections", { operatingCompanyId: "taylor" }), "list taylor").items;
+    assert.ok(taylorList.length > 0 && taylorList.every((c) => c.operatingCompanyId === "taylor"));
+    const ventanaOnly = ok(await fn(reqV, "listInvoiceCorrections", {}), "list ventana-only").items;
+    assert.deepEqual(ventanaOnly.map((c) => c.id), [rv.id], "a Ventana-only reader sees only Ventana");
+    refused(await fn(reqV, "listInvoiceCorrections", { operatingCompanyId: "taylor" }), 403, "OUTSIDE_OPERATING_COMPANY_SCOPE");
+    // the Ventana approver completes it, and the read shows the original invoice beside the receivable
+    ok(await approve(appV, rv), "ventana approve");
+    const read = ok(await fn(ctrl, "readInvoiceCorrection", { correctionId: rv.id }), "read");
+    assert.deepEqual([read.invoice.originalAmountDueMinor, read.receivable.outstandingMinor, read.invoice.void], ["1500", "1489", false]);
+  });
+
+  await t.test("DATABASE: the two-person CHECK, the approved-fact trigger, the origination guard and the narrow void gate hold on their own", async () => {
+    const D = await issued({ price: 6000, account: "acct-c" });
+    const insertPending = (id, over = {}) => q(
+      `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
+       VALUES ($1,$2,'taylor',$3,$4,$5,$6,'USD','raw','PENDING','raw-req','raw-emp-req',$7,'fp')`, [id, TENANT, D.invoice.id, D.obligation, over.kind ?? "CREDIT_MEMO", over.amount ?? 100, `raw-${id}`]);
+    const apply = (id, k) => q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-other', decided_by_employee_id='raw-emp-other', decided_at=now(), decision_reason='raw', decision_idempotency_key=$2, decision_fingerprint='f' WHERE id=$1`, [id, k]);
+    const rawFact = (src, type, amount) => q(
+      `INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, counterparty_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, created_by)
+       SELECT $1::text, $2::text, o.operating_company_id, o.counterparty_id, 'OBLIGATION', $3::text, 'INVOICE_CORRECTION', $4::text, $5::bigint, o.currency, 'raw', now(), $1::text, 'fp', o.id, 'raw'
+         FROM eos_finance.obligations o WHERE o.id = $6::text`, [`ff-raw-${src}-${type}-${amount}`, TENANT, type, src, amount, D.obligation]);
+    // an adjustment fact for nothing is refused; so is one for a PENDING correction (a request is not an approval)
+    await assert.rejects(rawFact("icr-none", "RECEIVABLE_CREDITED", -100), /ADJUSTMENT_NOT_APPROVED/, "no correction");
+    await insertPending("icr-raw-1");
+    await assert.rejects(rawFact("icr-raw-1", "RECEIVABLE_CREDITED", -100), /ADJUSTMENT_NOT_APPROVED/, "a PENDING correction is not an approval");
+    // the two-person CHECK: APPLIED by the same Principal, or the same Employee under another Principal, cannot be stored
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-req', decided_by_employee_id='raw-emp-other', decided_at=now(), decision_reason='r', decision_idempotency_key='k1', decision_fingerprint='f' WHERE id='icr-raw-1'`), /invoice_correction_two_person/, "same Principal");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-other', decided_by_employee_id='raw-emp-req', decided_at=now(), decision_reason='r', decision_idempotency_key='k2', decision_fingerprint='f' WHERE id='icr-raw-1'`), /invoice_correction_two_person/, "same Employee");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by='raw-other', decided_by_employee_id='raw-emp-other', decided_at=now() WHERE id='icr-raw-1'`), /invoice_correction_decision_shape/, "a decision states its reason and key");
+    await apply("icr-raw-1", "k3");
+    // an APPLIED correction admits exactly its own fact: kind, amount and sign
+    await assert.rejects(rawFact("icr-raw-1", "RECEIVABLE_WRITTEN_OFF", -100), /ADJUSTMENT_NOT_APPROVED/, "wrong kind");
+    await assert.rejects(rawFact("icr-raw-1", "RECEIVABLE_CREDITED", -99), /ADJUSTMENT_NOT_APPROVED/, "wrong amount");
+    await assert.rejects(rawFact("icr-raw-1", "RECEIVABLE_CREDITED", 100), /ADJUSTMENT_NOT_APPROVED/, "wrong sign");
+    await rawFact("icr-raw-1", "RECEIVABLE_CREDITED", -100);
+    // a decided correction never changes again, and is never deleted
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET reason='changed' WHERE id='icr-raw-1'`), /CORRECTION_IMMUTABLE/);
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET amount_minor=1 WHERE id='icr-raw-1'`), /CORRECTION_IMMUTABLE/);
+    await assert.rejects(q(`DELETE FROM eos_finance.invoice_corrections WHERE id='icr-raw-1'`), /CORRECTION_IMMUTABLE/);
+    // the credit can never take the receivable below what was settled (6000 - 100 credited = 5900, all of it settled)
+    const pay = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: 5900, currency: "USD", sourceReference: "CHK-D", idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: D.obligation, amountMinor: 5900 }], idempotencyKey: key("app") }), "apply");
+    await insertPending("icr-raw-2", { amount: 100 });
+    await apply("icr-raw-2", "k4");
+    await assert.rejects(rawFact("icr-raw-2", "RECEIVABLE_CREDITED", -100), /ADJUSTMENT_EXCEEDS_OUTSTANDING/, "5900 - 100 would fall below the 5900 settled");
+    // the origination fact of a receivable with a LIVE invoice is never reversed
+    const orig = (await one(`SELECT id FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2 AND fact_class='OBLIGATION' AND reverses_fact_id IS NULL AND fact_type='RECEIVABLE_ORIGINATED'`, [TENANT, D.obligation])).id;
+    await assert.rejects(q(
+      `INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, counterparty_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, reverses_fact_id, reason, created_by)
+       SELECT 'ff-raw-rev', $1::text, f.operating_company_id, f.counterparty_id, f.fact_class, f.fact_type, f.source_domain, f.source_record_id, -f.amount_minor, f.currency, f.basis, now(), 'ff-raw-rev', 'fp', f.obligation_id, f.id, 'raw', 'raw'
+         FROM eos_finance.financial_facts f WHERE f.id = $2::text`, [TENANT, orig]), /OBLIGATION_INVOICED/);
+    // THE VOID GATE: a bare void is refused; an APPROVED, two-person VOID correction is not enough once money has moved
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at=now(), void_reason='x', voided_by='y' WHERE id=$1`, [D.invoice.id]), /INVOICE_IMMUTABLE/, "no correction");
+    await insertPending("icr-raw-void", { kind: "VOID", amount: 6000 });
+    await apply("icr-raw-void", "k5");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at=now(), void_reason='raw', voided_by='raw-other' WHERE id=$1`, [D.invoice.id]), /INVOICE_IMMUTABLE/, "money moved, so even an approved void is refused");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET currency='EUR' WHERE id=$1`, [D.invoice.id]), /INVOICE_IMMUTABLE/, "nothing else about an issued invoice changes");
+  });
+
+  await t.test("NO PAYOUT PATH: the Finance transport has no operation that moves money out, and every refund record carries nothing to execute", async () => {
+    assert.deepEqual(financeOps.FINANCE_OPERATIONS.filter((n) => /payout|disburs|cashout|send|execute|initiate|transfer|wire|release/i.test(n)), []);
+    const refunds = (await q(`SELECT method, correlation_id, notes, replaces_settlement_id FROM eos_finance.settlements WHERE tenant_id=$1 AND kind='CUSTOMER_REFUND'`, [TENANT])).rows;
+    assert.ok(refunds.length >= 1 && refunds.every((r) => r.method === null && r.correlation_id === null && r.notes === null && r.replaces_settlement_id === null));
+    const unknown = await fn(ctrl, "payRefund", { correctionId: "x" });
+    assert.notEqual(unknown.status, 200, "there is no such operation");
+  });
+});

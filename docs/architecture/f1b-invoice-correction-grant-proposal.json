@@ -1,0 +1,57 @@
+{
+  "$comment": "F-1b PROPOSED grants for the three Finance APPROVAL capabilities (DECISIONS #F-1b; Owner register docs/governance/owner-commercial-spec-rulings-2026-10-20.md section 2: 'reconciled with existing finance policies, including R3 / #193 (Parts Manager revoked) and the A6 summary keys, before any grant'). A PROPOSAL, not an activation: the controller verifies it against nonprod (read-only) before writing migration 1764702000000, and may delete section 7 of the migration to register the capabilities with NO grants. Nothing here is Firebase parity (Firebase had no approval step). Derived from the committed role-capability baseline (functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json); the nonprod database was NOT read (no credential in this lane).",
+  "migration": "1764702000000_invoice-corrections",
+  "status": "PROPOSED",
+  "capabilities": [
+    { "key": "finance.adjustment.approve", "object": "invoice", "action": "approveAdjustment", "kind": "BUSINESS_ACTION", "approves": ["CREDIT_MEMO", "DEBIT_CHARGE", "WRITE_OFF"], "requestKey": "finance.adjustment.record" },
+    { "key": "finance.refund.approve", "object": "payment", "action": "approveRefund", "kind": "BUSINESS_ACTION", "approves": ["REFUND"], "requestKey": "finance.refund.record" },
+    { "key": "finance.invoice.void.approve", "object": "invoice", "action": "approveVoid", "kind": "BUSINESS_ACTION", "approves": ["VOID"], "requestKey": "finance.adjustment.record" }
+  ],
+  "proposedHolderRoles": ["accountingManager", "controller", "financeManager", "generalManager", "owner"],
+  "proposedGrantPairs": 15,
+  "proposedGrants": [
+    { "roleKey": "accountingManager", "capabilityKey": "finance.adjustment.approve" },
+    { "roleKey": "accountingManager", "capabilityKey": "finance.invoice.void.approve" },
+    { "roleKey": "accountingManager", "capabilityKey": "finance.refund.approve" },
+    { "roleKey": "controller", "capabilityKey": "finance.adjustment.approve" },
+    { "roleKey": "controller", "capabilityKey": "finance.invoice.void.approve" },
+    { "roleKey": "controller", "capabilityKey": "finance.refund.approve" },
+    { "roleKey": "financeManager", "capabilityKey": "finance.adjustment.approve" },
+    { "roleKey": "financeManager", "capabilityKey": "finance.invoice.void.approve" },
+    { "roleKey": "financeManager", "capabilityKey": "finance.refund.approve" },
+    { "roleKey": "generalManager", "capabilityKey": "finance.adjustment.approve" },
+    { "roleKey": "generalManager", "capabilityKey": "finance.invoice.void.approve" },
+    { "roleKey": "generalManager", "capabilityKey": "finance.refund.approve" },
+    { "roleKey": "owner", "capabilityKey": "finance.adjustment.approve" },
+    { "roleKey": "owner", "capabilityKey": "finance.invoice.void.approve" },
+    { "roleKey": "owner", "capabilityKey": "finance.refund.approve" }
+  ],
+  "reconciliation": {
+    "existingHoldersCommittedBaseline": {
+      "finance.adjustment.record": ["accountingManager", "admin", "controller", "financeManager", "generalManager", "owner", "partsManager"],
+      "finance.refund.record": ["accountingManager", "admin", "controller", "financeManager", "generalManager", "owner"],
+      "finance.invoice.issue": ["accountingManager", "admin", "controller", "financeManager", "generalManager", "owner", "partsManager"],
+      "finance.payment.apply": ["accountingManager", "admin", "controller", "financeManager", "generalManager", "owner"],
+      "finance.settlement.record|apply|correct and finance.reconciliation.record": ["accountingManager", "controller", "financeManager", "generalManager", "owner"],
+      "finance.accountBalance.read": ["fieldManager", "partsAssociate", "partsManager", "purchasingManager", "salesManager", "salesperson", "shopAssociate", "shopManager"]
+    },
+    "existingHoldersNonprodPerBrief": ["accountingManager", "admin", "controller", "financeManager", "generalManager", "owner"],
+    "rules": [
+      "Approvers are a SUBSET of the existing record holders: the Finance roles that already hold the record keys. No role that cannot request a Finance correction can approve one.",
+      "partsManager is NOT granted (R3 / DECISIONS #193 revoked its Finance execution; the committed baseline still lists the migration grants finance.adjustment.record and finance.invoice.issue, which nonprod revoked by Administration decision). Nothing here restores it, and the migration honours any ADMIN_REVOKED decision.",
+      "admin is NOT granted: the settlement keys (DECISIONS #206, migration 1764510000000) went to exactly owner, generalManager, controller, accountingManager, financeManager -- 'administering EOS confers no Finance transaction authority'. The approval keys are BUSINESS_ACTION, so Protected Administrator standing does not imply them; a Finance company assignment is also required at every call.",
+      "No A6 summary-key role (fieldManager, partsAssociate, partsManager, purchasingManager, salesManager, salesperson, shopAssociate, shopManager) is granted: A6 is read-only and confers no receivable write authority.",
+      "Approval by Role is never sufficient: the approving Employee must differ from the requesting Employee (and Principal), and hold a Finance company assignment at the invoice's company with FULL inner reach.",
+      "A holder of an approval key who also holds the record key can request but never approve their own request: the rule is by Employee, enforced in the command and by CHECK in the database."
+    ],
+    "unclear": [
+      "The live nonprod holders were not read in this lane. The controller confirms (read-only) that the five proposed Roles exist, hold the record keys, carry no ADMIN_REVOKED decision on the new keys, and that no Role gains a pair other than these 15.",
+      "Whether generalManager should approve VOID is a policy choice carried from the settlement-key precedent (it holds every Finance execution key); the Owner may narrow it."
+    ]
+  },
+  "baselineRowsIfGranted": {
+    "$comment": "If section 7 of the migration is kept, roleCapabilityAuthorityBaseline.json gains exactly these rows (Owner ruling E: the baseline carries the same pairs), source MIGRATION_BACKED, evidence migration:1764702000000, and totalGrants / countsBySource.MIGRATION_BACKED each rise by 15.",
+    "evidence": "migration:1764702000000",
+    "observedGrantedBy": "migration:1764702000000"
+  }
+}

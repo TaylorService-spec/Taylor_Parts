@@ -224,7 +224,7 @@ export function periodWindows(filters) {
 
 const KIND_WORDS = Object.freeze({
   CUSTOMER_PAYMENT: "Customer payment", PROVIDER_FUNDING: "Provider funding", VENDOR_PAYMENT: "Vendor payment",
-  INTERCOMPANY_PAYMENT: "Intercompany payment", INTERCOMPANY_RECEIPT: "Intercompany receipt",
+  INTERCOMPANY_PAYMENT: "Intercompany payment", INTERCOMPANY_RECEIPT: "Intercompany receipt", CUSTOMER_REFUND: "Customer refund (record)",
 });
 export const settlementKindWords = (kind) => KIND_WORDS[kind] ?? (typeof kind === "string" ? kind : "Not recorded");
 
