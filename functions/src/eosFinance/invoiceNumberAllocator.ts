@@ -1,8 +1,9 @@
-// THE POSTGRESQL INVOICE NUMBER ALLOCATOR -- INV-YYYY-###### (Owner ruling 4, 2026-10-17: PREPARATION ONLY).
+// THE POSTGRESQL INVOICE NUMBER ALLOCATOR -- INV-YYYY-###### (Owner ruling 4, 2026-10-17; WIRED by F-1a, 2026-10-20).
 //
-// NOT WIRED. No command, callable or Render operation imports this module, and the counter table it writes does not exist
-// in any migration yet: activation (the migration, the CHECK and the EOS issuance command that calls this) is a separate,
-// later ruling. Until then live invoices keep the Firebase `INV-######` format (finance/invoiceNumbering.ts), unchanged.
+// WIRED ONCE: the EOS issuing command (invoiceIssue.ts, `issueInvoice`) calls it in its own transaction, and the counter table it writes
+// is created by migration 1764700000000. Nothing here SEEDS the series (Owner safeguard C): a fresh (tenant, company, year) starts at 000001;
+// the counter is plain data, so a historical series could be seeded later, only on separate Owner approval and reconciliation. Firebase
+// invoices keep their `INV-######` format (finance/invoiceNumbering.ts), unchanged.
 //
 // ════════════════════ THE POLICY (stated precisely, before any activation) ════════════════════
 //
