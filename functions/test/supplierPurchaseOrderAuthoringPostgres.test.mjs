@@ -626,7 +626,7 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     assert.equal((await refusal(() => transition(poU, "APPROVE", {}, actor(BUYER_CAPS, unlinked)))).code, "SELF_APPROVAL_FORBIDDEN", "an Owner with no active Employee link is not exempt");
     const revoked = await make("uid-sae-revoked", true, "e-sae-revoked");
     const poR = await raise(revoked, "e-sae-revoked");
-    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1`, [revoked]);
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1`, [revoked]);
     assert.equal((await refusal(() => transition(poR, "APPROVE", {}, actor(BUYER_CAPS, revoked)))).code, "SELF_APPROVAL_FORBIDDEN", "an ended Owner membership is not exempt");
     assert.equal((await poOf(poR)).status, "DRAFT", "every refusal wrote nothing");
     // the ordinary buyer is unchanged

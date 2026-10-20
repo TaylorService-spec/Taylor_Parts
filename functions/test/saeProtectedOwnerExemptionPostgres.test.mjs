@@ -110,7 +110,7 @@ test("SAE: the protected Owner over PostgreSQL -- Financial Policy and Administr
     ok(await fn(ownerDual, "submitFinancialPolicy", { operatingCompanyId: "ventana", versionId: v.id }), "owner submit");
     await q(`UPDATE eos_finance.financial_policy_versions SET status = 'APPROVED', approved_by = submitted_by, approved_at = now() WHERE id = $1`, [v.id]);
     assert.equal((await one(`SELECT status FROM eos_finance.financial_policy_versions WHERE id = $1`, [v.id])).status, "APPROVED", "the Owner decided their own, directly: accepted");
-    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND role_id = $2`, [ownerDual.principalId, await roleIdOf("owner")]);
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1 AND role_id = $2`, [ownerDual.principalId, await roleIdOf("owner")]);
     const activate = () => q(`UPDATE eos_finance.financial_policy_versions SET status = 'ACTIVE', activated_by = submitted_by, activated_at = now(),
       effective_date = eos_policy.operating_company_business_date(tenant_id, operating_company_id, now()) + 7 WHERE id = $1`, [v.id]);
     await assert.rejects(activate(), (e) => { assert.equal(e.constraint, "financial_policy_activator_independent"); return true; }, "the membership ended: the same write is refused");
@@ -148,7 +148,7 @@ test("SAE: the protected Owner over PostgreSQL -- Financial Policy and Administr
     const other = await person("uid-sae-adm-other", [], { id: "e-sae-adm-other", name: "Olly Other" });
     const ok1 = await adminAs(owner.subject, "assignRole", { principalId: other.principalId, roleId, reason: "Owner staffs another principal" });
     assert.equal(ok1.ok, true, JSON.stringify(ok1).slice(0, 300));
-    const noBasis = (await one(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1 AND after ? 'approvalBasis'`, [TENANT])).n;
+    const noBasis = (await one(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id = $1 AND action IN ('assignRole','revokeRole','grantCompanyAuthority','revokeCompanyAuthority','grantObjectActionToRole','grantObjectActionToPrincipal') AND after ? 'approvalBasis'`, [TENANT])).n;
     assert.equal(noBasis, 0, "no Administration audit event carries an exemption basis: there is no exemption in Administration");
   });
 

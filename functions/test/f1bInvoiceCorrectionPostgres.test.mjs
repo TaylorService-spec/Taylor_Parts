@@ -744,7 +744,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     sae.revoked = await ownerPerson("uid-sae-revoked", "e-sae-revoked");
     sae.unlinked = await ownerPerson("uid-sae-unlinked", "e-sae-unlinked");
     sae.terminated = await ownerPerson("uid-sae-terminated", "e-sae-terminated");
-    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [sae.revoked.principalId]);
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [sae.revoked.principalId]);
     await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [sae.unlinked.principalId]);
     await q(`UPDATE eos_workforce.employees SET employment_status = 'TERMINATED' WHERE id = 'e-sae-terminated'`);
     const people = { owner: sae.owner, lookalike, administrator, financeManager: fm, generalManager: gm, partsManager: pm, ownerNoEmployee: noEmployee,
@@ -927,7 +927,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     await rawFact("icr-sae-1", -100);
     await rawPending("icr-sae-2");
     await decideRaw("icr-sae-2", "PROTECTED_OWNER");
-    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [O.principalId]);
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [O.principalId]);
     await assert.rejects(rawFact("icr-sae-2", -100), /ADJUSTMENT_NOT_APPROVED/, "judged at that moment: the Owner's membership has ended");
     await rawPending("icr-sae-3");
     await assert.rejects(decideRaw("icr-sae-3", "PROTECTED_OWNER"), /SELF_APPROVAL_FORBIDDEN/, "an ended Owner cannot decide their own");

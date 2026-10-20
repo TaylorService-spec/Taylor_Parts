@@ -911,7 +911,8 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
       if (owner) await seedProtectedOwnerRows(q, { tenantId: "t1", principalId: p });
       return p;
     };
-    const author = async (p, from) => (await create(p, W, draft({ effectiveFrom: from }))).goalId;
+    // EMPLOYEE targets for another Employee, each in its own bounded year, so no approved window ever overlaps an earlier test's target
+    const author = async (p, from) => (await create(p, W, EMP("e-rep", { effectiveFrom: from, effectiveTo: `${from.slice(0, 4)}-12-31` }))).goalId;
     const ownerP = await make("uid-sae-owner", "e-sae-owner", true);
     const g = await author(ownerP, "2061-01-01");
     const before = await counts();
@@ -944,7 +945,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [unlinked]);
     const revoked = await make("uid-sae-revoked", "e-sae-revoked", true);
     const gr = await author(revoked, "2066-01-01");
-    await q(`UPDATE eos_policy.user_role_assignments SET status = 'revoked' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [revoked]);
+    await q(`UPDATE eos_policy.user_role_assignments SET status = 'disabled' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [revoked]);
     const mark = await counts();
     assert.equal((await refusal(() => approve(unlinked, W, gu))).code, "SELF_APPROVAL_FORBIDDEN", "an Owner with no active Employee link is not exempt");
     assert.equal((await refusal(() => approve(revoked, W, gr))).code, "SELF_APPROVAL_FORBIDDEN", "an ended Owner membership is not exempt");
@@ -952,7 +953,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.equal((await row(gl)).status, "DRAFT");
 
     // D2 (Owner ruling, PR #2190 integrity guards): the exemption removes ONLY the second person. The Owner may draft AND approve a goal that targets ANOTHER Employee ...
-    const forRep = await create(ownerP, W, EMP("e-rep", { effectiveFrom: "2070-01-01" }));
+    const forRep = await create(ownerP, W, EMP("e-rep", { effectiveFrom: "2070-01-01", effectiveTo: "2070-12-31" }));
     const forRepDone = await approve(ownerP, W, forRep.goalId);
     assert.deepEqual([forRepDone.status, forRepDone.approvalBasis], ["APPROVED", "PROTECTED_OWNER"], "an Owner-authored, Owner-approved target for another Employee");
     // ... but NOT an Employee-specific target for their OWN Employee: SELF_TARGETING_FORBIDDEN is unchanged (author, approver and retirer alike)
