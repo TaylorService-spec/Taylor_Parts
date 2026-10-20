@@ -121,6 +121,9 @@ BEGIN
     IF EXISTS (SELECT 1 FROM eos_ops.inventory_commitments) THEN
         RAISE EXCEPTION 'S1b down: commitments exist; every row names its warehouse (and Sales Order claims cannot be represented by the Work-Order-only shape), so reversing would discard reservation facts.';
     END IF;
+    IF EXISTS (SELECT 1 FROM eos_ops.stock_reservation_activation) THEN
+        RAISE EXCEPTION 'S1b down: company activation rows exist; they are operator decisions with a stated reason and are never discarded silently.';
+    END IF;
 END $$;
 
 DROP TABLE IF EXISTS stock_reservation_activation;
