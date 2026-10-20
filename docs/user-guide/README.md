@@ -68,6 +68,11 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Give an Employee access to another company](./administration/give-an-employee-access-to-another-company.md) — explicit company access for one Employee: reach to a company, no permissions, no Finance access
 - [Integrations](./administration/integrations-guide.md)
 
+## Invoicing
+
+- [Issue an invoice](./financials/issue-an-invoice.md) — **Financials > Billing Queue**: turn a receivable that is
+  ready to bill into an invoice with its own number; who can do it, how the due date is set, and what each refusal means.
+
 ## Goals
 
 - [Performance goals](./performance-goals.md) — where a target appears next to a figure, what "No

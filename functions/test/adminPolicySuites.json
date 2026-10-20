@@ -124,7 +124,8 @@
     "test/grant1OwnerPolicyGrants.test.mjs",
     "test/a6AccountBalanceSummary.test.mjs",
     "test/g1GoalAuthoring.test.mjs",
-    "test/q1CommandAuditInventory.test.mjs"
+    "test/q1CommandAuditInventory.test.mjs",
+    "test/f1aInvoiceIssue.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -306,6 +307,7 @@
     "test/a6AccountBalanceSummaryPostgres.test.mjs",
     "test/g1GoalAuthoringPostgres.test.mjs",
     "test/q1CommercialCrmAuditPostgres.test.mjs",
-    "test/scannerScenariosOnEosPostgres.test.mjs"
+    "test/scannerScenariosOnEosPostgres.test.mjs",
+    "test/f1aInvoiceIssuePostgres.test.mjs"
   ]
 }

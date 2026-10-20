@@ -10,7 +10,7 @@
 //
 // Run: npx vitest run test/financialsUxLifecycle.test.jsx   (also `npm test`)
 import { describe, expect, test, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const searchState = { state: "IDLE", results: [], truncated: false, message: null };
@@ -38,6 +38,9 @@ import FinancialsCustomerFinancials from "../src/modules/financials/FinancialsCu
 import FinancialsBillingQueue from "../src/modules/financials/FinancialsBillingQueue.jsx";
 import FinancialsCreditsAdjustments from "../src/modules/financials/FinancialsCreditsAdjustments.jsx";
 import { HONEST_STATE } from "../src/shared/ui/HonestState.jsx";
+import { INVOICE_ISSUE_GATE, SHELL_GATED_CAPABILITY_IDS } from "../src/access/shellCapabilityGates.js";
+import { FINANCE_COMMAND_OPERATIONS } from "../src/services/financeApiClient.js";
+import { receivableRecord, NOT_SUPPLIED } from "../src/domain/financialsEos.js";
 
 const mount = (node) => render(<MemoryRouter>{node}</MemoryRouter>);
 
@@ -173,7 +176,8 @@ describe("02 Billing Queue — /financials/billing-queue", () => {
     const { container } = mount(<FinancialsBillingQueue />);
     const action = screen.getByRole("button", { name: "Create Invoices" });
     expect(action.disabled).toBe(true);
-    expect(container.textContent).toMatch(/wired to this queue/);
+    // F-1a: without the invoice-issue capability the action stays off, and the one-liner says who may issue (not that anything is wired or active).
+    expect(container.textContent).toMatch(/limited to Finance roles that can issue them/);
     // F1: the one-liner must not diagnose a capability the page never resolved.
     expect(container.textContent).not.toMatch(/finance\.[a-z.]+\s*(is\s+)?inactive/i);
     // The approved queue grammar: views with the four states, readiness columns.
@@ -506,5 +510,99 @@ describe("F12 · Governance distinguishes its four states", () => {
     const future = [...container.querySelectorAll(".fin-gov-chip--future")];
     expect(notConfigured.some((e) => e.textContent === "Not Configured")).toBe(true);
     expect(future.some((e) => e.textContent === "Future Integration")).toBe(true);
+  });
+});
+
+// F-1a (DECISIONS #F-1a): the Issue invoice control on Financials > Billing Queue.
+//   * GATE   a holder of finance.invoice.issue (INVOICE_ISSUE_GATE, shellCapabilityGates.js) sees the receivables with no invoice and the Issue control; a
+//            non-holder sees the queue as before with the action off, and the page asks the server for nothing.
+//   * REACH  a company is offered only where the server's advice (`actions.issue`) says so; none offered, no control.
+//   * ISSUE  one step, no approver: the command carries the package id and ONE idempotency key per opened issue; the due date is sent only when the person
+//            picks a later one; a refusal is shown in the server's words and nothing is re-read as success.
+//   * READS  the receivable record carries the invoice number and issue date once an invoice exists (NOT_SUPPLIED otherwise).
+const holder = (key) => key === "finance.invoice.issue";
+const ROW = { id: "obl-1", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", sourceDomain: "BILLING_PACKAGE", sourceRecordId: "bpk-1",
+  originatedMinor: "40000", settledMinor: "0", outstandingMinor: "40000", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c", name: "Harbor Grill" },
+  sourceSalesOrder: { id: "so-1", salesOrderNumber: "SO-1" }, invoice: null };
+const access = (issue = true) => ({ ok: true, result: { principalId: "p", consolidated: false, companies: [{ operatingCompanyId: "taylor", name: "Taylor Freezer of Arizona", actions: { view: true, issue } }] } });
+const server = (over = {}) => vi.fn(async (op, input) => {
+  if (op === "readMyFinanceCompanyAccess") return over.access ?? access();
+  if (op === "listObligations") return { ok: true, result: { items: over.items ?? [ROW] } };
+  if (op === "issueInvoice") return over.issue ?? { ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000001" } } };
+  throw new Error(`unexpected ${op} ${JSON.stringify(input)}`);
+});
+const mountQueue = (props) => render(<MemoryRouter><FinancialsBillingQueue {...props} /></MemoryRouter>);
+
+describe("the invoice-issue gate", () => {
+  test("is the Firebase catalog id, in the shell's gate union, and issueInvoice is a Finance command", () => {
+    expect(INVOICE_ISSUE_GATE).toEqual({ issue: "finance.invoice.issue" });
+    expect(SHELL_GATED_CAPABILITY_IDS).toContain("finance.invoice.issue");
+    expect(FINANCE_COMMAND_OPERATIONS).toContain("issueInvoice");
+  });
+});
+
+describe("Billing Queue > Issue invoice", () => {
+  test("a non-holder sees the action off and the server is never asked", async () => {
+    const callApi = server();
+    mountQueue({ hasCapability: () => false, callApi });
+    expect(screen.getByRole("button", { name: "Create Invoices" }).disabled).toBe(true);
+    expect(screen.queryByText("Issue invoice")).toBeNull();
+    expect(callApi).not.toHaveBeenCalled();
+  });
+
+  test("a holder sees the receivables with no invoice, and issues one: the package id, one key, no due date, no approver", async () => {
+    const callApi = server();
+    const { container } = mountQueue({ hasCapability: holder, callApi });
+    await screen.findByText("Harbor Grill");
+    expect(callApi).toHaveBeenCalledWith("listObligations", { operatingCompanyId: "taylor", kind: "RECEIVABLE", invoiced: false });
+    expect(container.textContent).toMatch(/SO-1/);
+    expect(screen.queryByRole("button", { name: "Create Invoices" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await screen.findByText(/Invoice INV-2026-000001 issued/);
+    const call = callApi.mock.calls.find(([op]) => op === "issueInvoice");
+    expect(call[1]).toEqual({ billingPackageId: "bpk-1", idempotencyKey: expect.stringMatching(/^inv-issue-/) });
+    expect(Object.keys(call[1])).not.toContain("approverId");
+    // The queue is re-read after the command (nothing optimistic).
+    await waitFor(() => expect(callApi.mock.calls.filter(([op]) => op === "listObligations").length).toBe(2));
+  });
+
+  test("a later due date is sent with its reason; with none picked neither is sent", async () => {
+    const callApi = server();
+    mountQueue({ hasCapability: holder, callApi });
+    await screen.findByText("Harbor Grill");
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    fireEvent.change(screen.getByLabelText("Later due date"), { target: { value: "2026-12-31" } });
+    fireEvent.change(screen.getByLabelText("Reason for that date"), { target: { value: "Customer fiscal close" } });
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("issueInvoice", expect.objectContaining({ billingPackageId: "bpk-1", dueOn: "2026-12-31", dueReason: "Customer fiscal close" })));
+  });
+
+  test("a refusal is the server's own words; nothing is reported as issued", async () => {
+    const callApi = server({ issue: { ok: false, code: "PRECONDITION_FAILED", message: "the billing package's tax is not determined; it cannot be invoiced" } });
+    const { container } = mountQueue({ hasCapability: holder, callApi });
+    await screen.findByText("Harbor Grill");
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await screen.findByText(/tax is not determined/);
+    expect(container.textContent).not.toMatch(/ issued\./);
+  });
+
+  test("no company offered by the server means no control", async () => {
+    const callApi = server({ access: access(false) });
+    mountQueue({ hasCapability: holder, callApi });
+    await screen.findByText(/does not allow issuing invoices/);
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+    expect(callApi).not.toHaveBeenCalledWith("listObligations", expect.anything());
+  });
+});
+
+describe("the receivable record carries the invoice", () => {
+  test("number and issue date come from the row's invoice; without one they stay not supplied", () => {
+    const base = { ...ROW, originatedMinor: "40000", settledMinor: "0", outstandingMinor: "40000" };
+    expect(receivableRecord(base)).toMatchObject({ invoiceNumber: null, issuedAtMillis: null });
+    const issued = receivableRecord({ ...base, invoice: { id: "inv-1", invoiceNumber: "INV-2026-000001", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null } });
+    expect(issued).toMatchObject({ invoiceNumber: "INV-2026-000001", issuedAtMillis: Date.parse("2026-10-20T15:00:00.000Z") });
+    expect(NOT_SUPPLIED.invoiceNumber.words).toMatch(/no invoice has been issued/);
   });
 });

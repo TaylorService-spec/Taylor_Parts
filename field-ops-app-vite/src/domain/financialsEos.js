@@ -8,9 +8,9 @@
 // WHAT AN EOS RECEIVABLE IS, AND IS NOT (DECISIONS #197, #191). It is EOS operational truth that money is owed. It is NOT the
 // accounting invoice. Fields the Finance register does not carry are NOT SUPPLIED, and each is NAMED as a model decision rather
 // than invented or silently dropped:
-//   MD-B1-1  invoice number   the formal invoice belongs to the accounting authority (#191); no EOS receivable has a number
-//                             (F-2 re-checked: no record links a receivable to an `invoices` row, so none is inferred -- that relation is F-1's decision)
-//   MD-B1-2  issue date       the register records WHEN EOS recorded the receivable, never an issue date
+//   MD-B1-1  invoice number   F-1a: EOS issues the invoice (INV-YYYY-######) against a receivable, 1:1; the number is supplied once one is issued
+//                             (the row's `invoice`), and is not supplied while none has been
+//   MD-B1-2  issue date       the same: the invoice's issue date once issued; the register's own recorded-at is never passed off as one
 //   MD-B1-3  business unit    obligations carry none; line-level business unit lives on Sales Order / billing lines and no
 //                             roll-up rule has been decided
 // The credited salesperson IS supplied, for attributed rows only (derived from the source Sales Order; never the Account owner).
@@ -29,8 +29,8 @@ export const EOS_SETTLEMENT_NOUN = "Settlement";
 
 /** The named model decisions behind a field the register does not supply. */
 export const NOT_SUPPLIED = Object.freeze({
-  invoiceNumber: Object.freeze({ id: "MD-B1-1", words: "Not supplied (model decision MD-B1-1: the formal invoice number belongs to the accounting authority)" }),
-  issueDate: Object.freeze({ id: "MD-B1-2", words: "Not supplied (model decision MD-B1-2: EOS records when the receivable was recorded, not an issue date)" }),
+  invoiceNumber: Object.freeze({ id: "MD-B1-1", words: "Not supplied (model decision MD-B1-1: no invoice has been issued for this receivable yet)" }),
+  issueDate: Object.freeze({ id: "MD-B1-2", words: "Not supplied (model decision MD-B1-2: no invoice has been issued, so there is no issue date)" }),
   businessUnit: Object.freeze({ id: "MD-B1-3", words: "Not supplied (model decision MD-B1-3: receivables carry no business unit)" }),
 });
 
@@ -43,6 +43,12 @@ const safeInt = (v) => {
 export const dayMillis = (day) => {
   const m = typeof day === "string" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(day) : null;
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime() : null;
+};
+
+/** The invoice's issue instant in ms, or null when there is no invoice (or an unreadable instant). */
+const invoiceIssuedAtMillis = (invoice) => {
+  const ms = typeof invoice?.issuedAt === "string" ? Date.parse(invoice.issuedAt) : Number.NaN;
+  return Number.isFinite(ms) ? ms : null;
 };
 
 /** The AR position of one obligation row, from the server's own facts (mirrors receivablePosition in accountReceivablesEos.js). */
@@ -60,7 +66,8 @@ export function receivableRecord(row) {
   if (totalMinor === null || appliedMinor === null || outstandingMinor === null) return null;
   return {
     invoiceId: row.id,
-    invoiceNumber: null,
+    // F-1a: the number of the invoice issued against this receivable (1:1); null while none has been (NOT_SUPPLIED.invoiceNumber then states why).
+    invoiceNumber: row.invoice?.invoiceNumber ?? null,
     accountId: row.counterparty?.crmAccountId ?? null,
     counterpartyName: row.counterparty?.name ?? null,
     companyId: typeof row.operatingCompanyId === "string" ? row.operatingCompanyId : null,
@@ -70,7 +77,7 @@ export function receivableRecord(row) {
     currency: row.currency,
     state: row.status ?? null,
     totalMinor, appliedMinor, outstandingMinor,
-    issuedAtMillis: null,
+    issuedAtMillis: invoiceIssuedAtMillis(row.invoice),
     dueDate: dayMillis(row.dueOn),
     arPosition: receivablePosition(row),
     daysOverdue: null,

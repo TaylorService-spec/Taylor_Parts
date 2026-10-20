@@ -1,5 +1,5 @@
 // INV-YYYY-###### allocator against real PostgreSQL (Owner ruling 4, preparation only). The counter table is created
-// from the module's own INVOICE_NUMBER_COUNTERS_DDL on a throwaway database (no migration creates it yet).
+// by migration 1764700000000 (F-1a), which must equal the module's own INVOICE_NUMBER_COUNTERS_DDL.
 //   * concurrent issues for one company and year serialize and never duplicate;
 //   * a rolled-back issuance consumes no number;
 //   * option B: each operating company has its own sequence -- two companies can both hold INV-2026-000001, and the
@@ -39,7 +39,12 @@ test("invoice number allocator over PostgreSQL", { skip: SKIP, concurrency: 1 },
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
     maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
   pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
-  await pool.query(a.INVOICE_NUMBER_COUNTERS_DDL);
+  // F-1a: migration 1764700000000 creates the counter; it must be the module's own DDL (same columns, in order), checked against a scratch copy.
+  await pool.query(`CREATE SCHEMA scratch_ddl`);
+  await pool.query(a.INVOICE_NUMBER_COUNTERS_DDL.replace("eos_finance.invoice_number_counters", "scratch_ddl.invoice_number_counters"));
+  const cols = async (schema) => (await pool.query(`SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'invoice_number_counters' ORDER BY ordinal_position`, [schema])).rows;
+  assert.deepEqual(await cols("eos_finance"), await cols("scratch_ddl"), "the migration's counter table equals INVOICE_NUMBER_COUNTERS_DDL");
+  await pool.query(`DROP SCHEMA scratch_ddl CASCADE`);
   await pool.query(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
   const AT = new Date("2026-06-01T12:00:00Z");
   const inTx = async (fn) => {
