@@ -206,6 +206,56 @@ describe("Multi-scan receiving (submission and receipt)", () => {
     expect(within(receipt).getAllByText(/partially received/i).length).toBeGreaterThanOrEqual(2);
   });
 
+  it("the receipt shows its own receiving order number (display batch: it used to say the number was not readable)", async () => {
+    const base = deps();
+    const d = deps({
+      submitCanonicalReceive: vi.fn().mockResolvedValue({
+        status: RECEIVING_OUTCOME.APPLIED,
+        receipt: { ...(await base.submitCanonicalReceive()).receipt, receivingOrderNumber: "RCV-2026-000007" },
+      }),
+    });
+    await readyToSubmit(d);
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    const receipt = await screen.findByRole("status");
+    expect(within(receipt).getByText("RCV-2026-000007")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/not yet readable/i);
+  });
+
+  it("a receipt that completes the order shows the completed state: no false not-receivable warning and no receipt controls", async () => {
+    const complete = progress({ lines: [progressLine({ receivedQuantity: 5, remainingQuantity: 0, state: "RECEIVED" })], receivable: false, storedStatus: "RECEIVED", derivedState: "RECEIVED" });
+    const base = deps();
+    const fetchPurchaseOrderProgress = vi.fn()
+      .mockResolvedValueOnce({ status: RECEIVING_OUTCOME.READY, progress: progress() })
+      .mockResolvedValue({ status: RECEIVING_OUTCOME.READY, progress: complete });
+    const d = deps({
+      fetchPurchaseOrderProgress,
+      submitCanonicalReceive: vi.fn().mockResolvedValue({
+        status: RECEIVING_OUTCOME.APPLIED,
+        receipt: {
+          ...(await base.submitCanonicalReceive()).receipt, receivingOrderNumber: "RCV-2026-000008", derivedState: "RECEIVED", storedStatus: "RECEIVED",
+          lines: [{ lineId: "L1", partId: "P1", orderedQuantity: 5, previouslyReceived: 0, receivedNow: 5, remainingQuantity: 0, state: "RECEIVED" }],
+        },
+      }),
+    });
+    await readyToSubmit(d);
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    const receipt = await screen.findByRole("status", { name: "Receipt" });
+    expect(within(receipt).getByText("RCV-2026-000008")).toBeTruthy();
+    expect(screen.queryByText(/not in a state that accepts a receipt/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /submit receipt/i })).toBeNull();
+    expect(screen.queryByLabelText(/^part$/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /receive another order/i })).toBeTruthy();
+  });
+
+  it("a PARTIAL receipt leaves the order receivable: the controls stay so the rest can be received", async () => {
+    const d = deps();
+    await readyToSubmit(d);
+    fireEvent.click(screen.getByRole("button", { name: /submit receipt/i }));
+    await screen.findByRole("status", { name: "Receipt" });
+    expect(screen.getByRole("button", { name: /submit receipt/i })).toBeTruthy();
+    expect(screen.queryByText(/not in a state that accepts a receipt/i)).toBeNull();
+  });
+
   it("re-reads the order after a receipt rather than patching it locally", async () => {
     const d = deps();
     await readyToSubmit(d);

@@ -221,12 +221,12 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
         }
         case "assignedReorders": {
           const r = await readMyAssignedReorders({ pool }, actor);
-          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: String(x.reorderRequestNumber ?? x.reorderRequestId),
+          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: x.reorderRequestNumber ?? "Reorder request (no number)",
             detail: `${x.partId} × ${x.requestedQty}`, status: x.status, path: pathFor("reorderRequest", x.reorderRequestId) })));
         }
         case "reorderQueue": {
           const r = await readReorderQueue({ pool }, actor, { statuses: ["PENDING_REVIEW", "APPROVED", "READY_FOR_PARTS_MANAGER", "ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS", "ORDERED"] });
-          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: String(x.reorderRequestNumber ?? x.reorderRequestId),
+          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: x.reorderRequestNumber ?? "Reorder request (no number)",
             detail: `${x.partId} × ${x.requestedQty}`, status: x.status, severity: x.status === "PENDING_REVIEW" ? "ATTENTION" : undefined, path: pathFor("reorderRequest", x.reorderRequestId) })));
         }
         case "transfers": {

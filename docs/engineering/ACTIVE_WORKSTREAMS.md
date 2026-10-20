@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
+- Agent/session:       Claude Code Lane UX · Role: builder; controller merges
+- Branch / worktree:   `ux/display-batch-purchasing` · `.claude/worktrees/agent-a499bba175438ba94`
+- Base commit:         `b3d09dc3`
+- Owned paths:         display-only edits in `modules/{purchasing,receiving,inventory/{PartDetail,CycleCounts,PartsList},inventoryRole/PartsManagerHome,technician/TechnicianShell}` · `shared/reorder/*` · read-projection columns in `functions/src/eosOps/{reorderLifecycleCommands,supplierPurchaseOrderAuthoring}.ts` · `eosExperience/myWork.ts` label
+- Shared paths req'd:  this registry · `.github/workflows/equipment-install-ui-tests.yml` (one suite registered)
+- Dependencies:        none
+- Expected outcome:    no screen shows a blank, a storage key or a false warning where the record holds a name, number or state
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
 - Branch / worktree:   PR #2120 · Lane Firebase clone (private PG :55507)

@@ -314,6 +314,10 @@ function OrderedCard({ request, resolveName }) {
               <td>{purchaseOrder.orderedDate}</td>
             </tr>
             <tr>
+              <td>Ordered By</td>
+              <td>{purchaseOrder.createdByName ?? <span className="fo-muted">Not recorded</span>}</td>
+            </tr>
+            <tr>
               <td>Recorded</td>
               <td>{formatTimestamp(purchaseOrder.createdAt)}</td>
             </tr>

@@ -68,8 +68,8 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
   // DQ-027: opted in to partial integrity -- parts with an unreadable ledger record are LISTED as
   // unavailable by the panel below, never dropped.
   const { healthEntries, loading: healthLoading, error: healthError, integrity: healthIntegrity } = useInventoryLedger({ allowPartial: true });
-  const { data: queue, loading: queueLoading, error: queueError } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
-  const { data: oversight, loading: oversightLoading, error: oversightError } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
+  const { data: queue, loading: queueLoading, error: queueError, refresh: refreshQueue } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
+  const { data: oversight, loading: oversightLoading, error: oversightError, refresh: refreshOversight } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
   const { data: history, loading: historyLoading, error: historyError } = useReviewedRequestsHistory(user?.uid);
   // Used only to resolve assignee display names in the oversight table below --
   // EmployeeAssignmentPicker (inside ManagerQueuePanel's AssignPanel) loads its own,
@@ -121,7 +121,7 @@ export default function PartsManagerHome({ accessVersion, title = "Parts Manager
         <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} unavailablePartIds={healthIntegrity?.unavailablePartIds ?? []} />
       </LoadingEmptyState>
 
-      <ManagerQueuePanel queue={queue} resolveName={resolveName} loading={queueLoading} error={queueError} />
+      <ManagerQueuePanel queue={queue} resolveName={resolveName} loading={queueLoading} error={queueError} onAssigned={() => { refreshQueue?.(); refreshOversight?.(); }} />
 
       {assigneesLoading && <p className="fo-muted" role="status">Loading assignee names...</p>}
       {assigneesError && (

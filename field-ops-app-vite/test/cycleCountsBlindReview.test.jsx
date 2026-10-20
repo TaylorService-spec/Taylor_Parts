@@ -159,3 +159,26 @@ describe("a governed refusal is shown in the server's own meaning, not a generic
     expect(text).not.toMatch(/not currently permitted/i);
   });
 });
+
+describe("Cycle Counts workspace: a warehouse is named, not keyed (display batch)", () => {
+  const WH_SHEET = { sheetId: "ccs_wh", location: { type: "WAREHOUSE", locationId: "taylor-main" }, status: "OPEN", createdAt: 1_700_000_000_000 };
+  const whClient = () => client({
+    listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [WH_SHEET], nextCursor: null }),
+    getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: WH_SHEET, lines: [], nextCursor: null }),
+  });
+
+  it("the list and the sheet header show the warehouse name, never the storage key", async () => {
+    render(<CycleCounts deps={{ hasCapability: ALL_HELD, cycleCountClient: whClient(), fetchWarehouseOptions: async () => [{ id: "taylor-main", name: "Taylor Main" }] }} />);
+    const btn = await screen.findByRole("button", { name: "Warehouse Taylor Main" });
+    await act(async () => { fireEvent.click(btn); });
+    const heading = await screen.findByRole("heading", { name: /Warehouse Taylor Main/ });
+    expect(heading.textContent).not.toContain("taylor-main");
+    expect(document.body.textContent).not.toContain("taylor-main");
+  });
+
+  it("a warehouse that cannot be named says so rather than printing the key", async () => {
+    render(<CycleCounts deps={{ hasCapability: ALL_HELD, cycleCountClient: whClient(), fetchWarehouseOptions: async () => { throw new Error("no"); } }} />);
+    expect(await screen.findByRole("button", { name: "Warehouse (name unavailable)" })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("taylor-main");
+  });
+});

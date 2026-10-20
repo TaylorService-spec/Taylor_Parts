@@ -66,6 +66,7 @@ on:
       # Technician field workflow fixes (TW1-TW5, Firebase-exit item 6): phone job cards open the job, names not ids,
       # scheduled-not-dispatched, truck-stock readiness, held-back usage, and the EOS technician identity.
       - "field-ops-app-vite/test/technicianFieldWorkflow.test.jsx"
+      - "field-ops-app-vite/test/technicianJobCardParts.test.jsx"
       - "field-ops-app-vite/src/domain/fieldTruckReadiness.js"
       - "field-ops-app-vite/src/domain/executionOutcome.js"
       - "field-ops-app-vite/src/hooks/useMyTruckStock.js"
@@ -147,6 +148,7 @@ on:
       # Technician field workflow fixes (TW1-TW5, Firebase-exit item 6): phone job cards open the job, names not ids,
       # scheduled-not-dispatched, truck-stock readiness, held-back usage, and the EOS technician identity.
       - "field-ops-app-vite/test/technicianFieldWorkflow.test.jsx"
+      - "field-ops-app-vite/test/technicianJobCardParts.test.jsx"
       - "field-ops-app-vite/src/domain/fieldTruckReadiness.js"
       - "field-ops-app-vite/src/domain/executionOutcome.js"
       - "field-ops-app-vite/src/hooks/useMyTruckStock.js"
@@ -238,7 +240,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
-        run: npx vitest run test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/technicianFieldWorkflow.test.jsx test/jobLabor.test.jsx test/jobLaborOfflineIdempotency.test.jsx
+        run: npx vitest run test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/technicianFieldWorkflow.test.jsx test/technicianJobCardParts.test.jsx test/jobLabor.test.jsx test/jobLaborOfflineIdempotency.test.jsx
         working-directory: field-ops-app-vite
 
       # ND-33 acquisition, at the render. The pure suite above proves what the request may

@@ -48,7 +48,8 @@ vi.mock("../src/hooks/useReorderRequests", () => ({
 }));
 
 vi.mock("../src/hooks/useInventoryActions", () => ({ useInventoryActionsForPart: () => ({ data: [], loading: false }) }));
-vi.mock("../src/hooks/useReorderPurchaseOrders", () => ({ usePurchaseOrderForReorderRequest: () => ({ data: null, loading: false }) }));
+const purchaseOrderState = vi.hoisted(() => ({ current: { data: null, loading: false } }));
+vi.mock("../src/hooks/useReorderPurchaseOrders", () => ({ usePurchaseOrderForReorderRequest: () => purchaseOrderState.current }));
 vi.mock("../src/hooks/useReorderPurchaseOrderVoids", () => ({ useReorderPurchaseOrderVoid: () => ({ data: null, loading: false }) }));
 // The EOS Reorder assignment-target read and the Part's Work Order demand read are real async network reads; left unmocked
 // they resolve as failures DURING a test and add a SECOND role="alert" ("Work Order demand is temporarily unavailable") --
@@ -119,6 +120,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   reorderRequestState.current = { data: null, loading: false, error: null, refresh: () => {} };
+  purchaseOrderState.current = { data: null, loading: false };
 });
 
 describe("PartDetail -- Fix 1: requestable again once the only request is terminal", () => {
@@ -281,5 +283,50 @@ describe("PartDetail -- PL10: reorder controls match the server capabilities", (
     await show(ready, (c) => c === "reorder.request.assign" || c === "reorder.request.cancel");
     expect(screen.getByRole("button", { name: "Assign" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel Reorder Request" })).toBeTruthy();
+  });
+});
+
+// DISPLAY BATCH (purchasing-loop proof, 2026-10-19): the EOS row names the people on it and states when the assignment began, so the
+// "Received By", "Ordered By" and "Assigned" lines are filled instead of blank (the row carries no Firebase uid for a lookup to resolve).
+describe("PartDetail -- the cards name who and when", () => {
+  const show = async (request) => {
+    reorderRequestState.current = { data: { partId: "TST-9001", ...request }, loading: false, error: null, refresh: () => {} };
+    searchParts.mockResolvedValue(CANONICAL_OK);
+    render(<PartDetail />);
+    await screen.findByText("CANONICAL-NAME-A");
+  };
+  const rowText = (label) => screen.getByText(label, { selector: "td" }).closest("tr").textContent;
+
+  it("Received: the receiver is named from receivedByName", async () => {
+    await show({ id: "r3", status: "RECEIVED", receivedByName: "Logan Associate", receivedAt: "2026-10-19T15:00:00.000Z" });
+    expect(rowText("Received By")).toContain("Logan Associate");
+    expect(rowText("Received By")).not.toContain("Unknown user");
+  });
+
+  it("Received: nobody named says Not recorded, never a blank", async () => {
+    await show({ id: "r4", status: "RECEIVED", receivedAt: "2026-10-19T15:00:00.000Z" });
+    expect(rowText("Received By")).toContain("Not recorded");
+  });
+
+  it("Assigned: the assignment date is shown from assignedAt (an ISO instant), not Unknown", async () => {
+    await show({ id: "r5", status: "ASSIGNED_TO_PARTS_ASSOCIATE", assignedEmployeeId: "e1", assignedAt: "2026-10-19T15:00:00.000Z", isAssignee: false });
+    const text = rowText("Assigned");
+    expect(text).toMatch(/2026/);
+    expect(text).not.toContain("Unknown");
+  });
+
+  it("Ordered: the order names who recorded it", async () => {
+    purchaseOrderState.current = {
+      loading: false,
+      data: { supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 3, orderedDate: "2026-10-19", createdAt: "2026-10-19T15:00:00.000Z", createdByName: "Logan Associate" },
+    };
+    await show({ id: "r6", status: "ORDERED" });
+    expect(rowText("Ordered By")).toContain("Logan Associate");
+  });
+
+  it("Ordered: no recorded name says Not recorded", async () => {
+    purchaseOrderState.current = { loading: false, data: { supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 3, orderedDate: "2026-10-19", createdAt: null, createdByName: null } };
+    await show({ id: "r7", status: "ORDERED" });
+    expect(rowText("Ordered By")).toContain("Not recorded");
   });
 });
