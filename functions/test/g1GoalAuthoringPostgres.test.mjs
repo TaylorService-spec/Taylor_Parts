@@ -130,7 +130,10 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
   const versions = async (target) => (await reads.listPerformanceGoalVersions({ pool }, actor(admin, [READ]), { target })).versions;
   const current = async (target, onDate) => (await reads.listCurrentPerformanceGoals({ pool }, actor(admin, [READ]), { targets: [target], onDate })).results[0];
   const counts = async () => (await q(`SELECT (SELECT count(*)::int FROM eos_ops.performance_goals) g, (SELECT count(*)::int FROM eos_ops.performance_goal_commands) c,
-                                              (SELECT count(*)::int FROM eos_policy.audit_events) a`)).rows[0];
+                                              (SELECT count(*)::int FROM eos_policy.audit_events) a,
+                                              -- a STATE HASH of every goal row's status / window / version / approval, so a refusal that edits a row without adding one is seen
+                                              (SELECT md5(coalesce(string_agg(goal_id || '|' || status || '|' || coalesce(effective_to::text, '') || '|' || version || '|' || coalesce(approved_by_ref, ''), ',' ORDER BY goal_id), ''))
+                                                 FROM eos_ops.performance_goals) h`)).rows[0];
   const audits = async (targetId) => (await q(`SELECT action, actor_uid FROM eos_policy.audit_events WHERE target_id = $1 ORDER BY occurred_at, action`, [targetId])).rows;
   /** Insert a goal row directly (a fixture), as the Firebase copy / another instance would have left it. */
   const seed = (over) => {
@@ -202,7 +205,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
   });
 
   await t.test("lifecycle: retire closes the window at the retiring day (never deleted); a goal not yet started closes at its own start", async () => {
-    assert.equal((await refusal(() => retire(approver, W, L.v1))).code, "GOAL_NOT_APPROVED", "a superseded version is history, not retirable");
+    assert.equal((await refusal(() => retire(approver, W, L.v1))).code, "GOAL_NOT_RETIRABLE", "a superseded version is history, not retirable");
     const out = await retire(approver, W, L.v2, "We stopped measuring this");
     assert.deepEqual([out.status, out.closedAt], ["RETIRED", "2026-12-20"]);
     assert.deepEqual([(await row(L.v2)).status, (await row(L.v2)).t], ["RETIRED", "2026-12-20"]);
@@ -210,7 +213,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.deepEqual([retired.status, retired.targetValue, retired.effectiveFrom, retired.effectiveTo], ["RETIRED", 3, "2026-12-01", "2026-12-20"], "the period it governed stays on record");
     assert.equal((await current(FIRM, "2026-12-21")).goal, null, "after the retirement there is no target");
     assert.deepEqual((await audits(L.v2)).map((a) => a.action), ["createPerformanceGoalDraft", "supersedePerformanceGoal", "retirePerformanceGoal"]);
-    assert.equal((await refusal(() => retire(approver, W, L.v2))).code, "GOAL_NOT_APPROVED", "a retired goal is not reopened or retired twice");
+    assert.equal((await refusal(() => retire(approver, W, L.v2))).code, "GOAL_NOT_RETIRABLE", "a retired goal is not reopened or retired twice");
     // A future goal: created, approved, retired the same day -> closes at its own start.
     const metric = { metricId: "purchasing.purchaseOrder.open.count", targetScopeType: "FIRM" };
     const f = await create(mgr, W, { ...metric, targetValue: 8, unit: "COUNT", direction: "AT_MOST", effectiveFrom: "2027-06-01" });
@@ -221,6 +224,18 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     const g = await create(mgr, W, { ...metric, targetValue: 9, unit: "COUNT", direction: "AT_MOST", effectiveFrom: "2027-08-01" });
     await approve(approver, W, g.goalId);
     assert.equal((await retire(mgr, W, g.goalId)).status, "RETIRED");
+  });
+
+  await t.test("versions: a first version after a retired / superseded history is the target's max + 1 -- a number is never reused", async () => {
+    const before = await versions(FIRM);
+    assert.deepEqual(before.map((v) => v.version), [1, 2]);
+    const nxt = await create(mgr, W, draft({ effectiveFrom: "2027-02-01" }));
+    assert.equal(nxt.version, 3, "not 1 again");
+    assert.deepEqual((await versions(FIRM)).map((v) => v.version), [1, 2, 3]);
+    assert.equal((await row(nxt.goalId)).version, 3);
+    // The same for the target whose history lives in the retire test (two retired first versions).
+    const open = { metricId: "purchasing.purchaseOrder.open.count", targetScopeType: "FIRM", unit: "COUNT", direction: "AT_MOST", targetValue: 7, effectiveFrom: "2029-01-01" };
+    assert.equal((await create(mgr, W, open)).version, 3);
   });
 
   // ════════════════════ 2. VERSIONING ════════════════════
@@ -245,7 +260,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.deepEqual([after.g, after.c, after.a], [before.g + 1, before.c + 1, before.a + 1], "only the one valid 'other' draft was written");
     // A bounded window ends before a later first version begins: no overlap, so that IS a first version.
     const bounded = await create(mgr, W, { ...m, targetValue: 6, effectiveFrom: "2025-01-01", effectiveTo: "2025-12-31" });
-    assert.equal(bounded.version, 1);
+    assert.equal(bounded.version, 2, "numbered max + 1 over the target's versions, even for a window that overlaps none");
   });
 
   await t.test("versioning: two drafts for one predecessor cannot both win -- also when approved at the same moment", async () => {
@@ -254,7 +269,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     await approve(approver, W, base.goalId);
     const s1 = await create(mgr, W, { ...m, targetValue: 6, effectiveFrom: "2026-12-01", supersedesGoalId: base.goalId });
     const s2 = await create(mgr, W, { ...m, targetValue: 4, effectiveFrom: "2027-01-01", supersedesGoalId: base.goalId });
-    assert.deepEqual([s1.version, s2.version], [2, 2]);
+    assert.deepEqual([s1.version, s2.version], [2, 3], "versions are the target's max + 1: two drafts for one predecessor never share a number");
     const results = await Promise.allSettled([approve(approver, W, s1.goalId), approve(admin, W, s2.goalId)]);
     assert.equal(results.filter((r) => r.status === "fulfilled").length, 1, "exactly one approval wins");
     const lost = results.find((r) => r.status === "rejected").reason;
@@ -326,6 +341,75 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     assert.equal((await refusal(() => create(rep, W, EMP("e-rep")))).code, "SELF_TARGETING_FORBIDDEN");
     assert.equal((await refusal(() => create(rep, W, EMP("e-m")))).code, "GOAL_SCOPE_NOT_REACHABLE");
     assert.equal((await retire(approver, W, made.goalId)).status, "RETIRED");
+  });
+
+  await t.test("two-person approval rests on distinct EMPLOYEES: relinking the author's Employee to a new Principal does not make a second person", async () => {
+    const px = await principal("uid-author-x");
+    const pxNew = await principal("uid-author-x-new");
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ('e-x','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+             VALUES ('l-x','t1',$1,'e-x','taylor','OPERATOR_ASSERTED','f','test','active')`, [px]);
+    const metric = { metricId: "purchasing.purchaseOrder.open.count", targetScopeType: "FIRM", unit: "COUNT", direction: "AT_MOST", targetValue: 2, effectiveFrom: "2046-01-01" };
+    const made = await create(px, W, metric);
+    assert.equal((await row(made.goalId)).author_employee_id, "e-x", "the author's Employee is recorded at draft time");
+    // The same human is moved to a NEW Principal (the old link is revoked, the Employee is linked to the new Principal).
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE id = 'l-x'`);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+             VALUES ('l-x2','t1',$1,'e-x','taylor','OPERATOR_ASSERTED','f','test','active')`, [pxNew]);
+    const before = await counts();
+    const e = await refusal(() => approve(pxNew, W, made.goalId));
+    assert.deepEqual([e.code, e.category], ["SELF_APPROVAL_FORBIDDEN", "FORBIDDEN"]);
+    assert.match(e.message, /same Employee/);
+    assert.deepEqual(await counts(), before, "refused with zero trace");
+    assert.equal((await row(made.goalId)).status, "DRAFT");
+    // A genuinely different Employee approves; the audit names both Employees and the reason.
+    const ok = await approve(approver, W, made.goalId, "Second person confirmed");
+    assert.equal(ok.status, "APPROVED");
+    const a = (await q(`SELECT after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'approvePerformanceGoal'`, [made.goalId])).rows[0].after;
+    assert.deepEqual([a.authorEmployeeId, a.approverEmployeeId, a.author, a.approver, a.reason], ["e-x", "e-m2", px, approver, "Second person confirmed"]);
+    const created = (await q(`SELECT after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'createPerformanceGoalDraft'`, [made.goalId])).rows[0].after;
+    assert.equal(created.authorEmployeeId, "e-x");
+    // A draft with NO recorded author Employee (an older row) is still held to the author Principal's CURRENT link.
+    const legacy = await seed({ metric: "purchasing.purchaseOrder.open.count", from: "2047-01-01", author: pxNew });
+    const beforeLegacy = await counts();
+    assert.equal((await refusal(() => approve(pxNew, W, legacy))).code, "SELF_APPROVAL_FORBIDDEN", "the same Principal, whatever the recorded Employee");
+    assert.deepEqual(await counts(), beforeLegacy);
+  });
+
+  await t.test("disposition: a DRAFT of any provenance is retired with a reason -- never measured, audited, the guards unchanged", async () => {
+    const { PERFORMANCE_METRICS } = require("../lib/performance/performanceMetricRegistry.js");
+    const inactive = PERFORMANCE_METRICS.find((m) => !m.activeForGoals && m.supportedScopes.includes("FIRM") && m.unit === "COUNT");
+    assert.ok(inactive, "the registry has an inactive FIRM count metric to prove a stranded draft can still be disposed of");
+    const migrated = await seed({ provenance: "MIGRATED", author: "fb-uid-author", from: "2033-01-01" });
+    const stranded = await seed({ provenance: "MIGRATED", author: "fb-uid-author", metric: inactive.metricId, unit: "COUNT", direction: inactive.allowedDirections[0], from: "2033-01-01" });
+    const foreignDraft = await seed({ metric: "sales.billed.amount", scope: "OPERATING_COMPANY", scopeId: "ventana", unit: "CURRENCY_MINOR", currency: "USD", direction: "AT_LEAST", from: "2033-03-01" });
+    // It cannot be approved here -- the reason it needs a disposition.
+    assert.equal((await refusal(() => approve(approver, W, migrated))).code, "GOAL_AUTHOR_UNPROVABLE");
+    const before = await counts();
+    assert.equal((await refusal(() => retire(approver, [CREATE, APPROVE], migrated))).code, "CAPABILITY_REQUIRED");
+    assert.equal((await refusal(() => retire(approver, W, migrated, "  "))).code, "REASON_REQUIRED");
+    assert.equal((await refusal(() => retire(taylorUser, W, foreignDraft))).code, "GOAL_NOT_FOUND", "a foreign draft reads as nonexistent");
+    assert.deepEqual(await counts(), before, "zero trace");
+    const out = await retire(approver, W, migrated, "Copied draft cannot be approved here");
+    assert.deepEqual([out.status, out.closedAt, out.discardedDraft], ["RETIRED", null, true]);
+    const r = await row(migrated);
+    assert.deepEqual([r.status, r.approved_by_ref, r.approved_at_ms, r.f, r.t, r.provenance], ["RETIRED", null, null, "2033-01-01", null, "MIGRATED"], "never approved, its window untouched");
+    const a = (await q(`SELECT actor_uid, after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'retirePerformanceGoal'`, [migrated])).rows;
+    assert.equal(a.length, 1);
+    assert.deepEqual([a[0].actor_uid, a[0].after.discardedDraft, a[0].after.reason, a[0].after.provenance], [approver, true, "Copied draft cannot be approved here", "MIGRATED"]);
+    assert.equal((await refusal(() => retire(approver, W, migrated))).code, "GOAL_NOT_RETIRABLE", "a retired draft is not retired twice");
+    assert.equal((await refusal(() => approve(admin, W, migrated))).code, "GOAL_NOT_DRAFT");
+    // A draft on a metric since deactivated is still disposable (a stranded goal must not stay stranded).
+    assert.equal((await retire(approver, W, stranded, "Metric deactivated")).status, "RETIRED");
+    // A NATIVE draft can be discarded by a holder, its own author included; it was never a target.
+    const native = await create(mgr, W, draft({ effectiveFrom: "2048-01-01" }));
+    assert.equal((await retire(mgr, W, native.goalId, "Entered by mistake")).discardedDraft, true);
+    assert.equal((await row(native.goalId)).status, "RETIRED");
+    assert.equal((await current(FIRM, "2048-06-01")).goal, null);
+    // The retired draft is visible history with its provenance, and cannot be superseded.
+    const seen = (await versions(FIRM)).find((v) => v.goalId === native.goalId);
+    assert.deepEqual([seen.status, seen.provenance], ["RETIRED", "NATIVE"]);
+    assert.equal((await refusal(() => create(mgr, W, draft({ effectiveFrom: "2049-01-01", supersedesGoalId: native.goalId })))).code, "GOAL_NOT_SUPERSEDABLE");
   });
 
   // ════════════════════ 4. REACH, PER SCOPE ════════════════════
@@ -400,7 +484,9 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     for (const id of foreign) assert.deepEqual((await refusal(() => retire(taylorUser, caps, id))).message, missing.message, `retire ${id}`);
     // The company that DOES own the goal reaches it.
     assert.equal((await approve(admin, caps, foreign[0])).status, "APPROVED");
-    assert.deepEqual(await counts(), { g: before.g, c: before.c + 1, a: before.a + 1 }, "only the one legitimate approval wrote anything");
+    const afterLegit = await counts();
+    assert.deepEqual([afterLegit.g, afterLegit.c, afterLegit.a], [before.g, before.c + 1, before.a + 1], "only the one legitimate approval wrote anything");
+    assert.notEqual(afterLegit.h, before.h, "...and it changed exactly the state it was allowed to");
   });
 
   // ════════════════════ 5. IDEMPOTENCY ════════════════════
@@ -450,7 +536,7 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
       () => create(mgr, W, EMP("e-rep-v")),
       () => approve(mgr, W, "goal_nope"),
       () => approve(approver, [APPROVE], g, ""),
-      () => retire(approver, W, g),
+      () => retire(approver, W, L.v1), // a SUPERSEDED version is history
       () => retire(nobody, W, g),
       () => goals.createPerformanceGoalDraft(deps, actor(mgr, W), { ...draft(), tenantId: "t2", idempotencyKey: "x" }),
       () => goals.createPerformanceGoalDraft(deps, actor(mgr, W), draft()),
@@ -516,6 +602,8 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     const n = (await q(`SELECT (SELECT count(*)::int FROM eos_policy.audit_events WHERE target_kind = 'performance_goal') a, (SELECT count(*)::int FROM eos_ops.performance_goal_commands) c`)).rows[0];
     assert.equal(n.a, n.c);
     const sample = (await q(`SELECT * FROM eos_policy.audit_events WHERE action = 'approvePerformanceGoal' ORDER BY occurred_at LIMIT 1`)).rows[0];
+    assert.equal(typeof sample.after.reason, "string", "the reason is a field of the audited state, not only text");
+    assert.ok(sample.after.authorEmployeeId && sample.after.approverEmployeeId && sample.after.authorEmployeeId !== sample.after.approverEmployeeId);
     assert.equal(sample.target_kind, "performance_goal");
     assert.equal(sample.actor_uid, approver);
     assert.match(sample.reason, /author=.*approver=/);

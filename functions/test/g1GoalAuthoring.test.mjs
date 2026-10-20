@@ -126,6 +126,14 @@ test("b. the migration registers exactly the four ids on unique (object, action)
   const down = sql.slice(sql.indexOf("-- Down Migration") >= 0 ? sql.indexOf("DO $$") : 0);
   for (const guard of ["performance_goal_commands", "provenance = 'NATIVE'", "role_capability_decisions", "principal_capabilities", "granted_by <>"]) assert.ok(down.includes(guard), guard);
   assert.match(down, /DROP TABLE eos_ops\.performance_goal_commands;/);
+  // Two-person approval rests on Employees: the author's Employee is recorded; and a DRAFT may be RETIRED (its disposition), so the approval-evidence CHECK is widened for
+  // exactly that case and restored, with the column dropped, by the down -- which refuses first if a draft was retired without ever being approved.
+  assert.match(sql, /ADD COLUMN author_employee_id TEXT;/);
+  assert.match(sql, /status IN \('APPROVED', 'SUPERSEDED'\) AND approved_by_ref IS NOT NULL AND approved_at_ms IS NOT NULL/);
+  assert.match(sql, /status = 'RETIRED' AND \(approved_by_ref IS NULL\) = \(approved_at_ms IS NULL\)/);
+  assert.ok(down.includes("status = 'RETIRED' AND approved_by_ref IS NULL"), "the down refuses while a never-approved draft was retired");
+  assert.match(down, /DROP COLUMN author_employee_id;/);
+  assert.match(down, /CHECK \(\(status = 'DRAFT'\) = \(approved_by_ref IS NULL AND approved_at_ms IS NULL\)\)/);
   // It touches no goal row and writes no other grant: the only role_capabilities INSERT is the 32 pairs.
   assert.equal([...sql.matchAll(/INSERT\s+INTO\s+role_capabilities/gi)].length, 1);
   assert.doesNotMatch(sql, /INSERT\s+INTO\s+(?:eos_ops\.)?performance_goals/i);

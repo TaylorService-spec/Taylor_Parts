@@ -191,13 +191,15 @@ export const goalOf = (r: Record<string, unknown>): PerformanceGoal => Object.fr
   approvedByUid: (r.approved_by_ref as string | null) ?? null,
   approvedAtMillis: r.approved_at_ms === null || r.approved_at_ms === undefined ? null : Number(r.approved_at_ms),
   supersedesGoalId: (r.supersedes_goal_id as string | null) ?? null,
+  // NATIVE (authored on EOS) or MIGRATED (copied from the previous system). Present when the row was read with it: a screen withholds Approve from a copied draft.
+  ...(typeof r.provenance === "string" ? { provenance: r.provenance } : {}),
 });
 
 async function versionsFor(db: Pick<PoolClient, "query">, tenantId: string, t: GoalTargetRequest): Promise<PerformanceGoal[]> {
   const { rows } = await db.query(
     `SELECT goal_id, metric_id, target_scope_type, target_scope_id, target_value, unit, direction, currency,
             ${DATE_AS_TEXT("effective_from")} AS effective_from_text, ${DATE_AS_TEXT("effective_to")} AS effective_to_text,
-            status, version, created_by_ref, created_at_ms, approved_by_ref, approved_at_ms, supersedes_goal_id
+            status, version, created_by_ref, created_at_ms, approved_by_ref, approved_at_ms, supersedes_goal_id, provenance
        FROM ${SCHEMA}.performance_goals
       WHERE tenant_id = $1 AND metric_id = $2 AND target_scope_type = $3 AND target_scope_id IS NOT DISTINCT FROM $4
       ORDER BY version, effective_from, goal_id`, [tenantId, t.metricId, t.targetScopeType, t.targetScopeId]);

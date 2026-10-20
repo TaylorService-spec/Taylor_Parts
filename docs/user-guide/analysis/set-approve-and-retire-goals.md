@@ -6,9 +6,11 @@
 
 **Who can do it:** Owner, General Manager, Operations Manager, Sales Manager, Field Manager, Parts Manager, Warehouse Manager and Administrators. Everyone else keeps seeing their targets on their dashboard, but has no **Analysis > Goals** page. If you cannot do a step, you will not see its button at all.
 
+Two things to know: a target for the **whole firm** is firm-wide, not limited to one company; and an Administrator whose account is not linked to an employee record sees the page but is refused, because working on goals needs an employee's company access.
+
 ## The rules to know first
 - **A draft is not a target.** A new goal is saved as a **Draft** and does nothing until it is approved.
-- **Someone else approves it.** You can never approve a draft you set yourself, even if your role allows approving. The page tells you so instead of showing a button.
+- **Someone else approves it.** You can never approve a draft you set yourself, even if your role allows approving. The page tells you so instead of showing a button. "Someone else" means another **person**: a different sign-in linked to the same employee record does not count.
 - **Approving asks for a reason**, and so does retiring. A decision without a reason is not accepted.
 - **You never set your own target.** An employee does not set, approve or retire a target for themselves. A target for you is set by someone above you.
 - **History is never rewritten.** Replacing or retiring a goal closes its dates. It does not edit the number. The old version stays on the page with the dates it applied.
@@ -51,6 +53,13 @@ Until it is approved, the current target stands. The moment it is approved, the 
 
 The target ends today (or on its own start date if it has not started yet). It stays on the page as **Retired**. Retiring means "we stopped measuring this". Replacing means "we changed the number".
 
+## Discard a draft
+A draft that should not go ahead (entered by mistake, or copied from the previous system) is removed from play with **Discard**:
+1. Show the target and find the **Draft**, then choose **Discard**.
+2. Say why and choose **Confirm discard**.
+
+The draft is kept on the page as **Retired**. It was never a target and nothing was ever measured against it. A draft copied from the previous system cannot be approved here, so it has no **Approve** button; discard it and set the target again.
+
 ## If something is refused
 The page shows the platform's own sentence and changes nothing. The common ones:
 - **The author of a goal version may not approve it.** Ask someone else.
@@ -63,7 +72,7 @@ If the page says it could not save, nothing was changed. Try again: your retry w
 
 ## What this does not do
 - It does not edit a target's number. To change a number, replace the target.
-- It does not delete a draft. A draft nobody approves does nothing.
+- It does not delete anything. A draft nobody approves does nothing, and a discarded draft stays on record as Retired.
 - It does not set targets for a business unit or a team. Those are not available on EOS.
 - It does not change the figure a target is compared with.
 

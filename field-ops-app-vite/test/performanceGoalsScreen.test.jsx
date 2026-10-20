@@ -368,6 +368,42 @@ describe("approving and retiring", () => {
     expect(await screen.findByText(/Retired\. The target no longer applies/)).toBeTruthy();
   });
 
+  it("a draft COPIED from the previous system has no Approve -- the page says so and offers Discard; discarding states a reason and retires it", async () => {
+    const client = fakeClient({ listVersions: vi.fn(async () => ({ ok: true, versions: [
+      goal({ goalId: "g-copied", version: 1, status: "DRAFT", createdByUid: "fb-uid", approvedByUid: null, provenance: "MIGRATED" }),
+      goal({ goalId: "g-native", version: 2, status: "DRAFT", createdByUid: "p-other", approvedByUid: null, provenance: "NATIVE", effectiveFrom: "2027-01-01" }),
+    ] })) });
+    const section = await openFirm(client);
+    expect(within(section).queryByRole("button", { name: "Approve version 1" })).toBeNull();
+    expect(within(section).getByText(/Copied from the previous system, so it cannot be approved here/)).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "Approve version 2" })).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "Discard version 1" })).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "Discard version 2" })).toBeTruthy();
+    fireEvent.click(within(section).getByRole("button", { name: "Discard version 1" }));
+    const form = await screen.findByRole("form", { name: "Discard a draft" });
+    expect(within(form).getByText(/never a target/)).toBeTruthy();
+    const confirm = within(form).getByRole("button", { name: "Confirm discard" });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(form).getByLabelText(/Why is this discarded/), { target: { value: "Copied draft cannot be approved" } });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(client.retire).toHaveBeenCalledTimes(1));
+    expect(client.retire.mock.calls[0][0]).toMatchObject({ goalId: "g-copied", reason: "Copied draft cannot be approved" });
+    expect(await screen.findByText(/Discarded\. The draft was never a target/)).toBeTruthy();
+    await waitFor(() => expect(client.listVersions.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("an approved target is still RETIRED, not discarded; a holder without the retire capability sees neither", async () => {
+    const section = await openFirm(draftFirst());
+    expect(within(section).getByRole("button", { name: "Retire version 1" })).toBeTruthy();
+    expect(within(section).queryByRole("button", { name: "Discard version 1" })).toBeNull();
+    expect(within(section).getByRole("button", { name: "Discard version 2" })).toBeTruthy();
+  });
+
+  it("without the retire capability there is no Discard either", async () => {
+    const section = await openFirm(draftFirst(), has(GATE.approve));
+    expect(within(section).queryByRole("button", { name: /Discard/ })).toBeNull();
+  });
+
   it("Cancel closes the panel without a call", async () => {
     const client = draftFirst();
     const section = await openFirm(client);

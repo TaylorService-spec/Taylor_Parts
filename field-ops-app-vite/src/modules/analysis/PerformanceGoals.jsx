@@ -185,7 +185,9 @@ export default function PerformanceGoals({ hasCapability, client = goalAuthoring
       ) : null}
       {panel && versions.state === "ready" ? (
         <DecisionPanel key={`${panel.kind}-${panel.goal.goalId}`} client={client} kind={panel.kind} goal={panel.goal} onCancel={() => setPanel(null)}
-          onDone={() => changed(panel.kind === "approve" ? "Approved. The target is in force from its start date." : "Retired. The target no longer applies; its history stays on record.")} />
+          onDone={() => changed(panel.kind === "approve" ? "Approved. The target is in force from its start date."
+            : panel.goal.status === "DRAFT" ? "Discarded. The draft was never a target and is kept on record as retired."
+              : "Retired. The target no longer applies; its history stays on record.")} />
       ) : null}
     </>,
   );
@@ -208,6 +210,8 @@ function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, onS
             <tbody>
               {list.map((g) => {
                 const own = g.createdByUid === me;
+                // A draft copied from the previous system cannot be approved here (its author cannot be compared with an approver): it is discarded, or set again.
+                const copied = g.status === "DRAFT" && typeof g.provenance === "string" && g.provenance !== "NATIVE";
                 return (
                   <tr key={g.goalId}>
                     <td>{g.version}</td>
@@ -219,14 +223,20 @@ function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, onS
                     <td>{g.approvedByUid ? nameOfActor(g.approvedByUid) : "—"}</td>
                     <td>
                       <div className="fo-btn-row">
-                        {g.status === "DRAFT" && can(PERFORMANCE_GOAL_GATE.approve) && !own ? (
+                        {g.status === "DRAFT" && can(PERFORMANCE_GOAL_GATE.approve) && !own && !copied ? (
                           <Button variant="secondary" onClick={() => onDecide("approve", g)} aria-label={`Approve version ${g.version}`}>Approve</Button>
                         ) : null}
-                        {g.status === "DRAFT" && can(PERFORMANCE_GOAL_GATE.approve) && own ? (
+                        {copied && can(PERFORMANCE_GOAL_GATE.approve) ? (
+                          <span className="fo-muted" role="note">Copied from the previous system, so it cannot be approved here. Discard it and set the target again.</span>
+                        ) : null}
+                        {g.status === "DRAFT" && can(PERFORMANCE_GOAL_GATE.approve) && own && !copied ? (
                           <span className="fo-muted" role="note">You set this one, so someone else approves it.</span>
                         ) : null}
                         {g.status === "APPROVED" && can(PERFORMANCE_GOAL_GATE.supersede) ? (
                           <Button variant="secondary" onClick={() => onReplace(g)} aria-label={`Replace version ${g.version}`}>Replace</Button>
+                        ) : null}
+                        {g.status === "DRAFT" && can(PERFORMANCE_GOAL_GATE.retire) ? (
+                          <Button variant="secondary" onClick={() => onDecide("retire", g)} aria-label={`Discard version ${g.version}`}>Discard</Button>
                         ) : null}
                         {g.status === "APPROVED" && can(PERFORMANCE_GOAL_GATE.retire) ? (
                           <Button variant="secondary" onClick={() => onDecide("retire", g)} aria-label={`Retire version ${g.version}`}>Retire</Button>
@@ -324,6 +334,7 @@ function DecisionPanel({ client, kind, goal, onCancel, onDone }) {
   const [error, setError] = useState(null);
   const attemptKey = useRef(null);
   const approving = kind === "approve";
+  const discarding = !approving && goal.status === "DRAFT";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -339,15 +350,17 @@ function DecisionPanel({ client, kind, goal, onCancel, onDone }) {
   };
 
   return (
-    <form onSubmit={submit} aria-label={approving ? "Approve a target" : "Retire a target"} className="fo-panel">
-      <SectionHeader level={3} title={`${approving ? "Approve" : "Retire"} version ${goal.version}: ${describeTarget(goal)}`}
-        description={approving ? "Approving puts this target in force. If it replaces another, that one is closed the day before." : "Retiring ends this target with no replacement. The period it applied stays on record."} />
-      <Field id="goal-reason" label={approving ? "Why is this approved?" : "Why is this retired?"} required>
+    <form onSubmit={submit} aria-label={approving ? "Approve a target" : discarding ? "Discard a draft" : "Retire a target"} className="fo-panel">
+      <SectionHeader level={3} title={`${approving ? "Approve" : discarding ? "Discard" : "Retire"} version ${goal.version}: ${describeTarget(goal)}`}
+        description={approving ? "Approving puts this target in force. If it replaces another, that one is closed the day before."
+          : discarding ? "Discarding retires a draft that was never a target. It is kept on record as retired and nothing was ever measured against it."
+            : "Retiring ends this target with no replacement. The period it applied stays on record."} />
+      <Field id="goal-reason" label={approving ? "Why is this approved?" : discarding ? "Why is this discarded?" : "Why is this retired?"} required>
         <textarea className="fo-input" rows={2} value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <FormError role="alert">{error}</FormError>
       <FormActions submitting={busy}>
-        <Button type="submit" loading={busy} disabled={reason.trim() === ""}>{approving ? "Confirm approval" : "Confirm retirement"}</Button>
+        <Button type="submit" loading={busy} disabled={reason.trim() === ""}>{approving ? "Confirm approval" : discarding ? "Confirm discard" : "Confirm retirement"}</Button>
         <Button variant="secondary" onClick={onCancel} disabled={busy}>Cancel</Button>
       </FormActions>
     </form>
