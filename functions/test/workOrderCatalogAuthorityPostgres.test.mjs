@@ -175,8 +175,19 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
 
   // ════════════════════ CONSUMPTION ════════════════════
 
+  // A hard reservation states its company AND warehouse (S1b); the quantity-tracked Part has stock there so the gate can pass.
+  await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+           VALUES ('wh-sample','t1','sample-co','wh-sample','Site','ACTIVE','NATIVE','fixture','fixture')`);
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1','sampleco','ACTIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+           VALUES ('t1','sampleco','sample-co','ACTIVE','NATIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1','sample-co','fixture','test activation')`);
+  await q(`INSERT INTO eos_ops.inventory_movements (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+             movement_type, quantity_delta, source_kind, source_id, created_by)
+           VALUES ('mov-wocat-1','t1','sample-co','p-standard','NONE','WAREHOUSE','wh-sample','RECEIVED',500,'FIXTURE','fixture','fixture')`);
   const ctx = (workOrderId, key) => ({
-    tenantId: "t1", operatingCompanyKey: "sample-co", workOrderId, actorId: "prn-1", idempotencyKey: key,
+    tenantId: "t1", operatingCompanyKey: "sample-co", warehouseId: "wh-sample",
+    source: { kind: "WORK_ORDER", workOrderId }, actorId: "prn-1", idempotencyKey: key,
   });
   const workOrder = (id, status = "WORK_IN_PROGRESS") => q(
     `INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, status, work_order_type, priority,
@@ -189,7 +200,7 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
   await t.test("consumption resolves the Part and refuses one the catalog does not know", async () => {
     await workOrder("wo-c1");
     await assert.rejects(
-      () => commitments.reconcileConsumption(pool, ctx("wo-c1", "idem-c1"), [{ partId: "p-ghost", qtyPlanned: 2 }]),
+      () => commitments.reserve(pool, ctx("wo-c1", "idem-c1"), [{ partId: "p-ghost", quantity: 2 }]),
       (e) => { assert.equal(e.code, "PART_NOT_FOUND"); return true; });
     const { rows } = await q(`SELECT 1 FROM eos_ops.inventory_commitments WHERE work_order_id='wo-c1'`);
     assert.equal(rows.length, 0, "a refused consumption must write no commitment row");
@@ -198,25 +209,25 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
   await t.test("a quantity commitment refuses a SERIAL part rather than approximating it", async () => {
     await workOrder("wo-c2");
     await assert.rejects(
-      () => commitments.reconcileConsumption(pool, ctx("wo-c2", "idem-c2"), [{ partId: "p-serial-component", qtyPlanned: 3 }]),
+      () => commitments.reserve(pool, ctx("wo-c2", "idem-c2"), [{ partId: "p-serial-component", quantity: 3 }]),
       (e) => { assert.equal(e.code, "TRACKING_MODE_NOT_SUPPORTED"); return true; });
   });
 
-  await t.test("a quantity-tracked part still reconciles exactly as before", async () => {
+  await t.test("a quantity-tracked part reserves, consumes what was used and releases the rest", async () => {
     await workOrder("wo-c3");
-    const written = await commitments.reconcileConsumption(pool, ctx("wo-c3", "idem-c3"),
-      [{ partId: "p-standard", qtyPlanned: 5, qtyUsed: 2 }]);
-    const kinds = written.map((w) => w.record.eventType).sort();
-    // 5 planned, 2 used: reserve the 5, consume 2, release the unused 3. Unchanged by the catalog check.
-    assert.deepEqual(kinds, ["CONSUMED", "RELEASED", "RESERVED"]);
+    const reserved = await commitments.reserve(pool, ctx("wo-c3", "idem-c3"), [{ partId: "p-standard", quantity: 5 }]);
+    const consumed = await commitments.consume(pool, ctx("wo-c3", "idem-c3-con"), [{ partId: "p-standard", quantity: 2 }]);
+    const released = await commitments.release(pool, ctx("wo-c3", "idem-c3-rel"), { reason: "unused remainder" });
+    // 5 reserved, 2 used, the unused 3 released. Unchanged by the catalog check.
+    assert.deepEqual([...reserved, ...consumed, ...released].map((w) => w.record.eventType), ["RESERVED", "CONSUMED", "RELEASED"]);
   });
 
   await t.test("ONE bad line refuses the whole plan, before any row is written", async () => {
     await workOrder("wo-c4");
     await assert.rejects(
-      () => commitments.reconcileConsumption(pool, ctx("wo-c4", "idem-c4"), [
-        { partId: "p-standard", qtyPlanned: 1 },
-        { partId: "p-ghost", qtyPlanned: 1 },
+      () => commitments.reserve(pool, ctx("wo-c4", "idem-c4"), [
+        { partId: "p-standard", quantity: 1 },
+        { partId: "p-ghost", quantity: 1 },
       ]),
       (e) => { assert.equal(e.code, "PART_NOT_FOUND"); return true; });
     const { rows } = await q(`SELECT 1 FROM eos_ops.inventory_commitments WHERE work_order_id='wo-c4'`);
@@ -235,12 +246,13 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
 
   await t.test("RELEASE does not consult the catalog -- stranded stock is worse than a stale Part", async () => {
     await workOrder("wo-c5");
-    // RESERVE only -- reconcileConsumption with no qtyUsed consumes the whole plan and leaves nothing
-    // outstanding, which would make this test pass for the wrong reason.
+    // RESERVE only, so something is outstanding and the test cannot pass for the wrong reason.
     await commitments.reserve(pool, ctx("wo-c5", "idem-c5"), [{ partId: "p-standard", quantity: 4 }]);
     // Deactivating the Part must not trap the reservation this Work Order is holding.
     await q(`UPDATE eos_ops.parts SET status='INACTIVE' WHERE tenant_id='t1' AND id='p-standard'`);
-    const released = await commitments.releaseOutstanding(pool, ctx("wo-c5", "idem-c5-rel"));
+    const released = await commitments.cancel(pool,
+      { tenantId: "t1", operatingCompanyKey: "sample-co", source: { kind: "WORK_ORDER", workOrderId: "wo-c5" }, actorId: "prn-1", idempotencyKey: "idem-c5-rel" },
+      { reason: "work order cancelled" });
     assert.ok(released.length > 0, "an outstanding reservation must still be releasable");
     await q(`UPDATE eos_ops.parts SET status='ACTIVE' WHERE tenant_id='t1' AND id='p-standard'`);
   });
@@ -312,8 +324,8 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
   await t.test("a part with recorded USAGE cannot be un-planned, and usage is read from the ledger", async () => {
     await workOrder("wo-p6");
     await setPlan("wo-p6", [{ partId: "p-standard", qtyPlanned: 5 }]);
-    await commitments.reconcileConsumption(pool, ctx("wo-p6", "idem-p6"),
-      [{ partId: "p-standard", qtyPlanned: 5, qtyUsed: 2 }]);
+    await commitments.reserve(pool, ctx("wo-p6", "idem-p6"), [{ partId: "p-standard", quantity: 5 }]);
+    await commitments.consume(pool, ctx("wo-p6", "idem-p6-con"), [{ partId: "p-standard", quantity: 2 }]);
     await assert.rejects(() => setPlan("wo-p6", []), (e) => {
       assert.equal(e.code, "USED_PART_REMOVAL");
       return true;

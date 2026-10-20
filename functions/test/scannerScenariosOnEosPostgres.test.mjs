@@ -283,10 +283,26 @@ test("SCAN-PORT: the scanner scenarios on EOS (real PostgreSQL, real transports)
     assert.ok(locs.some((l) => l.type === "BIN" && l.locationId === BIN_ID && l.code === BIN_CODE), "a bin is displayed by its derived code");
     assert.equal(locs.some((l) => l.locationId === OTHER_BIN_ID), false, "another warehouse's rack is not in this warehouse's list");
   });
-  await t.test("SCN-4 'available' nets open stock reservations (TODO: blocked by lane RES -- S1a/S1b; the commitment ledger is Work-Order-only and nothing reserves, so reserved is always 0)",
-    { todo: "blocked by lane RES (S1a/S1b stock reservation)" }, () => {
-      assert.fail("no reserve command exists on EOS yet; available cannot be netted by a reservation until lane RES lands S1b");
-    });
+  await t.test("SCN-4 'available' nets open HARD reservations (S1b): a claim at the warehouse lowers available, never on-hand, and unallocated demand does not", async () => {
+    const ledger = require("../lib/eosOps/inventoryCommitmentRepository.js");
+    await q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ($1,'taylor','fixture','scenario activation')`, [TENANT]);
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('cust-scn-4',$1,'Cust','ACTIVE','f','f')`, [TENANT]);
+    await q(`INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, status, work_order_type, priority, customer_id, location_id,
+               provenance, created_by_principal_id, created_at, updated_at)
+             VALUES ('wo-scn-4',$1,'taylor','WORK_IN_PROGRESS'::eos_ops.ops_work_order_status,'SERVICE_CALL',2,'cust-scn-4','loc-1','NATIVE',$2,now(),now())`,
+      [TENANT, pa.principalId]);
+    const at = (bal) => bal.byLocation.find((l) => l.warehouseId === WH);
+    const before = at(await balanceOf(pa, PART));
+    assert.deepEqual([before.reserved.state, before.reserved.value], ["KNOWN", 0], "activated, and nothing claimed yet");
+    const ctx = { tenantId: TENANT, operatingCompanyKey: "taylor", warehouseId: WH, source: { kind: "WORK_ORDER", workOrderId: "wo-scn-4" }, actorId: "system", idempotencyKey: "scn4-res" };
+    await ledger.reserve(pool, ctx, [{ partId: PART, quantity: 2 }]);
+    const claimed = await balanceOf(pa, PART);
+    const held = at(claimed);
+    assert.deepEqual([held.quantity, held.reserved.value, held.available.value], [before.quantity, 2, before.quantity - 2], "available is netted by the hard reservation; on-hand is not");
+    assert.ok(["KNOWN", "SCOPE_PARTIAL"].includes(claimed.reserved.state), "never a wrong number: the headline is the claim or SCOPE_PARTIAL");
+    await ledger.cancel(pool, { tenantId: TENANT, operatingCompanyKey: "taylor", source: ctx.source, actorId: "system", idempotencyKey: "scn4-cancel" }, { reason: "scenario cleanup" });
+    assert.equal(at(await balanceOf(pa, PART)).available.value, before.quantity, "released: the unit is available again");
+  });
 
   // ═════════════ SCN-5 ═════════════
   await t.test("SCN-5 multi-line partial receiving: LIVE on EOS -- partial receipts over time, replay, over-receipt, and who may receive", async () => {

@@ -328,7 +328,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 108 -> 109: 1764670000000 -- GRANT-1 Owner policy grants (2026-10-19): inventory.catalog.part.activate registered (the Part / Manufacturer status key split from inventory.catalog.activate) and 30 Owner-ruled grants (A1 2, A2 4, A3a 2, A3b 6, A4 4, A7 12); no schema.
   // 110 -> 111: 1764690000000 -- G-1 performance goal authoring (2026-10-20): performance.goal.create / .approve / .supersede / .retire registered and their 32 Firebase-mirrored grants, plus the authoring idempotency table.
   // 111 -> 112: 1764700000000 -- F-1a issue invoice on EOS (2026-10-20): invoice schema only, no capability and no grant.
-  assert.equal(files.length, 112, "the migration chain moved; re-measure before trusting anything below");
+  // 112 -> 113: 1764710000000 -- S1b hard stock reservations (1764710000000, 2026-10-20): commitment company+warehouse columns, append-only/insert-only triggers and the activation table; no capability, no grant.
+  assert.equal(files.length, 113, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

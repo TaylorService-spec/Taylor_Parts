@@ -308,6 +308,7 @@
     "test/g1GoalAuthoringPostgres.test.mjs",
     "test/q1CommercialCrmAuditPostgres.test.mjs",
     "test/scannerScenariosOnEosPostgres.test.mjs",
-    "test/f1aInvoiceIssuePostgres.test.mjs"
+    "test/f1aInvoiceIssuePostgres.test.mjs",
+    "test/stockReservationPostgres.test.mjs"
   ]
 }

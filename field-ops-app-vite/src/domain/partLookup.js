@@ -299,6 +299,9 @@ function balanceRows(balance, serialTracked) {
     if (f.state === "NOT_COUNTED_BY_QUANTITY") {
       return field(label, FIELD_STATE.NOT_APPLICABLE, null, applicableDetail);
     }
+    // S1b: a reservation figure the server will not state as a number. Both fail closed as UNKNOWN, with the honest reason.
+    if (f.state === "NOT_YET_ACTIVATED") return field(label, FIELD_STATE.UNKNOWN, null, "Stock reservations are not switched on for this company yet.");
+    if (f.state === "SCOPE_PARTIAL") return field(label, FIELD_STATE.UNKNOWN, null, "This part is also stocked in warehouses outside your scope, so a total here would be incomplete.");
     // UNKNOWN is carried straight through. It is NEVER rendered as 0: "no movement evidence for
     // this part" and "evidence that nets to zero" are different facts with different fixes.
     return field(label, FIELD_STATE.UNKNOWN, null, "No stock movement has been recorded for this part.");

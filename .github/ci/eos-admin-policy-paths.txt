@@ -1007,3 +1007,7 @@ functions/test/f1aInvoiceIssuePostgres.test.mjs
 functions/migrations/1764700000000_invoice-issue.sql
 functions/src/eosFinance/invoiceIssue.ts
 field-ops-app-vite/src/modules/financials/InvoiceIssueQueue.jsx
+# S1b (2026-10-20): hard stock reservations per company and warehouse.
+functions/migrations/1764710000000_stock-reservation-company-warehouse.sql
+functions/test/stockReservationPostgres.test.mjs
+functions/src/eosOps/inventoryCommitmentRepository.ts

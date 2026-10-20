@@ -21,6 +21,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const reads = require("../lib/eosOps/partsReads.js");
+const ledger = require("../lib/eosOps/inventoryCommitmentRepository.js");
 const spo = require("../lib/eosOps/supplierPurchaseOrderReceiving.js");
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 
@@ -114,9 +115,11 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
     `INSERT INTO eos_ops.inventory_movements (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
                                               movement_type, quantity_delta, source_kind, source_id, created_by)
      VALUES ($1,'t1',$2,$3,'NONE',$4,$5,$6,$7,'FIXTURE','fixture','fixture')`, [`mov-bal-${++seq}`, companyKey, partId, locationType, locationId, type, delta]);
-  const commit = (partId, eventType, quantity, companyKey = "sample-co") => q(
-    `INSERT INTO eos_ops.inventory_commitments (id, tenant_id, operating_company_key, work_order_id, part_id, event_type, quantity, idempotency_key, created_by)
-     VALUES ($1,'t1',$2,'wo-fixture',$3,$4,$5,$1,'fixture')`, [`cmt-bal-${++seq}`, companyKey, partId, eventType, quantity]);
+  // A commitment states its company AND warehouse (S1b); the pair must agree, and the database proves it.
+  const commit = (partId, eventType, quantity, companyKey = "sample-co", warehouseId = companyKey === "ventana-co" ? "wh-v" : "wh-1") => q(
+    `INSERT INTO eos_ops.inventory_commitments (id, tenant_id, operating_company_key, warehouse_id, work_order_id, part_id, event_type, quantity, idempotency_key, request_fingerprint, created_by)
+     VALUES ($1,'t1',$2,$3,'wo-fixture',$4,$5,$6,$1,repeat('a', 64),'fixture')`, [`cmt-bal-${++seq}`, companyKey, warehouseId, partId, eventType, quantity]);
+  const activate = (companyKey) => q(`INSERT INTO eos_ops.stock_reservation_activation (tenant_id, operating_company_key, activated_by, reason) VALUES ('t1',$1,'fixture','test activation')`, [companyKey]);
   const reorder = async (partId, warehouseId, status, quantity, companyKey = "sample-co") => {
     const id = `rr-bal-${++seq}`;
     await q(`INSERT INTO eos_ops.reorder_requests (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity, updated_by, provenance, requested_by, received_at)
@@ -151,11 +154,17 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
     assert.equal((await refusal(() => reads.readPartBalance({ pool }, actor(), {}))).code, "PART_ID_REQUIRED");
   });
 
-  await t.test("a Part with no evidence at all is UNKNOWN, never 0 -- except reserved, which is a known 0", async () => {
+  await t.test("a Part with no evidence at all is UNKNOWN, never 0; reserved is NOT_YET_ACTIVATED until the company is activated, then a known 0", async () => {
     const b = await balance("PART-D");
     assert.deepEqual([fig(b.onHand), fig(b.reserved), fig(b.available), fig(b.onOrder)],
-      [["UNKNOWN", null], ["KNOWN", 0], ["UNKNOWN", null], ["UNKNOWN", null]]);
+      [["UNKNOWN", null], ["NOT_YET_ACTIVATED", null], ["UNKNOWN", null], ["UNKNOWN", null]],
+      "no writer has earned a confident 0 before activation (DECISIONS #165 ruling 2)");
     assert.deepEqual([b.trackingMode, b.byLocation], ["NONE", []]);
+    await activate("sample-co");
+    const after = await balance("PART-D");
+    assert.deepEqual([fig(after.reserved), fig(after.available)], [["KNOWN", 0], ["UNKNOWN", null]], "activated + no claim = a known 0; available stays UNKNOWN with no stock evidence");
+    // Ventana is activated separately: another company's switch is not this one's.
+    await activate("ventana-co");
   });
 
   await t.test("on hand: bins roll up to their warehouse, an INACTIVE warehouse is excluded, and each caller sees only their own scope and companies", async () => {
@@ -167,11 +176,15 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
     await move("PART-A", "WAREHOUSE", "wh-v", 100, "ventana-co");
     const mine = await balance("PART-A");
     assert.deepEqual(fig(mine.onHand), ["KNOWN", 13], "wh-1 holds 10 + 5 (bin) - 2; wh-closed is inactive; wh-2 and wh-v are out of scope");
-    assert.deepEqual(mine.byLocation, [{ warehouseId: "wh-1", quantity: 13 }]);
-    assert.deepEqual(fig(mine.available), ["KNOWN", 13]);
+    assert.deepEqual(mine.byLocation, [{ warehouseId: "wh-1", quantity: 13, reserved: { state: "KNOWN", value: 0 }, available: { state: "KNOWN", value: 13 } }],
+      "the per-warehouse figures are exact and in scope");
+    // wh-2 (out of this caller's scope) also holds PART-A: a headline available would be a wrong number, so it says SCOPE_PARTIAL and discloses nothing else.
+    assert.deepEqual([fig(mine.reserved), fig(mine.available)], [["SCOPE_PARTIAL", null], ["SCOPE_PARTIAL", null]]);
+    assert.ok(!JSON.stringify(mine).includes("wh-2") && !JSON.stringify(mine).includes("wh-v"), "nothing about an out-of-scope warehouse is disclosed");
     const two = await balance("PART-A", actor(receiver2));
     assert.deepEqual(fig(two.onHand), ["KNOWN", 16]);
-    assert.deepEqual(two.byLocation, [{ warehouseId: "wh-1", quantity: 13 }, { warehouseId: "wh-2", quantity: 3 }], "largest first");
+    assert.deepEqual(fig(two.available), ["KNOWN", 16], "this scope covers every ACTIVE warehouse holding the Part, so the headline is complete");
+    assert.deepEqual(two.byLocation.map((l) => [l.warehouseId, l.quantity]), [["wh-1", 13], ["wh-2", 3]], "largest first");
     const ventana = await balance("PART-A", actor(ventanaReceiver));
     assert.deepEqual(fig(ventana.onHand), ["KNOWN", 100], "another company's reader sees only its own stock");
     const both = await balance("PART-A", actor(crossReader));
@@ -181,14 +194,32 @@ test("Part balance on PostgreSQL: three-valued figures, scoped to the caller's c
     assert.deepEqual(fig((await balance("PART-A")).onHand), ["KNOWN", 13]);
   });
 
-  await t.test("reserved is the company's open Work Order commitments (RESERVED - RELEASED - CONSUMED); available floors at 0", async () => {
+  await t.test("the read's per-warehouse on-hand IS the gate's on-hand (one arithmetic, bins rolled up)", async () => {
+    for (const partId of ["PART-A", "PART-B", "PART-C"]) {
+      const b = await balance(partId, actor(receiver2));
+      for (const l of b.byLocation) {
+        assert.equal(l.quantity, await ledger.sellableOnHandAtWarehouse(pool, "t1", "sample-co", l.warehouseId, partId), `${partId} at ${l.warehouseId}`);
+        assert.equal(l.available.value, Math.max(0, l.quantity - await ledger.committedQuantity(pool, "t1", "sample-co", l.warehouseId, partId)), "available = on-hand - committed, the gate's formula");
+      }
+    }
+    // The same equality when the gate is the one asked first: bins and a WAREHOUSE row of wh-1 sum to the read's figure.
+    const a = await balance("PART-A");
+    assert.equal(a.byLocation[0].quantity, 13);
+    assert.equal(await ledger.sellableOnHandAtWarehouse(pool, "t1", "sample-co", "wh-1", "PART-A"), 13);
+  });
+
+  await t.test("reserved is the HARD reservations per company AND warehouse (RESERVED - RELEASED - CONSUMED), the gate's own arithmetic; available floors at 0", async () => {
     await commit("PART-A", "RESERVED", 6);
     await commit("PART-A", "RELEASED", 1);
     await commit("PART-A", "CONSUMED", 2);
     await commit("PART-A", "RESERVED", 50, "ventana-co");
     const mine = await balance("PART-A");
-    assert.deepEqual([fig(mine.reserved), fig(mine.available)], [["KNOWN", 3], ["KNOWN", 10]]);
+    assert.deepEqual(mine.byLocation.map((l) => [l.warehouseId, fig(l.reserved), fig(l.available)]), [["wh-1", ["KNOWN", 3], ["KNOWN", 10]]]);
+    assert.equal(mine.byLocation[0].reserved.value, await ledger.committedQuantity(pool, "t1", "sample-co", "wh-1", "PART-A"), "the read and the gate use ONE arithmetic");
+    const two = await balance("PART-A", actor(receiver2));
+    assert.deepEqual([fig(two.reserved), fig(two.available)], [["KNOWN", 3], ["KNOWN", 13]], "wh-1: 13 - 3 = 10, plus wh-2: 3 - 0 = 3");
     assert.deepEqual(fig((await balance("PART-A", actor(ventanaReceiver))).reserved), ["KNOWN", 50], "the other company's commitment is its own");
+    assert.deepEqual(fig((await balance("PART-A", actor(ventanaReceiver))).available), ["KNOWN", 50]);
     await move("PART-C", "WAREHOUSE", "wh-1", 5);
     await commit("PART-C", "RESERVED", 9);
     const c = await balance("PART-C");
