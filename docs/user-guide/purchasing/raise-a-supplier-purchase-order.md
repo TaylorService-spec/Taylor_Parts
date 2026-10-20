@@ -22,7 +22,7 @@ If you cannot do a step, you will not see its button at all.
 1. Open **Purchasing > Purchase Orders** and choose **Supplier purchase orders** at the top.
 2. Choose **Raise supplier purchase order**.
 3. Pick the **Supplier**.
-4. Tick the requests to put on the order. The first request you tick fixes the warehouse; requests for other warehouses are greyed out.
+4. Tick the requests to put on the order. Each is listed by its request number (for example `RR-2026-000914`); a request raised before numbering began reads **Request without a number**. The order's detail names the receiving warehouse (for example **Taylor Main**), not its code. The first request you tick fixes the warehouse; requests for other warehouses are greyed out.
 5. For each request, check the **Quantity** (it starts at the quantity requested). Enter a **Unit price** in dollars and cents, such as `12.50`, with its currency, or leave it blank:
    - If you are allowed to see the part's supplier terms, a blank price uses the terms' price (shown in grey as a hint).
    - Otherwise a blank price is saved as **Price not stated**. It is never saved as zero.

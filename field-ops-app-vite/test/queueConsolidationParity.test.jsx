@@ -200,3 +200,25 @@ describe("ManagerQueuePanel: the Assign panel opens beside the selected card", (
     expect(items[0].contains(empty)).toBe(true);
   });
 });
+
+// PL4 (purchasing-loop proof, 2026-10-19): after Assign succeeded the Oversight list stayed at "(0) No requests assigned" until a reload,
+// because these reads are fetches and nothing re-read them. The panel now tells its caller an assignment succeeded.
+describe("ManagerQueuePanel: a successful assignment tells the caller so its lists can be re-read (PL4)", () => {
+  const queue = [{ id: "req-top", partId: "TST-9001", urgency: "HIGH", reviewedAt: 1 }];
+
+  it("12: onAssigned fires once on success, and not on a refusal", async () => {
+    const onAssigned = vi.fn();
+    render(<ManagerQueuePanel queue={queue} resolveName={() => "CANONICAL-NAME-A"} loading={false} error={null} onAssigned={onAssigned} />);
+    fireEvent.click(screen.getByRole("button", { name: /^assign canonical-name-a$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "pick-emp-77" }));
+    assignReorderRequest.mockResolvedValueOnce({ ok: false, message: "refused" });
+    fireEvent.click(screen.getByRole("button", { name: /^assign$/i }));
+    await screen.findByText("refused");
+    expect(onAssigned).not.toHaveBeenCalled();
+
+    assignReorderRequest.mockResolvedValueOnce({ ok: true });
+    fireEvent.click(screen.getByRole("button", { name: /^assign$/i }));
+    await waitFor(() => expect(onAssigned).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+});

@@ -449,7 +449,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
   }, [catalogRows]);
 
   const { data: pendingRequests } = useReorderRequests();
-  const { data: partsManagerQueue, loading: partsManagerLoading, error: partsManagerError } = useReorderRequestsByStatus(
+  const { data: partsManagerQueue, loading: partsManagerLoading, error: partsManagerError, refresh: refreshPartsManagerQueue } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
   );
   const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useMyAssignedReorderRequests(
@@ -464,6 +464,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
     data: allAssignedWork,
     loading: allAssignedWorkLoading,
     error: allAssignedWorkError,
+    refresh: refreshAllAssignedWork,
   } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES);
   // Firebase exit F4 (DECISIONS #247): "Team Work" names each assignee through the governed resolveEmployeeDisplayNames, for exactly
   // the Employee ids on the rows above (assignedEmployeeId). It used to read the whole Firestore employee directory, which is
@@ -801,6 +802,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
             resolveName={resolveName}
             loading={partsManagerLoading}
             error={partsManagerError}
+            onAssigned={() => { refreshPartsManagerQueue?.(); refreshAllAssignedWork?.(); }}
             title="Parts Manager Queue"
             description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
           />
