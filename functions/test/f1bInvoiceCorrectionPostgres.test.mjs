@@ -933,6 +933,19 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     await assert.rejects(decideRaw("icr-sae-3", "PROTECTED_OWNER"), /SELF_APPROVAL_FORBIDDEN/, "an ended Owner cannot decide their own");
     await q(`UPDATE eos_policy.user_role_assignments SET status = 'active' WHERE principal_id = $1 AND id LIKE 'a-owner-%'`, [O.principalId]);
     await rawFact("icr-sae-2", -100);
+    // a row INSERTED already decided is judged exactly like a decision (the replaced CHECK covered INSERT too; nothing forces a new row to be PENDING)
+    const insertDecided = (id, who, emp, status, basis) => q(
+      `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id,
+          request_idempotency_key, request_fingerprint, decided_by, decided_by_employee_id, decided_at, decision_reason, decision_idempotency_key, decision_fingerprint, approval_basis, approval_grant_source)
+       VALUES ($1,$2,'taylor',$3,$4,'CREDIT_MEMO',100,'USD','raw',$7,$5,$6,$1,'fp',$5,$6,now(),'r',$1,'f',$8,$9)`,
+      [id, TENANT, D.invoice.id, D.obligation, who, emp, status, basis, basis ? "PROTECTED_OWNER_MEMBERSHIP" : null]);
+    await assert.rejects(insertDecided("icr-sae-ins-1", O.principalId, "e-sae-owner", "APPLIED", null), /SELF_APPROVAL_FORBIDDEN/, "same person, APPLIED on INSERT, no basis: refused even for the Owner");
+    await assert.rejects(insertDecided("icr-sae-ins-2", sae.people.administrator.principalId, "e-sae-admin", "APPLIED", "PROTECTED_OWNER"), /SELF_APPROVAL_FORBIDDEN/, "a forged PROTECTED_OWNER basis by a non-Owner: refused");
+    await assert.rejects(insertDecided("icr-sae-ins-3", sae.people.administrator.principalId, "e-sae-admin", "REJECTED", null), /SELF_APPROVAL_FORBIDDEN/, "same person, REJECTED on INSERT, no basis: refused");
+    await assert.rejects(insertDecided("icr-sae-ins-4", sae.people.administrator.principalId, "e-sae-admin", "APPLIED", "PROTECTED_OWNER"), /SELF_APPROVAL_FORBIDDEN/);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoice_corrections WHERE id LIKE 'icr-sae-ins-%'`), 0, "every refusal left nothing");
+    await insertDecided("icr-sae-ins-5", O.principalId, "e-sae-owner", "APPLIED", "PROTECTED_OWNER");
+    assert.equal((await one(`SELECT approval_basis FROM eos_finance.invoice_corrections WHERE id = 'icr-sae-ins-5'`)).approval_basis, "PROTECTED_OWNER", "the protected Owner, with the basis, is accepted");
     // a withdrawal carries no basis
     await rawPending("icr-sae-4");
     await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET status='WITHDRAWN', decided_by=$2, decided_by_employee_id='e-sae-owner', decided_at=now(), decision_reason='r', decision_idempotency_key='w', decision_fingerprint='f',
