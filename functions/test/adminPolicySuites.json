@@ -123,7 +123,8 @@
     "test/supplierPurchaseOrderAuthoringOffline.test.mjs",
     "test/grant1OwnerPolicyGrants.test.mjs",
     "test/a6AccountBalanceSummary.test.mjs",
-    "test/g1GoalAuthoring.test.mjs"
+    "test/g1GoalAuthoring.test.mjs",
+    "test/q1CommandAuditInventory.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -303,6 +304,7 @@
     "test/supplierPurchaseOrderAuthoringPostgres.test.mjs",
     "test/grant1OwnerPolicyGrantsPostgres.test.mjs",
     "test/a6AccountBalanceSummaryPostgres.test.mjs",
-    "test/g1GoalAuthoringPostgres.test.mjs"
+    "test/g1GoalAuthoringPostgres.test.mjs",
+    "test/q1CommercialCrmAuditPostgres.test.mjs"
   ]
 }

@@ -8,6 +8,7 @@ import {
   buildAcceptSalesAgreement, buildCreateSalesAgreement, buildUpdateSalesAgreementDraft, computeAgreementTotals, type CustomerDiscount,
 } from "../../salesAgreement/salesAgreementCommands";
 import { allocateCommercialNumber } from "../commercialNumbering";
+import { pickFields } from "../../eosAudit/commandAuditEvent";
 import { discountAuthorityOf, discountWithinAuthority } from "../../salesAuthority/salesDiscountAuthority";
 import {
   COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireReservedHolder, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
@@ -262,6 +263,14 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       return {
         result: { salesAgreementId: id, salesAgreementNumber: number.number, opportunityId: opportunity.id, state: "DRAFT", ...accountable },
         target: target(id),
+        audit: {
+          action: "salesAgreement.create", targetKind: "sales_agreement", targetId: id, before: null,
+          after: {
+            salesAgreementNumber: number.number, opportunityId: opportunity.id, accountId: built.accountId, state: "DRAFT",
+            ownerEmployeeId: built.ownerEmployeeId, operatingCompanyId: built.operatingCompanyId, creditedSalespersonId: built.creditedSalespersonId,
+            lines: built.lines, charges: built.totals, customerDiscount: discount, tradeInCount: tradeIns?.length ?? 0, ...accountable,
+          },
+        },
       };
     });
 }
@@ -351,7 +360,25 @@ export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: Co
       );
       if (tradeIns !== undefined) await syncApprovedTradeInCredit(db, actor.tenantId, current.id);
       if (patch.lines) await replaceAgreementLines(db, actor.tenantId, current.id, agreementLineRows(patch.lines as AgreementRow["lines"]));
-      return { result: { salesAgreementId: current.id, changed }, target: target(current.id) };
+      // Q-1 audit: what the draft held and what it now holds, for the fields this edit wrote (discount and trade-ins included).
+      const was: Record<string, unknown> = { ...current.charges, locationId: current.locationId, creditedSalespersonId: current.creditedSalespersonId,
+        customerPO: current.customerPO, isLease: current.isLease, fulfillmentIntent: current.fulfillmentIntent,
+        shippingInstructions: current.shippingInstructions, shipVia: current.shipVia, specialInstructions: current.specialInstructions, lines: current.lines };
+      const draftKeys = Object.keys(DRAFT_COLUMNS).filter((f) => f in patch);
+      const chargeKeys = totals ? Object.keys(CHARGE_COLUMNS) : [];
+      const lineKeys = patch.lines ? ["lines"] : [];
+      return {
+        result: { salesAgreementId: current.id, changed }, target: target(current.id),
+        audit: {
+          action: "salesAgreement.updateDraft", targetKind: "sales_agreement", targetId: current.id,
+          before: { ...pickFields(was, [...draftKeys, ...chargeKeys, ...lineKeys]), ...(discountChange !== undefined ? { customerDiscount: standing } : {}) },
+          after: {
+            ...pickFields(patch, [...draftKeys, ...lineKeys]), ...pickFields(totals ?? {}, chargeKeys),
+            ...(discountChange !== undefined ? { customerDiscount: discountChange } : {}),
+            ...(tradeIns !== undefined ? { tradeInCount: tradeIns.length } : {}), changed,
+          },
+        },
+      };
     }, { family: "salesAgreement", id: input?.salesAgreementId });
 }
 
@@ -378,6 +405,11 @@ export function acceptSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       return {
         result: { salesAgreementId: current.id, state: "ACCEPTED", acceptedAt: accepted.rows[0].accepted_at.toISOString(), acceptedBy: actor.principalId },
         target: target(current.id),
+        audit: {
+          action: "salesAgreement.accept", targetKind: "sales_agreement", targetId: current.id,
+          before: { state: "DRAFT" },
+          after: { state: "ACCEPTED", acceptedAt: accepted.rows[0].accepted_at.toISOString(), acceptedBy: actor.principalId },
+        },
       };
     }, { family: "salesAgreement", id: input?.salesAgreementId });
 }
@@ -406,7 +438,7 @@ function decideTradeIn(deps: CommercialCommandDeps, actor: CommercialActorContex
       if (decision === "APPROVED" && (!Number.isSafeInteger(input.approvedCreditMinor) || (input.approvedCreditMinor as number) < 1)) {
         fail("TRADE_IN_INVALID", "INVALID_INPUT", "approvedCreditMinor is the approved value in positive minor units");
       }
-      const { rows } = await db.query(`SELECT approval_status FROM eos_commercial.sales_agreement_trade_ins
+      const { rows } = await db.query(`SELECT approval_status, proposed_value_minor FROM eos_commercial.sales_agreement_trade_ins
         WHERE tenant_id = $1 AND sales_agreement_id = $2 AND item_number = $3 FOR UPDATE`, [actor.tenantId, current.id, input.itemNumber]);
       if (!rows[0]) fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Agreement has no such trade-in item");
       if (rows[0].approval_status !== "PROPOSED") fail("TRADE_IN_ALREADY_DECIDED", "PRECONDITION_FAILED", `the trade-in is already ${rows[0].approval_status}; a changed proposal is decided again`);
@@ -427,6 +459,12 @@ function decideTradeIn(deps: CommercialCommandDeps, actor: CommercialActorContex
         result: { salesAgreementId: current.id, itemNumber: input.itemNumber as number, approvalStatus: decision,
           approvedCreditMinor: decision === "APPROVED" ? input.approvedCreditMinor as number : null, tradeInCreditMinor: credit, balanceMinor: totals.balanceMinor },
         target: target(current.id),
+        audit: {
+          action: decision === "APPROVED" ? "salesAgreement.approveTradeIn" : "salesAgreement.declineTradeIn", targetKind: "sales_agreement", targetId: current.id,
+          before: { itemNumber: input.itemNumber as number, approvalStatus: "PROPOSED", proposedValueMinor: Number(rows[0].proposed_value_minor), tradeInCreditMinor: current.charges.tradeInMinor },
+          after: { itemNumber: input.itemNumber as number, approvalStatus: decision, approvedCreditMinor: decision === "APPROVED" ? input.approvedCreditMinor as number : null, tradeInCreditMinor: credit },
+          reason,
+        },
       };
     }, { family: "salesAgreement", id: input?.salesAgreementId });
 }

@@ -30,6 +30,7 @@
 //
 // A Contact is not a login: nothing here references eos_policy.principals except as the acting writer.
 import { randomUUID } from "node:crypto";
+import { recordCommandAudit } from "../eosAudit/commandAuditEvent.js";
 import { inheritOwnerFromAccount } from "../crm/customerIdentity.js";
 import {
   CRM_CAPABILITIES,
@@ -158,6 +159,7 @@ export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
         [`cont_${randomUUID()}`, tenantId, parent.id, fields.get("name"), fields.get("email") ?? null, fields.get("phone") ?? null,
           fields.get("contactRole") ?? null, fields.get("isPrimary") ?? false, inheritOwnerFromAccount(parent.ownerEmployeeId), principalId],
       );
+      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createContact", targetKind: "crm_contact", targetId: rows[0].id, before: null, after: { ...project(rows[0]) } });
       return { result: project(rows[0]), targetType: "CONTACT", targetId: rows[0].id };
     },
   );
@@ -226,6 +228,11 @@ export function importAccountContacts(deps: CrmDeps, actor: CrmActorContext, inp
       if (inserted.rows.length !== rows.length) fail("CRM_COMMAND_FAILED", "FAILED", "the command could not be completed");
       const byId = new Map(inserted.rows.map((row) => [row.id, project(row)]));
       const contacts = ids.map((id) => byId.get(id) as ContactProjection);
+      // ONE row for the ONE import command: it names the Account and every Contact it created, not one row per Contact.
+      await recordCommandAudit(db, tenantId, principalId, {
+        action: "crm.importAccountContacts", targetKind: "crm_account", targetId: parent.id, before: null,
+        after: { importedCount: contacts.length, contactIds: ids },
+      });
       return { result: { accountId: parent.id, importedCount: contacts.length, contacts }, targetType: "ACCOUNT", targetId: parent.id };
     },
   );
@@ -244,6 +251,8 @@ export function updateContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
     },
     async (db, { tenantId, principalId }, { contactId, changes }) => {
       const set = assignmentsOf(changes, CONTACT_UPDATE_COLUMNS, 4);
+      const prior = await db.query<ContactRow>(`SELECT ${COLUMNS} FROM eos_crm.contacts WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, contactId]);
+      if (prior.rows.length === 0) fail("CONTACT_NOT_FOUND", "NOT_FOUND", "the Contact does not exist in this tenant");
       const { rows } = await db.query<ContactRow>(
         `UPDATE eos_crm.contacts SET ${set.sql}, updated_by = $3, updated_at = now()
           WHERE tenant_id = $1 AND id = $2
@@ -251,6 +260,9 @@ export function updateContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
         [tenantId, contactId, principalId, ...set.values],
       );
       if (rows.length === 0) fail("CONTACT_NOT_FOUND", "NOT_FOUND", "the Contact does not exist in this tenant");
+      await recordCommandAudit(db, tenantId, principalId, {
+        action: "crm.updateContact", targetKind: "crm_contact", targetId: contactId, before: { ...project(prior.rows[0]) }, after: { ...project(rows[0]) },
+      });
       return project(rows[0]);
     },
   );
