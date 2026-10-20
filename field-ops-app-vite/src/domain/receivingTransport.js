@@ -269,6 +269,8 @@ export function validateCanonicalReceiveResponse(data) {
     receivingId: data.receivingId,
     purchaseOrderId: data.purchaseOrderId,
     ledgerEventId: data.ledgerEventId,
+    // The receipt's own number (RCV-YYYY-######), when the server states one -- shown on the receipt, never replaced by an internal id.
+    receivingOrderNumber: isNonBlankString(data.receivingOrderNumber) ? data.receivingOrderNumber : null,
     derivedState: data.derivedState,
     storedStatus: data.storedStatus ?? null,
     lines: Object.freeze(lines),

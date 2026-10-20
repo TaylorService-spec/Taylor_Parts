@@ -219,6 +219,8 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   // ONE submit policy, shared with every other warehouse screen.
   const warehouse = useWarehouseSubmit({ offline: deps?.offline });
   const [receipt, setReceipt] = useState(null);
+  /** True once a receipt was accepted in this session, whether or not the response carried a receipt body. */
+  const [receivedHere, setReceivedHere] = useState(false);
   const [error, setError] = useState(null);
   /** The SERVER'S own refusal sentence (B3-x), when it stated one; the bounded status above is only a fallback. */
   const [errorMessage, setErrorMessage] = useState(null);
@@ -318,6 +320,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
 
       if (outcome?.result === WAREHOUSE_SUBMIT.SENT) {
         setReceipt(outcome.serverIds?.receipt ?? null);
+        setReceivedHere(true);
         setQueue(createQueue());
         // The intent is finished; a NEW receipt is a new intent and needs its own key.
         idempotencyKeyRef.current = newIdempotencyKey();
@@ -363,6 +366,10 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   }
 
   const blocked = reconciliation.blocked;
+  // A receipt that took the LAST outstanding quantity leaves nothing to receive: the order is complete, so the scan and submit controls go and
+  // the receipt above is the whole story. (A partial receipt leaves the order receivable and the controls stay.)
+  // Completion is the RE-READ order's own state, not whether the response happened to carry a receipt body.
+  const completed = receivedHere && !progress.receivable && progress.derivedState === "RECEIVED";
   const canSubmit = reconciliation.submittable && !!locationId && !submitting;
   const storedStatusWords = canonicalPoStatusWords(progress.storedStatus);
   // One truthful location state, kept mutually exclusive (frame 1e). The picker renders ONLY in
@@ -400,7 +407,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           {storedStatusWords ? <> · order status {storedStatusWords}</> : null}
           {" · "}{progress.lines.length} line{progress.lines.length === 1 ? "" : "s"}
         </p>
-        {!progress.receivable && (
+        {!progress.receivable && !completed && (
           <p className="fo-warning" role="status">
             This order is not in a state that accepts a receipt.
           </p>
@@ -416,10 +423,13 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
       {receipt && (
         <section className="fo-panel fo-receipt" aria-label="Receipt" role="status">
           <h3>{receipt.outcome === "replayed" ? "Already Recorded" : "Received"}</h3>
-          {/* The receipt's receiving order number is not in this response and no governed read
-              exposes one (RCV-G1/RCV-G2) — the absence is stated, and the internal receivingId is
-              never shown in its place. */}
-          <p className="fo-muted">Recorded — the receiving order number is not yet readable here.</p>
+          {/* The receiving order number comes from the receipt response itself; when a server version states none, the
+              absence is stated and the internal receivingId is never shown in its place. */}
+          <p className="fo-muted">
+            {receipt.receivingOrderNumber
+              ? <>Receiving order <strong>{receipt.receivingOrderNumber}</strong></>
+              : "Recorded — no receiving order number was returned."}
+          </p>
           <ul className="fo-list">
             {receipt.lines.map((l) => (
               <li key={l.lineId}>
@@ -437,6 +447,17 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           <Button type="button" variant="secondary" onClick={onDone}>Receive Another Order</Button>
         </section>
       )}
+
+      {/* Accepted, but the response carried no receipt body: say so and keep the way forward, rather than leaving a completed order with nothing on screen. */}
+      {receivedHere && !receipt && completed && (
+        <section className="fo-panel fo-receipt" aria-label="Receipt" role="status">
+          <h3>Received</h3>
+          <p className="fo-muted">Recorded — no receipt details were returned. The order is now complete.</p>
+          <Button type="button" variant="secondary" onClick={onDone}>Receive Another Order</Button>
+        </section>
+      )}
+
+      {completed ? null : (<>
 
       <section className="fo-receiving-session__section" aria-label="Scan">
         <h3>Scan</h3>
@@ -610,6 +631,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           this screen cannot close a line short, and no governed command exists to do it.
         </p>
       </section>
+      </>)}
     </div>
   );
 }

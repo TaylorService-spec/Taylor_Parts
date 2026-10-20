@@ -27,6 +27,28 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
+- Agent/session:       Claude Code Lane UX · Role: builder; controller merges
+- Branch / worktree:   `ux/display-batch-purchasing` · `.claude/worktrees/agent-a499bba175438ba94`
+- Base commit:         `b3d09dc3`
+- Owned paths:         display-only edits in `modules/{purchasing,receiving,inventory/{PartDetail,CycleCounts,PartsList},inventoryRole/PartsManagerHome,technician/TechnicianShell}` · `shared/reorder/*` · read-projection columns in `functions/src/eosOps/{reorderLifecycleCommands,supplierPurchaseOrderAuthoring}.ts` · `eosExperience/myWork.ts` label
+- Shared paths req'd:  this registry · `.github/workflows/equipment-install-ui-tests.yml` (one suite registered)
+- Dependencies:        none
+- Expected outcome:    no screen shows a blank, a storage key or a false warning where the record holds a name, number or state
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
+- Capability:          Lane HARDEN-2 — display-batch review follow-ups (#2176): "Name unavailable" vs "Not recorded", warehouse join tenant key, negative tests, myWork/MultiScan/job-card tests
+- Agent/session:       Claude Code Lane HARDEN-2 · Role: builder; controller merges
+- Branch / worktree:   `ux/display-batch-followups` · `.claude/worktrees/agent-a86a52d7a6334b958`
+- Base commit:         `20485b9f` (#2176 head, merged with `bfeb6dd8`)
+- Owned paths:         `functions/src/eosOps/{reorderLifecycleCommands,supplierPurchaseOrderAuthoring}.ts` · `functions/src/eosExperience/myWork.ts` · their tests · `PartDetail`/`AssociateRequestPanel`/`SupplierPurchaseOrders`/`MultiScanReceiving` display
+- Shared paths req'd:  this registry
+- Dependencies:        #2176 (stacked on its head until it merges)
+- Expected outcome:    a former member's recorded actor reads "Name unavailable", never "Not recorded"; no cross-tenant warehouse name
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 - Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
 - Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
 - Branch / worktree:   `docs/r1-production-recovery-release` · `.claude/worktrees/agent-ad1865bb5a1b23704`
@@ -404,6 +426,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    every applied Commercial / CRM command is audited; the quote and discount approval choices are numbered Owner decisions
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
 - Lifecycle stage:     INTEGRATION (PR 1) · DESIGNED (PR 2)
+
+- Capability:          Account page honest refusal wording (UX-2) · a refused work-order read (403 / FORBIDDEN) reads "Not available to you" in Work order attention, Open work orders (standing strip) and Service activity; "Couldn't be read" stays for genuine failures
+- Agent/session:       Claude Code lane UX-2 · Role: builder; controller reviews and merges
+- Branch / worktree:   `ux2/account-wo-refusal-wording` · isolated agent worktree
+- Base commit:         `bfeb6dd8`
+- Owned paths:         `field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx` · `ServiceActivitySection.jsx` · `src/domain/accountHealthStrip.js` · `serviceActivityView.js` · `accountWorkOrders.js` · `src/hooks/useAccountServiceActivity.js` · `useAccountAttentionWorkOrders.js` · their tests
+- Shared paths req'd:  this registry
+- Dependencies:        none (display only; a refusal is FORBIDDEN / permission-denied only, so a 401 or missing session stays "couldn't be read")
+- Expected outcome:    a refusal never reads as an outage on the Account page
+- Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
+- Lifecycle stage:     INTEGRATION (PR open)
 
 ## Ready for assignment
 

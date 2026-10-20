@@ -111,13 +111,18 @@ export default function AccountAttentionSection({ accountId }) {
   // A truncated (possibly-incomplete) account-scoped WO read degrades to the same honest
   // "could not be read" note as a failed read -- never a confidently under-reported past-due list
   // (mirrors accountArView.js's own "a truncated page is never labeled ready" rule).
-  const woStatusForNote = woRead.truncated ? ACCOUNT_ATTENTION_SOURCE_STATUS.UNAVAILABLE : sourceStatus.workOrder;
-  const woNote = sourceStatusNote("Work order attention", woStatusForNote);
+  //
+  // A server REFUSAL of the work-order read is DENIED ("not available to you"), not UNAVAILABLE: the
+  // projection only sees a null list, which it can only call unavailable, so the refusal is stated here.
+  const woStatus = woRead.denied
+    ? ACCOUNT_ATTENTION_SOURCE_STATUS.DENIED
+    : woRead.truncated
+      ? ACCOUNT_ATTENTION_SOURCE_STATUS.UNAVAILABLE
+      : sourceStatus.workOrder;
+  const woNote = sourceStatusNote("Work order attention", woStatus);
 
   const bothHealthy =
-    sourceStatus.ar === ACCOUNT_ATTENTION_SOURCE_STATUS.READY &&
-    sourceStatus.workOrder === ACCOUNT_ATTENTION_SOURCE_STATUS.READY &&
-    !woRead.truncated;
+    sourceStatus.ar === ACCOUNT_ATTENTION_SOURCE_STATUS.READY && woStatus === ACCOUNT_ATTENTION_SOURCE_STATUS.READY;
 
   // A-D1: confirmed healthy and empty renders nothing at all.
   if (items.length === 0 && bothHealthy) return null;
@@ -128,9 +133,7 @@ export default function AccountAttentionSection({ accountId }) {
   // "missing context with confident wording" deriveAccountIntelligence refuses to produce.
   const intelligence = deriveAccountIntelligence({
     items,
-    sourceStatus: woRead.truncated
-      ? { ...sourceStatus, workOrder: ACCOUNT_ATTENTION_SOURCE_STATUS.UNAVAILABLE }
-      : sourceStatus,
+    sourceStatus: { ...sourceStatus, workOrder: woStatus },
   });
   const speaks = intelligence.speak && intelligence.reason === ACCOUNT_INTELLIGENCE_REASON.READY;
 

@@ -262,8 +262,17 @@ describe("Frame 1d — journey identity, numbering truth, and the linear stages"
     await reachConfirm();
     fireEvent.click(screen.getByRole("button", { name: "Confirm Receipt" }));
     await screen.findByText("Receipt recorded");
-    expect(screen.getByText("The receiving order number is not yet readable here.")).toBeTruthy();
+    expect(screen.getByText("No receiving order number was returned.")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/RO-\d/);
+  });
+
+  it("the result shows the receiving order number the governed response returned", async () => {
+    submitReceipt.mockResolvedValue({ status: "applied", receipt: { outcome: "applied", receivingId: "rcv_1", receivingOrderNumber: "RCV-2026-000009" } });
+    await reachConfirm();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Receipt" }));
+    await screen.findByText("Receipt recorded");
+    expect(screen.getByText("RCV-2026-000009")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("rcv_1");
   });
 
   it("a denied location read blocks with its own words and renders NO picker and NO stale selection", async () => {

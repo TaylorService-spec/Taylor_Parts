@@ -95,6 +95,8 @@ export function buildPurchaseOrderRow(request, po) {
     orderedDate: (isPlainObject(po) && po.orderedDate) || null,
     expectedArrivalDate: (isPlainObject(po) && po.expectedArrivalDate) || null,
     orderedByUserId: request.orderedBy || (isPlainObject(po) && po.createdBy) || null,
+    // The server names the Principal who recorded the order (display only); the uid-keyed lookup is only a fallback.
+    orderedByName: (isPlainObject(po) && po.createdByName) || null,
     orderedAt: request.orderedAt ?? (isPlainObject(po) ? po.createdAt : null) ?? null,
     viewStatus,
     isReceiptCandidate,

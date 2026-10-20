@@ -88,6 +88,9 @@ const PATH = Object.freeze({
 } as Record<string, (id: string) => string>);
 export const pathFor = (kind: string, id: string): string | null => (PATH[kind] ? PATH[kind](id) : null);
 
+/** A reorder request is named by its number; one raised before numbering (null) or with an empty number says so, never its storage key. */
+export const reorderLabel = (n: string | null | undefined): string => (n ? n : "Reorder request (no number)");
+
 interface Item { readonly id: string; readonly kind: string; readonly label: string; readonly detail: string | null; readonly status: string | null;
   readonly severity?: string; readonly priority?: string; readonly path: string | null; readonly action?: unknown }
 interface Section { readonly key: SectionKey; readonly title: string; readonly status: "READY" | "NOT_AUTHORIZED" | "UNAVAILABLE"; readonly reason: string | null;
@@ -221,12 +224,12 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
         }
         case "assignedReorders": {
           const r = await readMyAssignedReorders({ pool }, actor);
-          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: String(x.reorderRequestNumber ?? x.reorderRequestId),
+          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: reorderLabel(x.reorderRequestNumber),
             detail: `${x.partId} × ${x.requestedQty}`, status: x.status, path: pathFor("reorderRequest", x.reorderRequestId) })));
         }
         case "reorderQueue": {
           const r = await readReorderQueue({ pool }, actor, { statuses: ["PENDING_REVIEW", "APPROVED", "READY_FOR_PARTS_MANAGER", "ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS", "ORDERED"] });
-          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: String(x.reorderRequestNumber ?? x.reorderRequestId),
+          return ready(key, r.map((x) => ({ id: x.reorderRequestId, kind: "reorderRequest", label: reorderLabel(x.reorderRequestNumber),
             detail: `${x.partId} × ${x.requestedQty}`, status: x.status, severity: x.status === "PENDING_REVIEW" ? "ATTENTION" : undefined, path: pathFor("reorderRequest", x.reorderRequestId) })));
         }
         case "transfers": {

@@ -18,7 +18,7 @@
    - **Qty** — quantity ordered.
    - **Ordered** — the date the order was placed.
    - **Expected** — the expected arrival date, if one was given.
-   - **Ordered by** — who recorded the order, by name. If the app cannot name the person for you (you do not have access to look people up, or the lookup did not answer), it reads **Unknown user**; the order itself is unaffected.
+   - **Ordered by** — who recorded the order, by name; the name comes with the order itself. If the order records the person but they can no longer be named (for example, they have left the company), it reads **Name unavailable**; if no person is recorded at all (for example, a test order that was loaded rather than recorded by someone), it reads **Not recorded** or a dash. The order itself is unaffected. The same two words are used for **Received By** on a received request. The part's own page shows the same name on its **Ordered** card as **Ordered By**.
    - **Status** — Open, Received, Voided, or Needs attention (see below).
 3. **Filter by status.** Use the **Open / Received / Voided / All** filter bar at the top of the list; each option shows a count. Open is selected by default, since that's what most people are checking on.
 4. **Check receiving details on an Open order (optional).** On an Open row, expand **Receipt source** to see the Reorder Request ID and Purchase Order ID. This is the reference an authorized operator uses to receive the order into stock — you don't need it for anything yourself; it just confirms the order is ready and waiting to be received.

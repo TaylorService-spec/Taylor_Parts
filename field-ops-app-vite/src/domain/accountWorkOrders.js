@@ -17,6 +17,22 @@ import { listWorkOrders } from "../services/workOrderService";
 //     createdAt; `hasMore` stops at the bound, and `truncated` says more exist.
 const ACCOUNT_READ_BOUND = 200;
 
+// A REFUSAL IS NOT A FAILURE. The governed route answers 403 (client category FORBIDDEN) when the
+// caller holds no Work Order read; that is a fact about the caller, so the Account page says
+// "Not available to you" -- exactly as it does for Finance -- never "couldn't be read, try again
+// later", which is false for a refusal. Only the server's own refusal counts: every other failure
+// (unreachable, 5xx, not activated, truncated) stays a genuine "couldn't be read".
+//
+// NARROWER THAN workOrderOutcome's UNAUTHORIZED on purpose: UNAUTHENTICATED (401) and NOT_SIGNED_IN
+// (no token) are NOT refusals -- an expired or absent session is fixed by signing in again, so
+// "Not available to you" would be false. They stay genuine failures. COMPANY_AUTHORITY_REQUIRED
+// arrives as a FORBIDDEN code and so counts.
+const REFUSAL_CODES = new Set(["FORBIDDEN", "permission-denied"]);
+export const isWorkOrderReadRefused = (err) => {
+  const code = typeof err?.code === "string" ? err.code.split("/").pop() : "";
+  return REFUSAL_CODES.has(code);
+};
+
 // These two buckets partition the canonical 11-value WorkOrderStatus enum
 // (the authority is functions/src/transitionEngine.ts, mirrored client-side
 // in domain/workOrderWorkflow.js -- verified in sync 2026-08-05, W0). KEEP

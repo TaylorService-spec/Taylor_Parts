@@ -454,6 +454,8 @@ export interface SupplierPoSummary {
   readonly supplierId: string | null;
   readonly supplierName: string | null;
   readonly receivingWarehouseId: string | null;
+  /** The warehouse's own name, for display; null when none is stated or it cannot be named. */
+  readonly receivingWarehouseName: string | null;
   readonly lineCount: number;
   readonly orderedQuantity: number;
   readonly receivedQuantity: number;
@@ -475,7 +477,7 @@ export async function listSupplierPurchaseOrders(deps: { readonly pool: Pool }, 
   return inTransaction(deps.pool, "snapshot", async (c) => {
     const keys = await reachableCompanyKeys(c, actor);
     const { rows } = await c.query(
-      `SELECT p.id, p.external_po_number, p.status, p.version, p.operating_company_key, p.supplier_id, s.name AS supplier_name, p.receiving_warehouse_id,
+      `SELECT p.id, p.external_po_number, p.status, p.version, p.operating_company_key, p.supplier_id, s.name AS supplier_name, p.receiving_warehouse_id, w.name AS receiving_warehouse_name,
               p.created_by, p.created_at,
               (SELECT count(*)::int FROM ${SCHEMA}.supplier_purchase_order_lines l WHERE l.tenant_id = p.tenant_id AND l.purchase_order_id = p.id) AS line_count,
               (SELECT COALESCE(sum(l.ordered_quantity), 0)::int FROM ${SCHEMA}.supplier_purchase_order_lines l WHERE l.tenant_id = p.tenant_id AND l.purchase_order_id = p.id) AS ordered_quantity,
@@ -483,13 +485,15 @@ export async function listSupplierPurchaseOrders(deps: { readonly pool: Pool }, 
                 WHERE l.tenant_id = p.tenant_id AND l.purchase_order_id = p.id) AS received_quantity
          FROM ${SCHEMA}.supplier_purchase_orders p
          LEFT JOIN ${SCHEMA}.suppliers s ON s.tenant_id = p.tenant_id AND s.supplier_id = p.supplier_id
+         LEFT JOIN ${SCHEMA}.warehouses w ON w.tenant_id = p.tenant_id AND w.id = p.receiving_warehouse_id AND w.operating_company_key = p.operating_company_key
         WHERE p.tenant_id = $1 AND p.operating_company_key = ANY($2::text[]) AND ($3::text[] IS NULL OR p.status = ANY($3::text[]))
         ORDER BY p.created_at DESC, p.id DESC LIMIT $4`, [actor.tenantId, [...keys], statuses, SUPPLIER_PO_LIST_LIMIT]);
     return {
       purchaseOrders: rows.map((r): SupplierPoSummary => ({
         purchaseOrderId: String(r.id), externalPoNumber: (r.external_po_number as string | null) ?? null, status: String(r.status), version: Number(r.version),
         operatingCompanyKey: String(r.operating_company_key), supplierId: (r.supplier_id as string | null) ?? null, supplierName: (r.supplier_name as string | null) ?? null,
-        receivingWarehouseId: (r.receiving_warehouse_id as string | null) ?? null, lineCount: Number(r.line_count), orderedQuantity: Number(r.ordered_quantity),
+        receivingWarehouseId: (r.receiving_warehouse_id as string | null) ?? null, receivingWarehouseName: (r.receiving_warehouse_name as string | null) ?? null,
+        lineCount: Number(r.line_count), orderedQuantity: Number(r.ordered_quantity),
         receivedQuantity: Number(r.received_quantity), createdBy: String(r.created_by), createdAt: iso(r.created_at),
       })),
     };
@@ -504,10 +508,11 @@ export async function readSupplierPurchaseOrder(deps: { readonly pool: Pool }, a
   return inTransaction(deps.pool, "snapshot", async (c) => {
     const keys = await reachableCompanyKeys(c, actor);
     const po = await c.query(
-      `SELECT p.id, p.external_po_number, p.status, p.version, p.operating_company_key, p.supplier_id, s.name AS supplier_name, p.receiving_warehouse_id,
+      `SELECT p.id, p.external_po_number, p.status, p.version, p.operating_company_key, p.supplier_id, s.name AS supplier_name, p.receiving_warehouse_id, w.name AS receiving_warehouse_name,
               p.created_by, p.created_at, p.approved_by, p.approved_at, p.sent_by, p.sent_at, p.cancelled_by, p.cancelled_at, p.cancellation_reason
          FROM ${SCHEMA}.supplier_purchase_orders p
          LEFT JOIN ${SCHEMA}.suppliers s ON s.tenant_id = p.tenant_id AND s.supplier_id = p.supplier_id
+         LEFT JOIN ${SCHEMA}.warehouses w ON w.tenant_id = p.tenant_id AND w.id = p.receiving_warehouse_id AND w.operating_company_key = p.operating_company_key
         WHERE p.tenant_id = $1 AND p.id = $2 AND p.operating_company_key = ANY($3::text[])`, [actor.tenantId, i.purchaseOrderId, [...keys]]);
     if (po.rows.length === 0) refuse("PURCHASE_ORDER_NOT_FOUND", "NOT_FOUND", "purchase order not found");
     const lines = await c.query(
@@ -524,7 +529,8 @@ export async function readSupplierPurchaseOrder(deps: { readonly pool: Pool }, a
     return {
       purchaseOrderId: String(p.id), externalPoNumber: (p.external_po_number as string | null) ?? null, status, version: Number(p.version),
       operatingCompanyKey: String(p.operating_company_key), supplierId: (p.supplier_id as string | null) ?? null, supplierName: (p.supplier_name as string | null) ?? null,
-      receivingWarehouseId: (p.receiving_warehouse_id as string | null) ?? null, createdBy: String(p.created_by), createdAt: iso(p.created_at),
+      receivingWarehouseId: (p.receiving_warehouse_id as string | null) ?? null, receivingWarehouseName: (p.receiving_warehouse_name as string | null) ?? null,
+      createdBy: String(p.created_by), createdAt: iso(p.created_at),
       approvedBy: (p.approved_by as string | null) ?? null, approvedAt: iso(p.approved_at), sentBy: (p.sent_by as string | null) ?? null, sentAt: iso(p.sent_at),
       cancelledBy: (p.cancelled_by as string | null) ?? null, cancelledAt: iso(p.cancelled_at), cancellationReason: (p.cancellation_reason as string | null) ?? null,
       receivable: status === "APPROVED" || status === "SENT",

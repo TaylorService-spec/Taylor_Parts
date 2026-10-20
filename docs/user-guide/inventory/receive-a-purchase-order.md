@@ -40,7 +40,7 @@ receiving — was removed. Receiving happens here and nowhere else.
 5. You'll land on a result screen telling you what happened (see below).
 
 ## What the result means
-- **Receipt recorded** — success. The purchase order was received into inventory.
+- **Receipt recorded** — success. The purchase order was received into inventory, and the screen shows the receipt's own **Receiving order** number.
 - **Already received** — this exact receipt was already recorded; nothing was submitted a second
   time, and no duplicate stock was added. Safe to leave as-is.
 - **Not permitted** — you don't hold the receiving permission. This action is limited to Admin,

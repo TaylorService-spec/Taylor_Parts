@@ -8,7 +8,7 @@
 //     the caller's idempotency key sent once per attempt;
 //   * the Reorder purchase orders view no longer reads a request ordered on a supplier PO as an ORPHAN.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const requestsState = { data: [], loading: false, error: null };
@@ -57,7 +57,7 @@ const fakeClient = (over = {}) => ({
 });
 const renderScreen = (hasCapability, client) => render(<MemoryRouter><SupplierPurchaseOrders hasCapability={hasCapability} client={client} /></MemoryRouter>);
 
-beforeEach(() => { requestsState.data = []; });
+beforeEach(() => { requestsState.data = []; purchaseOrdersState.purchaseOrdersById = {}; });
 
 describe("the pure helpers", () => {
   it("prices are whole minor units: dollars and cents in, never a rounded surprise; unknown is said, never zero", () => {
@@ -290,5 +290,71 @@ describe("the recorded Reorder purchase orders view", () => {
     expect(screen.getAllByText(/purchase order record could not be read/).length).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.queryByText("PART-A")).toBeNull();
+  });
+});
+
+// DISPLAY BATCH (purchasing-loop proof, 2026-10-19): a screen shows the number or the name a person recognises, never a storage key.
+describe("names, not keys", () => {
+  const open = async (client) => {
+    renderScreen(has(GATE.read, GATE.create), client);
+    fireEvent.click(await screen.findByRole("button", { name: "SPO-2026-000001" }));
+    return screen.findByRole("region", { name: /Order SPO-2026-000001/ });
+  };
+
+  it("the order detail names the receiving warehouse, not its key", async () => {
+    const region = await open(fakeClient({ readOrder: vi.fn(async () => ({ ok: true, order: detail({ receivingWarehouseId: "taylor-main", receivingWarehouseName: "Taylor Main" }) })) }));
+    expect(within(region).getByText("Taylor Main")).toBeTruthy();
+    expect(region.textContent).not.toContain("taylor-main");
+  });
+
+  it("a warehouse that cannot be named says so; none stated says not stated; neither prints the key", async () => {
+    const region = await open(fakeClient({ readOrder: vi.fn(async () => ({ ok: true, order: detail({ receivingWarehouseId: "taylor-main", receivingWarehouseName: null }) })) }));
+    expect(within(region).getByText("Warehouse name unavailable")).toBeTruthy();
+    expect(region.textContent).not.toContain("taylor-main");
+    cleanup();
+    const bare = await open(fakeClient({ readOrder: vi.fn(async () => ({ ok: true, order: detail({ receivingWarehouseId: null, receivingWarehouseName: null }) })) }));
+    expect(within(bare).getByText("Not stated")).toBeTruthy();
+  });
+
+  it("Raised by: a recorded actor the directory cannot name (a former member) reads Name unavailable -- never Unknown user, never the id; a named one is named", async () => {
+    const region = await open(fakeClient({ readOrder: vi.fn(async () => ({ ok: true, order: detail({ createdBy: "p-former" }) })) }));
+    expect(within(region).getByText("Raised by").closest("div").textContent).toContain("Name unavailable");
+    expect(region.textContent).not.toContain("p-former");
+    expect(region.textContent).not.toContain("Unknown user");
+    cleanup();
+    const named = await open(fakeClient());
+    expect(within(named).getByText("Raised by").closest("div").textContent).toContain("Bea Buyer");
+  });
+
+  it("a line whose request has no number says so, and the request key is never shown", async () => {
+    const region = await open(fakeClient());
+    expect(within(region).getByText("RR-2026-000001")).toBeTruthy();
+    expect(within(region).getByText("Request without a number")).toBeTruthy();
+    expect(region.textContent).not.toContain("rr-2");
+  });
+
+  it("each request checkbox in the raise form has an accessible name: its number (or the absence) and the part, never just \"on\"", async () => {
+    renderScreen(has(GATE.read, GATE.create), fakeClient());
+    fireEvent.click(await screen.findByRole("button", { name: "Raise supplier purchase order" }));
+    const form = await screen.findByRole("form", { name: "Raise a supplier purchase order" });
+    const boxes = within(form).getAllByRole("checkbox");
+    expect(boxes.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "RR-2026-000001 — PART-A, 10 requested, Main",
+      "Request without a number — PART-B, 6 requested, Main",
+      "Request without a number — PART-C, 2 requested, Annex",
+    ]);
+    expect(within(form).getByRole("checkbox", { name: /RR-2026-000001 — PART-A/ })).toBeTruthy();
+    expect(form.textContent).not.toContain("rr-2");
+  });
+
+  it("the recorded orders table names who ordered from the order's own createdByName, even where the uid lookup knows nobody", () => {
+    requestsState.data = [{ id: "rr-5", status: "ORDERED", partId: "PART-A", orderedAt: 5 }];
+    purchaseOrdersState.purchaseOrdersById = {
+      "rr-5": { id: "rr-5", status: "ORDERED", partId: "PART-A", supplierName: "Acme Supply", externalPoNumber: "PO-5", orderedQuantity: 2, orderedDate: "2026-10-19", createdBy: "p-nobody", createdByName: "Logan Associate", createdAt: "2026-10-19T15:00:00.000Z" },
+    };
+    render(<MemoryRouter><PurchaseOrders /></MemoryRouter>);
+    const table = screen.getByRole("table", { name: "Purchase orders" });
+    expect(within(table).getByText("Logan Associate")).toBeTruthy();
+    expect(table.textContent).not.toContain("Unknown user");
   });
 });

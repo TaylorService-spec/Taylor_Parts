@@ -61,6 +61,28 @@ const FILTERS = [
   { value: "", label: "All" },
 ];
 const TYPE_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse" };
+
+// WHERE A SHEET IS, IN WORDS. The count read names a location by its id; a warehouse id ("taylor-main") is a storage key, not a place a
+// person recognises. A warehouse is named from the governed warehouse list the New Count form already reads; one that cannot be named says
+// so rather than printing the key. (Bins and trucks keep the label the read carries.)
+function placeWords(sheet, warehouseNames) {
+  const type = sheet.location?.type;
+  const id = sheet.location?.locationId;
+  if (type === "WAREHOUSE") return `Warehouse ${warehouseNames?.get(id) ?? (sheet.locationLabel && sheet.locationLabel !== id ? sheet.locationLabel : "(name unavailable)")}`;
+  return `${TYPE_LABEL[type] ?? "Location"} ${sheet.locationLabel ?? id}`;
+}
+
+function useWarehouseNames(fetchOptions) {
+  const [names, setNames] = useState(() => new Map());
+  useEffect(() => {
+    let live = true;
+    Promise.resolve((fetchOptions ?? fetchInventoryWarehouseOptions)())
+      .then((rows) => { if (live) setNames(new Map((rows ?? []).map((w) => [w.id, w.name]))); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [fetchOptions]);
+  return names;
+}
 const STATUS_TEXT = { OPEN: "Not Counted", COUNTED: "Counted -- Awaiting Review", RECONCILED: "Approved", REJECTED: "Rejected", CANCELLED: "Removed" };
 // Sheet status words, the same words the "Show" filter uses (never the raw enum).
 const SHEET_STATUS_TEXT = Object.freeze(Object.fromEntries(FILTERS.filter((f) => f.value).map((f) => [f.value, f.label])));
@@ -82,6 +104,7 @@ export default function CycleCounts({ deps }) {
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [status, setStatus] = useState(null);
+  const warehouseNames = useWarehouseNames(deps?.fetchWarehouseOptions);
 
   const load = useCallback(async (cursor = null) => {
     setSheets((s) => ({ ...s, loading: true, error: null }));
@@ -139,7 +162,7 @@ export default function CycleCounts({ deps }) {
       )}
 
       {selected ? (
-        <SheetDetail client={client} sheetId={selected} can={can} onBack={() => { setSelected(null); load(); }} onStatus={setStatus} />
+        <SheetDetail client={client} sheetId={selected} can={can} warehouseNames={warehouseNames} onBack={() => { setSelected(null); load(); }} onStatus={setStatus} />
       ) : (
         <>
           <label className="fo-inline-form">
@@ -165,7 +188,7 @@ export default function CycleCounts({ deps }) {
               {sheets.rows.map((s) => (
                 <li key={s.sheetId}>
                   <button type="button" className="fo-link-btn" onClick={() => setSelected(s.sheetId)}>
-                    {TYPE_LABEL[s.location?.type] ?? "Location"} {s.locationLabel ?? s.location?.locationId}
+                    {placeWords(s, warehouseNames)}
                   </button>{" "}
                   <span className="fo-muted">· {statusLabel(s.status, SHEET_STATUS_TEXT)}{s.createdAt ? ` · started ${new Date(s.createdAt).toLocaleString()}` : ""}</span>
                 </li>
@@ -232,7 +255,7 @@ function CreateSheetForm({ client, onCancel, onCreated }) {
   );
 }
 
-function SheetDetail({ client, sheetId, can, onBack, onStatus }) {
+function SheetDetail({ client, sheetId, can, warehouseNames, onBack, onStatus }) {
   const currentUserId = useAuth()?.user?.uid ?? null;
   const [state, setState] = useState({ loading: true, sheet: null, lines: [], error: null });
   const [busy, setBusy] = useState(null); // partId | "sheet"
@@ -307,7 +330,7 @@ function SheetDetail({ client, sheetId, can, onBack, onStatus }) {
   return (
     <section aria-label="Count sheet">
       <Button variant="tertiary" onClick={onBack}>← All Counts</Button>
-      <h3>{TYPE_LABEL[sheet.location?.type] ?? "Location"} {sheet.locationLabel ?? sheet.location?.locationId} <span className="fo-muted">· {statusLabel(sheet.status, SHEET_STATUS_TEXT)}</span></h3>
+      <h3>{placeWords(sheet, warehouseNames)} <span className="fo-muted">· {statusLabel(sheet.status, SHEET_STATUS_TEXT)}</span></h3>
 
       {open && can.create && sheet.location?.type !== "BIN" && <AddPartLine onAdd={(partId) => act("add", () => client.openCycleCountLine({ sheetId, partId }), "openLine")} busy={busy !== null} />}
       {lineErrors.add && <p className="fo-warning" role="alert">{lineErrors.add}</p>}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SUPPLIER_PURCHASE_ORDER_GATE } from "../../access/shellCapabilityGates.js";
 import { newIdempotencyKey, supplierPurchasingClient, SUPPLIER_PO_OUTCOME } from "../../services/eosSupplierPurchasingClient.js";
-import { resolveActorDisplayName, useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
+import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -30,6 +30,9 @@ const FILTERS = [
 ];
 
 const STATUS_LABEL = { DRAFT: "Draft", APPROVED: "Approved", SENT: "Sent", RECEIVED: "Received", CANCELLED: "Cancelled" };
+
+/** The request a line or a choice is for, in words: its number, never its storage key. A request raised before numbering has none, and says so. */
+export const requestWords = (number) => (number ? number : "Request without a number");
 
 /** A price in whole minor units + its currency, for a person. UNKNOWN (null) is said, never zero. */
 export const formatMinorPrice = (minor, currency) =>
@@ -76,7 +79,8 @@ export default function SupplierPurchaseOrders({ hasCapability, client = supplie
     return [...ids].filter(Boolean);
   }, [list.orders, detail.order]);
   const { byUserId } = useGovernedEmployeeDirectory({ actorIds });
-  const nameOf = (id) => (id ? resolveActorDisplayName(id, byUserId) : "—");
+  // A recorded actor the directory cannot name (a former member) is "Name unavailable" -- the fact was recorded.
+  const nameOf = (id) => (id ? (byUserId?.get(id)?.displayName ?? "Name unavailable") : "—");
 
   const active = FILTERS.find((f) => f.key === filterKey) ?? FILTERS[0];
   const rows = active.statuses ? list.orders.filter((o) => active.statuses.includes(o.status)) : list.orders;
@@ -206,7 +210,7 @@ function OrderDetail({ order, can, client, nameOf, onChanged }) {
       <h3>{order.externalPoNumber ?? "Order"} <span className="fo-muted">· {STATUS_LABEL[order.status] ?? order.status}</span></h3>
       <dl className="fo-po-receipt-desc">
         <div><dt>Supplier</dt><dd>{order.supplierName ?? "Supplier not resolved"}</dd></div>
-        <div><dt>Receiving warehouse</dt><dd>{order.receivingWarehouseId ?? "Not stated"}</dd></div>
+        <div><dt>Receiving warehouse</dt><dd>{order.receivingWarehouseName ?? (order.receivingWarehouseId ? "Warehouse name unavailable" : "Not stated")}</dd></div>
         <div><dt>Raised by</dt><dd>{nameOf(order.createdBy)}</dd></div>
         {order.approvedBy ? <div><dt>Approved by</dt><dd>{nameOf(order.approvedBy)}</dd></div> : null}
         {order.sentBy ? <div><dt>Sent by</dt><dd>{nameOf(order.sentBy)}</dd></div> : null}
@@ -219,7 +223,7 @@ function OrderDetail({ order, can, client, nameOf, onChanged }) {
             {order.lines.map((l) => (
               <tr key={l.lineId}>
                 <td>{l.partId}</td>
-                <td>{l.reorderRequestNumber ?? l.reorderRequestId ?? <span className="fo-muted">—</span>}{l.linkReleased ? <span className="fo-muted"> (released)</span> : null}</td>
+                <td>{l.reorderRequestId ? requestWords(l.reorderRequestNumber) : <span className="fo-muted">—</span>}{l.linkReleased ? <span className="fo-muted"> (released)</span> : null}</td>
                 <td>{l.orderedQuantity}</td>
                 <td>{l.receivedQuantity}</td>
                 <td>{formatMinorPrice(l.unitPriceMinor, l.currency)}</td>
@@ -333,12 +337,13 @@ function RaiseForm({ client, onDone }) {
         <legend>Requests to order</legend>
         {data.requests.map((r) => {
           const on = Boolean(chosen[r.reorderRequestId]);
+          const choiceWords = `${requestWords(r.reorderRequestNumber)} — ${r.partId}, ${r.requestedQuantity} requested, ${r.warehouseName}`;
           const blocked = !on && warehouseId !== null && r.warehouseId !== warehouseId;
           return (
             <div key={r.reorderRequestId} className="fo-field">
               <label>
-                <input type="checkbox" checked={on} disabled={blocked} onChange={() => toggle(r)} />{" "}
-                {r.reorderRequestNumber ?? r.reorderRequestId} — {r.partId}, {r.requestedQuantity} requested, {r.warehouseName}
+                <input type="checkbox" aria-label={choiceWords} checked={on} disabled={blocked} onChange={() => toggle(r)} />{" "}
+                {choiceWords}
                 {blocked ? " (another warehouse: order it separately)" : ""}
               </label>
               {on ? (
