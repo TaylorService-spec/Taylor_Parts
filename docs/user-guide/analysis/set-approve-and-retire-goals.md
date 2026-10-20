@@ -23,7 +23,17 @@ Two things to know: a target for the **whole firm** is firm-wide, not limited to
 4. If you chose a company, warehouse or employee, pick which one. The employee list shows people beneath you, never yourself.
 5. Choose **Show this target**.
 
-You see every version, oldest first: the version number, its **Status** (**Draft**, **In force**, **Replaced** or **Retired**), the target (for example "At most 5", or "At least 12500.00 USD"), the dates it applies, who set it and who approved it.
+You see every version, oldest first: the version number, its **Status**, the target (for example "At most 5", or "At least 12500.00 USD"), the dates it applies, who set it and who approved it. The status says what the version is **today**:
+
+| Status | What it means |
+|---|---|
+| **Draft** | Saved, not approved. It applies to nothing. |
+| **Scheduled** | Approved, but its start date has not come yet. It is **not** in force. The target before it keeps applying until the day before it starts. |
+| **In force** | Approved, and its start date has come. This is the target that applies today. |
+| **In force until <date>** | **Replaced** by a newer target, but the newer one starts after today, so this one still applies up to the date shown. |
+| **Replaced** | A newer target took over. Its dates stay on record: the days it covered still belong to it. |
+| **Replaced before it started** | It was scheduled, and its replacement was approved before it ever began. It never applied on any day. It stays on record. |
+| **Retired** | Stopped with no replacement (or a discarded draft). The days before it was retired still belong to it. |
 
 ## Set a target
 1. Show the target as above, then choose **Set a target**.
@@ -47,11 +57,29 @@ The target is in force from its start date. If it replaces an earlier target, th
 
 Until it is approved, the current target stands. The moment it is approved, the old target ends the day before the new one starts, so there is never a day with two targets.
 
+If the new target starts in the future, it shows as **Scheduled**, and the old one keeps applying (**In force until** the day before) right up to the start date. There is no day without a target in between.
+
+## Correct a scheduled target
+A target that shows **Scheduled** has been approved but has not started. It **cannot be retired**: its history is not rewritten. If it is wrong (the number or the start date), replace it:
+1. Find the **Scheduled** target and choose **Replace**.
+2. Enter the corrected target. The **Takes effect on** date must be **after today**, but it may be earlier or later than the scheduled one's start. A day that has already passed keeps the target that applied then.
+3. Choose **Save draft**. Someone else approves it, with a reason, exactly as for any replacement.
+
+When it is approved, the scheduled target is marked **Replaced before it started**: it stays on record and never applies on any day. The target that is in force now carries on until the day before the corrected start date. So if the start moves earlier, the change happens sooner; if it moves later, the current target simply lasts longer. Either way there is one target on every day and no gap.
+
+If the scheduled target has already started by the time the replacement is approved, it is an ordinary replacement: the old one ends the day before, and the days it applied still belong to it.
+
+You can correct a correction the same way: the target that is in force carries on until the day before the newest start date, and every earlier version stays on record untouched.
+
+**About "today":** the page counts days in UTC (universal time), not in your local time. In Arizona, after 5 pm it is already tomorrow on the page, and the date hint under **Takes effect on** shows the day it is using.
+
+A target that is **Scheduled** and has no earlier target (the first one set for a measure) cannot be withdrawn either; the only change before it starts is a replacement that someone else approves.
+
 ## Retire a target
 1. Find the target that is **In force** and choose **Retire**.
 2. Say why and choose **Confirm retirement**.
 
-The target ends today (or on its own start date if it has not started yet). It stays on the page as **Retired**. Retiring means "we stopped measuring this". Replacing means "we changed the number".
+The target ends today. It stays on the page as **Retired**. Retiring means "we stopped measuring this". Replacing means "we changed the number". A **Scheduled** target has no **Retire** button; correct it with **Replace** instead (see above).
 
 ## Discard a draft
 A draft that should not go ahead (entered by mistake, or copied from the previous system) is removed from play with **Discard**:
@@ -67,6 +95,8 @@ The page shows the platform's own sentence and changes nothing. The common ones:
 - **That target is outside your authority.** It is not one you are responsible for.
 - **A target already covers part of that window.** Replace the one in force instead.
 - **Only a draft may be approved / only an approved goal may be retired.** Someone already acted on it; show the target again to see where it stands.
+- **This target hasn't started yet, so it can't be retired.** It is Scheduled. Set a corrective replacement for someone else to approve.
+- **A replacement for a target that has not started must take effect after today.** Choose a later start date; a day that has passed keeps the target that applied.
 
 If the page says it could not save, nothing was changed. Try again: your retry will not create a second draft.
 

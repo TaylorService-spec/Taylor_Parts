@@ -23,8 +23,32 @@ import EmptyState from "../../shared/ui/EmptyState";
 
 const SCOPE_LABEL = { FIRM: "Whole firm", OPERATING_COMPANY: "Operating company", LOCATION: "Warehouse", EMPLOYEE: "Employee" };
 const DIRECTION_LABEL = { AT_LEAST: "At least", AT_MOST: "At most", EXACT: "Exactly" };
-const STATUS_LABEL = { DRAFT: "Draft", APPROVED: "In force", SUPERSEDED: "Replaced", RETIRED: "Retired" };
-const STATUS_TONE = { DRAFT: "attention", APPROVED: "positive", SUPERSEDED: "muted", RETIRED: "muted" };
+
+/** An approved target whose start is still ahead: SCHEDULED, not in force (G-1b). `today` is an ISO date, from the screen's own date source. */
+const isScheduled = (g, today) => g.status === "APPROVED" && g.effectiveFrom > today;
+
+/**
+ * A replaced target that never governed a day: it was scheduled and its replacement was approved before it started. Mirrors the server's rule (neverGoverned in
+ * performanceGoalReads.ts): the approved successor was approved on a UTC day before this one's start. Not stored -- derived, so the record stays as it was written.
+ */
+function replacedBeforeStart(g, list) {
+  if (g.status !== "SUPERSEDED") return false;
+  const next = list.find((s) => s.supersedesGoalId === g.goalId && s.approvedByUid && Number.isFinite(s.approvedAtMillis));
+  return Boolean(next) && new Date(next.approvedAtMillis).toISOString().slice(0, 10) < g.effectiveFrom;
+}
+
+/** The status a person reads: what the version IS today, not only what was last done to it. */
+function statusView(g, list, today) {
+  if (g.status === "DRAFT") return { label: "Draft", tone: "attention" };
+  if (g.status === "APPROVED") return isScheduled(g, today) ? { label: "Scheduled", tone: "info" } : { label: "In force", tone: "positive" };
+  if (g.status === "SUPERSEDED") {
+    if (replacedBeforeStart(g, list)) return { label: "Replaced before it started", tone: "muted" };
+    // Replaced, but its window runs on until the day before the replacement starts: it is still the target in force.
+    return g.effectiveTo !== null && g.effectiveTo >= today && g.effectiveFrom <= today
+      ? { label: `In force until ${g.effectiveTo}`, tone: "positive" } : { label: "Replaced", tone: "muted" };
+  }
+  return { label: g.status === "RETIRED" ? "Retired" : g.status, tone: "muted" };
+}
 
 /** "12.5" / "12.50" / "12" -> whole minor units; anything else -> null (refused, never rounded to something the person did not type). */
 export function toMinorUnits(text) {
@@ -44,7 +68,8 @@ export function describeTarget(goal) {
 const sentence = (res, fallback) => (res.message ? res.message : res.outcome === GOAL_OUTCOME.UNAUTHENTICATED ? "Sign in again to continue." : fallback);
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-export default function PerformanceGoals({ hasCapability, client = goalAuthoringClient }) {
+export default function PerformanceGoals({ hasCapability, client = goalAuthoringClient, today: todayProp }) {
+  const today = todayProp ?? todayIso();
   const can = useCallback((key) => typeof hasCapability === "function" && hasCapability(key) === true, [hasCapability]);
   const [opts, setOpts] = useState({ state: "loading", data: null });
   const [target, setTarget] = useState({ metricId: "", scopeType: "", scopeId: "" });
@@ -172,7 +197,7 @@ export default function PerformanceGoals({ hasCapability, client = goalAuthoring
       {versions.state === "ready" ? (
         <VersionsSection
           t={versions.target} metric={data.metrics.find((m) => m.metricId === versions.target.metricId)} list={versions.list} can={can}
-          me={data.principalId} scopeText={scopeText} nameOfActor={nameOfActor}
+          me={data.principalId} scopeText={scopeText} nameOfActor={nameOfActor} today={today}
           onSet={() => { setPanel(null); setComposer({ supersedes: null }); }}
           onReplace={(g) => { setPanel(null); setComposer({ supersedes: g }); }}
           onDecide={(kind, goal) => { setComposer(null); setPanel({ kind, goal }); }}
@@ -180,11 +205,16 @@ export default function PerformanceGoals({ hasCapability, client = goalAuthoring
       ) : null}
       {composer && versions.state === "ready" ? (
         <Composer key={composer.supersedes?.goalId ?? "new"} client={client} t={versions.target} metric={data.metrics.find((m) => m.metricId === versions.target.metricId)}
-          supersedes={composer.supersedes} onCancel={() => setComposer(null)}
-          onDone={(goal) => changed(composer.supersedes ? `Saved a replacement draft (version ${goal.version}). Someone else approves it before it takes effect.` : "Saved the target as a draft. Someone else approves it before it takes effect.")} />
+          supersedes={composer.supersedes} scheduled={composer.supersedes ? isScheduled(composer.supersedes, today) : false} today={today} onCancel={() => setComposer(null)}
+          onDone={(goal) => changed(composer.supersedes
+            ? (isScheduled(composer.supersedes, today)
+              ? `Saved a corrective replacement draft (version ${goal.version}). Until someone else approves it, the scheduled target stands.`
+              : `Saved a replacement draft (version ${goal.version}). Someone else approves it before it takes effect.`)
+            : "Saved the target as a draft. Someone else approves it before it takes effect.")} />
       ) : null}
       {panel && versions.state === "ready" ? (
         <DecisionPanel key={`${panel.kind}-${panel.goal.goalId}`} client={client} kind={panel.kind} goal={panel.goal} onCancel={() => setPanel(null)}
+          correcting={panel.kind === "approve" && versions.list.some((v) => v.goalId === panel.goal.supersedesGoalId && isScheduled(v, today))}
           onDone={() => changed(panel.kind === "approve" ? "Approved. The target is in force from its start date."
             : panel.goal.status === "DRAFT" ? "Discarded. The draft was never a target and is kept on record as retired."
               : "Retired. The target no longer applies; its history stays on record.")} />
@@ -193,7 +223,7 @@ export default function PerformanceGoals({ hasCapability, client = goalAuthoring
   );
 }
 
-function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, onSet, onReplace, onDecide }) {
+function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, today, onSet, onReplace, onDecide }) {
   const title = `${metric?.displayName ?? t.metricId} — ${scopeText(t.scopeType, t.scopeId)}`;
   return (
     <section aria-label="Target versions" className="fo-panel">
@@ -212,10 +242,12 @@ function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, onS
                 const own = g.createdByUid === me;
                 // A draft copied from the previous system cannot be approved here (its author cannot be compared with an approver): it is discarded, or set again.
                 const copied = g.status === "DRAFT" && typeof g.provenance === "string" && g.provenance !== "NATIVE";
+                const view = statusView(g, list, today);
+                const scheduled = isScheduled(g, today);
                 return (
                   <tr key={g.goalId}>
                     <td>{g.version}</td>
-                    <td><StatusIndicator tone={STATUS_TONE[g.status] ?? "neutral"} label={STATUS_LABEL[g.status] ?? g.status} /></td>
+                    <td><StatusIndicator tone={view.tone} label={view.label} /></td>
                     <td>{describeTarget(g)}</td>
                     <td>{g.effectiveFrom}</td>
                     <td>{g.effectiveTo ?? "Open-ended"}</td>
@@ -238,8 +270,11 @@ function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, onS
                         {g.status === "DRAFT" && can(PERFORMANCE_GOAL_GATE.retire) ? (
                           <Button variant="secondary" onClick={() => onDecide("retire", g)} aria-label={`Discard version ${g.version}`}>Discard</Button>
                         ) : null}
-                        {g.status === "APPROVED" && can(PERFORMANCE_GOAL_GATE.retire) ? (
+                        {g.status === "APPROVED" && !scheduled && can(PERFORMANCE_GOAL_GATE.retire) ? (
                           <Button variant="secondary" onClick={() => onDecide("retire", g)} aria-label={`Retire version ${g.version}`}>Retire</Button>
+                        ) : null}
+                        {scheduled ? (
+                          <span className="fo-muted" role="note">Starts {g.effectiveFrom}. To change it, replace it; someone else approves the replacement.</span>
                         ) : null}
                       </div>
                     </td>
@@ -254,7 +289,7 @@ function VersionsSection({ t, metric, list, can, me, scopeText, nameOfActor, onS
   );
 }
 
-function Composer({ client, t, metric, supersedes, onCancel, onDone }) {
+function Composer({ client, t, metric, supersedes, scheduled = false, today, onCancel, onDone }) {
   const unit = metric?.unit ?? "COUNT";
   const [value, setValue] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -297,7 +332,11 @@ function Composer({ client, t, metric, supersedes, onCancel, onDone }) {
   return (
     <form onSubmit={submit} aria-label={supersedes ? "Replace a target" : "Set a target"} className="fo-panel">
       <SectionHeader level={3} title={supersedes ? `Replace version ${supersedes.version}` : "Set a target"}
-        description={supersedes ? "The new target takes effect on its start date; the current one is closed the day before." : "Saved as a draft. It does not apply until someone else approves it."} />
+        description={supersedes
+          ? (scheduled
+            ? "This target has not started. The replacement takes the scheduled one's place and may start earlier or later; the target in force now continues until the day before it starts. The scheduled one stays on record and never takes effect."
+            : "The new target takes effect on its start date; the current one is closed the day before.")
+          : "Saved as a draft. It does not apply until someone else approves it."} />
       <Field id="goal-value" label={unit === "CURRENCY_MINOR" ? "Amount" : "Target"} required>
         <input className="fo-input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
       </Field>
@@ -313,7 +352,7 @@ function Composer({ client, t, metric, supersedes, onCancel, onDone }) {
         </select>
       </Field>
       <Field id="goal-from" label="Takes effect on" required
-        hint={supersedes ? `Must be after ${supersedes.effectiveFrom}, when the current target began.` : undefined}>
+        hint={supersedes ? (scheduled ? `Must be after today (${today}): a day that has passed keeps the target that governed it.` : `Must be after ${supersedes.effectiveFrom}, when the current target began.`) : undefined}>
         <input className="fo-input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
       </Field>
       <Field id="goal-to" label="Ends on (optional)" hint="Leave blank for a target that applies until it is replaced or retired.">
@@ -328,7 +367,7 @@ function Composer({ client, t, metric, supersedes, onCancel, onDone }) {
   );
 }
 
-function DecisionPanel({ client, kind, goal, onCancel, onDone }) {
+function DecisionPanel({ client, kind, goal, correcting = false, onCancel, onDone }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -352,7 +391,9 @@ function DecisionPanel({ client, kind, goal, onCancel, onDone }) {
   return (
     <form onSubmit={submit} aria-label={approving ? "Approve a target" : discarding ? "Discard a draft" : "Retire a target"} className="fo-panel">
       <SectionHeader level={3} title={`${approving ? "Approve" : discarding ? "Discard" : "Retire"} version ${goal.version}: ${describeTarget(goal)}`}
-        description={approving ? "Approving puts this target in force. If it replaces another, that one is closed the day before."
+        description={approving ? (correcting
+          ? "Approving replaces the scheduled target, which then never takes effect (it stays on record). The target in force now continues until the day before this one starts."
+          : "Approving puts this target in force. If it replaces another, that one is closed the day before.")
           : discarding ? "Discarding retires a draft that was never a target. It is kept on record as retired and nothing was ever measured against it."
             : "Retiring ends this target with no replacement. The period it applied stays on record."} />
       <Field id="goal-reason" label={approving ? "Why is this approved?" : discarding ? "Why is this discarded?" : "Why is this retired?"} required>

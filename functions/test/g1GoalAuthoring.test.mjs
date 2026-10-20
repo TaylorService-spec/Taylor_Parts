@@ -233,3 +233,69 @@ test("f. the authoring module reaches no Firebase and no Firebase-era command se
   // BUSINESS_UNIT has no EOS authority (OD-B4-4) and TEAM is never bindable: neither is offered.
   assert.deepEqual([...goals.AUTHORABLE_SCOPES].sort(), ["EMPLOYEE", "FIRM", "LOCATION", "OPERATING_COMPANY"]);
 });
+
+// ── G-1b: what GOVERNS a date (the EOS-side selection; the Firebase currentGoalFor is untouched and still APPROVED-only) ──
+const reads = require("../lib/eosOps/performanceGoalReads.js");
+const T = { metricId: "m.x", targetScopeType: "FIRM", targetScopeId: null };
+const DAY = (d) => Date.parse(`${d}T12:00:00.000Z`);
+const g = (over) => ({ goalId: "g", metricId: "m.x", targetScopeType: "FIRM", targetScopeId: null, targetValue: 5, unit: "COUNT", direction: "AT_MOST", currency: null,
+  effectiveFrom: "2026-10-20", effectiveTo: null, status: "APPROVED", version: 1, createdByUid: "p1", createdAtMillis: 1, approvedByUid: "p2", approvedAtMillis: DAY("2026-10-20"), supersedesGoalId: null, ...over });
+const idOf = (list, d) => reads.governingGoalFor(list, T, d)?.goalId ?? null;
+
+test("g1b. F1: a future-dated successor leaves no gap -- the SUPERSEDED predecessor governs to its closed end, the successor from its start", () => {
+  const ga = g({ goalId: "ga", status: "SUPERSEDED", effectiveTo: "2026-10-31" });
+  const gb = g({ goalId: "gb", version: 2, effectiveFrom: "2026-11-01", supersedesGoalId: "ga", approvedAtMillis: DAY("2026-10-25") });
+  const list = [gb, ga];
+  assert.deepEqual(["2026-10-19", "2026-10-20", "2026-10-31", "2026-11-01", "2027-01-01"].map((d) => idOf(list, d)), [null, "ga", "ga", "gb", "gb"]);
+});
+
+test("g1b. F1: a RETIRED-after-approval version governs the days before its close; a discarded draft (no approver) and a DRAFT never govern", () => {
+  const retired = g({ goalId: "r", status: "RETIRED", effectiveTo: "2026-12-20" });
+  assert.deepEqual(["2026-10-20", "2026-12-20", "2026-12-21"].map((d) => idOf([retired], d)), ["r", "r", null]);
+  const discarded = g({ goalId: "d", status: "RETIRED", approvedByUid: null, approvedAtMillis: null, effectiveTo: "2026-12-20" });
+  const draft = g({ goalId: "dr", status: "DRAFT", approvedByUid: null, approvedAtMillis: null });
+  assert.equal(idOf([discarded, draft], "2026-11-15"), null);
+  assert.equal(idOf([g({ goalId: "blank", status: "RETIRED", approvedByUid: "" })], "2026-11-15"), null, "an empty approver is not approval evidence");
+  assert.deepEqual([reads.governsDates(g({ status: "APPROVED" })), reads.governsDates(discarded), reads.governsDates(draft)], [true, false, false]);
+});
+
+test("g1b. a SCHEDULED version replaced before it started governs NO date (derived from the approval), one replaced on or after its start governs its window", () => {
+  const p = g({ goalId: "p", status: "SUPERSEDED", effectiveFrom: "2026-01-01", effectiveTo: "2026-06-30", approvedAtMillis: DAY("2026-01-01") });
+  const s = g({ goalId: "s", status: "SUPERSEDED", version: 2, effectiveFrom: "2026-07-01", effectiveTo: null, supersedesGoalId: "p", approvedAtMillis: DAY("2026-03-01") });
+  const c = g({ goalId: "c", version: 3, effectiveFrom: "2026-07-01", supersedesGoalId: "s", approvedAtMillis: DAY("2026-03-05") });
+  assert.equal(reads.neverGoverned(s, [p, s, c]), true);
+  assert.deepEqual(["2026-06-30", "2026-07-01", "2026-12-31"].map((d) => idOf([p, s, c], d)), ["p", "c", "c"], "no ambiguity: the scheduled version is not a candidate");
+  // later start: the preceding version covers the gap the scheduled version would have filled (its closed window is moved by the command, not by the read)
+  const p2 = { ...p, effectiveTo: "2026-07-14" };
+  const c2 = { ...c, effectiveFrom: "2026-07-15" };
+  assert.deepEqual(["2026-07-01", "2026-07-14", "2026-07-15"].map((d) => idOf([p2, s, c2], d)), ["p", "p", "c"]);
+  // replaced ON its start day or later: it governed
+  const started = { ...s, effectiveTo: "2026-07-14" };
+  const after = { ...c, effectiveFrom: "2026-07-15", approvedAtMillis: DAY("2026-07-20") };
+  assert.equal(reads.neverGoverned(started, [started, after]), false);
+  assert.deepEqual(["2026-07-01", "2026-07-14", "2026-07-15"].map((d) => idOf([p, started, after], d)), ["s", "s", "c"]);
+  assert.equal(reads.neverGoverned(g({ status: "APPROVED" }), []), false);
+  assert.equal(reads.neverGoverned(s, [s]), false, "without an approved successor there is nothing to derive it from");
+});
+
+test("g1b. ambiguity is still a REFUSAL: two governing versions on one date raise GOAL_AMBIGUOUS, never the newer or the first", () => {
+  const a = g({ goalId: "a", status: "SUPERSEDED", effectiveTo: null });
+  const b = g({ goalId: "b", version: 2, effectiveFrom: "2026-11-01", supersedesGoalId: "a", approvedAtMillis: DAY("2026-10-25") });
+  for (const order of [[a, b], [b, a]]) {
+    assert.throws(() => reads.governingGoalFor(order, T, "2026-11-15"), (e) => e.code === "GOAL_AMBIGUOUS" && /2 governing goals/.test(e.message));
+  }
+  assert.equal(idOf([a, b], "2026-10-25"), "a", "a date only one covers is not ambiguous");
+});
+
+test("g1b. selection is per target and tolerates junk; the Firebase module is untouched and the EOS read no longer uses it for selection", () => {
+  const other = g({ goalId: "o", targetScopeType: "OPERATING_COMPANY", targetScopeId: "taylor" });
+  assert.equal(idOf([other], "2026-11-01"), null);
+  assert.equal(reads.governingGoalFor(undefined, T, "2026-11-01"), null);
+  assert.throws(() => reads.governingGoalFor([g({})], T, "11/01/2026"), (e) => e.code === "DATE_INVALID");
+  assert.doesNotMatch(tsCode("src/eosOps/performanceGoalReads.ts"), /currentGoalFor/);
+  assert.match(tsCode("src/eosOps/performanceGoalAuthoring.ts"), /governingVersions\(versions\)/, "the overlap check uses the governing predicate");
+  assert.doesNotMatch(tsCode("src/eosOps/performanceGoalAuthoring.ts"), /status === "APPROVED" && overlaps/);
+  // Firebase's own selection still ignores a SUPERSEDED version: nothing in the Firebase domain moved.
+  const fb = require("../lib/performance/performanceGoal.js");
+  assert.equal(fb.currentGoalFor([g({ goalId: "ga", status: "SUPERSEDED", effectiveTo: "2026-10-31" })], T, "2026-10-25"), null);
+});
