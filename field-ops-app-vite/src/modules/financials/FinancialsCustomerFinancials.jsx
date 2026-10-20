@@ -45,7 +45,8 @@ export default function FinancialsCustomerFinancials() {
   // server intersects it with this principal's FIN-004 reach, so choosing a customer you cannot see
   // returns nothing rather than their figures. The read is issued only once a customer is chosen —
   // an unfiltered account read on an empty search would be a whole-book query nobody asked for.
-  const facts = useFinancialFacts({ accountId: selected?.id ?? null }, { enabled: Boolean(selected) });
+  // Only the invoice family: this page reads the server's summary, never a payment row.
+  const facts = useFinancialFacts({ accountId: selected?.id ?? null, factTypes: ["INVOICE"] }, { enabled: Boolean(selected) });
   const { state: factsState, result: factsResult } = financialFactsState(facts);
   const factsAnswered = factsState === FACTS_STATE.READY || factsState === FACTS_STATE.EMPTY;
   const summary = factsAnswered ? (factsResult?.summary ?? {}) : {};
@@ -131,6 +132,15 @@ export default function FinancialsCustomerFinancials() {
               <FinAnnotation tip="Customer identity is the certified Account record's alone. This page links to it and never restates or edits it." />
             </p>
           </section>
+
+          {/* A restricted reader (credited-person / team reach) is told, as on the company-wide Financials pages, that the figures cover only what they may
+              see. The flag is the server's own access answer carried on the facts envelope; nothing here decides it. */}
+          {factsAnswered && factsResult?.restricted ? (
+            <div className="fin-truth-band" role="note">
+              <strong>A part of this customer&rsquo;s book.</strong> Your Finance visibility is limited to the receivables credited to you or your team, so the
+              figures below cover only those. Other receivables of this customer are outside your visibility, not zero.
+            </div>
+          ) : null}
 
           <section className="fin-scorecard-section" aria-label="Financial summary">
             <div className="fin-scorecard fin-scorecard--five">

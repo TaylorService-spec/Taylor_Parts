@@ -45,7 +45,9 @@ export default function FinancialsInvoiceDetail() {
   // ponytail: selects one invoice from the bounded governed page rather than adding a
   // single-invoice read. Correct and cheap at this collection's size; when the set outgrows one
   // page the read gains an invoiceId filter — the seam is the request, not this component.
-  const read = useFinancialFacts({});
+  // The families are NAMED, not defaulted: this record renders the invoice, its applications AND the receipts they came from, so it needs all three.
+  // (Under an EOS build this page is never mounted: financialsPages.js chooses the EOS receivable page.)
+  const read = useFinancialFacts({ factTypes: ["INVOICE", "PAYMENT_APPLICATION", "PAYMENT_RECEIPT"] });
   const { state, result } = financialFactsState(read);
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
 

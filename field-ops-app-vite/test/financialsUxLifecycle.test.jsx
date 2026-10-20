@@ -18,6 +18,13 @@ vi.mock("../src/hooks/useAccountSearch", () => ({
   useAccountSearch: () => searchState,
 }));
 
+// F-2: a test may hand the facts hook a ready answer (the envelope the EOS adapter produces); null leaves the real hook in place.
+const factsOverride = vi.hoisted(() => ({ value: null }));
+vi.mock("../src/hooks/useFinancialFacts.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, useFinancialFacts: (...args) => (factsOverride.value ? { loading: false, errorStatus: null, result: factsOverride.value } : actual.useFinancialFacts(...args)) };
+});
+
 const arState = { loading: false, errorStatus: "denied", result: null };
 vi.mock("../src/hooks/useAccountAr.js", () => ({
   useAccountAr: () => arState,
@@ -423,6 +430,50 @@ describe("F8 · page 07 carries every approved slot", () => {
     expect(container.textContent).not.toMatch(/\$\d/);
     // One destination, one link: the identity line owns the Account record link.
     expect(screen.getAllByText("Account record →").length).toBe(1);
+  });
+});
+
+describe("F-2 · a restricted or truncated EOS answer is said, never silent", () => {
+  const ready = (over) => ({ status: "ready", invoices: [], payments: [], applications: [], restricted: false, paymentsTruncated: false,
+    summary: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 40000 }, collectedByCurrency: { USD: 0 }, outstandingByCurrency: { USD: 40000 } }, ...over });
+
+  test("Customer Financials tells a restricted reader the figures cover only what they may see; an unrestricted reader gets no such band", () => {
+    searchState.state = "READY";
+    searchState.results = [{ id: "acct-1", name: "Canyon Foods" }];
+    factsOverride.value = ready({ restricted: true });
+    try {
+      const { container, unmount } = mount(<FinancialsCustomerFinancials />);
+      fireEvent.change(screen.getByRole("searchbox", { name: "Customer" }), { target: { value: "Can" } });
+      fireEvent.click(screen.getByRole("button", { name: "Canyon Foods" }));
+      expect(container.textContent).toMatch(/A part of this customer.s book/);
+      expect(container.textContent).toMatch(/credited to you or your team/);
+      unmount();
+      factsOverride.value = ready({ restricted: false });
+      const again = mount(<FinancialsCustomerFinancials />);
+      fireEvent.change(screen.getByRole("searchbox", { name: "Customer" }), { target: { value: "Can" } });
+      fireEvent.click(screen.getByRole("button", { name: "Canyon Foods" }));
+      expect(again.container.textContent).not.toMatch(/A part of this customer.s book/);
+    } finally {
+      factsOverride.value = null;
+    }
+  });
+
+  test("Payments says it shows the newest 100 when the settlement page was full", () => {
+    const payment = { paymentId: "stl-1", accountId: null, companyId: "taylor", currency: "USD", amountMinor: 100, appliedMinor: 100, receivedAtMillis: 1760000000000, method: "ACH", externalRef: "R-1" };
+    factsOverride.value = ready({ payments: [payment], paymentsTruncated: true });
+    try {
+      const { container } = mount(<FinancialsPayments />);
+      expect(container.textContent).toMatch(/Showing the newest 100 settlements/);
+    } finally {
+      factsOverride.value = null;
+    }
+    factsOverride.value = ready({ payments: [payment], paymentsTruncated: false });
+    try {
+      const { container } = mount(<FinancialsPayments />);
+      expect(container.textContent).not.toMatch(/Showing the newest 100 settlements/);
+    } finally {
+      factsOverride.value = null;
+    }
   });
 });
 

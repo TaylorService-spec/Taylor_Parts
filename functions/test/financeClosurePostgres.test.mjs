@@ -686,7 +686,9 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     // cost INPUTS #2084 withholds on the workspace rows never appear on an obligation row at all).
     for (const o of cons) {
       assert.deepEqual(Object.keys(o).sort(), ["counterparty", "currency", "dueOn", "id", "kind", "operatingCompanyId", "originatedMinor",
-        "outstandingMinor", "overdue", "settledMinor", "sourceDomain", "sourceRecordId", "status"]);
+        "outstandingMinor", "overdue", "settledMinor", "sourceDomain", "sourceRecordId", "sourceSalesOrder", "status"]);
+      // F-2: the Sales Order the receivable was billed from -- a reference (id and number), never an amount, part or cost.
+      assert.deepEqual(Object.keys(o.sourceSalesOrder).sort(), ["id", "salesOrderNumber"]);
     }
     const open = ok(await fn(ctrl, "listObligations", { operatingCompanyId: "taylor", crmAccountId: acct, status: "OPEN" })).items;
     assert.ok(open.length === await acctCount(["taylor"], acct, "OPEN") && open.every((o) => o.status === "OPEN"), "combined with status: the intersection");
