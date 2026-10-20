@@ -47,7 +47,7 @@ import {
   acceptOnly, DATE_AS_TEXT, ID_SHAPE, inTransaction, reachableCompanies, recordsAudit, refuse, requireCapability, type RecordsActor,
 } from "./recordsSupport.js";
 import {
-  ALLOW, decideEmployeeSubject, decideGoalReach, decideMetricAuthority, deny, goalContextOn, goalOf, governingVersions, subjectEmployeeIds,
+  ALLOW, decideEmployeeSubject, decideGoalReach, decideMetricAuthority, deny, goalContextOn, goalOf, governingVersions, neverGoverned, subjectEmployeeIds,
   withGoalContext, type Decision, type GoalContext, type GoalTargetRequest,
 } from "./performanceGoalReads.js";
 
@@ -91,9 +91,23 @@ function requireGoalId(v: unknown): string {
 
 const isoToday = (now: () => Date): string => now().toISOString().slice(0, 10);
 
-/** The version a SCHEDULED one replaced (the one still governing until the scheduled start), if its record names one. */
-const precedingOf = <T extends { goalId: string }>(versions: readonly T[], scheduled: { supersedesGoalId: string | null }): T | undefined =>
-  scheduled.supersedesGoalId ? versions.find((g) => g.goalId === scheduled.supersedesGoalId) : undefined;
+/**
+ * The version that GOVERNS until a SCHEDULED one starts: walk the scheduled version's `supersedesGoalId` back while the version found never governed (it was itself a
+ * scheduled version replaced by a correction), to the first version that did, or none. A correction of a correction therefore reaches the real predecessor, whose end
+ * is the boundary to move -- never a never-governed row, whose window is not written.
+ */
+function precedingOf<T extends PerformanceGoal>(versions: readonly T[], scheduled: { supersedesGoalId: string | null }): T | undefined {
+  const seen = new Set<string>();
+  let id = scheduled.supersedesGoalId;
+  while (id && !seen.has(id)) {
+    seen.add(id);
+    const v = versions.find((g) => g.goalId === id);
+    if (!v) return undefined;
+    if (!neverGoverned(v, versions)) return v;
+    id = v.supersedesGoalId;
+  }
+  return undefined;
+}
 
 /**
  * The start a CORRECTION of a scheduled version may take. It must be after `today` (a correction never governs, or stops governing, an elapsed day) and after the
@@ -388,10 +402,11 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
     }
 
     const supersededId = draft.supersedesGoalId;
-    const today = isoToday(deps.now ?? (() => new Date()));
+    // The SAME instant as the approval timestamp (decidedAtMillis): the correction-vs-ordinary branch and neverGoverned (derived from approved_at) always agree, even across midnight UTC.
+    const today = now.toISOString().slice(0, 10);
     let closedAt: string | null = null;
-    // The versions the clash check below compares with: all but the draft and the version it replaces, with the PRECEDING version's window as corrected here.
-    let others: Stored[] = versions.filter((g) => g.goalId !== goalId && g.goalId !== supersededId);
+    // The versions the clash check below compares with: all of them, with the PRECEDING version's window as corrected here.
+    let others: Stored[] = versions;
     let correction: { precedingGoalId: string | null; precedingClosedAt: string | null } | null = null;
     if (supersededId) {
       const predecessor = versions.find((g) => g.goalId === supersededId);
@@ -417,7 +432,7 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
           if (precedingClosedAt !== preceding.effectiveTo) {
             await c.query(`UPDATE ${SCHEMA}.performance_goals SET effective_to = $3 WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, preceding.goalId, precedingClosedAt]);
           }
-          others = others.map((g) => (g.goalId === preceding.goalId ? { ...g, effectiveTo: precedingClosedAt } : g));
+          others = versions.map((g) => (g.goalId === preceding.goalId ? { ...g, effectiveTo: precedingClosedAt } : g));
         }
         await c.query(`UPDATE ${SCHEMA}.performance_goals SET status = 'SUPERSEDED' WHERE tenant_id = $1 AND goal_id = $2`, [actor.tenantId, supersededId]);
         correction = { precedingGoalId: preceding?.goalId ?? null, precedingClosedAt };
@@ -432,7 +447,8 @@ export async function approvePerformanceGoal(deps: GoalAuthoringDeps, actor: Rec
       }
     }
     // No OTHER version that governs may cover the draft's window (the version it replaces is excluded; the preceding one is taken as corrected above).
-    const clash = governingVersions(others).find((g) => overlaps(g, draft));
+    // (governing is decided over ALL versions -- the successor of a never-governed version must be in view -- and the draft and the version it replaces are then set aside.)
+    const clash = governingVersions(others).find((g) => g.goalId !== goalId && g.goalId !== supersededId && overlaps(g, draft));
     if (clash) {
       return refuse("GOAL_ALREADY_IN_FORCE", "CONFLICT", `an APPROVED target (version ${clash.version}) already covers part of this window -- approving this draft would leave two targets in force`);
     }

@@ -69,6 +69,12 @@ When it is approved, the scheduled target is marked **Replaced before it started
 
 If the scheduled target has already started by the time the replacement is approved, it is an ordinary replacement: the old one ends the day before, and the days it applied still belong to it.
 
+You can correct a correction the same way: the target that is in force carries on until the day before the newest start date, and every earlier version stays on record untouched.
+
+**About "today":** the page counts days in UTC (universal time), not in your local time. In Arizona, after 5 pm it is already tomorrow on the page, and the date hint under **Takes effect on** shows the day it is using.
+
+A target that is **Scheduled** and has no earlier target (the first one set for a measure) cannot be withdrawn either; the only change before it starts is a replacement that someone else approves.
+
 ## Retire a target
 1. Find the target that is **In force** and choose **Retire**.
 2. Say why and choose **Confirm retirement**.

@@ -817,4 +817,71 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     const c = await mkE(mgr, D0, { effectiveFrom: "2040-05-10", effectiveTo: "2040-12-31", supersedesGoalId: s.goalId, targetValue: 11 });
     assert.equal((await goals.approvePerformanceGoal(at(D0), actor(approver, W), { goalId: c.goalId, reason: "ok", idempotencyKey: key("a") })).precedingClosedAt, "2040-05-09");
   });
+
+  // ── chained corrections: a correction of a correction reaches the version that actually governs ──
+  const versionList = async () => (await reads.listPerformanceGoalVersions({ pool }, actor(admin, [READ, RECEIVE]), { target: R })).versions;
+  /** Every day of the year, in memory over the stored versions: exactly one governing version (the selection throws on two and returns null on none). */
+  const everyDay = async (Y, idAt) => {
+    const list = await versionList();
+    const days = [];
+    for (let d = new Date(Date.UTC(Y, 0, 1)); d.getUTCFullYear() === Y; d.setUTCDate(d.getUTCDate() + 1)) days.push(d.toISOString().slice(0, 10));
+    assert.equal(days.length, 365 + (Y % 4 === 0 ? 1 : 0));
+    for (const day of days) assert.equal(reads.governingGoalFor(list, R, day)?.goalId ?? null, idAt(day), day);
+  };
+  const full = async (id) => (await q(`SELECT * FROM eos_ops.performance_goals WHERE tenant_id='t1' AND goal_id=$1`, [id])).rows[0];
+
+  for (const [Y, start, closedAt, label] of [
+    [2041, "04-20", "04-19", "EARLIER than both the scheduled version (06-01) and the first correction (05-10)"],
+    [2042, "05-10", "05-09", "the SAME start as the first correction"],
+    [2043, "05-20", "05-19", "BETWEEN the first correction (05-10) and the scheduled version (06-01)"],
+    [2044, "06-01", "05-31", "the SAME start as the scheduled version"],
+    [2045, "06-10", "06-09", "LATER than both"],
+  ]) {
+    await t.test(`G-1b: a correction of a correction (start ${start}: ${label}) moves the real predecessor's end, writes to no never-governed row, and leaves one governing version on every day`, async () => {
+      const x = await scheduled(Y);                                   // p 01-01..05-31 (SUPERSEDED), s 06-01.. (APPROVED, scheduled)
+      const c = await correct(x, "05-10");
+      await ok(approver, x.D0, c.goalId);                              // c [05-10..] replaces s: p now ends 05-09, s never governed
+      assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", `${Y}-01-01`, `${Y}-05-09`]);
+      const sBefore = await full(x.s);
+      const c2 = await correct(x, start, { supersedesGoalId: c.goalId, targetValue: 4 });   // the draft is accepted: its guard compares with p, not with s
+      assert.equal(c2.supersedesGoalId, c.goalId);
+      const out = await ok(approver, x.D0, c2.goalId, "The start moved again");
+      assert.deepEqual([out.correctedScheduledGoalId, out.precedingGoalId, out.precedingClosedAt, out.predecessorClosedAt], [c.goalId, x.p, `${Y}-${closedAt}`, null]);
+      // the real predecessor moved; the never-governed rows were not written (s untouched entirely; c only changed state, its window is as written)
+      assert.deepEqual(await statusOf(x.p), ["SUPERSEDED", `${Y}-01-01`, `${Y}-${closedAt}`]);
+      assert.deepEqual(await full(x.s), sBefore, "the first scheduled version is untouched");
+      assert.deepEqual(await statusOf(x.s), ["SUPERSEDED", `${Y}-06-01`, `${Y}-12-31`]);
+      assert.deepEqual(await statusOf(c.goalId), ["SUPERSEDED", `${Y}-05-10`, `${Y}-12-31`]);
+      assert.deepEqual(await statusOf(c2.goalId), ["APPROVED", `${Y}-${start}`, `${Y}-12-31`]);
+      // exactly one governing version on every day of the year, no gap, no overlap: p until the day before the final start, c2 from it
+      await everyDay(Y, (day) => (day < `${Y}-${start}` ? x.p : c2.goalId));
+      await timeline(Y, { [closedAt]: 10, [start]: 4, "12-31": 4 });
+    });
+  }
+
+  await t.test("G-1b: the approval DAY decides -- the day before the scheduled start is a correction (never governed); the start day is an ordinary supersede (it governed that day)", async () => {
+    // the day before: a correction
+    const a = await scheduled(2046);
+    const ca = await correct(a, "06-15");
+    const outA = await ok(approver, "2046-05-31", ca.goalId);
+    assert.equal(outA.correctedScheduledGoalId, a.s);
+    assert.deepEqual(await statusOf(a.s), ["SUPERSEDED", "2046-06-01", "2046-12-31"], "window untouched");
+    await everyDay(2046, (day) => (day < "2046-06-15" ? a.p : ca.goalId));
+    assert.equal((await cur("2046-06-01")).goal.goalId, a.p, "the scheduled version never governed its would-be start day");
+    // ON the start day: an ordinary supersede
+    const b = await scheduled(2047);
+    const cb = await correct(b, "06-15");
+    const outB = await ok(approver, "2047-06-01", cb.goalId);
+    assert.deepEqual([outB.predecessorClosedAt, outB.correctedScheduledGoalId ?? null], ["2047-06-14", null]);
+    assert.deepEqual(await statusOf(b.s), ["SUPERSEDED", "2047-06-01", "2047-06-14"]);
+    await everyDay(2047, (day) => (day < "2047-06-01" ? b.p : day < "2047-06-15" ? b.s : cb.goalId));
+    assert.equal((await cur("2047-06-01")).goal.goalId, b.s, "the old version governed its start day");
+    // across midnight UTC the branch and the derivation cannot disagree: both read the approval instant
+    const c = await scheduled(2048);
+    const cc = await correct(c, "06-15");
+    const at2359 = { ...deps, now: () => new Date("2048-05-31T23:59:59.999Z") };
+    await goals.approvePerformanceGoal(at2359, actor(approver, RC), { goalId: cc.goalId, reason: "Late on the eve", idempotencyKey: key("a") });
+    assert.equal((await versionList()).find((v) => v.goalId === c.s).status, "SUPERSEDED");
+    await everyDay(2048, (day) => (day < "2048-06-15" ? c.p : cc.goalId));
+  });
 });
