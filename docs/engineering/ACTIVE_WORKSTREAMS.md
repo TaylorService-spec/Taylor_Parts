@@ -27,7 +27,6 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-<<<<<<< HEAD
 - Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
 - Agent/session:       Claude Code Lane UX · Role: builder; controller merges
 - Branch / worktree:   `ux/display-batch-purchasing` · `.claude/worktrees/agent-a499bba175438ba94`
@@ -38,7 +37,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    no screen shows a blank, a storage key or a false warning where the record holds a name, number or state
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
 - Lifecycle stage:     INTEGRATION (PR open; not merged)
-=======
+
 - Capability:          Lane HARDEN-2 — display-batch review follow-ups (#2176): "Name unavailable" vs "Not recorded", warehouse join tenant key, negative tests, myWork/MultiScan/job-card tests
 - Agent/session:       Claude Code Lane HARDEN-2 · Role: builder; controller merges
 - Branch / worktree:   `ux/display-batch-followups` · `.claude/worktrees/agent-a86a52d7a6334b958`
@@ -60,7 +59,6 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    Hosting `4f30ab3a`, Pages `6cac0423`, Functions `4f30ab3a` (84/84 export match) and Rules `0526140d` pinned, with tag commands for the controller
 - Protected boundaries:none reached (no deploy, tag push, cloud call, credential or workflow edit)
 - Lifecycle stage:     INTEGRATION (docs PR open; controller creates the tags after review)
->>>>>>> origin/main
 
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
