@@ -153,3 +153,12 @@ The other technical decisions are table shapes, vocabulary, UX placement or scop
 5. **Service Work Order billing:** the Service Billing Policy (#191 item 6) for the WO invoicing path.
 6. **Goals (new):** should a goal measure be restricted to the roles that own it? Today any of the eight manager roles may author any measure within reach (Firebase parity).
 7. **Production activation:** each production grant or deploy, per batch.
+
+## 8. Additional implementation safeguards (Owner review of PR #2182, 2026-10-20)
+The Owner approved this register as authoritative and confirmed §1–§5. These safeguards are added:
+
+| ID | Safeguard | Test |
+|---|---|---|
+| A | **Discount authority fails closed where no configured limit exists.** A missing limit is never unlimited authority, and no percentage is invented. | A person with no configured limit cannot apply or approve any discount beyond zero. A configured limit applies exactly. |
+| B | **Delivery signature evidence:** explicit authorized-reader controls, protected storage and retrieval, audit of every read, and a stated retention policy. Images never appear in list APIs or in broad attachment access. | A non-authorized reader is refused. List responses carry no image bytes. Every image read is audited. Retention is documented before activation. |
+| C | **Invoice numbering may be seedable, but no historical continuity seed is applied** without separate Owner approval and reconciliation. | A fresh tenant / year starts at `INV-YYYY-000001`. No migration or default sets a seed. |
