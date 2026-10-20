@@ -313,14 +313,23 @@ const reconciliationView = (r: Record<string, any>) => Object.freeze({
 // ════════════════════ reads ════════════════════
 
 export async function readSettlementOn(db: Queryable, tenantId: string, settlementId: string) {
-  const { rows } = await db.query(`SELECT s.*, b.applied_minor, b.unapplied_minor FROM eos_finance.settlements s
-    JOIN eos_finance.settlement_balances b ON b.tenant_id = s.tenant_id AND b.settlement_id = s.id WHERE s.tenant_id = $1 AND s.id = $2`, [tenantId, settlementId]);
+  const { rows } = await db.query(`SELECT s.*, b.applied_minor, b.unapplied_minor, cp.kind AS counterparty_kind, cp.crm_account_id AS counterparty_crm_account_id,
+      cp.operating_company_id AS counterparty_company, a.name AS counterparty_name
+    FROM eos_finance.settlements s
+    JOIN eos_finance.settlement_balances b ON b.tenant_id = s.tenant_id AND b.settlement_id = s.id
+    JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = s.tenant_id AND cp.id = s.counterparty_id
+    LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id
+    WHERE s.tenant_id = $1 AND s.id = $2`, [tenantId, settlementId]);
   if (!rows[0]) return refuse("SETTLEMENT_NOT_FOUND", "NOT_FOUND", "no settlement with that id");
   const { rows: apps } = await db.query(`SELECT * FROM eos_finance.settlement_applications WHERE tenant_id = $1 AND settlement_id = $2 ORDER BY applied_at, id`, [tenantId, settlementId]);
   const { rows: recs } = await db.query(`SELECT * FROM eos_finance.settlement_reconciliations WHERE tenant_id = $1 AND settlement_id = $2 ORDER BY recorded_at, id`, [tenantId, settlementId]);
   const latest = recs[recs.length - 1];
   return Object.freeze({
     ...settlementView(rows[0], rows[0]),
+    // F-2: WHO paid / was paid (the CRM Account behind the counterparty, or the other operating company), so a reader can place a payment on a customer.
+    counterparty: rows[0].counterparty_kind === "INTERNAL_OPERATING_COMPANY"
+      ? Object.freeze({ kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId: String(rows[0].counterparty_company) })
+      : Object.freeze({ kind: "EXTERNAL_ORGANIZATION", crmAccountId: rows[0].counterparty_crm_account_id ?? null, name: rows[0].counterparty_name ?? null }),
     reconciliationStatus: rows[0].status === "VOID" ? "NOT_APPLICABLE" : latest ? String(latest.outcome) : "UNRECONCILED",
     applications: apps.map((a) => Object.freeze({ id: String(a.id), obligationId: String(a.obligation_id), amountMinor: String(a.amount_minor), status: String(a.status),
       appliedBy: String(a.applied_by), appliedAt: new Date(a.applied_at).toISOString(), reversalReason: a.reversal_reason ?? null })),

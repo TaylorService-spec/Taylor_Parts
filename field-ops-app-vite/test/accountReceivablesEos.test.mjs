@@ -50,14 +50,14 @@ test("the envelope is the callable's: status, rows and a summary that mirrors su
   assert.deepEqual(out.invoices.map((i) => [i.invoiceId, i.arPosition, i.companyId]), [
     ["a", "OVERDUE", "taylor"], ["b", "SETTLED", "taylor"], ["c", "VOID", "taylor"], ["d", "CURRENT", "ventana"]]);
   const s = out.summary;
-  assert.deepEqual([s.count, s.openCount, s.overdueCount], [4, 2, 1], "a settled and a void record are not open");
+  assert.deepEqual([s.count, s.openCount, s.overdueCount], [3, 2, 1], "a void record counts in nothing; a settled one is counted but not open");
   assert.deepEqual(s.outstandingByCurrency, { USD: 7000, CAD: 500 }, "never blended across currencies");
-  assert.deepEqual(s.billedByCurrency, { USD: 30000, CAD: 500 });
+  assert.deepEqual(s.billedByCurrency, { USD: 20000, CAD: 500 }, "the void record's 10000 is not billed (the server overview excludes VOID from everything)");
   assert.deepEqual(s.collectedByCurrency, { USD: 13000, CAD: 0 });
   assert.deepEqual(s.companyIds, ["taylor", "ventana"]);
   assert.equal(s.spansMultipleCompanies, true);
-  assert.deepEqual(s.byCompany.taylor, { count: 3, openCount: 1, overdueCount: 1,
-    billedByCurrency: { USD: 30000 }, collectedByCurrency: { USD: 13000 }, outstandingByCurrency: { USD: 7000 } });
+  assert.deepEqual(s.byCompany.taylor, { count: 2, openCount: 1, overdueCount: 1,
+    billedByCurrency: { USD: 20000 }, collectedByCurrency: { USD: 13000 }, outstandingByCurrency: { USD: 7000 } });
   assert.deepEqual(s.byCompany.ventana.outstandingByCurrency, { CAD: 500 });
   // the partition reconciles to the consolidated totals EXACTLY (the property summarizeAccountAr pins on the server)
   const sum = (key) => Object.values(s.byCompany).reduce((acc, c) => { for (const [cur, v] of Object.entries(c[key])) acc[cur] = (acc[cur] ?? 0) + v; return acc; }, {});
