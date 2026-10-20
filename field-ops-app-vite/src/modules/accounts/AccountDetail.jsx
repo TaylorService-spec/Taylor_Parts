@@ -41,6 +41,8 @@ import { formatClockTime } from "../../domain/displayTimestamp.js";
 import { useIsPhone } from "../../navigation/useIsPhone.js";
 import { useAuth } from "../../auth/AuthContext";
 import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
+import { ACCOUNT_BALANCE_GATE } from "../../access/shellCapabilityGates.js";
+import AccountArSection from "./AccountArSection";
 import { useCommercialCapabilities } from "../../hooks/useCommercialCapabilities.js";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
@@ -378,7 +380,10 @@ export default function AccountDetail() {
   // FIREBASE EXIT F1 (G5): where EOS is the session source `role` is null, and the pencils follow the EOS Account write
   // authority the server already applies -- customer.governedField.write (eosCrm/accountAuthority.ts). `isAdmin` keeps its
   // name because fieldEditability() takes it; it now means "may change the governed fields".
-  const isAdmin = sessionDecision(useSessionAccess(), SESSION_GATE_KEYS.accountGovernedFields, role === "admin");
+  const sessionAccess = useSessionAccess();
+  const isAdmin = sessionDecision(sessionAccess, SESSION_GATE_KEYS.accountGovernedFields, role === "admin");
+  // A6: a role with no Finance workspace but with the customer-balance SUMMARY (finance.accountBalance.read; EOS-sourced builds only, no legacy answer).
+  const balanceSummaryGranted = sessionDecision(sessionAccess, [ACCOUNT_BALANCE_GATE.read], false);
   const accountEditability = useCallback(
     (fieldId) => fieldEditability(accountRecordPage, fieldId, {
       isAdmin,
@@ -688,6 +693,12 @@ export default function AccountDetail() {
       entityResolver={accountPageEntityResolver}
       embedded
     />
+  ) : balanceSummaryGranted ? (
+    // A6: finance.accountBalance.read WITHOUT the Finance workspace. The same section, which reads the SUMMARY (totals per company and currency, no rows)
+    // from the server; the full receivable detail above stays on finance.payment.read.
+    <div id="account-financials">
+      <AccountArSection accountId={account.id} />
+    </div>
   ) : (
     <section className="ns-section" aria-label="Accounts Receivable">
       <div className="ns-section__head">

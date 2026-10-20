@@ -981,3 +981,9 @@ functions/src/catalogMaster/postgresPartMasterWriter.ts
 functions/src/catalogMaster/postgresManufacturerWriter.ts
 functions/src/eosCrm/accountAuthority.ts
 functions/src/eosCommercial/commands/opportunityCommandService.ts
+# A6 customer-balance summary (2026-10-19): the suites, the migration, the evidence they read, and the subjects of the summary read (the company reach it unions).
+functions/test/a6AccountBalanceSummary.test.mjs
+functions/test/a6AccountBalanceSummaryPostgres.test.mjs
+functions/migrations/1764680000000_account-balance-summary.sql
+docs/architecture/a6-account-balance-summary.json
+functions/src/eosOps/inventoryCompanyAuthority.ts

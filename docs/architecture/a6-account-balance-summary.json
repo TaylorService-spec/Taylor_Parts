@@ -1,0 +1,42 @@
+{
+  "decision": "A6 customer-balance summary visibility for operational roles",
+  "decidedBy": "Owner, 2026-10-19",
+  "ownerRuling": "Restore historically authorized customer-balance visibility for eligible operational roles. Distinguish balance summaries from invoice details, individual payments, settlement commands and financial policy authority. Preserve company isolation, sales ownership, historical credited-salesperson/team restrictions and applicable exclusions. No new receivable write authority.",
+  "reach": "The Employee's company authority (home company, OPERATIONAL company-scoped Roles, explicit company-access grants; a protected Administrator holds every company) UNION the explicit Finance company assignments (financeCompanyAccess). Non-sales roles read ALL customers' summaries inside that reach; sales roles keep self / team (eosFinance/financeVisibility.ts, inactive as deployed).",
+  "capability": {
+    "key": "finance.accountBalance.read",
+    "object": "payment",
+    "action": "readBalanceSummary",
+    "objectNote": "the existing payment Object (the Finance register; finance.payment.read and finance.visibility.* sit on it); a new accountBalance Object would need a seed row (capabilityGovernedObjects.json + policySeedSnapshot.json) and capabilityObjectAuthorityGuard refuses an unseeded Object",
+    "kind": "READ",
+    "registeredBy": "functions/migrations/1764680000000_account-balance-summary.sql",
+    "postgresNative": true
+  },
+  "operation": {
+    "route": "/operations/finance",
+    "name": "readAccountBalanceSummary",
+    "input": ["crmAccountId"],
+    "returns": ["status", "asOf", "restricted", "summaries[operatingCompanyId, currency, openReceivableCount, outstandingMinor, overdueCount, overdueMinor]"],
+    "doesNotReturn": ["obligation, settlement, handoff or billing-package ids", "invoice numbers", "payment or settlement rows", "payables, funding, intercompany", "any write path"],
+    "rows": "open (OPEN / PARTIAL, balance outstanding) RECEIVABLE obligations of one external CRM Account; VOID and settled excluded",
+    "outsideReach": "reads as no data -- the same empty answer as a customer that owes nothing",
+    "truncation": "a visible set beyond financeVisibility.ts VISIBLE_SET_CAP answers status UNAVAILABLE; the totals themselves are summed in SQL over every row"
+  },
+  "grants": {
+    "roles": ["fieldManager", "partsAssociate", "partsManager", "purchasingManager", "salesManager", "salesperson", "shopAssociate", "shopManager"],
+    "notGranted": "admin, owner and the Finance roles keep their full Finance reads and receive nothing here",
+    "migration": { "file": "functions/migrations/1764680000000_account-balance-summary.sql", "stamp": "migration:1764680000000", "idPrefix": "rc_a6_", "capabilitiesRegistered": 1, "newGrantsWritten": 8 }
+  },
+  "counts": {
+    "baseline": { "before": 689, "after": 697, "migrationBackedBefore": 631, "migrationBackedAfter": 639 },
+    "capabilities": { "before": 194, "after": 195 },
+    "migrations": { "before": 109, "after": 110 },
+    "shellRequestSet": { "before": 65, "after": 66 }
+  },
+  "client": {
+    "gate": "ACCOUNT_BALANCE_GATE in field-ops-app-vite/src/access/shellCapabilityGates.js",
+    "accountPage": "Accounts Receivable shows the summary to a holder of finance.accountBalance.read who has no Finance workspace; full detail stays on finance.payment.read; a holder of neither keeps the 'Not available to you' placeholder (design decision A-D2)",
+    "adapter": "domain/accountReceivablesEos.js accountArFromBalanceSummary; services/eosAccountReceivablesClient.js asks the server for the summary when the Finance workspace refuses or reaches no company"
+  },
+  "proof": ["functions/test/a6AccountBalanceSummary.test.mjs", "functions/test/a6AccountBalanceSummaryPostgres.test.mjs", "field-ops-app-vite/test/accountBalanceSummary.test.mjs", "field-ops-app-vite/test/accountAttentionSection.test.jsx", "field-ops-app-vite/test/accountNorthStarPage.test.jsx"]
+}

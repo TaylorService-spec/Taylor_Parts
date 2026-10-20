@@ -205,6 +205,14 @@ export const SUPPLIER_PURCHASE_ORDER_GATE = Object.freeze({
 });
 
 /**
+ * Customers > Account > Accounts Receivable, for a role that holds no Finance workspace (A6, Owner 2026-10-19; migration 1764680000000). An EOS-ONLY key, asked
+ * under its own name of the caller's EOS capability set (access/eosCapabilityAccess.js). A holder is shown the customer-balance SUMMARY (five numbers per company
+ * and currency, readAccountBalanceSummary) and nothing else; the full receivable detail stays on finance.payment.read (finance.read in the Firebase feed). The
+ * server decides the reach on every call.
+ */
+export const ACCOUNT_BALANCE_GATE = Object.freeze({ read: "finance.accountBalance.read" });
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -243,6 +251,8 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   equipmentModel: Object.freeze(Object.values(EQUIPMENT_MODEL_GATE)),
   // P-1: modules/purchasing/SupplierPurchaseOrders.jsx (mounted by PurchaseOrders.jsx).
   supplierPurchaseOrder: Object.freeze(Object.values(SUPPLIER_PURCHASE_ORDER_GATE)),
+  // A6: modules/accounts/AccountDetail.jsx (the Accounts Receivable summary).
+  accountBalance: Object.freeze(Object.values(ACCOUNT_BALANCE_GATE)),
 });
 
 /**

@@ -14,7 +14,7 @@
 import { callFinanceApi } from "./financeApiClient.js";
 import { READ_TIMEOUT_MS, boundedRead } from "../access/boundedRead.js";
 import { ACCOUNT_AR_STATE } from "../domain/accountArView.js";
-import { accountArFromObligations, OBLIGATION_PAGE_LIMIT } from "../domain/accountReceivablesEos.js";
+import { accountArFromBalanceSummary, accountArFromObligations, OBLIGATION_PAGE_LIMIT } from "../domain/accountReceivablesEos.js";
 
 const TIMED_OUT = Object.freeze({ ok: false, code: "UNREACHABLE" });
 const denied = () => ({ errorStatus: ACCOUNT_AR_STATE.DENIED });
@@ -32,8 +32,17 @@ export async function fetchAccountReceivablesFromEos(accountId, { call: rawCall 
   const call = (operation, input) => boundedRead((signal) => rawCall(operation, input, signal ? { signal } : {}), timeoutMs, TIMED_OUT);
   if (typeof accountId !== "string" || accountId.trim() === "") return unavailable();
 
+  // A6: a caller the Finance workspace does not reach (the server refuses readMyFinanceCompanyAccess, or reaches it to no company) may still hold the
+  // customer-balance SUMMARY (finance.accountBalance.read). The SERVER decides: this asks it for the summary and renders whatever it answers; a caller
+  // who holds neither is refused there too, and that stays "denied". Nothing is inferred here from a capability the client holds.
+  const summary = async () => {
+    const res = await call("readAccountBalanceSummary", { crmAccountId: accountId });
+    if (!res.ok) return refusal(res);
+    const envelope = accountArFromBalanceSummary(res.result);
+    return envelope.status === "ready" ? { result: envelope } : unavailable();
+  };
   const access = await call("readMyFinanceCompanyAccess");
-  if (!access.ok) return refusal(access);
+  if (!access.ok) return access.code === "FORBIDDEN" ? summary() : refusal(access);
   // B1 (DECISIONS #B1): a company whose inner Finance reach is EMPTY (the server says RESTRICTED_EMPTY) reads nothing, so it is not asked
   // about; the server still re-decides every read, and a restricted reader's rows are only the receivables it may see.
   const companies = Array.isArray(access.result?.companies)
@@ -41,7 +50,7 @@ export async function fetchAccountReceivablesFromEos(accountId, { call: rawCall 
     : null;
   if (companies === null) return unavailable();
   // The server reaches this caller to no company: listObligations would refuse every one of them. The same answer, one call earlier.
-  if (companies.length === 0) return denied();
+  if (companies.length === 0) return summary();
 
   // One read per reached company (a consolidated read is just their union, and a per-company page keeps the 200-row bound per
   // company). All or nothing: a partial set of companies is never presented as the account's receivables.

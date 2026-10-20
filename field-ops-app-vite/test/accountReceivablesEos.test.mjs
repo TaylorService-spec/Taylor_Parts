@@ -143,12 +143,15 @@ test("a Taylor-only caller never asks about Ventana", async () => {
 });
 
 test("the server's refusal is DENIED; nothing else is", async () => {
-  const forbidden = transport({ readMyFinanceCompanyAccess: () => failRes("FORBIDDEN", 403) });
+  // A6: a caller the Finance workspace refuses (or reaches to no company) is offered the customer-balance SUMMARY by the server; a caller who holds neither is refused there too.
+  const noSummary = () => failRes("FORBIDDEN", 403);
+  const forbidden = transport({ readMyFinanceCompanyAccess: () => failRes("FORBIDDEN", 403), readAccountBalanceSummary: noSummary });
   assert.deepEqual(await fetchAccountReceivablesFromEos("acct-1", { call: forbidden.call }), { errorStatus: "denied" });
-  // reaches no company: the same answer listObligations would give, one call earlier
-  const none = transport({ readMyFinanceCompanyAccess: () => access() });
+  assert.deepEqual(forbidden.calls, [["readMyFinanceCompanyAccess", null], ["readAccountBalanceSummary", { crmAccountId: "acct-1" }]]);
+  // reaches no company: the summary is asked for, and its refusal is the denial
+  const none = transport({ readMyFinanceCompanyAccess: () => access(), readAccountBalanceSummary: noSummary });
   assert.deepEqual(await fetchAccountReceivablesFromEos("acct-1", { call: none.call }), { errorStatus: "denied" });
-  assert.equal(none.calls.length, 1);
+  assert.equal(none.calls.length, 2);
   // a company refused on the read itself (access changed between the two calls) is still the server's refusal
   const raced = transport({ readMyFinanceCompanyAccess: () => access("taylor", "ventana"),
     listObligations: (i) => (i.operatingCompanyId === "ventana" ? failRes("FORBIDDEN", 403) : okRes({ items: [] })) });

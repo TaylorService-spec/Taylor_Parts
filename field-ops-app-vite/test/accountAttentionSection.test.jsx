@@ -27,7 +27,8 @@ vi.mock("../src/hooks/useAccountAttentionWorkOrders.js", () => ({ useAccountAtte
 
 import { useAccountAr } from "../src/hooks/useAccountAr.js";
 import { useAccountAttentionWorkOrders } from "../src/hooks/useAccountAttentionWorkOrders.js";
-import { accountArFromObligations } from "../src/domain/accountReceivablesEos.js";
+import { accountArFromBalanceSummary, accountArFromObligations } from "../src/domain/accountReceivablesEos.js";
+import AccountArSection from "../src/modules/accounts/AccountArSection.jsx";
 import AccountAttentionSection from "../src/modules/accounts/AccountAttentionSection.jsx";
 
 afterEach(() => {
@@ -189,5 +190,56 @@ describe("AccountAttentionSection -- Account Attention projection wiring", () =>
     // rendered text is ever a bare id string (every id-shaped value shown is a human label:
     // invoice/WO number).
     expect(screen.queryByText(/^[A-Za-z0-9]{20,}$/)).toBeNull();
+  });
+});
+
+// ── A6 (Owner decision, 2026-10-19): the customer-balance SUMMARY reader ─────────────────────────────────────────
+// A role with finance.accountBalance.read and no Finance workspace is shown totals per company and currency, never rows. Attention therefore has no
+// per-receivable item for it, and must say "not available", never the healthy "nothing overdue". The summary table is drawn by AccountArSection.
+const A6_ANSWER = (summaries, extra = {}) => ({
+  status: "READY", asOf: "2026-10-19T12:00:00.000Z", restricted: false, ...extra,
+  summaries: summaries.map(([operatingCompanyId, currency, openReceivableCount, outstandingMinor, overdueCount, overdueMinor]) =>
+    ({ operatingCompanyId, currency, openReceivableCount, outstandingMinor, overdueCount, overdueMinor })),
+});
+const A6_TAYLOR = ["taylor", "USD", 3, "64000", 1, "40000"];
+const A6_VENTANA = ["ventana", "USD", 1, "11000", 1, "11000"];
+
+describe("A6: a balance-summary reader", () => {
+  it("Attention shows the AR source as not available to it, with no receivable item and no overdue claim", () => {
+    mockReads({ ar: { loading: false, errorStatus: null, result: accountArFromBalanceSummary(A6_ANSWER([A6_TAYLOR])) }, wo: HEALTHY_WO });
+    const { container } = renderSection({ accountId: "acct-1" });
+    expect(container.textContent).toMatch(/Accounts Receivable: not available to you/);
+    expect(container.textContent).not.toMatch(/overdue/i);
+  });
+
+  it("AccountArSection shows one line per company and currency, says it is a summary, and offers no receivable rows", () => {
+    useAccountAr.mockReturnValue({ loading: false, errorStatus: null, result: accountArFromBalanceSummary(A6_ANSWER([A6_TAYLOR, A6_VENTANA])) });
+    const { container } = render(<AccountArSection accountId="acct-1" />);
+    expect(screen.getByRole("heading", { name: "Accounts Receivable" })).toBeTruthy();
+    expect(screen.getByText(/A summary of this account/)).toBeTruthy();
+    const body = container.querySelectorAll("tbody tr");
+    expect(body).toHaveLength(2);
+    expect(body[0].textContent).toMatch(/Taylor Freezer of Arizona.*3.*\$640\.00.*1 · \$400\.00/);
+    expect(body[1].textContent).toMatch(/Ventana.*1.*\$110\.00.*1 · \$110\.00/);
+    expect(screen.getByText("4 open, 2 overdue.")).toBeTruthy();
+    expect(container.querySelector("th")?.textContent).toBe("Company");
+    expect(container.textContent).not.toMatch(/Position/);
+  });
+
+  it("a sales reader (restricted by the server) is told the totals cover only what is credited to them or their team", () => {
+    useAccountAr.mockReturnValue({ loading: false, errorStatus: null, result: accountArFromBalanceSummary(A6_ANSWER([A6_TAYLOR], { restricted: true })) });
+    render(<AccountArSection accountId="acct-1" />);
+    expect(screen.getByText(/They cover only the receivables credited to you or your team/)).toBeTruthy();
+    cleanup();
+    useAccountAr.mockReturnValue({ loading: false, errorStatus: null, result: accountArFromBalanceSummary(A6_ANSWER([], { restricted: true })) });
+    render(<AccountArSection accountId="acct-1" />);
+    expect(screen.getByText(/within your companies \(limited to the receivables credited to you or your team\)/)).toBeTruthy();
+  });
+
+  it("an account with nothing open within the reader's companies says so, and shows no table", () => {
+    useAccountAr.mockReturnValue({ loading: false, errorStatus: null, result: accountArFromBalanceSummary(A6_ANSWER([])) });
+    const { container } = render(<AccountArSection accountId="acct-1" />);
+    expect(screen.getByText(/No open receivables on this account within your companies/)).toBeTruthy();
+    expect(container.querySelector("table")).toBeNull();
   });
 });

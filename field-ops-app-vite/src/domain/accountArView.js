@@ -106,7 +106,11 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
   // B1: the EOS read tells a RESTRICTED reader so (Finance visibility limited to credited / team receivables): "none" then means none visible.
   const restricted = result.restricted === true;
 
-  if (invoices.length === 0) return { kind: ACCOUNT_AR_STATE.EMPTY, recordNoun, ...(restricted ? { restricted } : {}) };
+  // A6: the customer-balance SUMMARY (no rows by design). An empty list here is NOT "nothing owed" unless the summary says so.
+  const summaryOnly = result.summaryOnly === true;
+  if (invoices.length === 0 && !(summaryOnly && (summary.openCount ?? 0) > 0)) {
+    return { kind: ACCOUNT_AR_STATE.EMPTY, recordNoun, ...(summaryOnly ? { summaryOnly } : {}), ...(restricted ? { restricted } : {}) };
+  }
 
   const outstandingLines = Object.entries(summary.outstandingByCurrency ?? {}).map(
     ([currency, amountMinor]) => ({ currency, text: formatMinor(amountMinor, currency) })
@@ -129,6 +133,18 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
     // screens say "Receivable" instead of "Invoice". A noun the read did not name is never guessed.
     recordNoun,
     ...(restricted ? { restricted } : {}),
+    ...(summaryOnly ? {
+      summaryOnly,
+      // One line per company and currency, in words: the only thing a summary-only reader is shown (no rows exist to list).
+      summaryRows: (Array.isArray(result.summaryRows) ? result.summaryRows : []).map((s) => ({
+        key: `${s.companyId}|${s.currency}`,
+        companyLabel: companyAttributionLabel(s.companyId),
+        openCount: s.openCount,
+        outstandingText: formatMinor(s.outstandingMinor, s.currency),
+        overdueCount: s.overdueCount,
+        overdueText: s.overdueCount > 0 ? formatMinor(s.overdueMinor, s.currency) : null,
+      })),
+    } : {}),
     openCount: summary.openCount ?? 0,
     overdueCount: summary.overdueCount ?? 0,
     outstandingLines,

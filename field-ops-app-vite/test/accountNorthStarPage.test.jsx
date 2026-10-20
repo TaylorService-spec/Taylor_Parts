@@ -24,6 +24,10 @@ import AccountHealthStrip from "../src/modules/accounts/AccountHealthStrip.jsx";
 import ServiceActivitySection from "../src/modules/accounts/ServiceActivitySection.jsx";
 import { useAccount } from "../src/hooks/useAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
+import { useAccountAr } from "../src/hooks/useAccountAr";
+import { useAccountPageCapabilityDecisions } from "../src/metadata/definitions/accountPageComponents.js";
+import { SessionAccessContext } from "../src/access/sessionAccess.js";
+import { accountArFromBalanceSummary, accountArFromObligations } from "../src/domain/accountReceivablesEos.js";
 import { ACCOUNT_AR_STATE } from "../src/domain/accountArView.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
@@ -48,7 +52,7 @@ vi.mock("../src/hooks/useLocationsForAccount", () => ({
 }));
 vi.mock("../src/hooks/useContactsForAccount", () => ({ useContactsForAccount: vi.fn() }));
 vi.mock("../src/hooks/useAccountAr", () => ({
-  useAccountAr: () => ({ loading: false, errorStatus: null, result: null }),
+  useAccountAr: vi.fn(() => ({ loading: false, errorStatus: null, result: null })),
 }));
 vi.mock("../src/hooks/useAccountAttentionWorkOrders", () => ({
   useAccountAttentionWorkOrders: () => ({ loading: false, error: null, workOrders: [], truncated: false }),
@@ -67,7 +71,7 @@ vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" 
 // in, which makes it the right default for a composition suite.
 vi.mock("../src/metadata/definitions/accountPageComponents.js", async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, useAccountPageCapabilityDecisions: () => ({}) };
+  return { ...actual, useAccountPageCapabilityDecisions: vi.fn(() => ({})) };
 });
 
 const DOC_ID = "acct_doc_secret";
@@ -788,5 +792,78 @@ describe("Account North Star P1 — the rail width band is measured, not guessed
     expect(at).toBeGreaterThan(-1);
     const rule = CSS.slice(CSS.indexOf("{", at) + 1, CSS.indexOf("}", CSS.indexOf("{", at) + 1));
     expect(rule).toMatch(/minmax\(0,\s*1fr\)\s+340px/);
+  });
+});
+
+// ── A6 (Owner decision, 2026-10-19): the Accounts Receivable area by KIND OF READER ──────────────────────────────
+//   finance.payment.read         the full receivable detail (rows), unchanged
+//   finance.accountBalance.read  the customer-balance SUMMARY only (totals per company and currency, no rows)
+//   neither                      no receivable data: the area keeps its place and says "Not available to you" (design decision A-D2)
+// The server decides everything that matters (which companies, which customers, which rows); this proves what the PAGE offers each reader.
+describe("A6: the Accounts Receivable area by reader", () => {
+  const A6_SUMMARY = accountArFromBalanceSummary({
+    status: "READY", asOf: "2026-10-19T12:00:00.000Z", restricted: false,
+    summaries: [{ operatingCompanyId: "taylor", currency: "USD", openReceivableCount: 3, outstandingMinor: "64000", overdueCount: 1, overdueMinor: "40000" }],
+  });
+  const A6_FULL = accountArFromObligations([{ truncated: false, items: [{
+    id: "ob-1", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", dueOn: "2026-11-01", overdue: false,
+    originatedMinor: "10000", settledMinor: "0", outstandingMinor: "10000", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: DOC_ID },
+  }] }]);
+
+  function mountReader({ session, decisions = {}, ar }) {
+    setPhoneWidth(false);
+    useAccount.mockReturnValue({ account: account(), loading: false, error: null, retry: vi.fn(), checkedAt: Date.UTC(2026, 5, 10, 16, 12) });
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
+    useAccountAr.mockReturnValue(ar);
+    useAccountPageCapabilityDecisions.mockReturnValue(decisions);
+    const access = { eosSource: session.eosSource, settled: true, holds: (k) => session.holds.includes(k), grantsSurface: () => false, reload: () => {} };
+    return render(
+      <SessionAccessContext.Provider value={access}>
+        <MemoryRouter initialEntries={[`/customers/${DOC_ID}`]}>
+          <Routes><Route path="/customers/:accountId" element={<AccountDetail />} /></Routes>
+        </MemoryRouter>
+      </SessionAccessContext.Provider>,
+    );
+  }
+  const arSection = (container) => Array.from(container.querySelectorAll(".ns-section"))
+    .find((s) => /Accounts receivable/i.test(s.querySelector(".ns-section__title")?.textContent ?? ""));
+
+  afterEach(() => {
+    useAccountAr.mockImplementation(() => ({ loading: false, errorStatus: null, result: null }));
+    useAccountPageCapabilityDecisions.mockImplementation(() => ({}));
+  });
+
+  it("a holder of finance.accountBalance.read WITHOUT the Finance workspace is shown the summary, not rows", () => {
+    const { container } = mountReader({ session: { eosSource: true, holds: ["finance.accountBalance.read"] }, ar: { loading: false, errorStatus: null, result: A6_SUMMARY } });
+    const ar = arSection(container);
+    expect(ar, "the section keeps its place").toBeTruthy();
+    expect(ar.textContent).toMatch(/A summary of this account/);
+    expect(ar.textContent).toMatch(/\$640\.00/);
+    expect(ar.textContent).toMatch(/1 · \$400\.00/);
+    expect(ar.textContent).not.toMatch(/Not available to you/);
+    expect(ar.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
+
+  it("a holder of finance.payment.read keeps the full receivable detail (finance.read in the page's declared ids)", () => {
+    const { container } = mountReader({ session: { eosSource: true, holds: ["finance.payment.read", "finance.accountBalance.read"] },
+      decisions: { "finance.read": true }, ar: { loading: false, errorStatus: null, result: A6_FULL } });
+    const ar = arSection(container);
+    expect(ar.textContent).not.toMatch(/A summary of this account/);
+    expect(ar.textContent).toMatch(/Position/);
+  });
+
+  it("a holder of neither sees no receivable data: the area keeps its place and says it is not available (A-D2)", () => {
+    const { container } = mountReader({ session: { eosSource: true, holds: [] }, ar: { loading: false, errorStatus: "denied", result: null } });
+    const ar = arSection(container);
+    expect(ar.textContent).toMatch(/Not available to you/);
+    expect(ar.querySelector("table")).toBeNull();
+    expect(ar.textContent).not.toMatch(/\$/);
+  });
+
+  it("a session that is not EOS-sourced never offers the summary, whatever the capability set says", () => {
+    const { container } = mountReader({ session: { eosSource: false, holds: ["finance.accountBalance.read"] }, ar: { loading: false, errorStatus: null, result: A6_SUMMARY } });
+    const ar = arSection(container);
+    expect(ar.textContent).toMatch(/Not available to you/);
+    expect(ar.textContent).not.toMatch(/A summary of this account/);
   });
 });

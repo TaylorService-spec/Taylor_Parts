@@ -115,13 +115,14 @@ test("b. the baseline carries exactly the 30 new pairs, each MIGRATION_BACKED an
     assert.ok(row, `${pair} is already in the baseline`);
     assert.equal(row.evidence, "migration:1761523200000", pair);
   }
-  assert.equal(BASELINE.grants.length, 689);
-  assert.equal(BASELINE.totalGrants, 689);
-  assert.equal(BASELINE.deployment.rebuildTotal, 689);
-  assert.deepEqual(BASELINE.countsBySource, { MIGRATION_BACKED: 631, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0 });
+  assert.equal(BASELINE.grants.length, 697);
+  assert.equal(BASELINE.totalGrants, 697);
+  assert.equal(BASELINE.deployment.rebuildTotal, 697);
+  // 631 -> 639: the 8 A6 customer-balance summary grants (1764680000000)
+  assert.deepEqual(BASELINE.countsBySource, { MIGRATION_BACKED: 639, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0 });
   assert.ok(BASELINE.grantBearingMigrations.includes(STAMP));
   assert.ok(BASELINE.deployment.notYetAppliedToNonprod.includes(STAMP));
-  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 689, "no duplicate baseline pair");
+  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 697, "no duplicate baseline pair");
 });
 
 test("b. nobody gains anything outside the list: no technician holds an A7 key, Owner gains nothing, and the new key has exactly two holders", () => {

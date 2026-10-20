@@ -116,13 +116,14 @@ test("b. nothing else yields a B4 key to another Role: catalog sync, default wri
   for (const g of inBaseline) {
     assert.deepEqual([g.source, g.evidence, g.observedGrantedBy], ["MIGRATION_BACKED", STAMP, STAMP], pairId(g.roleKey, g.capabilityKey));
   }
+  // 689 -> 697: the 8 A6 customer-balance summary grants (migration 1764680000000).
   // 632 -> 659 -> 689: the 27 P-1 supplier purchase order grants (migration 1764660000000) and the 30 GRANT-1 owner policy grants (migration 1764670000000) were appended to the baseline after the B4 parity; B4's own 122 are asserted exactly above.
-  assert.equal(BASELINE.grants.length, 689);
-  assert.equal(BASELINE.totalGrants, 689);
-  assert.equal(BASELINE.deployment.rebuildTotal, 689);
+  assert.equal(BASELINE.grants.length, 697);
+  assert.equal(BASELINE.totalGrants, 697);
+  assert.equal(BASELINE.deployment.rebuildTotal, 697);
   assert.ok(BASELINE.grantBearingMigrations.includes(STAMP));
   assert.ok(BASELINE.deployment.notYetAppliedToNonprod.includes(STAMP));
-  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 689, "no duplicate baseline pair");
+  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 697, "no duplicate baseline pair");
   // The default writer's rule: with no decision a declared pair may be inserted; a CURRENT Administration revoke always wins; a Role that does not declare the key is never a
   // default (callers pass isSystemDefault only for declared pairs).
   for (const pair of allowed) {
