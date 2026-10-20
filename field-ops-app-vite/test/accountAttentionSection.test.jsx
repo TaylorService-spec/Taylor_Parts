@@ -146,6 +146,35 @@ describe("AccountAttentionSection -- Account Attention projection wiring", () =>
     expect(container.querySelector(".ns-attn")).toBeTruthy();
   });
 
+  it("a REFUSED WO read says 'not available to you' -- never 'couldn't be read, try again later'", () => {
+    mockReads({ ar: HEALTHY_AR, wo: { loading: false, error: false, denied: true, workOrders: null, truncated: false } });
+    const { container } = renderSection({ accountId: "acct-1" });
+    expect(screen.getByText("Work order attention: not available to you.")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/couldn/i);
+    expect(container.textContent).not.toMatch(/Try again later/);
+    // A source that could NOT be confirmed never earns the silence a confirmed-healthy read earns.
+    expect(container.querySelector(".ns-attn")).toBeTruthy();
+    // ...and it never speaks an explanation over a source it was refused.
+    expect(container.querySelector(".ns-attn__intel")).toBeNull();
+  });
+
+  it("a genuinely FAILED WO read still says 'couldn't be read. Try again later.'", () => {
+    mockReads({ ar: HEALTHY_AR, wo: { loading: false, error: true, denied: false, workOrders: null, truncated: false } });
+    const { container } = renderSection({ accountId: "acct-1" });
+    expect(screen.getByText("Work order attention: couldn’t be read. Try again later.")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/not available to you/);
+  });
+
+  it("a refused WO read and a denied AR read are stated independently, each in its own words", () => {
+    mockReads({
+      ar: { loading: false, errorStatus: "unavailable", result: null },
+      wo: { loading: false, error: false, denied: true, workOrders: null, truncated: false },
+    });
+    renderSection({ accountId: "acct-1" });
+    expect(screen.getByText("Accounts Receivable: couldn’t be read. Try again later.")).toBeTruthy();
+    expect(screen.getByText("Work order attention: not available to you.")).toBeTruthy();
+  });
+
   it("a truncated (possibly-incomplete) WO read degrades to the unavailable note rather than an under-reported list", () => {
     mockReads({ ar: HEALTHY_AR, wo: { loading: false, error: false, workOrders: [], truncated: true } });
     renderSection({ accountId: "acct-1" });

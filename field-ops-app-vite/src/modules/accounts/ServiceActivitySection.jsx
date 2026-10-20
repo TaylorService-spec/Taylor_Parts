@@ -52,6 +52,7 @@ import { fetchImportedServiceHistory } from "../../access/importedServiceHistory
 function CountCell({ label, state }) {
   const view = countView(state);
   if (view.kind === "loading") return <span className="ns-rail__meta">{label} …</span>;
+  if (view.kind === "denied") return <span className="ns-rail__meta">{label} not available to you</span>;
   if (view.kind === "error") return <span className="ns-rail__meta">{label} couldn’t be read</span>;
   return (
     <span className="ns-svc__count">
@@ -154,6 +155,8 @@ export default function ServiceActivitySection({ accountId }) {
           never an empty list indistinguishable from an error. */}
       {tView.kind === "loading" ? (
         <p className="ns-state">Loading service activity…</p>
+      ) : tView.kind === "denied" ? (
+        <p className="ns-state ns-state--denied">Service activity is not available to you.</p>
       ) : tView.kind === "error" ? (
         <p className="ns-state">Service activity couldn’t be read. Try again later.</p>
       ) : tView.kind === "empty" ? (

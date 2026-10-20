@@ -76,4 +76,17 @@ ok("count failure does not hide the timeline", () => {
   assert.equal(tl.kind, "list"); // timeline still renders its rows
 });
 
+// --- A server REFUSAL is "denied", never "error": "Not available to you" vs "Couldn't be read" ---
+const deniedCount = { loading: false, error: false, denied: true, value: null };
+ok("countView: denied -> denied (not error)", () => assert.deepEqual(countView(deniedCount), { kind: "denied" }));
+ok("timelineView: denied -> denied (not error, not empty)", () => {
+  assert.deepEqual(timelineView({ loading: false, error: false, denied: true, items: [] }), { kind: "denied" });
+});
+ok("a denied count never changes the other count or the timeline (each area independent)", () => {
+  assert.equal(countView(deniedCount).kind, "denied");
+  assert.equal(countView(errorCount).kind, "error");
+  assert.deepEqual(countView(value(4)), { kind: "value", value: 4 });
+  assert.equal(timelineView(listTimeline).kind, "list");
+});
+
 console.log(`\n${passed} passed, 0 failed`);

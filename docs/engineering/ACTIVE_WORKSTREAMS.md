@@ -416,6 +416,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
 - Lifecycle stage:     INTEGRATION (PR 1) · DESIGNED (PR 2)
 
+- Capability:          Account page honest refusal wording (UX-2) · a refused work-order read (403 / FORBIDDEN) reads "Not available to you" in Work order attention, Open work orders (standing strip) and Service activity; "Couldn't be read" stays for genuine failures
+- Agent/session:       Claude Code lane UX-2 · Role: builder; controller reviews and merges
+- Branch / worktree:   `ux2/account-wo-refusal-wording` · isolated agent worktree
+- Base commit:         `bfeb6dd8`
+- Owned paths:         `field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx` · `ServiceActivitySection.jsx` · `src/domain/accountHealthStrip.js` · `serviceActivityView.js` · `accountWorkOrders.js` · `src/hooks/useAccountServiceActivity.js` · `useAccountAttentionWorkOrders.js` · their tests
+- Shared paths req'd:  this registry
+- Dependencies:        none (display only; a refusal is FORBIDDEN / permission-denied only, so a 401 or missing session stays "couldn't be read")
+- Expected outcome:    a refusal never reads as an outage on the Account page
+- Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
+- Lifecycle stage:     INTEGRATION (PR open)
+
 ## Ready for assignment
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.
