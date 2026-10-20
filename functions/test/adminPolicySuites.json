@@ -125,7 +125,8 @@
     "test/a6AccountBalanceSummary.test.mjs",
     "test/g1GoalAuthoring.test.mjs",
     "test/q1CommandAuditInventory.test.mjs",
-    "test/f1aInvoiceIssue.test.mjs"
+    "test/f1aInvoiceIssue.test.mjs",
+    "test/salesOrderAllocationOffline.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -309,6 +310,7 @@
     "test/q1CommercialCrmAuditPostgres.test.mjs",
     "test/scannerScenariosOnEosPostgres.test.mjs",
     "test/f1aInvoiceIssuePostgres.test.mjs",
-    "test/stockReservationPostgres.test.mjs"
+    "test/stockReservationPostgres.test.mjs",
+    "test/salesOrderAllocationPostgres.test.mjs"
   ]
 }

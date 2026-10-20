@@ -501,7 +501,7 @@ function requireReason(reason: unknown): string {
  * Duplicate lines for one Part are summed first. Stock-dependent checks run under the per-Part lock (see the header).
  */
 export async function reserve(
-  pool: Pool,
+  pool: Pool | PoolClient,
   ctx: ReservationContext,
   lines: readonly ReserveLine[],
 ): Promise<readonly CommitmentWriteResult[]> {
@@ -550,7 +550,7 @@ export async function reserve(
  * that company+warehouse, is refused before any write.
  */
 export async function release(
-  pool: Pool,
+  pool: Pool | PoolClient,
   ctx: ReservationContext,
   options: { readonly reason: string; readonly lines?: readonly ReserveLine[] },
 ): Promise<readonly CommitmentWriteResult[]> {
@@ -570,7 +570,7 @@ export async function release(
 
 /** CONSUME. The claim ended because the quantity was used. Moves no stock: the physical removal is a separate movement. */
 export async function consume(
-  pool: Pool,
+  pool: Pool | PoolClient,
   ctx: ReservationContext,
   lines: readonly ReserveLine[],
 ): Promise<readonly CommitmentWriteResult[]> {
@@ -592,7 +592,7 @@ export async function consume(
  * outstanding writes nothing. No catalog check: a deactivated Part must not strand stock.
  */
 export async function cancel(
-  pool: Pool,
+  pool: Pool | PoolClient,
   ctx: CancelContext,
   options: { readonly reason: string },
 ): Promise<readonly CommitmentWriteResult[]> {
@@ -966,7 +966,7 @@ function requireNonEmpty(value: unknown, field: string): void {
 }
 
 /** Deterministic per-row replay identity, so replaying an operation replays each row it wrote. */
-function derivedKey(base: string, eventType: CommitmentEventType, warehouseId: string, partId: string): string {
+export function derivedKey(base: string, eventType: CommitmentEventType, warehouseId: string, partId: string): string {
   return `${base}:${eventType}:${warehouseId}:${partId}`;
 }
 
@@ -974,9 +974,14 @@ function derivedKey(base: string, eventType: CommitmentEventType, warehouseId: s
  * One transaction around a whole operation. All-or-nothing: a demand must never end up holding
  * half a reservation, which is the same rule `reserveParts()` states ("no partial reservations ever
  * land"). Never split these writes across round trips outside a transaction.
+ *
+ * S1c: handed a CLIENT (it has `release`) instead of a Pool, the command runs in that client's OPEN transaction and the
+ * caller owns BEGIN / COMMIT / ROLLBACK. The Sales Order allocation command checks the order, the line and the quantity bound and
+ * reserves in ONE transaction; a Sales Order cancel releases its claims in the order's own transaction.
  */
-async function inTransaction<T>(pool: Pool, run: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
+async function inTransaction<T>(pool: Pool | PoolClient, run: (client: PoolClient) => Promise<T>): Promise<T> {
+  if (typeof (pool as PoolClient).release === "function") return run(pool as PoolClient);
+  const client = await (pool as Pool).connect();
   try {
     await client.query("BEGIN");
     const result = await run(client);

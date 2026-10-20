@@ -64,6 +64,7 @@ on:
       - "field-ops-app-vite/test/newOpportunityForm.test.jsx"
       - "field-ops-app-vite/test/salesOrderView.test.mjs"
       - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
+      - "field-ops-app-vite/test/salesOrderAllocation.test.jsx"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - "field-ops-app-vite/test/salesWorkspaceDate.test.jsx"
       - "field-ops-app-vite/test/crmSalesNav.test.mjs"
@@ -129,6 +130,7 @@ on:
       - "field-ops-app-vite/test/newOpportunityForm.test.jsx"
       - "field-ops-app-vite/test/salesOrderView.test.mjs"
       - "field-ops-app-vite/test/salesOrderDetail.test.jsx"
+      - "field-ops-app-vite/test/salesOrderAllocation.test.jsx"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - "field-ops-app-vite/test/salesWorkspaceDate.test.jsx"
       - "field-ops-app-vite/test/permissionCatalogRoleParity.test.mjs"
@@ -194,7 +196,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Opportunity + Sales Order workspace component tests (vitest + jsdom)
-        run: npx vitest run test/salesWorkspace.test.jsx test/salesWorkspaceDate.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx test/opportunityLifecycleControl.test.jsx test/newOpportunityForm.test.jsx test/productReferencePicker.test.jsx test/useProductReferenceSearch.test.jsx test/productReferenceSearchAuthority.test.jsx
+        run: npx vitest run test/salesWorkspace.test.jsx test/salesWorkspaceDate.test.jsx test/useOpportunitiesAsync.test.jsx test/salesOrderDetail.test.jsx test/salesOrderAllocation.test.jsx test/opportunityLifecycleControl.test.jsx test/newOpportunityForm.test.jsx test/productReferencePicker.test.jsx test/useProductReferenceSearch.test.jsx test/productReferenceSearchAuthority.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint the Sales slice (oxlint)

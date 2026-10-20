@@ -1011,3 +1011,7 @@ field-ops-app-vite/src/modules/financials/InvoiceIssueQueue.jsx
 functions/migrations/1764710000000_stock-reservation-company-warehouse.sql
 functions/test/stockReservationPostgres.test.mjs
 functions/src/eosOps/inventoryCommitmentRepository.ts
+# S1c (2026-10-20): Sales Order allocation on EOS (operations salesOrderAllocation.ts is under eosOps/**).
+functions/test/salesOrderAllocationOffline.test.mjs
+functions/test/salesOrderAllocationPostgres.test.mjs
+functions/src/eosCommercial/commands/salesOrderCommandService.ts
