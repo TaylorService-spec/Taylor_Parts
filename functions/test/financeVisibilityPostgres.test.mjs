@@ -166,6 +166,21 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
       assert.equal(d.attribution.creditedSalespersonEmployeeId, undefined, `${id}: no credited person is shown for a row that has none`);
     }
     assert.equal(ok(await off(ctrl, "readObligation", { obligationId: o8 })).sourceSalesOrder, null, "a rental charge has no Sales Order source");
+    const o7Detail = ok(await off(ctrl, "readObligation", { obligationId: o7 }));
+    assert.equal(o7Detail.sourceSalesOrder, null, "the DETAIL agrees with the list: a package of a DIFFERENT company is no source, so no other company's Sales Order number");
+    assert.equal(o7Detail.attribution.reason, "the billing package belongs to a different operating company than the receivable", "the attribution reason is unchanged");
+    // F-2: the LIST carries the same Sales Order reference (obligation -> billing package -> Sales Order), null where there is none, so a list
+    // reader needs no per-row detail read. A payment names the customer it came from.
+    const listed = ok(await off(ctrl, "listObligations", { operatingCompanyId: "taylor", kind: "RECEIVABLE" })).items;
+    const sourceOf = (id) => listed.find((i) => i.id === id)?.sourceSalesOrder;
+    assert.deepEqual(sourceOf(o1), { id: "so-1", salesOrderNumber: "SO-1" });
+    assert.equal(sourceOf(o7), null, "a package of a DIFFERENT company than the receivable is no source: no other company's Sales Order number");
+    assert.equal(sourceOf(o8), null, "a rental charge: no Sales Order source");
+    assert.equal(sourceOf(o9), null, "no billing package at all");
+    assert.ok(listed.every((i) => "sourceSalesOrder" in i), "every listed receivable answers the key (a reference or null)");
+    const stl = ok(await off(ctrl, "readSettlement", { settlementId: stlA }));
+    assert.deepEqual([stl.counterparty.kind, stl.counterparty.crmAccountId], ["EXTERNAL_ORGANIZATION", "acct-t"]);
+    assert.ok(ok(await off(ctrl, "listSettlements", { operatingCompanyId: "taylor" })).items.every((s) => s.counterparty?.kind === "EXTERNAL_ORGANIZATION"));
   });
 
   // ── INACT ──
@@ -199,6 +214,11 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
   await t.test("ACTIVATED: a salesperson reads only the receivables credited to it (the company boundary stays the outer limit)", async () => {
     assert.deepEqual(idsOf(await on(s1, "listObligations", { operatingCompanyId: "taylor" })), [o1], "o2 (e-s2), o3 (no credit), o5..o9 are hidden; o7's package company differs");
     assert.deepEqual(idsOf(await on(s1, "listObligations", { operatingCompanyId: "ventana" })), [o4]);
+    // F-2: the account narrowing and the Sales Order reference never widen a restricted reader's reach.
+    const narrowed = ok(await on(s1, "listObligations", { operatingCompanyId: "taylor", crmAccountId: "acct-t" })).items;
+    assert.deepEqual(narrowed.map((i) => i.id), [o1], "the account narrowing returns only the visible rows of that account");
+    assert.deepEqual(narrowed[0].sourceSalesOrder, { id: "so-1", salesOrderNumber: "SO-1" });
+    assert.deepEqual(idsOf(await on(s1, "listObligations", { operatingCompanyId: "taylor", crmAccountId: "acct-nobody" })), [], "an unknown account is empty, not an error");
     assert.deepEqual(idsOf(await on(s1, "listObligations", { operatingCompanyId: "consolidated" })), [o1, o4].sort());
     assert.deepEqual(idsOf(await on(s1, "listObligations", { operatingCompanyId: "taylor", kind: "FUNDING_RECEIVABLE" })), [], "funding receivables are hidden");
     const d = ok(await on(s1, "readObligation", { obligationId: o1 }));
@@ -288,6 +308,8 @@ test("finance inner reach over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
     assert.deepEqual(await settlementIds(ctrl), [stlA, stlB, stlC, stlD].sort(), "Finance sees all four");
     // s1: stlA (only o1). stlB also applies to o2 (not s1's); stlC is unapplied; stlD has a REVERSED application to o2.
     assert.deepEqual(await settlementIds(s1), [stlA]);
+    // F-2: the restricted reader's settlement carries its counterparty only because the settlement is visible to it; a hidden one is not listed at all.
+    assert.deepEqual(ok(await on(s1, "listSettlements", { operatingCompanyId: "taylor" })).items.map((s) => [s.id, s.counterparty.crmAccountId]), [[stlA, "acct-t"]]);
     // m1 (TEAM) sees o1 and o2: stlA, stlB and stlD; the unapplied one stays hidden.
     assert.deepEqual(await settlementIds(m1), [stlA, stlB, stlD].sort());
     assert.deepEqual(await settlementIds(m2), []);

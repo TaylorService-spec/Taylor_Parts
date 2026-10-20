@@ -204,7 +204,7 @@ const OVERDUE_SQL = `o.due_on IS NOT NULL AND o.status IN ('OPEN','PARTIAL') AND
  * Obligation rows over the caller's INNER reach (`vis`): every row of a FULL company, and only the visible attributed receivables
  * of a restricted one. `build` receives `bind(value)` -> its `$n` placeholder, so a caller's own filters share one parameter list.
  */
-async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibility, build: (bind: (v: unknown) => string) => string = () => "TRUE", limit = 200) {
+async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibility, build: (bind: (v: unknown) => string) => string = () => "TRUE", limit = 200, withSource = false) {
   const params: unknown[] = [tenantId];
   const bind = (v: unknown): string => { params.push(v); return `$${params.length}`; };
   const visible = obligationVisibilityClause(vis, "o", params);
@@ -213,10 +213,13 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     `SELECT o.id, o.operating_company_id, o.kind, o.currency, o.status, o.source_domain, o.source_record_id, o.due_on, o.created_at,
             b.originated_minor, b.settled_minor, b.outstanding_minor, cp.kind AS counterparty_kind, cp.crm_account_id, cp.operating_company_id AS counterparty_company,
             a.name AS counterparty_name,
-            (${OVERDUE_SQL}) AS overdue
+            (${OVERDUE_SQL}) AS overdue${withSource ? ", bp.sales_order_id AS source_sales_order_id, so.sales_order_number AS source_sales_order_number" : ""}
        FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
        JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
-       LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id
+       LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id${withSource ? `
+       LEFT JOIN eos_finance.billing_packages bp ON bp.tenant_id = o.tenant_id AND bp.id = o.source_record_id AND o.source_domain = 'BILLING_PACKAGE' AND bp.source_kind = 'SALES_ORDER'
+         AND bp.operating_company_id = o.operating_company_id
+       LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = bp.tenant_id AND so.id = bp.sales_order_id` : ""}
       WHERE o.tenant_id = $1 AND ${visible} AND ${where}
       ORDER BY o.due_on NULLS LAST, o.created_at DESC, o.id LIMIT ${Number(limit)}`, params);
   return rows.map((r) => Object.freeze({
@@ -225,6 +228,11 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     originatedMinor: String(r.originated_minor), settledMinor: String(r.settled_minor), outstandingMinor: String(r.outstanding_minor),
     counterparty: r.counterparty_kind === "INTERNAL_OPERATING_COMPANY" ? { kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId: r.counterparty_company }
       : { kind: "EXTERNAL_ORGANIZATION", crmAccountId: r.crm_account_id, name: r.counterparty_name ?? null },
+    // F-2: the Sales Order a receivable was billed from (obligation -> billing package -> Sales Order), where the record carries one. Asked for only by
+    // listObligations; the workspace sections do not join it. A receivable with no Sales Order source answers null, never an invented reference. A package
+    // of a DIFFERENT operating company than the receivable is no source (the attribution rule readObligation applies): a reader never gets another
+    // company's Sales Order number through a mismatched package.
+    ...(withSource ? { sourceSalesOrder: r.source_sales_order_id ? Object.freeze({ id: String(r.source_sales_order_id), salesOrderNumber: r.source_sales_order_number ?? null }) : null } : {}),
   }));
 }
 
@@ -371,7 +379,7 @@ async function listObligations(deps: WorkOrderOperationDeps, caller: WorkOrderCa
       input.crmAccountId !== undefined ? `cp.crm_account_id = ${bind(input.crmAccountId)}` : null,
       recorded.from !== null ? `o.created_at >= ${bind(recorded.from)}` : null,
       recorded.to !== null ? `o.created_at < ${bind(recorded.to)}` : null,
-    ].filter((c): c is string => c !== null).join(" AND ") || "TRUE", 200) });
+    ].filter((c): c is string => c !== null).join(" AND ") || "TRUE", 200, true) });
 }
 
 /**
@@ -407,10 +415,12 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
        LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = bp.tenant_id AND so.id = bp.sales_order_id
       WHERE ob.tenant_id = $1 AND ob.id = $2`, [t, input.obligationId]);
   const src = srcRows[0] ?? {};
-  const sourceSalesOrder = src.sales_order_id ? Object.freeze({ id: String(src.sales_order_id), salesOrderNumber: src.sales_order_number ?? null }) : null;
+  // The SAME rule as the list (obligationRows): a package of a DIFFERENT operating company than the receivable is no source, so its Sales Order number is never shown.
+  const packageOfOtherCompany = Boolean(src.sales_order_id) && String(src.package_company) !== o.operatingCompanyId;
+  const sourceSalesOrder = src.sales_order_id && !packageOfOtherCompany ? Object.freeze({ id: String(src.sales_order_id), salesOrderNumber: src.sales_order_number ?? null }) : null;
   const attribution = o.kind !== "RECEIVABLE" ? { state: "NOT_ATTRIBUTABLE", reason: "only customer receivables are attributed to a credited salesperson" }
+    : packageOfOtherCompany ? { state: "NOT_ATTRIBUTABLE", reason: "the billing package belongs to a different operating company than the receivable" }
     : !sourceSalesOrder ? { state: "NOT_ATTRIBUTABLE", reason: "this receivable has no Sales Order source (a rental charge, or not billed from a Sales Order)" }
-    : String(src.package_company) !== o.operatingCompanyId ? { state: "NOT_ATTRIBUTABLE", reason: "the billing package belongs to a different operating company than the receivable" }
     : src.credited === null || src.credited === undefined ? { state: "UNATTRIBUTED", reason: "the source Sales Order records no credited salesperson" }
     : { state: "ATTRIBUTED", creditedSalespersonEmployeeId: String(src.credited), recordedAt: new Date(src.credited_at).toISOString() };
   const { rows: facts } = await deps.pool.query(`SELECT id, fact_class, fact_type, amount_minor, effective_at, created_at, source_domain, source_record_id, reverses_fact_id, reason

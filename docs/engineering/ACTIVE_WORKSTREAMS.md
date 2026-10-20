@@ -365,12 +365,23 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Agent/session:       Claude Code lane HARDEN · Role: builder; controller merges
 - Branch / worktree:   `harden/review-followups` · isolated agent worktree
 - Base commit:         `237b4897`
-- Owned paths:         `functions/src/eosCrm/contactAuthority.ts` · `crmAuthorityKernel.ts` (receipt only) · `functions/src/eosCommercial/commands/commercialCommandKernel.ts` (receipt only) · the `updateDraft` audit in `salesAgreementCommandService.ts` · `functions/test/q1CommercialCrmAuditPostgres.test.mjs` · `g1GoalAuthoringPostgres.test.mjs`
+- Owned paths:         `functions/src/eosCrm/contactAuthority.ts` · `crmAuthorityKernel.ts` (receipt only) · `functions/src/eosCommercial/commands/commercialCommandKernel.ts` (receipt only) · the `updateDraft` audit in `salesAgreementCommandService.ts` · `functions/test/q1CommercialCrmAuditPostgres.test.mjs` · `g1GoalAuthoringPostgres.test.mjs` · `eosFinance/financeOperations.ts` (readObligation source only) · `financeVisibilityPostgres.test.mjs`
 - Shared paths req'd:  this registry · `docs/DECISIONS.md` (#Q-1a text only) · `docs/governance/precedence-sweep.json`
-- Dependencies:        none (readObligation alignment waits for PR #2168)
-- Expected outcome:    four small follow-ups pinned by tests
+- Dependencies:        none (PR #2168 merged; readObligation aligned)
+- Expected outcome:    five small follow-ups pinned by tests
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
 - Lifecycle stage:     INTEGRATION
+
+- Capability:          Finance F-2 — the EOS finance reads serve every fact family the Firebase AR / Financials surfaces show (payment receipts and applications, the account-narrowed totals, the Sales Order reference), then the F-1 invoicing spec (docs only)
+- Agent/session:       Claude Code Lane F · Role: builder; controller merges
+- Branch / worktree:   `lane-f/f2-finance-read-families` (PR 1), then `lane-f/f1-invoicing-spec` (PR 2) · `D:/Taylor_Parts/.claude/worktrees/agent-a9e59098281003465`
+- Base commit:         `09a82d3e`
+- Owned paths:         `field-ops-app-vite/src/services/eosFinancialsClient.js` · `field-ops-app-vite/src/domain/{financialsEos,accountReceivablesEos}.js` · `functions/src/eosFinance/{financeOperations,settlement}.ts` (read shapes only) · `field-ops-app-vite/test/financeFactFamiliesEos.test.mjs` · `docs/architecture/f1-invoicing-spec.md`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` · `field-ops-app-vite/test/suites.json`
+- Dependencies:        none (read-only; no capability, migration or grant)
+- Expected outcome:    `financeReadCallableClient` has no consumer the EOS path cannot serve; the F-1 decisions are numbered for the Owner
+- Protected boundaries:none reached (F-1 build waits on the Owner's answers)
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
 
 - Capability:          Lane Q-1 — quotes and approvals: PR 1 audit on every applied Commercial and CRM command (build); PR 2 the quote / discount approval specification (docs, Owner decisions; nothing of the workflow is built) (B5 matrix stage 6; scenarios A and E)
 - Agent/session:       Claude Code lane Q-1 · Role: builder; controller merges

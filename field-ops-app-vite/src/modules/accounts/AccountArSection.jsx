@@ -168,7 +168,10 @@ export default function AccountArSection({ accountId }) {
               <tbody>
                 {sortedRows.map((row) => (
                   <tr key={row.key}>
-                    <td data-label={noun}>{row.invoiceNumber}</td>
+                    <td data-label={noun}>
+                      {row.invoiceNumber}
+                      {row.salesOrderNumber ? <span className="fo-muted"> &middot; Sales Order {row.salesOrderNumber}</span> : null}
+                    </td>
                     {showCompany ? (
                       // `companyLabel` is null ONLY when the row carries no company field at all,
                       // which cannot happen while showCompany is true — the summary and the rows

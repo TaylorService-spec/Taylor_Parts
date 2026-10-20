@@ -9,10 +9,19 @@
 // accounting invoice. Fields the Finance register does not carry are NOT SUPPLIED, and each is NAMED as a model decision rather
 // than invented or silently dropped:
 //   MD-B1-1  invoice number   the formal invoice belongs to the accounting authority (#191); no EOS receivable has a number
+//                             (F-2 re-checked: no record links a receivable to an `invoices` row, so none is inferred -- that relation is F-1's decision)
 //   MD-B1-2  issue date       the register records WHEN EOS recorded the receivable, never an issue date
 //   MD-B1-3  business unit    obligations carry none; line-level business unit lives on Sales Order / billing lines and no
 //                             roll-up rule has been decided
 // The credited salesperson IS supplied, for attributed rows only (derived from the source Sales Order; never the Account owner).
+
+import { summarizeReceivables } from "./accountReceivablesEos.js";
+
+/** The fact families `listFinancialFacts` served, each backed by a persisted record. In EOS: INVOICE <- receivable obligations; PAYMENT_RECEIPT <- customer-payment settlements; PAYMENT_APPLICATION <- their applications. */
+export const FACT_TYPES = Object.freeze(["INVOICE", "PAYMENT_RECEIPT", "PAYMENT_APPLICATION"]);
+
+/** The server's cap on one `listSettlements` page (financeOperations.ts listSettlements ... LIMIT 100). */
+export const SETTLEMENT_PAGE_LIMIT = 100;
 
 /** What an EOS receivable is called on screen (the Firebase source says "Invoice"). */
 export const EOS_RECEIVABLE_NOUN = "Receivable";
@@ -55,7 +64,9 @@ export function receivableRecord(row) {
     accountId: row.counterparty?.crmAccountId ?? null,
     counterpartyName: row.counterparty?.name ?? null,
     companyId: typeof row.operatingCompanyId === "string" ? row.operatingCompanyId : null,
-    salesOrderId: null,
+    // F-2: the Sales Order the receivable was billed from, where the register carries one (listObligations' sourceSalesOrder); null otherwise.
+    salesOrderId: row.sourceSalesOrder?.id ?? null,
+    salesOrderNumber: row.sourceSalesOrder?.salesOrderNumber ?? null,
     currency: row.currency,
     state: row.status ?? null,
     totalMinor, appliedMinor, outstandingMinor,
@@ -88,8 +99,13 @@ function currencyRow(r) {
  *   overview   a `readFinanceOverview` result for the scope shown (consolidated, or one company), or null when the scope has no
  *              single server total (a principal that reaches only SOME companies): totals are then ABSENT, never added here.
  *   pages      `[{ items, truncated }]` -- the `listObligations` rows read, one page per company read.
+ *   accountScoped  the rows were narrowed to ONE account, so no company total answers for them: the summary is the mirror of the account read's
+ *              (accountReceivablesEos.js summarizeReceivables) over the rows, and a truncated page is then unavailable, never a partial total.
+ *   restricted the access answer's own flag: the principal reaches only the receivables credited to it / its team. An account-scoped read asks for no
+ *              overview (the overview is where `restricted` used to come from), so the flag travels from the access answer and the screen can say the
+ *              figures cover only what the reader may see.
  */
-export function receivablesEnvelope({ overview, pages }) {
+export function receivablesEnvelope({ overview, pages, accountScoped = false, restricted = false }) {
   const invoices = [];
   let truncated = false;
   for (const page of pages ?? []) {
@@ -102,6 +118,11 @@ export function receivablesEnvelope({ overview, pages }) {
     }
   }
   const out = { status: "ready", recordNoun: EOS_RECEIVABLE_NOUN, source: "EOS", invoices, payments: [], applications: [], truncated };
+  out.restricted = restricted === true;
+  if (!overview && accountScoped) {
+    if (truncated) return Object.freeze({ status: "unavailable", invoices: Object.freeze([]), recordNoun: EOS_RECEIVABLE_NOUN });
+    out.summary = summarizeReceivables(invoices);
+  }
   if (overview) {
     const rows = (overview.currencies ?? []).map(currencyRow);
     if (rows.some((r) => r === null)) return Object.freeze({ status: "unavailable", invoices: Object.freeze([]), recordNoun: EOS_RECEIVABLE_NOUN });
@@ -114,9 +135,63 @@ export function receivablesEnvelope({ overview, pages }) {
     out.byCompany = (overview.byCompany ?? []).map((c) => ({ key: String(c.operatingCompanyId), invoiceCount: Number(c.count) || 0,
       billedByCurrency: { [c.currency]: safeInt(c.billedMinor) ?? 0 }, collectedByCurrency: { [c.currency]: safeInt(c.collectedMinor) ?? 0 },
       outstandingByCurrency: { [c.currency]: safeInt(c.outstandingMinor) ?? 0 } }));
-    out.restricted = overview.visibility?.restricted === true;
+    out.restricted = restricted === true || overview.visibility?.restricted === true;
   }
   return Object.freeze(out);
+}
+
+// ─── payment facts (F-2) ───
+
+/**
+ * The PAYMENT_RECEIPT / PAYMENT_APPLICATION facts from the server's settlements (`listSettlements` items, which carry their applications and
+ * counterparty). A receipt is a RECORDED customer-payment settlement; an application is one of its APPLIED applications (a reversed one is no
+ * longer an application of cash, a voided settlement is no receipt). Every other settlement kind (provider funding, vendor and intercompany) is not
+ * a customer receipt and is not a fact in these families.
+ *
+ * MD-F2-1  PERIOD. A receipt is placed by its BUSINESS DATE (the date the cash was received). An application is placed with the receipt it applies:
+ *          the server windows settlements by business date, so an application recorded later against an earlier receipt belongs to that receipt's
+ *          period, not its own (its recorded instant is still carried as appliedAtMillis for display).
+ * MD-F2-2  invoiceId. An application's `invoiceId` is the OBLIGATION id, which is the id of the invoice-shaped receivable record (receivableRecord),
+ *          so applications join to the receivables of the same answer exactly as they joined to invoices.
+ *
+ * `accountId` only NARROWS (rows whose counterparty is that CRM Account); a malformed row or unsafe amount makes the whole answer null (unavailable).
+ *
+ * @param {{ items?: object[] }[]} pages  one `listSettlements` answer per company read
+ * @param {{ accountId?: string|null }} [narrow]
+ * @returns {{ payments: object[], applications: object[], truncated: boolean }|null}
+ */
+export function paymentFacts(pages, { accountId = null } = {}) {
+  const payments = [];
+  const applications = [];
+  let truncated = false;
+  for (const page of pages ?? []) {
+    if (!page || !Array.isArray(page.items)) return null;
+    truncated = truncated || page.truncated === true;
+    for (const s of page.items) {
+      if (!s || typeof s.id !== "string" || typeof s.currency !== "string") return null;
+      if (s.kind !== "CUSTOMER_PAYMENT" || s.status === "VOID") continue;
+      const crmAccountId = s.counterparty?.crmAccountId ?? null;
+      if (accountId !== null && crmAccountId !== accountId) continue;
+      const amountMinor = safeInt(s.amountMinor), appliedMinor = safeInt(s.appliedMinor);
+      if (amountMinor === null || appliedMinor === null) return null;
+      payments.push({
+        paymentId: s.id, invoiceId: null, accountId: crmAccountId, companyId: typeof s.operatingCompanyId === "string" ? s.operatingCompanyId : null,
+        currency: s.currency, amountMinor, appliedMinor, receivedAtMillis: dayMillis(s.businessDate), method: s.method ?? null,
+        externalRef: typeof s.sourceReference === "string" && s.sourceReference.length > 0 ? s.sourceReference : null,
+      });
+      for (const a of Array.isArray(s.applications) ? s.applications : []) {
+        if (!a || a.status !== "APPLIED") continue;
+        const appliedAmountMinor = safeInt(a.amountMinor);
+        if (typeof a.id !== "string" || typeof a.obligationId !== "string" || appliedAmountMinor === null) return null;
+        const at = typeof a.appliedAt === "string" ? Date.parse(a.appliedAt) : Number.NaN;
+        applications.push({
+          applicationId: a.id, invoiceId: a.obligationId, paymentId: s.id, companyId: typeof s.operatingCompanyId === "string" ? s.operatingCompanyId : null,
+          currency: s.currency, appliedAmountMinor, appliedAtMillis: Number.isFinite(at) ? at : null,
+        });
+      }
+    }
+  }
+  return { payments, applications, truncated };
 }
 
 // ─── periods ───
