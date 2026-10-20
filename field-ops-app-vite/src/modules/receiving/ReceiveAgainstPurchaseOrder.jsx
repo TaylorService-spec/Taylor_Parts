@@ -73,6 +73,8 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
   const [serials, setSerials] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  /** The receipt's own number (RCV-…), when the governed response states one. */
+  const [receiptNumber, setReceiptNumber] = useState(null);
 
   // Guard the async handlers against setState after unmount (the technician can switch the
   // scanner action mid-flight) -- the same cancelled-flag discipline the repo's async hooks use.
@@ -147,6 +149,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     if (!mountedRef.current) return;
     setSubmitting(false);
     setResult(res.status);
+    setReceiptNumber(res.receipt?.receivingOrderNumber ?? null);
     setStep(RECEIVE_STEP.RESULT);
   }
 
@@ -159,6 +162,7 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
     setSerials([]);
     serialInputRefs.current = [];
     setResult(null);
+    setReceiptNumber(null);
     setStep(RECEIVE_STEP.SELECT_CANDIDATE);
   }
 
@@ -356,10 +360,12 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
       <div className={`fo-receive-result fo-receive-result--${outcome.tone}`} role="status">
         <strong>{outcome.title}</strong>
         <p>{outcome.message}</p>
-        {/* RCV-G1/G2 — the response carries no receiving order number and no governed read exposes
-            one, so its absence is stated; no internal id is ever printed in its place. */}
+        {/* The receiving order number is the receipt response's own; when none is returned its absence is stated, and no
+            internal id is ever printed in its place. */}
         {outcome.terminal && (
-          <p className="fo-muted">The receiving order number is not yet readable here.</p>
+          <p className="fo-muted">
+            {receiptNumber ? <>Receiving order <strong>{receiptNumber}</strong></> : "No receiving order number was returned."}
+          </p>
         )}
       </div>
       <div className="fo-receive-actions">

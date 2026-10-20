@@ -410,6 +410,10 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     assert.deepEqual(asApprover.lines.map((l) => [l.lineId, l.reorderRequestId, l.orderedQuantity, l.receivedQuantity, l.linkReleased]),
       [["L1", reqA1, 10, 0, false], ["L2", reqA2, 6, 0, false]]);
     assert.deepEqual(asApprover.allowed, { approve: false, send: false, cancel: true }, "SENT: only cancel remains");
+    // Display batch: the order carries its receiving warehouse's NAME (this fixture names each warehouse by its id), so no screen prints the key as a name.
+    assert.deepEqual([asApprover.receivingWarehouseId, asApprover.receivingWarehouseName], ["wh-1", "wh-1"]);
+    const listed = (await auth.listSupplierPurchaseOrders({ pool }, actor([READ], approver), {})).purchaseOrders.find((o) => o.purchaseOrderId === spoA);
+    assert.equal(listed.receivingWarehouseName, "wh-1");
     // A fresh DRAFT: its creator is NOT offered approve even holding the capability.
     const draft = await create([{ reorderRequestId: await request() }]);
     const asCreator = await auth.readSupplierPurchaseOrder({ pool }, actor([READ, APPROVE, SEND, CANCEL], buyer), { purchaseOrderId: draft.purchaseOrderId });

@@ -909,6 +909,10 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided, hasCapabi
               <td>{purchaseOrder.orderedDate}</td>
             </tr>
             <tr>
+              <td>Ordered By</td>
+              <td>{purchaseOrder.createdByName ?? <span className="fo-muted">Not recorded</span>}</td>
+            </tr>
+            <tr>
               <td>Recorded</td>
               <td>{formatTimestamp(purchaseOrder.createdAt)}</td>
             </tr>
@@ -967,7 +971,8 @@ function ReorderRequestReceived({ request, employeeDirectory }) {
         <tbody>
           <tr>
             <td>Received By</td>
-            <td>{resolveActorDisplayName(request.receivedBy, employeeDirectory)}</td>
+            {/* The EOS row carries the receiver's NAME (receivedByName); the legacy uid-keyed lookup is the fallback for a Firebase-era row. */}
+            <td>{request.receivedByName ?? (request.receivedBy ? resolveActorDisplayName(request.receivedBy, employeeDirectory) : <span className="fo-muted">Not recorded</span>)}</td>
           </tr>
           <tr>
             <td>Received</td>

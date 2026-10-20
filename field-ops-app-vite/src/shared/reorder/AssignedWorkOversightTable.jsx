@@ -4,6 +4,7 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants.js";
 import { getDisplayQty } from "../../domain/inventoryReorderRequests.js";
 import { inventoryUrgencyTone } from "../../domain/inventoryUrgencyTone.js";
 import { formatAge } from "../../domain/displayTimestamp.js";
+import { toMillis } from "../../domain/timestampMillis.js";
 import { useMemo } from "react";
 import { statusLabel } from "../display/displayLabels.js";
 import SortableHeader from "../ui/sorting/SortableHeader.jsx";
@@ -49,7 +50,7 @@ export default function AssignedWorkOversightTable({
     assignee: { value: (r) => resolveAssigneeDisplay(r.assignedEmployeeId ?? r.assignedToUserId) },
     // Ascending age = most recently assigned first.
     age: { value: (r) => {
-      const ms = typeof r.assignedAt === "number" ? r.assignedAt : r.assignedAt?.toMillis?.() ?? null;
+      const ms = toMillis(r.assignedAt);
       return ms === null ? null : -ms;
     } },
   }), [resolveName, resolveAssigneeDisplay]);

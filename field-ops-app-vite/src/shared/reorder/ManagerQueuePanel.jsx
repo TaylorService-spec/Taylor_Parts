@@ -99,6 +99,9 @@ export default function ManagerQueuePanel({
   error,
   title = "Parts Manager Queue",
   description = "Reorder Requests approved by Inventory review, awaiting assignment to a Parts Associate.",
+  // Called once an assignment succeeds, so the caller can re-read the lists that change with it (this queue and the oversight list). The reads
+  // are fetches, not live subscriptions, so without it the assigned work does not appear until the page is reloaded.
+  onAssigned = undefined,
 }) {
   const [assigningRequestId, setAssigningRequestId] = useState(null);
   // Focus restoration: the triggering "Assign" button that opened the inline Assign panel.
@@ -158,7 +161,7 @@ export default function ManagerQueuePanel({
                 <AssignPanel
                   request={request}
                   resolveName={resolveName}
-                  onAssigned={handleCloseAssignPanel}
+                  onAssigned={() => { onAssigned?.(); handleCloseAssignPanel(); }}
                   onClose={handleCloseAssignPanel}
                 />
               )}

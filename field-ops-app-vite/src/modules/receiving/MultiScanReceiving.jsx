@@ -363,6 +363,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   }
 
   const blocked = reconciliation.blocked;
+  // A receipt that took the LAST outstanding quantity leaves nothing to receive: the order is complete, so the scan and submit controls go and
+  // the receipt above is the whole story. (A partial receipt leaves the order receivable and the controls stay.)
+  const completed = Boolean(receipt) && !progress.receivable;
   const canSubmit = reconciliation.submittable && !!locationId && !submitting;
   const storedStatusWords = canonicalPoStatusWords(progress.storedStatus);
   // One truthful location state, kept mutually exclusive (frame 1e). The picker renders ONLY in
@@ -400,7 +403,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           {storedStatusWords ? <> · order status {storedStatusWords}</> : null}
           {" · "}{progress.lines.length} line{progress.lines.length === 1 ? "" : "s"}
         </p>
-        {!progress.receivable && (
+        {!progress.receivable && !receipt && (
           <p className="fo-warning" role="status">
             This order is not in a state that accepts a receipt.
           </p>
@@ -416,10 +419,13 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
       {receipt && (
         <section className="fo-panel fo-receipt" aria-label="Receipt" role="status">
           <h3>{receipt.outcome === "replayed" ? "Already Recorded" : "Received"}</h3>
-          {/* The receipt's receiving order number is not in this response and no governed read
-              exposes one (RCV-G1/RCV-G2) — the absence is stated, and the internal receivingId is
-              never shown in its place. */}
-          <p className="fo-muted">Recorded — the receiving order number is not yet readable here.</p>
+          {/* The receiving order number comes from the receipt response itself; when a server version states none, the
+              absence is stated and the internal receivingId is never shown in its place. */}
+          <p className="fo-muted">
+            {receipt.receivingOrderNumber
+              ? <>Receiving order <strong>{receipt.receivingOrderNumber}</strong></>
+              : "Recorded — no receiving order number was returned."}
+          </p>
           <ul className="fo-list">
             {receipt.lines.map((l) => (
               <li key={l.lineId}>
@@ -437,6 +443,8 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           <Button type="button" variant="secondary" onClick={onDone}>Receive Another Order</Button>
         </section>
       )}
+
+      {completed ? null : (<>
 
       <section className="fo-receiving-session__section" aria-label="Scan">
         <h3>Scan</h3>
@@ -610,6 +618,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           this screen cannot close a line short, and no governed command exists to do it.
         </p>
       </section>
+      </>)}
     </div>
   );
 }

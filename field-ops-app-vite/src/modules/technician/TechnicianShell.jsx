@@ -200,6 +200,9 @@ function HandheldJobCard({ card: c, onOpen }) {
   const { context, denied, failure, loading } = useWorkOrderFieldContext(c.workOrderId);
   const customer = context?.customer?.state === "RESOLVED" ? context.customer.displayName : null;
   const site = context?.site?.state === "RESOLVED" ? context.site.displayLabel : null;
+  // The governed context STATES the plan: an AVAILABLE parts subdomain with no lines is a job that has no parts planned, which is a known fact and not
+  // an unknown one. Anything else (still loading, refused, offline, or a plan with lines) keeps the readiness the card was composed with.
+  const noPartsPlanned = context?.parts?.state === "AVAILABLE" && Array.isArray(context.parts.lines) && context.parts.lines.length === 0;
   // Before the first read answers there is no context AND no denial: that is "loading", never "none on record".
   const waiting = loading || (!context && !denied);
   // Waiting, offline, refused and genuinely absent are different things and are said as different things.
@@ -226,7 +229,7 @@ function HandheldJobCard({ card: c, onOpen }) {
           {c.status}
           {/* UNKNOWN is shown as UNKNOWN. Rendering it as "Missing" would send somebody to a
               supplier for parts that may be sitting on their van. */}
-          {c.readiness ? ` · parts ${c.readiness.toLowerCase()}` : ""}
+          {noPartsPlanned ? " · No parts planned" : c.readiness ? ` · parts ${c.readiness.toLowerCase()}` : ""}
         </span>
       </button>
     </li>

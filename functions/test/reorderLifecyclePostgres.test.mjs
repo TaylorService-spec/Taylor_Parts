@@ -50,13 +50,13 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
   const repo = new PostgresPolicyRepository(pool);
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
 
-  const principal = async (subject) => repo.transact({ tenantId: "t1", uid: "fixture" }, async (tx) => {
-    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+  const principal = async (subject, displayName = null) => repo.transact({ tenantId: "t1", uid: "fixture" }, async (tx) => {
+    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase", displayName });
     await tx.createTenantMembership(p.id);
     return p.id;
   });
   const pManager = await principal("uid-manager");
-  const pAlice = await principal("uid-alice");   // the assignee
+  const pAlice = await principal("uid-alice", "Alice Associate");   // the assignee
   const pBob = await principal("uid-bob");       // NOT the assignee
   const pUnlinked = await principal("uid-unlinked");
 
@@ -325,6 +325,8 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
       [po.id, po.reorderRequestId, po.purchaseOrderId, po.status, po.supplierName, po.externalPoNumber, po.orderedQuantity, po.orderedDate, po.expectedArrivalDate],
       [v, v, v, "ORDERED", "Acme", "PO-V1", 4, "2026-03-01", null]);
     assert.equal(po.createdBy, pAlice);
+    // Display batch: the order names who recorded it (an active member of this tenant), so no screen has to resolve a Principal id.
+    assert.equal(po.createdByName, "Alice Associate");
     assert.deepEqual([po.void.reorderPurchaseOrderId, po.void.reason, po.void.voidedBy], [v, "supplier discontinued the part", pManager]);
     assert.ok(po.void.createdAt && po.createdAt);
     // The assignee reaches the record assigned to her, without any queue scope.
@@ -359,7 +361,11 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await assert.rejects(life.readReorderQueue(deps, actor(pAlice)), /REORDER_QUEUE Operational Scope/);
     await assert.rejects(life.readMyReorderHistory(deps, actor(pAlice)), /REORDER_QUEUE Operational Scope/);
     // ...but she reaches the one record assigned to her,
-    assert.equal((await life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: rr })).reorderRequestId, rr);
+    const mineRead = await life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: rr });
+    assert.equal(mineRead.reorderRequestId, rr);
+    // Display batch: the CURRENT assignment's start is stated (the "Assigned" date), and nobody has received it yet.
+    assert.match(mineRead.assignedAt, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T/);
+    assert.equal(mineRead.receivedByName, null);
     // and not one that is not.
     const unassigned = (await create()).reorderRequestId;
     await assert.rejects(life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: unassigned }), /neither in the caller's queue reach nor assigned/);
