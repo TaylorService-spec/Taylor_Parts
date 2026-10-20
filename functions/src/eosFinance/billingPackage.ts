@@ -305,6 +305,14 @@ async function isCurrentAuthoritative(c: Queryable, actor: FinanceActor, package
  * ACKNOWLEDGED: the provider may hold a document for it, and reversing that is a provider act no package is allowed to fake.
  */
 export async function retirePackageReceivableOn(c: Queryable, actor: FinanceActor, packageId: string, reason: string): Promise<void> {
+  // F-1a (spec f1-invoicing-spec.md section 2.1): a package cannot be superseded once its INVOICE is issued -- that would void the receivable under a live
+  // invoice and let the re-billed package be invoiced a second time. The correction path is a credit memo (F-1b), never a re-version of the package.
+  const { rows: invoiced } = await c.query(
+    `SELECT invoice_number FROM eos_finance.invoices WHERE tenant_id = $1 AND billing_package_id = $2 AND voided_at IS NULL`, [actor.tenantId, packageId]);
+  if (invoiced[0]) {
+    throw new FinanceFoundationError("PACKAGE_INVOICED", "CONFLICT",
+      `the package has issued invoice ${invoiced[0].invoice_number}; it cannot be superseded (an issued invoice is corrected by a credit memo)`);
+  }
   const { rows: delivered } = await c.query(
     `SELECT status FROM eos_finance.accounting_handoffs WHERE tenant_id = $1 AND billing_package_id = $2 AND status IN ('DELIVERY_IN_PROGRESS', 'ACKNOWLEDGED') FOR UPDATE`,
     [actor.tenantId, packageId]);

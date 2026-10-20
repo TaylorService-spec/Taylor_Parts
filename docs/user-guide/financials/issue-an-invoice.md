@@ -22,7 +22,9 @@
 ## When you need a different due date
 - You may pick a **later** date than the customer's terms, and you must say **why** in "Reason for that date". An earlier date is refused.
 - If the customer has **no payment terms set for that company**, you choose the date and give the reason.
+- A later date can be at most 365 days beyond the customer's terms (or beyond today, where there are none).
 - The reason is kept with the invoice and in the audit record.
+- Once issued, an invoice cannot be changed, and its sale can no longer be re-billed: a mistake is corrected with a credit memo (coming later), not by editing the invoice.
 
 ## Things that can go wrong
 | What you see | What it means |

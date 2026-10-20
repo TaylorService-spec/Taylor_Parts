@@ -76,6 +76,10 @@ async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> 
     // A database trigger refuses with "CODE: sentence" (the repository convention).
     const m = /^([A-Z][A-Z0-9_]+):\s*(.*)$/s.exec((err as { message?: string })?.message ?? "");
     if (m) refuse(m[1], m[1].includes("NOT_FOUND") ? "NOT_FOUND" : "CONFLICT", m[2]);
+    // A concurrent twin lost the race on a unique index (the package row lock serializes only the SAME package): a governed answer, never a raw 500.
+    const u = err as { code?: string; constraint?: string };
+    if (u?.code === "23505" && u.constraint === "invoices_idempotency") refuse("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that idempotency key issued a different invoice");
+    if (u?.code === "23505" && (u.constraint === "invoices_one_per_obligation" || u.constraint === "invoices_one_per_package")) refuse("INVOICE_ALREADY_ISSUED", "CONFLICT", "this receivable already has an invoice");
     throw err;
   } finally {
     c.release();
@@ -116,10 +120,24 @@ export async function readIssuedInvoiceOn(db: Queryable, tenantId: string, invoi
 }
 
 /** The company's business date today (its governed time zone, #203). */
-async function businessToday(db: Queryable, tenantId: string, companyId: string): Promise<string> {
-  const { rows } = await db.query(`SELECT to_char(eos_policy.operating_company_business_date($1, $2, now()), 'YYYY-MM-DD') AS d`, [tenantId, companyId]);
-  return String(rows[0].d);
+export async function businessToday(db: Queryable, tenantId: string, companyId: string): Promise<string> {
+  let day: unknown;
+  try {
+    const { rows } = await db.query(`SELECT to_char(eos_policy.operating_company_business_date($1, $2, now()), 'YYYY-MM-DD') AS d`, [tenantId, companyId]);
+    day = rows[0]?.d;
+  } catch (err) {
+    // The resolver raises when the company has no governed time zone; that is a governed refusal, never a 500.
+    if (/OPERATING_COMPANY_UNRESOLVED/.test((err as { message?: string })?.message ?? "")) day = null;
+    else throw err;
+  }
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return refuse("BUSINESS_DATE_UNAVAILABLE", "PRECONDITION_FAILED", "the operating company has no governed business time zone, so the issue date and due date cannot be decided");
+  }
+  return day;
 }
+
+/** The farthest a due date may sit beyond the terms date (or beyond the issue date where no terms exist): a TECHNICAL bound, recorded in DECISIONS #F-1a. */
+export const INVOICE_DUE_EXTENSION_MAX_DAYS = 365;
 
 export async function issueFinancialInvoice(pool: Pool, actor: FinanceActor, input: IssueInvoiceInput) {
   only(input as unknown as Record<string, unknown>, ["billingPackageId", "idempotencyKey", "dueOn", "dueReason"]);
@@ -152,7 +170,7 @@ export async function issueFinancialInvoice(pool: Pool, actor: FinanceActor, inp
     }
     if (p.obligor_basis !== "DIRECT_SALE_CUSTOMER" || p.counterparty_id === null) refuse("UNSUPPORTED_FINANCIAL_OBLIGOR", "PRECONDITION_FAILED", "only a direct sale to the customer is invoiced");
     const { rows: ob } = await c.query(
-      `SELECT o.id, o.operating_company_id, o.currency, o.status, o.due_on, b.originated_minor
+      `SELECT o.id, o.operating_company_id, o.currency, o.status, b.originated_minor
          FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
         WHERE o.tenant_id = $1 AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = $2 AND o.kind = 'RECEIVABLE' FOR UPDATE OF o`, [actor.tenantId, packageId]);
     const o = ob[0] ?? refuse("RECEIVABLE_NOT_ESTABLISHED", "PRECONDITION_FAILED", "the billing package has no receivable to invoice");
@@ -185,6 +203,9 @@ export async function issueFinancialInvoice(pool: Pool, actor: FinanceActor, inp
     } else {
       if (dueOn < today) refuse("DUE_DATE_IN_PAST", "INVALID_INPUT", "the due date is before the issue date");
       if (fromTerms !== null && dueOn < fromTerms) refuse("DUE_DATE_EARLIER_THAN_TERMS", "INVALID_INPUT", `the customer's terms give ${fromTerms}; a due date may only be later`);
+      if (dueOn > addDays(fromTerms ?? today, INVOICE_DUE_EXTENSION_MAX_DAYS)) {
+        refuse("DUE_DATE_TOO_FAR", "INVALID_INPUT", `a due date may be at most ${INVOICE_DUE_EXTENSION_MAX_DAYS} days beyond ${fromTerms === null ? "the issue date" : "the customer's terms"}`);
+      }
       if (dueOn === fromTerms) { due = dueOn; basis = "TERMS"; }
       else {
         if (dueReason === null) refuse("DUE_REASON_REQUIRED", "INVALID_INPUT", "a due date other than the terms needs a reason");
@@ -212,8 +233,10 @@ export async function issueFinancialInvoice(pool: Pool, actor: FinanceActor, inp
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,0)`,
         [`invl_${randomUUID()}`, actor.tenantId, invoiceId, `${p.sales_order_id}:${l.sales_order_line_number}`, l.kind, l.ref, l.business_unit, l.billable_qty, l.unit_price_minor]);
     }
-    await c.query(`UPDATE eos_finance.obligations SET due_on = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2 AND due_on IS NULL`,
+    // The receivable's due date is set ONCE (the database allows NULL -> date only for the date of an invoice that names it): exactly one row must change.
+    const dated = await c.query(`UPDATE eos_finance.obligations SET due_on = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2 AND due_on IS NULL`,
       [actor.tenantId, o.id, due, actor.principalId]);
+    if (dated.rowCount !== 1) refuse("RECEIVABLE_ALREADY_DATED", "CONFLICT", "the receivable already has a governed due date; it cannot be invoiced");
     const invoice = await readIssuedInvoiceOn(c, actor.tenantId, invoiceId);
     if (BigInt(invoice.amountDueMinor) !== amountDue || invoice.lineCount !== lines.length) refuse("INVOICE_TOTAL_MISMATCH", "CONFLICT", "the stored invoice does not equal the package");
     await recordCommandAudit(c, actor.tenantId, actor.principalId, {

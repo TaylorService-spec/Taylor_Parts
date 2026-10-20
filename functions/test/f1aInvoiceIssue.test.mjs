@@ -85,3 +85,32 @@ test("the committed baseline holds finance.invoice.issue for the Firebase holder
   // No migration of this change registers a capability or a grant (the SQL is the controller's; it is reviewed against this sentence).
   assert.doesNotMatch(code("eosFinance/invoiceIssue.ts"), /role_capabilities|eos_policy\.capabilities/);
 });
+
+test("B1: a package with an issued invoice cannot be superseded -- the check runs before the receivable can be voided", () => {
+  const src = code("eosFinance/billingPackage.ts");
+  const retire = src.slice(src.indexOf("export async function retirePackageReceivableOn"));
+  const guard = retire.indexOf("PACKAGE_INVOICED");
+  assert.ok(guard > 0 && guard < retire.indexOf("voidObligationOn("), "PACKAGE_INVOICED is decided before voidObligationOn");
+  assert.match(retire.slice(0, guard), /FROM eos_finance\.invoices WHERE tenant_id = \$1 AND billing_package_id = \$2 AND voided_at IS NULL/);
+});
+
+test("F4: a lost race on a unique index is a governed CONFLICT, not a raw error", () => {
+  const src = code("eosFinance/invoiceIssue.ts");
+  assert.match(src, /code === "23505" && u\.constraint === "invoices_idempotency"\) refuse\("IDEMPOTENCY_KEY_REUSED", "CONFLICT"/);
+  assert.match(src, /invoices_one_per_obligation[\s\S]{0,80}invoices_one_per_package[\s\S]{0,80}refuse\("INVOICE_ALREADY_ISSUED", "CONFLICT"/);
+});
+
+test("F5: no governed business date is a clean refusal; the later-date bound is 365 days", async () => {
+  assert.equal(issue.INVOICE_DUE_EXTENSION_MAX_DAYS, 365);
+  const outcome = async (db) => { try { await issue.businessToday(db, "t", "taylor"); } catch (e) { return [e.code, e.category]; } return "OK"; };
+  assert.deepEqual(await outcome({ query: async () => { throw new Error("OPERATING_COMPANY_UNRESOLVED: taylor is not an operating company of this tenant"); } }), ["BUSINESS_DATE_UNAVAILABLE", "PRECONDITION_FAILED"]);
+  assert.deepEqual(await outcome({ query: async () => ({ rows: [{ d: null }] }) }), ["BUSINESS_DATE_UNAVAILABLE", "PRECONDITION_FAILED"]);
+  assert.equal(await issue.businessToday({ query: async () => ({ rows: [{ d: "2026-10-20" }] }) }, "t", "taylor"), "2026-10-20");
+  await assert.rejects(issue.businessToday({ query: async () => { throw new Error("connection lost"); } }, "t", "taylor"), /connection lost/, "an unrelated failure is not disguised");
+});
+
+test("F3: the receivable's due date is set exactly once, and a miss is refused", () => {
+  const src = code("eosFinance/invoiceIssue.ts");
+  assert.match(src, /dated\.rowCount !== 1\) refuse\("RECEIVABLE_ALREADY_DATED", "CONFLICT"/);
+  assert.doesNotMatch(src, /o\.due_on/);
+});

@@ -250,7 +250,9 @@ test("F-1a issue invoice over PostgreSQL", { skip: SKIP, concurrency: 1 }, async
           VALUES ('inv-raw', $1, 'taylor', 'INV-9999-000001', 'acct-b', $2, 'USD', now(), 'raw', $3, $4, 'NO_TERMS_ENTERED', 'raw', 'raw-key', 'raw-fp')`, [TENANT, p.so, p.obligation, p.packageId]);
         await c.query(`INSERT INTO eos_finance.invoice_lines (id, tenant_id, invoice_id, sales_order_line_id, line_kind, line_ref, billable_qty, unit_price_minor, tax_minor)
           VALUES ('invl-raw', $1, 'inv-raw', 'x', 'SERVICE', 'SVC-X', 1, $2, 0)`, [TENANT, unit]);
-        await c.query("COMMIT");
+        // The deferred check runs at commit; run it now and ROLLBACK either way (an issued invoice can never be deleted, so a probe must not commit).
+        await c.query("SET CONSTRAINTS ALL IMMEDIATE");
+        await c.query("ROLLBACK");
         return null;
       } catch (e) {
         await c.query("ROLLBACK").catch(() => undefined);
@@ -261,11 +263,9 @@ test("F-1a issue invoice over PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     };
     const wrong = await ins(699);
     assert.match(String(wrong?.message), /INVOICE_OBLIGATION_MISMATCH/, "699 != the receivable's 700");
-    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1 AND id='inv-raw'`, [TENANT]), 0);
     const right = await ins(700);
-    assert.equal(right, null, "the matching amount commits");
-    await q(`DELETE FROM eos_finance.invoice_lines WHERE tenant_id=$1 AND invoice_id='inv-raw'`, [TENANT]);
-    await q(`DELETE FROM eos_finance.invoices WHERE tenant_id=$1 AND id='inv-raw'`, [TENANT]);
+    assert.equal(right, null, "the matching amount passes the check");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1 AND id='inv-raw'`, [TENANT]), 0, "the probes left nothing");
     // 1:1: a second invoice for an already-invoiced receivable (or package) is refused by the database itself.
     const dup = await pool.connect();
     try {
@@ -279,5 +279,72 @@ test("F-1a issue invoice over PostgreSQL", { skip: SKIP, concurrency: 1 }, async
     // due_on: set once from NULL (done by issuing); then immutable.
     await assert.rejects(q(`UPDATE eos_finance.obligations SET due_on = due_on + 1 WHERE tenant_id=$1 AND id=$2`, [TENANT, first.obligation]), /OBLIGATION_IMMUTABLE/);
     await assert.rejects(q(`UPDATE eos_finance.obligations SET due_on = NULL WHERE tenant_id=$1 AND id=$2`, [TENANT, first.obligation]), /OBLIGATION_IMMUTABLE/);
+    // F2: the NULL -> date relaxation exists only for the date of an invoice that names the receivable: a READY receivable with NO invoice cannot be dated.
+    const undated = await directPackage({ account: "acct-b", price: 650 });
+    await assert.rejects(q(`UPDATE eos_finance.obligations SET due_on = (now() + interval '30 days')::date WHERE tenant_id=$1 AND id=$2`, [TENANT, undated.obligation]), /OBLIGATION_IMMUTABLE/);
+  });
+
+  await t.test("B1: a package cannot be superseded once invoiced -- refused with zero trace; the receivable is never voided under a live invoice; no second invoice is possible", async () => {
+    const sale = await directPackage({ account: "acct-b", price: 900 });
+    const due = plusDays(await businessToday("taylor"), 20);
+    const inv = ok(await issue(ctrl, { billingPackageId: sale.packageId, dueOn: due, dueReason: "stated" }), "issue").invoice;
+    const snapshot = async () => ({
+      ...(await trace()),
+      packages: await count(`SELECT count(*)::int n FROM eos_finance.billing_packages WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, sale.so]),
+      ready: await count(`SELECT count(*)::int n FROM eos_finance.billing_packages WHERE tenant_id=$1 AND sales_order_id=$2 AND status='READY'`, [TENANT, sale.so]),
+      voided: await count(`SELECT count(*)::int n FROM eos_finance.obligations WHERE tenant_id=$1 AND id=$2 AND status='VOID'`, [TENANT, sale.obligation]),
+      facts: await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2`, [TENANT, sale.obligation]),
+    });
+    const before = await snapshot();
+    // Re-bill the order with changed evidence (a new price), which would version the package and void its receivable.
+    await q(`UPDATE eos_commercial.sales_order_lines SET unit_price_minor = unit_price_minor + 1 WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, sale.so]);
+    await assert.rejects(pkg.prepareBillingPackage(pool, sys, { salesOrderId: sale.so }), (e) => e.code === "PACKAGE_INVOICED" && e.category === "CONFLICT");
+    assert.deepEqual(await snapshot(), before, "zero trace: the package stays READY and only version 1, the receivable stays open with its facts, nothing new");
+    // The database says the same on its own: an obligation with an issued invoice cannot become VOID.
+    await assert.rejects(q(`UPDATE eos_finance.obligations SET status='VOID' WHERE tenant_id=$1 AND id=$2`, [TENANT, sale.obligation]), /OBLIGATION_INVOICED/);
+    // And no second invoice is possible for the order: one package, one receivable, one invoice.
+    refused(await issue(ctrl, { billingPackageId: sale.packageId, dueOn: due, dueReason: "again" }), 409, "INVOICE_ALREADY_ISSUED");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, sale.so]), 1);
+    assert.equal(inv.billingPackageId, sale.packageId);
+  });
+
+  await t.test("F1: an issued invoice and its lines cannot be changed or deleted after the issuing transaction", async () => {
+    const id = (await one(`SELECT id FROM eos_finance.invoices WHERE tenant_id=$1 AND obligation_id=$2`, [TENANT, first.obligation])).id;
+    const immutable = /INVOICE_IMMUTABLE/;
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET currency='EUR' WHERE id=$1`, [id]), immutable, "currency");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET customer_discount_minor = 1 WHERE id=$1`, [id]), immutable, "header amount");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET obligation_id=NULL, billing_package_id=NULL, due_basis=NULL, idempotency_key=NULL, request_fingerprint=NULL WHERE id=$1`, [id]), immutable, "all four linkage columns NULLed together");
+    await assert.rejects(q(`UPDATE eos_finance.invoices SET voided_at=now(), void_reason='x', voided_by='y' WHERE id=$1`, [id]), immutable, "no void path yet");
+    await assert.rejects(q(`DELETE FROM eos_finance.invoices WHERE id=$1`, [id]), immutable, "delete");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_lines SET unit_price_minor = 1 WHERE invoice_id=$1`, [id]), immutable, "a line's price");
+    await assert.rejects(q(`DELETE FROM eos_finance.invoice_lines WHERE invoice_id=$1`, [id]), immutable, "a line");
+    await assert.rejects(q(`INSERT INTO eos_finance.invoice_lines (id, tenant_id, invoice_id, sales_order_line_id, line_kind, line_ref, billable_qty, unit_price_minor, tax_minor)
+      VALUES ('invl-late', $1, $2, 'x', 'SERVICE', 'SVC-X', 1, 1, 0)`, [TENANT, id]), immutable, "a late line");
+    const row = await one(`SELECT total_minor::text AS t, amount_due_minor::text AS d, line_count::int AS n FROM eos_finance.invoice_totals WHERE invoice_id=$1`, [id]);
+    assert.deepEqual([row.t, row.d, row.n], ["43200", "43200", 1], "the invoice is exactly as issued");
+  });
+
+  await t.test("F4: the same actor and key on two packages at once -- the loser gets IDEMPOTENCY_KEY_REUSED, never a raw 500, and consumes no number", async () => {
+    const a = await directPackage({ account: "acct-b", price: 110 });
+    const b = await directPackage({ account: "acct-b", price: 120 });
+    const due = plusDays(await businessToday("taylor"), 12);
+    const before = await trace();
+    const rs = await Promise.all([a, b].map((x) => fn(ctrl, "issueInvoice", { billingPackageId: x.packageId, idempotencyKey: "same-key-twice", dueOn: due, dueReason: "x" })));
+    assert.deepEqual(rs.map((r) => r.status).sort(), [200, 409], JSON.stringify(rs.map((r) => r.body).map((x) => x.code ?? x.result?.outcome)));
+    assert.equal(rs.find((r) => r.status === 409).body.code, "IDEMPOTENCY_KEY_REUSED");
+    const after = await trace();
+    assert.deepEqual([after.invoices - before.invoices, after.audits - before.audits, after.counters - before.counters], [1, 1, 1], "one invoice, one audit row, one number");
+  });
+
+  await t.test("F5: a later due date is capped at 365 days beyond the terms (or the issue date); refusals leave no trace", async () => {
+    const today = await businessToday("taylor");
+    const withTerms = await directPackage({ account: "acct-c", price: 130 }); // acct-c has Net 30 (set above)
+    const noTerms = await directPackage({ account: "acct-a", price: 140 }); // acct-a has none
+    const before = await trace();
+    refused(await issue(ctrl, { billingPackageId: withTerms.packageId, dueOn: plusDays(today, 30 + 366), dueReason: "far" }), 400, "DUE_DATE_TOO_FAR");
+    refused(await issue(ctrl, { billingPackageId: noTerms.packageId, dueOn: plusDays(today, 366), dueReason: "far" }), 400, "DUE_DATE_TOO_FAR");
+    assert.deepEqual(await trace(), before);
+    const edge = ok(await issue(ctrl, { billingPackageId: noTerms.packageId, dueOn: plusDays(today, 365), dueReason: "a year" }), "edge").invoice;
+    assert.equal(edge.dueOn, plusDays(today, 365), "exactly 365 days is allowed");
   });
 });
