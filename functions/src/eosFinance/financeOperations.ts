@@ -788,11 +788,11 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
     if (scope === null || !(await fullReachedCompanies(deps, caller, FINANCE_VIEW_CAPABILITY)).includes(scope.company)) refuse("CORRECTION_NOT_FOUND", "NOT_FOUND", "no invoice correction with that id");
     const correction = await readInvoiceCorrectionOn(deps.pool, caller.actor.tenantId, String(input.correctionId));
     const balance = await readObligationBalance(deps.pool, caller.actor.tenantId, correction.obligationId);
-    const { rows } = await deps.pool.query(`SELECT amount_due_minor, voided_at FROM eos_finance.invoice_totals WHERE tenant_id = $1 AND invoice_id = $2`, [caller.actor.tenantId, correction.invoiceId]);
+    const { rows } = await deps.pool.query(`SELECT amount_due_minor, is_void FROM eos_finance.invoice_totals WHERE tenant_id = $1 AND invoice_id = $2`, [caller.actor.tenantId, correction.invoiceId]);
     return Object.freeze({
       correction,
       // The invoice is the ORIGINAL document and never changes; what is owed is the receivable's balance (OD-F1-2).
-      invoice: Object.freeze({ id: correction.invoiceId, invoiceNumber: correction.invoiceNumber, originalAmountDueMinor: String(rows[0]?.amount_due_minor ?? "0"), void: rows[0]?.voided_at != null }),
+      invoice: Object.freeze({ id: correction.invoiceId, invoiceNumber: correction.invoiceNumber, originalAmountDueMinor: String(rows[0]?.amount_due_minor ?? "0"), void: rows[0]?.is_void === true }),
       receivable: balance && Object.freeze({ obligationId: balance.obligationId, status: balance.status, originatedMinor: balance.originatedMinor.toString(),
         settledMinor: balance.settledMinor.toString(), outstandingMinor: balance.outstandingMinor.toString() }),
     });

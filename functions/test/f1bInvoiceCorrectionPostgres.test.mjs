@@ -377,6 +377,9 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     // the record is reconciled like any settlement (evidence), never voided, applies to nothing; recordSettlement cannot make one
     const rec = ok(await fn(ctrl, "reconcileSettlement", { settlementId: done.refundRecordId, externalReference: "BANK-REF-1", externalAmountMinor: 8000, idempotencyKey: key("rec") }), "reconcile");
     assert.equal(rec.reconciliation.outcome, "RECONCILED");
+    // the settlement read of the record never reads as cash out
+    const rr = ok(await fn(ctrl, "readSettlement", { settlementId: done.refundRecordId }), "read refund record");
+    assert.deepEqual([rr.kind, rr.refundRecorded, rr.notice, rr.direction, rr.ledgerDirection], ["CUSTOMER_REFUND", true, "refund recorded; no payment has been sent", "REFUND_RECORD", "DISBURSEMENT"]);
     refused(await fn(ctrl, "voidSettlement", { settlementId: done.refundRecordId, reason: "undo" }), 409, "SETTLEMENT_REFUND_RECORD");
     refused(await fn(ctrl, "applySettlement", { settlementId: done.refundRecordId, applications: [{ obligationId: R.obligation, amountMinor: 1 }], idempotencyKey: key("app") }), 409, "SETTLEMENT_KIND_MISMATCH");
     refused(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_REFUND",
@@ -542,7 +545,9 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     const c1x = await credit(X4, 6000);
     ok(await approve(appA, c1x, { idempotencyKey: "dec-cum-1" }), "first");
     ok(await approve(appB, await credit(X4, 3000)), "second");
+    const sCum = await state();
     refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: X4.invoice.id, amountMinor: 1001, reason: "cumulative excess" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), sCum, "zero trace: the full state hash is unchanged by the cumulative-excess refusal");
     ok(await approve(appA, await credit(X4, 1000)), "third, exactly the rest");
     assert.deepEqual(await bal(X4.obligation), { originated: "0", settled: "0", outstanding: "0", status: "SETTLED" });
     // duplicate approval and replay: ONE fact, ONE approval audit row
@@ -558,7 +563,9 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     const appId = (await one(`SELECT id FROM eos_finance.settlement_applications WHERE settlement_id=$1 AND status='APPLIED'`, [p5.id])).id;
     ok(await fn(ctrl, "reverseSettlementApplication", { applicationId: appId, reason: "wrong receivable", idempotencyKey: key("rev") }), "reverse");
     assert.deepEqual(await bal(X5.obligation), { originated: "10000", settled: "0", outstanding: "10000", status: "OPEN" });
+    const sRev = await state();
     refused(await request(reqA, { kind: "CREDIT_MEMO", invoiceId: X5.invoice.id, amountMinor: 10001, reason: "excess" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), sRev, "zero trace: the full state hash is unchanged by the reversed-application excess refusal");
     ok(await approve(appA, await credit(X5, 10000)), "credit equal to outstanding after a reversed application");
     assert.deepEqual(await bal(X5.obligation), { originated: "0", settled: "0", outstanding: "0", status: "SETTLED" });
     const sb5 = await one(`SELECT unapplied_minor::text un, refunded_minor::text rf FROM eos_finance.settlement_balances WHERE settlement_id=$1`, [p5.id]);
@@ -576,6 +583,12 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     assert.deepEqual(await bal(X6.obligation), { originated: "4000", settled: "0", outstanding: "4000", status: "OPEN" });
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.financial_facts WHERE tenant_id=$1 AND obligation_id=$2 AND fact_type='RECEIVABLE_CREDITED'`, [TENANT, X6.obligation]), 1);
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoice_corrections WHERE obligation_id=$1 AND status='PENDING'`, [X6.obligation]), 1, "the loser stays PENDING");
+    // zero trace for the loser: refusing it again changes nothing in the full state hash (and nothing was left behind by its first, concurrent refusal)
+    const loserRow = await one(`SELECT id, amount_minor::text AS "amountMinor" FROM eos_finance.invoice_corrections WHERE obligation_id=$1 AND status='PENDING'`, [X6.obligation]);
+    const sLoser = await state();
+    refused(await approve(appA, loserRow), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    assert.deepEqual(await state(), sLoser, "zero trace: the concurrency loser leaves no fact, row or audit entry");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1 AND action='finance.correction.approve' AND target_id=$2`, [TENANT, loserRow.id]), 0);
     await noNegatives();
     // the SAME correction approved by two people at once: one applies, the other finds it decided
     const X7 = await issued({ price: 5000, account: "acct-a" });

@@ -420,4 +420,9 @@ test("F6 and refund vocabulary: the refund is a recorded fact, never a payment; 
   const src = code("eosFinance/invoiceCorrection.ts") + code("eosFinance/settlement.ts");
   assert.doesNotMatch(src, /payout|pay_out|cashOut|cash_out|sendMoney|disburseNow|executeRefund|issueRefundPayment/i);
   assert.match(code("eosFinance/settlement.ts"), /refundedMinor: String\(b\.refunded_minor \?\? 0\)/);
+  // a CUSTOMER_REFUND record's settlement view carries the vocabulary too: direction REFUND_RECORD (the ledger value is kept apart), refundRecorded and the notice
+  const st = code("eosFinance/settlement.ts");
+  assert.match(st, /direction: r\.kind === "CUSTOMER_REFUND" \? "REFUND_RECORD" : String\(r\.direction\)/);
+  assert.match(st, /ledgerDirection: String\(r\.direction\), refundRecorded: true, notice: REFUND_NOTICE/);
+  assert.doesNotMatch(readFileSync(join(ROOT, "src", "eosFinance/settlement.ts"), "utf8"), /DISBURSEMENT settlement|records EVIDENCE that a refund/);
 });

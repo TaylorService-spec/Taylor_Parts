@@ -37,7 +37,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   FinanceFoundationError, insertObligationAdjustmentFactOn, readObligationBalance, type FinanceActor, type FinanceFoundationCategory, type ObligationBalance,
 } from "./financeFoundation";
-import { applySettlementAmountOn, recordRefundFactOn, reverseApplicationOn } from "./settlement";
+import { REFUND_NOTICE, applySettlementAmountOn, recordRefundFactOn, reverseApplicationOn } from "./settlement";
 import { retirePackageReceivableOn } from "./billingPackage";
 import { businessToday } from "./invoiceIssue";
 import { linkedEmployeeId } from "./financeVisibility";
@@ -66,8 +66,7 @@ export const CORRECTION_REQUEST_CAPABILITIES: readonly string[] = Object.freeze(
 export const CORRECTION_APPROVAL_THRESHOLD_MINOR = 0n;
 /** The governed reason limit (the Commercial reason limit, as issuing an invoice). */
 export const CORRECTION_REASON_MAX = 500;
-/** The one sentence a refund result carries: it is a record, never a payment. */
-export const REFUND_NOTICE = "refund recorded; no payment has been sent";
+export { REFUND_NOTICE };
 
 const FACT_TYPE: Readonly<Record<"CREDIT_MEMO" | "DEBIT_CHARGE" | "WRITE_OFF", "RECEIVABLE_CREDITED" | "RECEIVABLE_CHARGED" | "RECEIVABLE_WRITTEN_OFF">> = Object.freeze({
   CREDIT_MEMO: "RECEIVABLE_CREDITED", DEBIT_CHARGE: "RECEIVABLE_CHARGED", WRITE_OFF: "RECEIVABLE_WRITTEN_OFF",

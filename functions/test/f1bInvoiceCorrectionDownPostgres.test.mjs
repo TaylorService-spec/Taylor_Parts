@@ -54,13 +54,21 @@ test("F-1b migration down over PostgreSQL", { skip: SKIP, concurrency: 1 }, asyn
     await q(`DELETE FROM eos_policy.role_capabilities WHERE id = 'rc_f1b_down_probe'`);
   });
 
-  await t.test("REFUSAL WITH HISTORY: a correction, a recorded refund or a voided invoice makes the Down refuse with a named reason (rows written with triggers and FKs off, then removed)", async () => {
+  await t.test("REFUSAL WITH HISTORY: a correction, a recorded refund, an adjustment fact, a voided invoice, a direct Principal grant or an Administration decision makes the Down refuse with a named reason (rows written with triggers and FKs off, then removed)", async () => {
     const c = await pool.connect();
     const rows = [
       ["1 invoice correction(s)", `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
          VALUES ('icr-hist', '${TENANT}', 'taylor', 'inv-hist', 'obl-hist', 'CREDIT_MEMO', 1, 'USD', 'history', 'p-hist', 'e-hist', 'k-hist', 'fp')`, `DELETE FROM eos_finance.invoice_corrections WHERE id = 'icr-hist'`],
       ["1 recorded refund(s)", `INSERT INTO eos_finance.settlements (id, tenant_id, operating_company_id, counterparty_id, kind, direction, amount_minor, currency, business_date, source_reference, idempotency_key, request_fingerprint, recorded_by)
          VALUES ('stl-hist', '${TENANT}', 'taylor', 'cp-hist', 'CUSTOMER_REFUND', 'DISBURSEMENT', 1, 'USD', current_date, 'refund:x', 'refund:x', 'fp', 'p-hist')`, `DELETE FROM eos_finance.settlements WHERE id = 'stl-hist'`],
+      ["1 receivable adjustment fact(s)",`INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, created_by)
+         VALUES ('ff-hist', '${TENANT}', 'taylor', 'OBLIGATION', 'RECEIVABLE_CREDITED', 'INVOICE_CORRECTION', 'icr-x', -1, 'USD', 'raw', now(), 'ff-hist', 'fp', 'obl-hist', 'raw')`, `DELETE FROM eos_finance.financial_facts WHERE id = 'ff-hist'`],
+      ["1 voided invoice(s)", `INSERT INTO eos_finance.invoices (id, tenant_id, operating_company_key, invoice_number, account_id, sales_order_id, currency, due_date, issued_by, voided_at, void_reason, voided_by)
+         VALUES ('inv-hist', '${TENANT}', 'taylor', 'INV-0000-000001', 'a', 'so', 'USD', now(), 'p-hist', now(), 'r', 'p-hist')`, `DELETE FROM eos_finance.invoices WHERE id = 'inv-hist'`],
+      ["1 direct grant(s) hold an approval capability", `INSERT INTO eos_policy.principal_capabilities (id, tenant_id, principal_id, capability_id, granted_by, created_by, updated_by)
+         SELECT 'pc-hist', '${TENANT}', 'p-hist', c.id, 'down-test', 'down-test', 'down-test' FROM eos_policy.capabilities c WHERE c.key = 'finance.refund.approve'`, `DELETE FROM eos_policy.principal_capabilities WHERE id = 'pc-hist'`],
+      ["1 Administration decision(s) name an approval capability", `INSERT INTO eos_policy.role_capability_decisions (id, tenant_id, role_key, capability_key, decision, reason, actor_principal_id, audit_event_id)
+         VALUES ('rcd-hist', '${TENANT}', 'owner', 'finance.refund.approve', 'ADMIN_GRANTED', 'history', 'p-hist', 'audit-hist')`, `DELETE FROM eos_policy.role_capability_decisions WHERE id = 'rcd-hist'`],
     ];
     try {
       await c.query("SET session_replication_role = replica");

@@ -88,9 +88,14 @@ const dateOnly = (v: unknown): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** The one sentence a refund result carries: it is a record, never a payment. */
+export const REFUND_NOTICE = "refund recorded; no payment has been sent";
+
 const settlementView = (r: Record<string, any>, b?: Record<string, any>) => Object.freeze({
   id: String(r.id), operatingCompanyId: String(r.operating_company_id), counterpartyId: String(r.counterparty_id), kind: String(r.kind),
-  direction: String(r.direction), amountMinor: String(r.amount_minor), currency: String(r.currency),
+  // A CUSTOMER_REFUND record is an accounting fact, never cash out: its API direction is REFUND_RECORD (the ledger's DISBURSEMENT value stays in `ledgerDirection`).
+  direction: r.kind === "CUSTOMER_REFUND" ? "REFUND_RECORD" : String(r.direction),
+  ...(r.kind === "CUSTOMER_REFUND" ? { ledgerDirection: String(r.direction), refundRecorded: true, notice: REFUND_NOTICE } : {}), amountMinor: String(r.amount_minor), currency: String(r.currency),
   businessDate: dateOnly(r.business_date),
   recordedAt: new Date(r.recorded_at).toISOString(), sourceReference: String(r.source_reference), method: r.method ?? null, status: String(r.status),
   correlationId: r.correlation_id ?? null, replacesSettlementId: r.replaces_settlement_id ?? null, notes: r.notes ?? null, recordedBy: String(r.recorded_by),
@@ -296,13 +301,13 @@ export async function voidFinancialSettlement(pool: Pool, actor: FinanceActor, i
 
 /**
  * The settlement kind of a recorded customer refund (DECISIONS #F-1b, Owner ruling OD-F1-11). It is NOT in SETTLEMENT_KINDS, so recordSettlement can never create one:
- * the only writer is the approved refund (invoiceCorrection.ts), and it records EVIDENCE that a refund was owed and approved -- it executes, initiates and authorizes
+ * the only writer is the approved refund (invoiceCorrection.ts), and it is an ACCOUNTING FACT that a refund was approved and recorded (NOT evidence that cash was sent) -- it executes, initiates and authorizes
  * NO payment. "A new settlement kind is not to be read as permission to pay out."
  */
 export const CUSTOMER_REFUND_KIND = "CUSTOMER_REFUND";
 
 /**
- * Record the refund as a DISBURSEMENT settlement of the customer's counterparty, inside the caller's transaction. A record only: no method, no external reference,
+ * Record the refund as a settlement-table row of the customer's counterparty, inside the caller's transaction (the ledger files its direction as DISBURSEMENT; that value is vocabulary, not a payment). A record only: no method, no external reference,
  * nothing is sent anywhere. It takes no application (the database pairs no obligation kind with it) and shows no unapplied remainder; it can be reconciled like
  * any settlement, and it can never be voided (SETTLEMENT_REFUND_RECORD).
  */
