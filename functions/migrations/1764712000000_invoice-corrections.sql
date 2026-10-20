@@ -175,7 +175,7 @@ BEGIN
     v_kind := CASE NEW.fact_type WHEN 'RECEIVABLE_CREDITED' THEN 'CREDIT_MEMO' WHEN 'RECEIVABLE_CHARGED' THEN 'DEBIT_CHARGE' ELSE 'WRITE_OFF' END;
     SELECT * INTO c FROM eos_finance.invoice_corrections WHERE tenant_id = NEW.tenant_id AND id = NEW.source_record_id;
     IF NOT FOUND OR c.status <> 'APPLIED' OR c.fact_id IS NOT NULL OR c.kind <> v_kind OR c.obligation_id IS DISTINCT FROM NEW.obligation_id
-       OR NEW.amount_minor <> CASE WHEN v_kind = 'DEBIT_CHARGE' THEN c.amount_minor ELSE -c.amount_minor END THEN
+       OR NEW.amount_minor <> (CASE WHEN v_kind = 'DEBIT_CHARGE' THEN c.amount_minor ELSE -c.amount_minor END) THEN
         RAISE EXCEPTION 'ADJUSTMENT_NOT_APPROVED: a receivable is credited, charged or written off only by an APPLIED invoice correction decided by a separate Employee';
     END IF;
     -- A credit or write-off never takes the receivable below what has been settled against it (outstanding never goes negative). The receivable's row is locked HERE, so the
