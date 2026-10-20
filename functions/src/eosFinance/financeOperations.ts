@@ -415,10 +415,12 @@ async function readObligation(deps: WorkOrderOperationDeps, caller: WorkOrderCal
        LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = bp.tenant_id AND so.id = bp.sales_order_id
       WHERE ob.tenant_id = $1 AND ob.id = $2`, [t, input.obligationId]);
   const src = srcRows[0] ?? {};
-  const sourceSalesOrder = src.sales_order_id ? Object.freeze({ id: String(src.sales_order_id), salesOrderNumber: src.sales_order_number ?? null }) : null;
+  // The SAME rule as the list (obligationRows): a package of a DIFFERENT operating company than the receivable is no source, so its Sales Order number is never shown.
+  const packageOfOtherCompany = Boolean(src.sales_order_id) && String(src.package_company) !== o.operatingCompanyId;
+  const sourceSalesOrder = src.sales_order_id && !packageOfOtherCompany ? Object.freeze({ id: String(src.sales_order_id), salesOrderNumber: src.sales_order_number ?? null }) : null;
   const attribution = o.kind !== "RECEIVABLE" ? { state: "NOT_ATTRIBUTABLE", reason: "only customer receivables are attributed to a credited salesperson" }
+    : packageOfOtherCompany ? { state: "NOT_ATTRIBUTABLE", reason: "the billing package belongs to a different operating company than the receivable" }
     : !sourceSalesOrder ? { state: "NOT_ATTRIBUTABLE", reason: "this receivable has no Sales Order source (a rental charge, or not billed from a Sales Order)" }
-    : String(src.package_company) !== o.operatingCompanyId ? { state: "NOT_ATTRIBUTABLE", reason: "the billing package belongs to a different operating company than the receivable" }
     : src.credited === null || src.credited === undefined ? { state: "UNATTRIBUTED", reason: "the source Sales Order records no credited salesperson" }
     : { state: "ATTRIBUTED", creditedSalespersonEmployeeId: String(src.credited), recordedAt: new Date(src.credited_at).toISOString() };
   const { rows: facts } = await deps.pool.query(`SELECT id, fact_class, fact_type, amount_minor, effective_at, created_at, source_domain, source_record_id, reverses_fact_id, reason

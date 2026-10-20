@@ -33,6 +33,12 @@ test("static: every canonical Job Role has exactly one layout; the workspace is 
   }
 });
 
+test("a reorder request with no number, or an empty one, is labelled in words -- never its storage key; a number is shown as is", () => {
+  const none = "Reorder request (no number)";
+  assert.deepEqual([null, undefined, ""].map(myWork.reorderLabel), [none, none, none]);
+  assert.equal(myWork.reorderLabel("RR-2026-000123"), "RR-2026-000123");
+});
+
 test("static (DECISIONS #172): a My Work section is a bounded preview -- no count derived from its rows", () => {
   const s = strip(readFileSync(join(SRC, "eosExperience", "myWork.ts"), "utf8"));
   assert.doesNotMatch(s, /\bcount\s*[:?]/, "no Section.count");

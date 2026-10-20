@@ -103,6 +103,10 @@ const STATUS_ORDER = {
   [PURCHASE_ORDER_VIEW_STATUS.VOIDED]: 3,
 };
 
+// Who recorded the order: the name the server states, else the uid-keyed lookup, else nothing (never a raw id).
+const orderedByWords = (row, byUserId) =>
+  row.orderedByName ?? (row.orderedByUserId ? resolveActorDisplayName(row.orderedByUserId, byUserId) : null);
+
 export default function PurchaseOrders() {
   const rawRequestsRead = useReorderRequestsByStatuses(PO_REQUEST_STATUSES);
   // P-1 (DECISIONS #P-1): a request ORDERED on a SUPPLIER purchase order has no recorded Reorder purchase order BY DESIGN -- its order is the supplier
@@ -137,7 +141,7 @@ export default function PurchaseOrders() {
     quantity: { value: (row) => (typeof row.orderedQuantity === "number" ? row.orderedQuantity : null) },
     ordered: { value: (row) => row.orderedDate },
     expected: { value: (row) => row.expectedArrivalDate },
-    orderedBy: { value: (row) => (row.orderedByUserId ? resolveActorDisplayName(row.orderedByUserId, byUserId) : null) },
+    orderedBy: { value: (row) => orderedByWords(row, byUserId) },
     status: { value: (row) => STATUS_ORDER[row.viewStatus] ?? 99 },
   }), [byUserId]);
   const { sort, toggle, sorted: visibleRows } = useTableSort({ rows: filteredRows, columns: sortColumns });
@@ -252,7 +256,7 @@ export default function PurchaseOrders() {
                   <td className="fo-po-qty">{row.orderedQuantity ?? <span className="fo-muted">—</span>}</td>
                   <td>{row.orderedDate ?? <span className="fo-muted">—</span>}</td>
                   <td>{row.expectedArrivalDate ?? <span className="fo-muted">—</span>}</td>
-                  <td>{row.orderedByUserId ? resolveActorDisplayName(row.orderedByUserId, byUserId) : <span className="fo-muted">—</span>}</td>
+                  <td>{orderedByWords(row, byUserId) ?? <span className="fo-muted">—</span>}</td>
                   <td>
                     <span className={`fo-po-status fo-po-status--${row.viewStatus.toLowerCase()}`}>
                       {STATUS_LABEL[row.viewStatus] ?? row.viewStatus}

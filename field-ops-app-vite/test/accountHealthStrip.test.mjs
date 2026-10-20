@@ -222,4 +222,13 @@ check("unattributed money is never counted as a company on the tile", () => {
   assert.equal(byId(metrics, "outstandingAr").label, "Outstanding AR · 1 company + unattributed");
 });
 
+check("a REFUSED work-order count is DENIED (Not available to you), a failed one is UNAVAILABLE (Couldn't be read)", () => {
+  const refused = buildAccountHealthStrip({ workOrderCount: { value: null, loading: false, error: false, denied: true }, arView: readyAr() });
+  assert.equal(byId(refused, "openWorkOrders").state, HEALTH_METRIC_STATE.DENIED);
+  const failed = buildAccountHealthStrip({ workOrderCount: { value: null, loading: false, error: true, denied: false }, arView: readyAr() });
+  assert.equal(byId(failed, "openWorkOrders").state, HEALTH_METRIC_STATE.UNAVAILABLE);
+  // A refusal never invents a number.
+  assert.equal(byId(refused, "openWorkOrders").value, undefined);
+});
+
 console.log(`\n${passed} passed, 0 failed`);

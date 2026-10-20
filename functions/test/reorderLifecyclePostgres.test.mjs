@@ -50,13 +50,13 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
   const repo = new PostgresPolicyRepository(pool);
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
 
-  const principal = async (subject) => repo.transact({ tenantId: "t1", uid: "fixture" }, async (tx) => {
-    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+  const principal = async (subject, displayName = null) => repo.transact({ tenantId: "t1", uid: "fixture" }, async (tx) => {
+    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase", displayName });
     await tx.createTenantMembership(p.id);
     return p.id;
   });
   const pManager = await principal("uid-manager");
-  const pAlice = await principal("uid-alice");   // the assignee
+  const pAlice = await principal("uid-alice", "Alice Associate");   // the assignee
   const pBob = await principal("uid-bob");       // NOT the assignee
   const pUnlinked = await principal("uid-unlinked");
 
@@ -325,6 +325,27 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
       [po.id, po.reorderRequestId, po.purchaseOrderId, po.status, po.supplierName, po.externalPoNumber, po.orderedQuantity, po.orderedDate, po.expectedArrivalDate],
       [v, v, v, "ORDERED", "Acme", "PO-V1", 4, "2026-03-01", null]);
     assert.equal(po.createdBy, pAlice);
+    // Display batch: the order names who recorded it (an active member of this tenant), so no screen has to resolve a Principal id.
+    assert.equal(po.createdByName, "Alice Associate");
+    assert.equal(po.createdByRecorded, true);
+    // FORMER MEMBER: the actor IS recorded, but a Principal without an ACTIVE membership in THIS tenant is not named -- the flag tells the screen
+    // to say "Name unavailable" rather than the false "Not recorded". A Principal active only in ANOTHER tenant is not named here either.
+    const setMembership = (status) => q(`UPDATE eos_policy.tenant_memberships SET status = $1 WHERE tenant_id = 't1' AND principal_id = $2`, [status, pAlice]);
+    const readPo = async () => (await read(pManager, [v])).purchaseOrders[0];
+    try {
+      await setMembership("disabled");
+      const former = await readPo();
+      assert.deepEqual([former.createdByName, former.createdByRecorded], [null, true], "an inactive member is not named, yet the actor is recorded");
+      await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t-other','t-other','Other')`);
+      await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id, status) VALUES ('tm-other-alice','t-other',$1,'active')`, [pAlice]);
+      const cross = await readPo();
+      assert.deepEqual([cross.createdByName, cross.createdByRecorded], [null, true], "an active membership in ANOTHER tenant never names the principal here");
+    } finally {
+      await q(`DELETE FROM eos_policy.tenant_memberships WHERE id = 'tm-other-alice'`);
+      await q(`DELETE FROM eos_policy.tenants WHERE id = 't-other'`);
+      await setMembership("active");
+    }
+    assert.equal((await readPo()).createdByName, "Alice Associate", "restored membership names her again");
     assert.deepEqual([po.void.reorderPurchaseOrderId, po.void.reason, po.void.voidedBy], [v, "supplier discontinued the part", pManager]);
     assert.ok(po.void.createdAt && po.createdAt);
     // The assignee reaches the record assigned to her, without any queue scope.
@@ -359,7 +380,12 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await assert.rejects(life.readReorderQueue(deps, actor(pAlice)), /REORDER_QUEUE Operational Scope/);
     await assert.rejects(life.readMyReorderHistory(deps, actor(pAlice)), /REORDER_QUEUE Operational Scope/);
     // ...but she reaches the one record assigned to her,
-    assert.equal((await life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: rr })).reorderRequestId, rr);
+    const mineRead = await life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: rr });
+    assert.equal(mineRead.reorderRequestId, rr);
+    // Display batch: the CURRENT assignment's start is stated (the "Assigned" date), and nobody has received it yet.
+    assert.match(mineRead.assignedAt, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T/);
+    assert.equal(mineRead.receivedByName, null);
+    assert.equal(mineRead.receivedByRecorded, false, "nobody received it: the record holds no receiver, the only case that reads \"Not recorded\"");
     // and not one that is not.
     const unassigned = (await create()).reorderRequestId;
     await assert.rejects(life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: unassigned }), /neither in the caller's queue reach nor assigned/);
@@ -417,14 +443,14 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
   const repo = new PostgresPolicyRepository(pool);
   const T = "tenant-syn";
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, 'taylor-nonprod', 'synthetic acceptance proof')`, [T]);
-  const principal = async (subject) => repo.transact({ tenantId: T, uid: "fixture" }, async (tx) => {
-    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+  const principal = async (subject, displayName = null) => repo.transact({ tenantId: T, uid: "fixture" }, async (tx) => {
+    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase", displayName });
     await tx.createTenantMembership(p.id);
     return p.id;
   });
   const pAdmin = await principal("uid-admin");
   const pPM = await principal("uid-parts-manager");
-  const pPA = await principal("uid-parts-associate");
+  const pPA = await principal("uid-parts-associate", "Pat Associate");
   const pTech = await principal("uid-technician");
   let n = 0;
   for (const [emp, p] of [["e-pm", pPM], ["e-pa", pPA], ["e-tech", pTech]]) {
@@ -556,6 +582,16 @@ test("the synthetic Taylor acceptance warehouse (ruling 2(a)) carries the whole 
       lines: [{ lineId: "L1", partId: "PART-SYN", receivedQuantity: 2 }], idempotencyKey: "CAC-PROOF-RECEIVE-1" });
     assert.ok(receipt);
     assert.equal((await q(`SELECT status::text s FROM eos_ops.reorder_requests WHERE id = $1`, [id])).rows[0].s, "RECEIVED");
+    // Display batch: the receipt names who received it (positive); a former member is "recorded but unnamed", never "not recorded".
+    const receivedItem = async () => (await life.readReorderQueue(deps, as(pPA, PA), { statuses: ["RECEIVED"] })).find((x) => x.reorderRequestId === id);
+    const named = await receivedItem();
+    assert.deepEqual([named.receivedByName, named.receivedByRecorded], ["Pat Associate", true]);
+    const setMembership = (status) => q(`UPDATE eos_policy.tenant_memberships SET status = $1 WHERE tenant_id = $2 AND principal_id = $3`, [status, T, pPA]);
+    try {
+      await setMembership("disabled");
+      const former = await receivedItem();
+      assert.deepEqual([former.receivedByName, former.receivedByRecorded], [null, true]);
+    } finally { await setMembership("active"); }
     assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.inventory_movements WHERE tenant_id = $1`, [T])).rows[0].n, 1);
     await assert.rejects(q(`UPDATE eos_ops.purchase_orders SET id = 'rewritten' WHERE id = $1`, [id]), "PO identity is immutable");
   });

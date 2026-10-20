@@ -131,6 +131,8 @@ zero.
 ## The order number, and what a refusal says
 
 - **Order number.** When the purchase order has a number on it (the number the supplier knows it by), the queue and the top of the receiving screen show it. An order without one still says **No order number recorded**; the screen never shows the platform's internal id in its place.
+- **The receipt's own number.** After you submit, the receipt shows its **Receiving order** number (for example `RCV-2026-000007`). That is the number to quote when a receipt needs correcting.
+- **When the receipt completes the order.** If it took the last outstanding quantity, the screen shows the receipt and the order as **received**, and the scan and **Submit Receipt** controls go away; there is nothing left to receive. (If lines are still short, the controls stay so you can receive the rest.) The warning "This order is not in a state that accepts a receipt" now appears only when you open an order that was already closed, never straight after a receipt that worked.
 - **If a receipt is refused**, the message is the platform's own reason (for example, that the order is not in a receivable state) followed by **Nothing was received**. It no longer says only "conflict".
 - **A reorder purchase order outside your warehouse.** The queue can list reorder purchase orders that belong to a warehouse you do not work in. Opening one now says **Outside your warehouse** and why, instead of "Purchase order not found".
 - Every control on the screen (Add, Undo Last Scan, Clear Queue, Submit Receipt) has a spoken name for screen readers.

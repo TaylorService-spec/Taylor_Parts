@@ -912,6 +912,12 @@ export interface ReorderQueueItem {
   readonly cancellationReason: string | null;
   readonly receivedAt: string | null;
   readonly assignedEmployeeId: string | null;
+  /** When the CURRENT assignment began (the screens' "Assigned" date and age); null when unassigned. */
+  readonly assignedAt: string | null;
+  /** Who closed the request out by receipt, in words (display only; the Principal id is never exposed); null until received or when unnamed. */
+  readonly receivedByName: string | null;
+  /** True when the request records WHO received it, even if that Principal cannot now be named (a former member). The UI says "Name unavailable", not "Not recorded". */
+  readonly receivedByRecorded: boolean;
   /** P-1: the supplier purchase order this request is on (it is ORDERED there, not through a recorded Reorder PO), or null. */
   readonly supplierPurchaseOrderId: string | null;
   readonly supplierPurchaseOrderNumber: string | null;
@@ -934,11 +940,15 @@ const QUEUE_SELECT = `
          r.purchasing_started_at, r.purchasing_notes, r.vendor_contacted,
          r.expected_availability_date, r.last_purchasing_update_at,
          r.cancelled_at, r.cancellation_reason, r.received_at,
-         r.operating_company_key, a.assigned_employee_id, a.assigned_by_principal_id,
+         r.operating_company_key, a.assigned_employee_id, a.assigned_by_principal_id, a.effective_from AS assigned_at,
+         rcv.display_name AS received_by_name, (r.received_by_principal_id IS NOT NULL) AS received_by_recorded,
          sp.purchase_order_id AS supplier_purchase_order_id, sp.external_po_number AS supplier_po_number
     FROM eos_ops.reorder_requests r
     LEFT JOIN eos_ops.reorder_request_assignments a
       ON a.tenant_id = r.tenant_id AND a.reorder_request_id = r.id AND a.effective_to IS NULL
+    -- Who received it, named for display. Only a Principal with an ACTIVE membership in THIS tenant is named (the rule resolvePrincipalDisplayNames applies).
+    LEFT JOIN eos_policy.principals rcv ON rcv.id = r.received_by_principal_id
+      AND EXISTS (SELECT 1 FROM eos_policy.tenant_memberships m WHERE m.tenant_id = r.tenant_id AND m.principal_id = rcv.id AND m.status = 'active')
     -- P-1: the supplier purchase order this request is ACTIVELY on (at most one: supplier_purchase_order_lines_one_active_request).
     LEFT JOIN LATERAL (
       SELECT l.purchase_order_id, p.external_po_number FROM eos_ops.supplier_purchase_order_lines l
@@ -981,6 +991,9 @@ const toItem = (
   cancellationReason: (r.cancellation_reason as string | null) ?? null,
   receivedAt: iso(r.received_at),
   assignedEmployeeId: (r.assigned_employee_id as string | null) ?? null,
+  assignedAt: iso(r.assigned_at),
+  receivedByName: (r.received_by_name as string | null) ?? null,
+  receivedByRecorded: r.received_by_recorded === true,
   supplierPurchaseOrderId: (r.supplier_purchase_order_id as string | null) ?? null,
   supplierPurchaseOrderNumber: (r.supplier_po_number as string | null) ?? null,
   currentOwner,
@@ -1112,6 +1125,10 @@ export interface ReorderPurchaseOrderView {
   readonly unitPriceMinor: number | null;
   readonly currency: string | null;
   readonly createdBy: string;
+  /** Who recorded the order, in words (display only); null when the Principal is not named in this tenant. */
+  readonly createdByName: string | null;
+  /** True when the order records WHO recorded it, even if that Principal cannot now be named (a former member). */
+  readonly createdByRecorded: boolean;
   readonly createdAt: string | null;
   readonly void: null | {
     readonly reorderPurchaseOrderId: string;
@@ -1173,9 +1190,11 @@ export async function readReorderPurchaseOrders(
     `SELECT p.id, p.part_id, p.supplier_name, p.external_po_number, p.ordered_quantity,
             to_char(p.ordered_date, 'YYYY-MM-DD') AS ordered_date,
             to_char(p.expected_arrival_date, 'YYYY-MM-DD') AS expected_arrival_date,
-            p.unit_price_minor, p.currency, p.created_by, p.created_at,
+            p.unit_price_minor, p.currency, p.created_by, p.created_at, cb.display_name AS created_by_name,
             v.purchase_order_id AS void_id, v.reason AS void_reason, v.voided_by, v.voided_at
        FROM eos_ops.purchase_orders p
+       LEFT JOIN eos_policy.principals cb ON cb.id = p.created_by
+         AND EXISTS (SELECT 1 FROM eos_policy.tenant_memberships m WHERE m.tenant_id = p.tenant_id AND m.principal_id = cb.id AND m.status = 'active')
        LEFT JOIN eos_ops.purchase_order_voids v
          ON v.tenant_id = p.tenant_id AND v.purchase_order_id = p.id
       WHERE p.tenant_id = $1 AND p.id = ANY($2::text[])
@@ -1197,6 +1216,8 @@ export async function readReorderPurchaseOrders(
       unitPriceMinor: r.unit_price_minor === null || r.unit_price_minor === undefined ? null : Number(r.unit_price_minor),
       currency: (r.currency as string | null) ?? null,
       createdBy: r.created_by as string,
+      createdByName: (r.created_by_name as string | null) ?? null,
+      createdByRecorded: r.created_by !== null && r.created_by !== undefined,
       createdAt: iso(r.created_at),
       void: r.void_id === null || r.void_id === undefined ? null : Object.freeze({
         reorderPurchaseOrderId: r.void_id as string,

@@ -77,6 +77,30 @@ describe("OrderedCard -- denied vs absent Purchase Order read (H14)", () => {
   });
 });
 
+describe("OrderedCard -- who recorded the order (display batch follow-up)", () => {
+  const po = (over) => ({ supplierName: "Acme", externalPoNumber: "PO-1", orderedQuantity: 5, orderedDate: "2026-01-01", ...over });
+  const orderedByCell = () => screen.getByText("Ordered By", { selector: "td" }).closest("tr").textContent;
+
+  it("a named orderer is named", () => {
+    usePurchaseOrderForReorderRequest.mockReturnValue({ data: po({ createdByName: "Logan Associate", createdByRecorded: true }), loading: false, error: null });
+    renderOrderedCard();
+    expect(orderedByCell()).toContain("Logan Associate");
+  });
+
+  it("a recorded orderer the server cannot name (a former member) says Name unavailable, never Not recorded", () => {
+    usePurchaseOrderForReorderRequest.mockReturnValue({ data: po({ createdByName: null, createdByRecorded: true }), loading: false, error: null });
+    renderOrderedCard();
+    expect(orderedByCell()).toContain("Name unavailable");
+    expect(orderedByCell()).not.toContain("Not recorded");
+  });
+
+  it("no recorded actor at all says Not recorded", () => {
+    usePurchaseOrderForReorderRequest.mockReturnValue({ data: po({ createdByName: null }), loading: false, error: null });
+    renderOrderedCard();
+    expect(orderedByCell()).toContain("Not recorded");
+  });
+});
+
 describe("TerminalCard (Voided) -- denied vs absent void record read (H14)", () => {
   it("a denied void-record read with no fallback reason renders a visible failure", () => {
     useReorderPurchaseOrderVoid.mockReturnValue({ data: null, loading: false, error: "permission-denied" });

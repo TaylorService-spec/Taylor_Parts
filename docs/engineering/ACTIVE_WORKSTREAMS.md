@@ -27,6 +27,28 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
+- Agent/session:       Claude Code Lane UX · Role: builder; controller merges
+- Branch / worktree:   `ux/display-batch-purchasing` · `.claude/worktrees/agent-a499bba175438ba94`
+- Base commit:         `b3d09dc3`
+- Owned paths:         display-only edits in `modules/{purchasing,receiving,inventory/{PartDetail,CycleCounts,PartsList},inventoryRole/PartsManagerHome,technician/TechnicianShell}` · `shared/reorder/*` · read-projection columns in `functions/src/eosOps/{reorderLifecycleCommands,supplierPurchaseOrderAuthoring}.ts` · `eosExperience/myWork.ts` label
+- Shared paths req'd:  this registry · `.github/workflows/equipment-install-ui-tests.yml` (one suite registered)
+- Dependencies:        none
+- Expected outcome:    no screen shows a blank, a storage key or a false warning where the record holds a name, number or state
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
+- Capability:          Lane HARDEN-2 — display-batch review follow-ups (#2176): "Name unavailable" vs "Not recorded", warehouse join tenant key, negative tests, myWork/MultiScan/job-card tests
+- Agent/session:       Claude Code Lane HARDEN-2 · Role: builder; controller merges
+- Branch / worktree:   `ux/display-batch-followups` · `.claude/worktrees/agent-a86a52d7a6334b958`
+- Base commit:         `20485b9f` (#2176 head, merged with `bfeb6dd8`)
+- Owned paths:         `functions/src/eosOps/{reorderLifecycleCommands,supplierPurchaseOrderAuthoring}.ts` · `functions/src/eosExperience/myWork.ts` · their tests · `PartDetail`/`AssociateRequestPanel`/`SupplierPurchaseOrders`/`MultiScanReceiving` display
+- Shared paths req'd:  this registry
+- Dependencies:        #2176 (stacked on its head until it merges)
+- Expected outcome:    a former member's recorded actor reads "Name unavailable", never "Not recorded"; no cross-tenant warehouse name
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 - Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
 - Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
 - Branch / worktree:   `docs/r1-production-recovery-release` · `.claude/worktrees/agent-ad1865bb5a1b23704`
@@ -383,6 +405,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Capability:          [CLOSED — REPO-COMPLETE, READ-BLOCKED 2026-08-07] Manufacturer in-app governed catalog write (catalog reference object Parts link to). Phase 1 callables (createManufacturer/updateManufacturer/changeManufacturerStatus, PR #625, inert) + Phase 2 workspace (PR #626, main a872f92: Manufacturers.jsx + fail-closed manufacturerWriteReadiness + manufacturerCommandClient + manufacturerWrite/manufacturersView domain + useManufacturerWrite). Invariants verified (ONE authority / ONE trusted command path / NO client writes / NO parallel validator/status / actor server-derived / honest states); design-code-review clean. Reuses inventory.catalog.manage/.activate + inventoryCatalogAdministrator design. RC `docs/releases/manufacturer-write-rc.md`; handoff `docs/releases/manufacturer-sandbox-handoff.md`. **READ AUTHORITY WAITING ON R-1** (Owner decision 2026-08-07 option (b) — WAIT: no new legacy isAdminOrDispatcher read site; manufacturers stays `read,write:if false`, workspace read fails closed). Requirement fed to R-1: `docs/assessments/r1-catalog-read-authority-requirement.md` (proposes durable `inventory.catalog.read` for parts/manufacturers/suppliers/part_supplier_items; permission catalog has NO catalog-read cap today). No production/deploy/grant/Rules. Reactivates on the governed catalog-read model + a promotion authorization.
 - Capability:          [CLOSED — WRITE/PROJECTION COMPLETE; READ WAITING ON R-1, 2026-08-07] Part↔Supplier procurement terms (`part_supplier_items`) — close the procure-to-stock gap (governed preferred-supplier + cost + lead time instead of free-form). Owner ratified the design + all 5 decisions (cost = SEPARATE `inventory.catalog.cost.read`; personas catalog-admin+purchasing-operator get cost / finance-future / others no-cost / owner-not-inferred; preferred = decision-support-no-auto-select; build write layer now = option (i)). Design `docs/architecture/part-supplier-items-procurement-terms-design.md`; RC `docs/releases/part-supplier-items-rc.md`. **WRITE LAYER MERGED (PR #629, main 77d23b2):** 4 callable adapters (createPartSupplierItem/updatePartSupplierItem/changePartSupplierItemStatus/setPreferredSupplier, inert) + PURE projection contract (`partSupplierItemProjections.ts`: relationship vs cost tiers per Owner §1; cost never leaks; fail-closed) + 13 emu/4 proj/2 export tests; design-review clean (HIGH cost-tier drift fixed). READ SERVICE + Purchasing UI **GATED ON R-1** (`inventory.catalog.read` + `.cost.read`; requirement fed via `docs/assessments/r1-catalog-read-authority-requirement.md`). `part_supplier_items` stays `read,write:if false` (no legacy read site). ALSO fixed a latent main break in #629: #626's repo-only comment in firestore.rules had diverged it from the live-deployed governed hash (ec1f0a9b) — restored byte-identical (LESSON: firestore.rules is hash-anchored to the deploy; no repo-only comments). Next: R-1 read capabilities → build read/projection service → Purchasing UI (all repo-only once R-1 lands) → protected promotion.
 
+- Capability:          Lane HARDEN — review follow-ups (2026-10-20): Q-1a audit text (`shipVia`, `contactRole`, `customerPO` kept), well-formed CRM/Commercial receipt projection, G-1b midnight regression pin, A6 FORBIDDEN fallback pin
+- Agent/session:       Claude Code lane HARDEN · Role: builder; controller merges
+- Branch / worktree:   `harden/review-followups` · isolated agent worktree
+- Base commit:         `237b4897`
+- Owned paths:         `functions/src/eosCrm/contactAuthority.ts` · `crmAuthorityKernel.ts` (receipt only) · `functions/src/eosCommercial/commands/commercialCommandKernel.ts` (receipt only) · the `updateDraft` audit in `salesAgreementCommandService.ts` · `functions/test/q1CommercialCrmAuditPostgres.test.mjs` · `g1GoalAuthoringPostgres.test.mjs` · `eosFinance/financeOperations.ts` (readObligation source only) · `financeVisibilityPostgres.test.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` (#Q-1a text only) · `docs/governance/precedence-sweep.json`
+- Dependencies:        none (PR #2168 merged; readObligation aligned)
+- Expected outcome:    five small follow-ups pinned by tests
+- Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
+- Lifecycle stage:     INTEGRATION
+
 - Capability:          Finance F-2 — the EOS finance reads serve every fact family the Firebase AR / Financials surfaces show (payment receipts and applications, the account-narrowed totals, the Sales Order reference), then the F-1 invoicing spec (docs only)
 - Agent/session:       Claude Code Lane F · Role: builder; controller merges
 - Branch / worktree:   `lane-f/f2-finance-read-families` (PR 1), then `lane-f/f1-invoicing-spec` (PR 2) · `D:/Taylor_Parts/.claude/worktrees/agent-a9e59098281003465`
@@ -404,6 +437,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    every applied Commercial / CRM command is audited; the quote and discount approval choices are numbered Owner decisions
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
 - Lifecycle stage:     INTEGRATION (PR 1) · DESIGNED (PR 2)
+
+- Capability:          Account page honest refusal wording (UX-2) · a refused work-order read (403 / FORBIDDEN) reads "Not available to you" in Work order attention, Open work orders (standing strip) and Service activity; "Couldn't be read" stays for genuine failures
+- Agent/session:       Claude Code lane UX-2 · Role: builder; controller reviews and merges
+- Branch / worktree:   `ux2/account-wo-refusal-wording` · isolated agent worktree
+- Base commit:         `bfeb6dd8`
+- Owned paths:         `field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx` · `ServiceActivitySection.jsx` · `src/domain/accountHealthStrip.js` · `serviceActivityView.js` · `accountWorkOrders.js` · `src/hooks/useAccountServiceActivity.js` · `useAccountAttentionWorkOrders.js` · their tests
+- Shared paths req'd:  this registry
+- Dependencies:        none (display only; a refusal is FORBIDDEN / permission-denied only, so a 401 or missing session stays "couldn't be read")
+- Expected outcome:    a refusal never reads as an outage on the Account page
+- Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
+- Lifecycle stage:     INTEGRATION (PR open)
 
 ## Ready for assignment
 
