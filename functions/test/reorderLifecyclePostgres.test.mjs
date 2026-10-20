@@ -364,7 +364,7 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     const mineRead = await life.readReorderRequest(deps, actor(pAlice), { reorderRequestId: rr });
     assert.equal(mineRead.reorderRequestId, rr);
     // Display batch: the CURRENT assignment's start is stated (the "Assigned" date), and nobody has received it yet.
-    assert.match(mineRead.assignedAt, /^d{4}-d{2}-d{2}T/);
+    assert.match(mineRead.assignedAt, /^[0-9]{4}-[0-9]{2}-[0-9]{2}T/);
     assert.equal(mineRead.receivedByName, null);
     // and not one that is not.
     const unassigned = (await create()).reorderRequestId;
