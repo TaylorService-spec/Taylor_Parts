@@ -81,14 +81,14 @@ test("b. the baseline carries exactly the eight pairs, each MIGRATION_BACKED and
   assert.deepEqual(stamped.map((g) => pairId(g.roleKey, g.capabilityKey)).sort(), [...OWNER_PAIRS].sort());
   for (const g of stamped) assert.deepEqual([g.source, g.observedGrantedBy], ["MIGRATION_BACKED", STAMP], pairId(g.roleKey, g.capabilityKey));
   assert.deepEqual(BASELINE.grants.filter((g) => g.capabilityKey === KEY).map((g) => g.roleKey).sort(), [...OWNER_ROLES].sort(), "no other Role holds the key");
-  // 689 -> 697 (MIGRATION_BACKED 631 -> 639).
-  assert.equal(BASELINE.grants.length, 697);
-  assert.equal(BASELINE.totalGrants, 697);
-  assert.equal(BASELINE.deployment.rebuildTotal, 697);
-  assert.deepEqual(BASELINE.countsBySource, { MIGRATION_BACKED: 639, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0 });
+  // 689 -> 697 (MIGRATION_BACKED 631 -> 639); then 697 -> 729 (639 -> 671) with the 32 G-1 performance goal authoring grants (1764690000000).
+  assert.equal(BASELINE.grants.length, 729);
+  assert.equal(BASELINE.totalGrants, 729);
+  assert.equal(BASELINE.deployment.rebuildTotal, 729);
+  assert.deepEqual(BASELINE.countsBySource, { MIGRATION_BACKED: 671, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0 });
   assert.ok(BASELINE.grantBearingMigrations.includes(STAMP));
   assert.ok(BASELINE.deployment.notYetAppliedToNonprod.includes(STAMP));
-  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 697, "no duplicate baseline pair");
+  assert.equal(new Set(BASELINE.grants.map((g) => pairId(g.roleKey, g.capabilityKey))).size, 729, "no duplicate baseline pair");
 });
 
 test("b. the evidence file equals the Owner's list and the measured counts", () => {

@@ -428,6 +428,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // P-1 supplier PO authoring (1764660000000): its down refuses only if an order, a number, a command record, a decision or a direct grant names it, and nothing here wrote one, so it is peeled first of all.
     // GRANT-1 Owner policy grants (1764670000000): its down refuses only if an Administration decision or a direct grant names the new key or one of its pairs, and nothing here wrote one, so it is peeled before P-1.
     // A6 customer-balance summary (1764680000000): its down refuses only if an Administration decision or a direct grant names the new key or one of its pairs, and nothing here wrote one, so it is peeled first of all.
+    // G-1 performance goal authoring (1764690000000): its down refuses only if a command record, an authored goal, an Administration decision or a direct grant names it, and nothing here wrote one, so it is peeled first of all.
+    if ((await newest()) === "1764690000000_performance-goal-authoring") migrate("down", 1);
     if ((await newest()) === "1764680000000_account-balance-summary") migrate("down", 1);
     if ((await newest()) === "1764670000000_owner-policy-grants") migrate("down", 1);
     if ((await newest()) === "1764660000000_supplier-po-authoring") migrate("down", 1);

@@ -179,7 +179,12 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
   "workOrder.transition",
   // Firebase exit B4 (DECISIONS #B4, OD-B4-1; migration 1764650000000): the 38 report.* ids and performance.goal.read, mirrored to owner exactly as in Firebase (Owner holds all 39). They were
   // fenced as Administration-grant-only (so this list excluded them) until the explicit grant replaced the fence; 49 -> 88.
+  // G-1 (migration 1764690000000): the four performance.goal authoring keys, mirrored to owner exactly as in Firebase (Owner holds all five goal keys); 88 -> 92.
+  "performance.goal.approve",
+  "performance.goal.create",
   "performance.goal.read",
+  "performance.goal.retire",
+  "performance.goal.supersede",
   "report.contact.field.customer.read",
   "report.contact.field.email.read",
   "report.contact.field.name.read",
@@ -222,7 +227,7 @@ const OWNER_CONTRACT_IN_VOCABULARY = [
 
 check("Owner's governed (in-vocabulary) capabilities are exactly the 88 in the contract", () => {
   assert.deepEqual(ownerInVocabulary, [...OWNER_CONTRACT_IN_VOCABULARY].sort());
-  assert.equal(ownerInVocabulary.length, 88, "88 governed capabilities -- the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3) + the 39 B4 report/goal keys (1764650000000)");
+  assert.equal(ownerInVocabulary.length, 92, "92 governed capabilities -- the four G-1 performance.goal authoring keys (1764690000000) + the 41 of the contract + crm.activity.read / .create (F7b) + the five finance.visibility.* keys (B1) + inventory.location.bin.read (B3) + the 39 B4 report/goal keys (1764650000000)");
 });
 
 check("administration READS do not separate Owner from Administrator", () => {
@@ -433,7 +438,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 188 -> 193: the five supplier.purchaseOrder.* keys (P-1, 1764660000000), granted to the Owner-ruled Roles.
   // 193 -> 194: inventory.catalog.part.activate (GRANT-1 A1 split, 1764670000000), granted to admin and partsManager.
   // 194 -> 195: finance.accountBalance.read (A6 customer-balance summary, 1764680000000), granted to eight operational Roles.
-  assert.equal(VOCABULARY.size, 195);
+  // 195 -> 199: performance.goal.create / .approve / .supersede / .retire (G-1 performance goal authoring (2026-10-20), 1764690000000), granted to the eight Firebase-holder Roles.
+  assert.equal(VOCABULARY.size, 199);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

@@ -290,6 +290,14 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
     { capabilityKey: "reportDefinition.read" },
   ]),
 
+  // ── Analysis > Goals (G-1, DECISIONS #G-1; resolves OD-B4-3): the door to authoring performance goals, earned by any of the four authoring capabilities
+  // (create / supersede / approve / retire -- the Firebase catalog's own ids). Read-only holders of performance.goal.read have NO door here: they see their targets on the
+  // dashboards that compose them. A door confers NOTHING: every command re-decides its capability, the target's reach, an employee's own target and self-approval.
+  surface("analysis.goals", "Performance Goals", [
+    { capabilityKey: "performance.goal.create" }, { capabilityKey: "performance.goal.supersede" },
+    { capabilityKey: "performance.goal.approve" }, { capabilityKey: "performance.goal.retire" },
+  ]),
+
   // ── Reporting (Firebase exit B4, DECISIONS #B4): the two doors Report Builder and Saved Reports were missing on EOS. Report Builder is earned by any of the
   // four object reads the report engine decides on (report.<object>.read, mirrored from the Firebase catalog); Saved Reports by reportDefinition.read (the EOS twin
   // of report.definition.read). A door confers NOTHING: every run re-decides the object, each field and the caller's operating companies, and every saved-definition

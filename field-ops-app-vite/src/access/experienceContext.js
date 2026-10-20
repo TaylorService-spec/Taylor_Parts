@@ -43,6 +43,8 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "administration.workflows",
   // Analysis & Reporting (#208): earned server-side by any read a measure is decided on (or the report catalog read).
   "analysis.workspace",
+  // Analysis > Goals (G-1): earned server-side by any of the four performance.goal authoring capabilities.
+  "analysis.goals",
   // Sales Agreements. Mirrored like every other key -- the client still only ever projects what the
   // server listed, and `salesAgreement.read` is decided in one place (experienceAuthority.ts), never
   // here. It joined the catalog in the same change that built its door (Wave 16 / Lane BQ); before

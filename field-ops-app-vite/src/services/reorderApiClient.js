@@ -70,6 +70,8 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "listCurrentPerformanceGoals",
   "listPerformanceGoalVersions",
   "listGoalSubjects",
+  // G-1: what the caller may author as a performance goal.
+  "listGoalAuthoringOptions",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -110,6 +112,10 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "renameSavedReportDefinition",
   "duplicateSavedReportDefinition",
   "deleteSavedReportDefinition",
+  // G-1: performance goal authoring (draft / supersede, approve, retire).
+  "createPerformanceGoalDraft",
+  "approvePerformanceGoal",
+  "retirePerformanceGoal",
 ]);
 
 /** Reads that take no input. */
@@ -133,6 +139,7 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "listDataImportJobs",
   "listSavedReportDefinitions",
   "listGoalSubjects",
+  "listGoalAuthoringOptions",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);

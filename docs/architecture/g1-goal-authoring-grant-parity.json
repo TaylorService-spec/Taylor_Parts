@@ -1,0 +1,202 @@
+{
+  "schema": "eos.grant-parity/1",
+  "authority": "OWNER DIRECTION 2026-10-19 \"Restore complete EOS goal authoring\" (resolves OD-B4-3); nonprod only",
+  "migration": "functions/migrations/1764690000000_performance-goal-authoring.sql",
+  "source": "functions/src/access/compatibilityRoles.ts + governedBusinessRoles.ts (Firebase holders), derived by compiling the catalogs and listing every Role whose permissions include each key",
+  "keyCount": 4,
+  "pairCount": 32,
+  "roles": [
+    "admin",
+    "fieldManager",
+    "generalManager",
+    "operationsManager",
+    "owner",
+    "partsManager",
+    "salesManager",
+    "warehouseManager"
+  ],
+  "pairs": [
+    {
+      "role": "admin",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "fieldManager",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "generalManager",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "operationsManager",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "owner",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "partsManager",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "salesManager",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "warehouseManager",
+      "capability": "performance.goal.approve"
+    },
+    {
+      "role": "admin",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "fieldManager",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "generalManager",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "operationsManager",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "owner",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "partsManager",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "salesManager",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "warehouseManager",
+      "capability": "performance.goal.create"
+    },
+    {
+      "role": "admin",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "fieldManager",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "generalManager",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "operationsManager",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "owner",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "partsManager",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "salesManager",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "warehouseManager",
+      "capability": "performance.goal.retire"
+    },
+    {
+      "role": "admin",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "fieldManager",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "generalManager",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "operationsManager",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "owner",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "partsManager",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "salesManager",
+      "capability": "performance.goal.supersede"
+    },
+    {
+      "role": "warehouseManager",
+      "capability": "performance.goal.supersede"
+    }
+  ],
+  "holdersByKey": {
+    "performance.goal.approve": [
+      "admin",
+      "fieldManager",
+      "generalManager",
+      "operationsManager",
+      "owner",
+      "partsManager",
+      "salesManager",
+      "warehouseManager"
+    ],
+    "performance.goal.create": [
+      "admin",
+      "fieldManager",
+      "generalManager",
+      "operationsManager",
+      "owner",
+      "partsManager",
+      "salesManager",
+      "warehouseManager"
+    ],
+    "performance.goal.retire": [
+      "admin",
+      "fieldManager",
+      "generalManager",
+      "operationsManager",
+      "owner",
+      "partsManager",
+      "salesManager",
+      "warehouseManager"
+    ],
+    "performance.goal.supersede": [
+      "admin",
+      "fieldManager",
+      "generalManager",
+      "operationsManager",
+      "owner",
+      "partsManager",
+      "salesManager",
+      "warehouseManager"
+    ]
+  },
+  "diff": {
+    "firebaseOnly": [],
+    "eosOnly": []
+  },
+  "scopedOrConditionedInFirebase": {},
+  "notes": [
+    "Four write keys, not three: the Firebase catalog and commands have create, approve, supersede and retire. A first version asks create; a version that names a predecessor asks supersede (functions/src/performance/performanceGoalCommands.ts, createPerformanceGoalDraft). Mirroring only three would remove \"replace a target in force\".",
+    "performance.goal.read is already granted by migration 1764650000000 (twelve Roles) and is not part of this change.",
+    "No Firebase holder of these keys is scoped or conditioned (scopesByPermission / conditionsByPermission name none of them), so every EOS grant is flat. Reach is decided by the command, per scope type, exactly as the goal reads decide it.",
+    "admin and owner hold the whole catalog by derivation (ADMIN_ROLE composes PERMISSION_CATALOG; owner composes admin), which is why they appear; DECISIONS #162's prose also lists purchasingManager, but the compiled catalog grants it none of the four. The catalog is the authority, so purchasingManager receives nothing.",
+    "salesperson, partsAssociate, warehouseAssociate and performanceGoalSubject hold performance.goal.read only: they cannot author, approve or retire a target."
+  ]
+}

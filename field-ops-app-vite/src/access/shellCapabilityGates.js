@@ -213,6 +213,26 @@ export const SUPPLIER_PURCHASE_ORDER_GATE = Object.freeze({
 export const ACCOUNT_BALANCE_GATE = Object.freeze({ read: "finance.accountBalance.read" });
 
 /**
+ * Analysis > Goals (G-1, DECISIONS #G-1; resolves OD-B4-3). EOS-ONLY keys, the Firebase catalog's own ids (functions/src/access/permissionCatalog.ts), asked under
+ * their own names of the caller's EOS capability set. Each control is offered only to a holder of the capability its governed command enforces
+ * (functions/src/eosOps/performanceGoalAuthoring.ts); the server's options read then narrows the pickers to what the command would accept, and the command
+ * re-decides on every call (reach, an employee's own target, the author approving their own draft).
+ *
+ *   read      the versions of a target                         -> performance.goal.read
+ *   create    "Set a target" (a first version)                 -> performance.goal.create
+ *   supersede "Replace this target" (a version naming one)     -> performance.goal.supersede
+ *   approve   Approve a draft (never the author's own)         -> performance.goal.approve
+ *   retire    Retire an approved target                        -> performance.goal.retire
+ */
+export const PERFORMANCE_GOAL_GATE = Object.freeze({
+  read: "performance.goal.read",
+  create: "performance.goal.create",
+  supersede: "performance.goal.supersede",
+  approve: "performance.goal.approve",
+  retire: "performance.goal.retire",
+});
+
+/**
  * Every gate the shell's `hasCapability` answers, by surface. The keys are documentation; the
  * union below is what is asked for.
  *
@@ -251,6 +271,8 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   equipmentModel: Object.freeze(Object.values(EQUIPMENT_MODEL_GATE)),
   // P-1: modules/purchasing/SupplierPurchaseOrders.jsx (mounted by PurchaseOrders.jsx).
   supplierPurchaseOrder: Object.freeze(Object.values(SUPPLIER_PURCHASE_ORDER_GATE)),
+  // G-1: modules/analysis/PerformanceGoals.jsx (the Analysis > Goals destination).
+  performanceGoal: Object.freeze(Object.values(PERFORMANCE_GOAL_GATE)),
   // A6: modules/accounts/AccountDetail.jsx (the Accounts Receivable summary).
   accountBalance: Object.freeze(Object.values(ACCOUNT_BALANCE_GATE)),
 });

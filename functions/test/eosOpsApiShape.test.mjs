@@ -53,7 +53,9 @@ test("both Operations lists are closed, every entry is routed, and they name exa
       "readPartBalance",
       // Records and reporting (Firebase exit B4, DECISIONS #B4): imported service history, Data Import history, saved report definitions, a report run, performance goals.
       "listImportedServiceHistory", "listDataImportJobs", "listSavedReportDefinitions", "readSavedReportDefinition", "runReportDefinition",
-      "listCurrentPerformanceGoals", "listPerformanceGoalVersions", "listGoalSubjects"]);
+      "listCurrentPerformanceGoals", "listPerformanceGoalVersions", "listGoalSubjects",
+      // Performance goal authoring (G-1, DECISIONS #G-1): what the caller may author (metrics, companies, warehouses, people).
+      "listGoalAuthoringOptions"]);
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
@@ -74,6 +76,8 @@ test("both Operations lists are closed, every entry is routed, and they name exa
     "correctSupplierPurchaseOrderReceipt",
     // Records and reporting (Firebase exit B4): Data Import of SERVICE_HISTORY (stage, then an explicit approval) and the saved report definitions (the caller's own).
     "stageDataImport", "executeDataImport", "createSavedReportDefinition", "renameSavedReportDefinition", "duplicateSavedReportDefinition", "deleteSavedReportDefinition",
+    // Performance goal authoring (G-1): author a DRAFT (create, or supersede when it names a predecessor), approve it (never by its author), retire it.
+    "createPerformanceGoalDraft", "approvePerformanceGoal", "retirePerformanceGoal",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);
@@ -232,7 +236,9 @@ test("REORDER_POSTGRES_ACTIVE gates EVERY Reorder operation: committed true open
   // caller's operating companies (tests/recordsReportingOffline.test.mjs proves they pass this gate).
   const RECORDS = ["listImportedServiceHistory", "listDataImportJobs", "listSavedReportDefinitions", "readSavedReportDefinition", "runReportDefinition",
     "listCurrentPerformanceGoals", "listPerformanceGoalVersions", "listGoalSubjects", "stageDataImport", "executeDataImport", "createSavedReportDefinition",
-    "renameSavedReportDefinition", "duplicateSavedReportDefinition", "deleteSavedReportDefinition"];
+    "renameSavedReportDefinition", "duplicateSavedReportDefinition", "deleteSavedReportDefinition",
+    // G-1: performance goal authoring is ALSO its own authority per operation (never behind the Reorder boundary).
+    "listGoalAuthoringOptions", "createPerformanceGoalDraft", "approvePerformanceGoal", "retirePerformanceGoal"];
   const RETURNS = ["listReturnIntakeOptions", "recordReturnIntake", ...RECORDS];
   const reorderOps = [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS].filter((o) => !/^resolveMy/.test(o) && !RETURNS.includes(o));
   for (const operation of RETURNS) {

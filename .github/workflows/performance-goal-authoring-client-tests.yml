@@ -1,0 +1,72 @@
+name: Performance Goal Authoring Client Tests
+
+# Analysis > Goals (G-1, DECISIONS #G-1; resolves OD-B4-3): the screen that sets, approves and retires performance goals on EOS.
+#
+# WHY THIS FILE EXISTS. This repository has no glob lane for client vitest suites: a `.test.jsx` runs in CI only where a workflow NAMES it
+# (field-ops-app-vite/test/ciSuiteCoverage.test.mjs is the guard that makes forgetting that a failure). The screen is a new subsystem with no existing lane,
+# so it gets its own. The node:test half (the transport client) is registered in test/suites.json and also runs here, so a change to the seam is
+# proved without the full manifest.
+#
+# Pure client logic: no emulator, no browser, no network, no secrets. The server half (lifecycle, reach, the self rules, replay, zero trace) is
+# functions/test/g1GoalAuthoring*.test.mjs, run by the EOS admin-policy lane.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/analysis/PerformanceGoals.jsx"
+      - "field-ops-app-vite/src/services/eosGoalAuthoringClient.js"
+      - "field-ops-app-vite/src/services/eosRecordsClients.js"
+      - "field-ops-app-vite/src/access/shellCapabilityGates.js"
+      - "field-ops-app-vite/test/performanceGoalsScreen.test.jsx"
+      - "field-ops-app-vite/test/eosGoalAuthoringClient.test.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/performance-goal-authoring-client-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/analysis/PerformanceGoals.jsx"
+      - "field-ops-app-vite/src/services/eosGoalAuthoringClient.js"
+      - "field-ops-app-vite/src/services/eosRecordsClients.js"
+      - "field-ops-app-vite/src/access/shellCapabilityGates.js"
+      - "field-ops-app-vite/test/performanceGoalsScreen.test.jsx"
+      - "field-ops-app-vite/test/eosGoalAuthoringClient.test.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/performance-goal-authoring-client-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  performance-goal-authoring-client-tests:
+    name: Performance goal authoring -- transport client + Analysis > Goals screen (jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Goal authoring transport client (node:test)
+        run: node --test test/eosGoalAuthoringClient.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Analysis > Goals screen (jsdom)
+        run: npx vitest run test/performanceGoalsScreen.test.jsx
+        working-directory: field-ops-app-vite

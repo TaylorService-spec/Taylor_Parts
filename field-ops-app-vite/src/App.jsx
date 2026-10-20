@@ -68,6 +68,7 @@ import { opportunityWriteReadiness } from "./access/opportunityWriteReadiness.js
 const EquipmentWorkspace = lazy(() => import("./modules/equipment/EquipmentWorkspace"));
 const RentalWorkspace = lazy(() => import("./modules/rental/RentalWorkspace"));
 const AnalysisWorkspace = lazy(() => import("./modules/analysis/AnalysisWorkspace"));
+const PerformanceGoals = lazy(() => import("./modules/analysis/PerformanceGoals.jsx"));
 const EquipmentDetail = lazy(() => import("./modules/equipment/EquipmentDetail"));
 const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
@@ -534,6 +535,10 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // list read resets on any access change (same convention as PartsList/Operations).
   if (domain.key === "analysis" && item.key === "analysis") {
     return <AnalysisWorkspace />;
+  }
+  // Analysis > Goals (G-1): the screen renders only the controls its caller holds the capability for, and the server re-decides every one.
+  if (domain.key === "analysis" && item.key === "goals") {
+    return <PerformanceGoals hasCapability={operationalContext?.hasCapability} />;
   }
   if (domain.key === "rental" && item.key === "rental") {
     return <RentalWorkspace />;

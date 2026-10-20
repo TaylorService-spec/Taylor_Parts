@@ -236,7 +236,9 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     // migration's own down removes only the rows it stamped -- so the fixture's copies are removed here, exactly as the baseline-copy fixture added them.
     await q(`DELETE FROM eos_policy.role_capabilities rc USING eos_policy.capabilities c
               WHERE c.id = rc.capability_id AND rc.granted_by = 'idn-fixture' AND (c.key LIKE 'report.%' OR c.key = 'performance.goal.read' OR c.key = 'inventory.catalog.part.activate' OR c.key = 'finance.accountBalance.read'
+                    OR c.key IN ('performance.goal.create', 'performance.goal.approve', 'performance.goal.supersede', 'performance.goal.retire')
                     OR c.key IN ('inboundWork.request.read', 'inboundWork.request.accept', 'inboundWork.request.decline', 'inboundWork.request.attach', 'inventory.catalog.alias.read'))`);
+    // + G-1 (1764690000000): the baseline-copy fixture also holds the 32 performance.goal authoring pairs; that migration's down refuses while a Role grant it did not write holds one of its four keys.
     // + GRANT-1 (1764670000000): the baseline-copy fixture also holds the 30 GRANT-1 pairs. Its own down refuses while a Role grant it did not write holds the new key, and the
     // down of 1764340000000 (inbound work) and 1764410000000 (truck inventory) refuse while ANY Role grant holds the keys they registered (inboundWork.request.read / .accept /
     // .decline / .attach, inventory.catalog.alias.read) -- GRANT-1 grants those, so the fixture's copies are removed here as well.

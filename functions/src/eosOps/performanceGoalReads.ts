@@ -21,7 +21,8 @@
 // scoped assignment is denied FIRM there. EOS decides on a flat capability set that does not say whether the holding was scoped, so a scoped holder with operating-company
 // authority CAN read a FIRM target here. It widens nothing beyond the firm-wide target (a target, never an actual) and no scoped assignment of this capability exists in EOS.
 // The Firebase catalog's scopesByPermission / conditionsByPermission are NOT modelled either (recordsReportingOffline pins that statement).
-// Factor 4 (self-approval) and factor 5 (self-targeting) govern WRITES; there is no EOS writer in this batch. A goal's own subject can read it.
+// Factor 4 (self-approval) and factor 5 (self-targeting) govern WRITES: the EOS writers are performanceGoalAuthoring.ts (G-1), which reuses the reach, metric and subject
+// decisions below (decideGoalReach / decideMetricAuthority / decideEmployeeSubject). A goal's own subject can read it.
 //
 // COMPANY (#235 / #237): capability first, then company. A caller with no operating-company authority is REFUSED, never answered with an empty list.
 import type { Pool, PoolClient } from "pg";
@@ -38,7 +39,7 @@ export const MAX_TARGETS_PER_READ = 40;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** FACTOR 2's table (performanceGoalAuthority.ts METRIC_MANAGEMENT_CAPABILITY): the existing read capability that governs a metric's ACTUAL; null = none enumerated. */
-const METRIC_READ_CAPABILITY: Readonly<Record<string, string | null>> = Object.freeze({
+export const METRIC_READ_CAPABILITY: Readonly<Record<string, string | null>> = Object.freeze({
   "service.workOrder.pastDue.count": null,
   "service.workOrder.readyToSchedule.count": null,
   "service.workOrder.schedulingConflict.count": null,
@@ -63,11 +64,11 @@ export interface GoalTargetResult {
   readonly unavailableReason: string | null;
 }
 
-type Decision = { readonly allowed: true } | { readonly allowed: false; readonly factor: string; readonly reason: string };
-const ALLOW: Decision = Object.freeze({ allowed: true as const });
-const deny = (factor: string, reason: string): Decision => Object.freeze({ allowed: false as const, factor, reason });
+export type Decision = { readonly allowed: true } | { readonly allowed: false; readonly factor: string; readonly reason: string };
+export const ALLOW: Decision = Object.freeze({ allowed: true as const });
+export const deny = (factor: string, reason: string): Decision => Object.freeze({ allowed: false as const, factor, reason });
 
-interface GoalContext {
+export interface GoalContext {
   readonly actor: RecordsActor;
   readonly reach: ReachableCompanies;
   readonly db: Pick<PoolClient, "query">;
@@ -76,7 +77,7 @@ interface GoalContext {
 }
 
 /** The tenant's principals with their active, qualifying Role keys and linked Employee: the population hierarchical visibility walks. */
-async function loadPopulation(db: Pick<PoolClient, "query">, actor: RecordsActor) {
+export async function loadPopulation(db: Pick<PoolClient, "query">, actor: RecordsActor) {
   const roles = await db.query(
     `SELECT a.principal_id, array_agg(DISTINCT r.key) AS role_keys
        FROM eos_policy.user_role_assignments a
@@ -95,13 +96,19 @@ async function loadPopulation(db: Pick<PoolClient, "query">, actor: RecordsActor
   return { positions, actorEmployeeId: employeeByPrincipal.get(actor.principalId) ?? null };
 }
 
-async function employeeCompanyId(db: Pick<PoolClient, "query">, tenantId: string, employeeId: string): Promise<string | null> {
+export async function employeeCompanyId(db: Pick<PoolClient, "query">, tenantId: string, employeeId: string): Promise<string | null> {
   const { rows } = await db.query(`SELECT operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [tenantId, employeeId]);
   return rows.length === 0 ? null : (rows[0].operating_company_id as string | null) ?? null;
 }
 
-/** THE decision for one READ of one target. Never throws for a malformed target: every unusable input is a named DENY. */
-async function decideRead(ctx: GoalContext, t: GoalTargetRequest): Promise<Decision> {
+type Metric = NonNullable<ReturnType<typeof findMetric>>;
+
+/**
+ * FACTORS 0 and 1 for ANY verb: the metric is registered, the scope is usable for it and bindable, the caller holds `capability` (flat), and the
+ * caller REACHES the target's scope. EMPLOYEE passes here; its subject is decided by decideEmployeeSubject. Shared by the reads (performance.goal.read)
+ * and the authoring commands (performanceGoalAuthoring.ts), so a screen offers exactly what a command accepts.
+ */
+export async function decideGoalReach(ctx: GoalContext, t: GoalTargetRequest, capability: string): Promise<Decision> {
   const metric = findMetric(t.metricId);
   if (!metric) return deny("unknownMetric", `"${String(t.metricId)}" is not a registered performance metric`);
   // FACTOR 0 -- asked before any capability: an unusable scope is not a permission question. (A READ of an existing goal on a since-deactivated metric
@@ -113,7 +120,7 @@ async function decideRead(ctx: GoalContext, t: GoalTargetRequest): Promise<Decis
     return deny("scopeNotUsable", `scope ${String(t.targetScopeType)} has no governed binding, so no principal can hold authority over it`);
   }
   // FACTOR 1 -- the capability, then REACH to the target's own scope.
-  if (!ctx.actor.capabilities.has(GOAL_READ_CAPABILITY)) return deny("noGoalCapabilityAtScope", `${GOAL_READ_CAPABILITY} is not held`);
+  if (!ctx.actor.capabilities.has(capability)) return deny("noGoalCapabilityAtScope", `${capability} is not held`);
   const scopeType = t.targetScopeType as GoalScopeType;
   const scopeId = t.targetScopeId;
   const noReach = deny("noGoalCapabilityAtScope", `no reach to ${scopeType}${scopeId ? `:${scopeId}` : ""}`);
@@ -126,29 +133,46 @@ async function decideRead(ctx: GoalContext, t: GoalTargetRequest): Promise<Decis
     if (rows.length === 0 || !ctx.reach.keys.includes(String(rows[0].operating_company_key))) return noReach;
     if (!(await ctx.warehouseScope()).includes(scopeId)) return noReach;
   } else if (scopeType === "BUSINESS_UNIT") {
-    return deny("noGoalCapabilityAtScope", "EOS has no business-unit authority; a business-unit target cannot be read here");
+    return deny("noGoalCapabilityAtScope", "EOS has no business-unit authority; a business-unit target cannot be read or set here");
   } else if (scopeType !== "FIRM" && scopeType !== "EMPLOYEE") {
     return noReach;
-  }
-  // FACTOR 2 -- authority over the number itself.
-  const metricCapability = METRIC_READ_CAPABILITY[metric.metricId] ?? null;
-  if (metricCapability !== null && !ctx.actor.capabilities.has(metricCapability)) {
-    return deny("noAuthorityOverMetric", `reading a target on "${metric.metricId}" requires ${metricCapability}`);
-  }
-  // FACTOR 3 -- an EMPLOYEE target: inside the caller's governed visibility, and in a company the caller reaches.
-  if (scopeType === "EMPLOYEE") {
-    if (typeof scopeId !== "string" || scopeId === "") return deny("employeeOutsideVisibility", "an EMPLOYEE goal requires the subject employeeId");
-    const { positions } = await ctx.population();
-    if (!visibleEmployeeIdsFor(ctx.actor.principalId, positions).has(scopeId)) {
-      return deny("employeeOutsideVisibility", "that employee is not within your governed visibility");
-    }
-    const company = await employeeCompanyId(ctx.db, ctx.actor.tenantId, scopeId);
-    if (company === null || !ctx.reach.companies.includes(company)) return deny("employeeOutsideVisibility", "that employee is not within your governed visibility");
   }
   return ALLOW;
 }
 
-const goalOf = (r: Record<string, unknown>): PerformanceGoal => Object.freeze({
+/** FACTOR 2 -- authority over the number itself: the metric's own existing read capability where the registry names one (flat). */
+export function decideMetricAuthority(ctx: GoalContext, metric: Metric, verb: "reading" | "setting" = "reading"): Decision {
+  const metricCapability = METRIC_READ_CAPABILITY[metric.metricId] ?? null;
+  if (metricCapability !== null && !ctx.actor.capabilities.has(metricCapability)) {
+    return deny("noAuthorityOverMetric", `${verb} a target on "${metric.metricId}" requires ${metricCapability}`);
+  }
+  return ALLOW;
+}
+
+/** FACTOR 3 -- an EMPLOYEE target: inside the caller's governed visibility, and in a company the caller reaches. Every other scope passes. */
+export async function decideEmployeeSubject(ctx: GoalContext, t: GoalTargetRequest): Promise<Decision> {
+  if (t.targetScopeType !== "EMPLOYEE") return ALLOW;
+  const scopeId = t.targetScopeId;
+  if (typeof scopeId !== "string" || scopeId === "") return deny("employeeOutsideVisibility", "an EMPLOYEE goal requires the subject employeeId");
+  const { positions } = await ctx.population();
+  if (!visibleEmployeeIdsFor(ctx.actor.principalId, positions).has(scopeId)) {
+    return deny("employeeOutsideVisibility", "that employee is not within your governed visibility");
+  }
+  const company = await employeeCompanyId(ctx.db, ctx.actor.tenantId, scopeId);
+  if (company === null || !ctx.reach.companies.includes(company)) return deny("employeeOutsideVisibility", "that employee is not within your governed visibility");
+  return ALLOW;
+}
+
+/** THE decision for one READ of one target. Never throws for a malformed target: every unusable input is a named DENY. */
+async function decideRead(ctx: GoalContext, t: GoalTargetRequest): Promise<Decision> {
+  const reach = await decideGoalReach(ctx, t, GOAL_READ_CAPABILITY);
+  if (!reach.allowed) return reach;
+  const metricDecision = decideMetricAuthority(ctx, findMetric(t.metricId) as Metric);
+  if (!metricDecision.allowed) return metricDecision;
+  return decideEmployeeSubject(ctx, t);
+}
+
+export const goalOf = (r: Record<string, unknown>): PerformanceGoal => Object.freeze({
   goalId: String(r.goal_id),
   metricId: String(r.metric_id),
   targetScopeType: String(r.target_scope_type) as GoalScopeType,
@@ -167,13 +191,15 @@ const goalOf = (r: Record<string, unknown>): PerformanceGoal => Object.freeze({
   approvedByUid: (r.approved_by_ref as string | null) ?? null,
   approvedAtMillis: r.approved_at_ms === null || r.approved_at_ms === undefined ? null : Number(r.approved_at_ms),
   supersedesGoalId: (r.supersedes_goal_id as string | null) ?? null,
+  // NATIVE (authored on EOS) or MIGRATED (copied from the previous system). Present when the row was read with it: a screen withholds Approve from a copied draft.
+  ...(typeof r.provenance === "string" ? { provenance: r.provenance } : {}),
 });
 
 async function versionsFor(db: Pick<PoolClient, "query">, tenantId: string, t: GoalTargetRequest): Promise<PerformanceGoal[]> {
   const { rows } = await db.query(
     `SELECT goal_id, metric_id, target_scope_type, target_scope_id, target_value, unit, direction, currency,
             ${DATE_AS_TEXT("effective_from")} AS effective_from_text, ${DATE_AS_TEXT("effective_to")} AS effective_to_text,
-            status, version, created_by_ref, created_at_ms, approved_by_ref, approved_at_ms, supersedes_goal_id
+            status, version, created_by_ref, created_at_ms, approved_by_ref, approved_at_ms, supersedes_goal_id, provenance
        FROM ${SCHEMA}.performance_goals
       WHERE tenant_id = $1 AND metric_id = $2 AND target_scope_type = $3 AND target_scope_id IS NOT DISTINCT FROM $4
       ORDER BY version, effective_from, goal_id`, [tenantId, t.metricId, t.targetScopeType, t.targetScopeId]);
@@ -189,17 +215,34 @@ function parseTarget(raw: unknown): GoalTargetRequest {
   };
 }
 
-async function withGoalContext<T>(deps: { readonly pool: Pool }, actor: RecordsActor, fn: (ctx: GoalContext) => Promise<T>): Promise<T> {
-  return inTransaction(deps.pool, "snapshot", async (c) => {
-    const reach = await reachableCompanies(c, actor);
-    let warehouses: Promise<readonly string[]> | null = null;
-    let population: ReturnType<typeof loadPopulation> | null = null;
-    return fn({
-      actor, reach, db: c,
-      warehouseScope: () => (warehouses ??= scopedWarehouseIds(c, actor, { companyKeys: reach.keys })),
-      population: () => (population ??= loadPopulation(c, actor)),
-    });
-  });
+/** The decision context over an OPEN connection: the snapshot of a read, or the write transaction of an authoring command (G-1). Lazy and memoized. */
+export function goalContextOn(c: PoolClient, actor: RecordsActor, reach: ReachableCompanies): GoalContext {
+  let warehouses: Promise<readonly string[]> | null = null;
+  let population: ReturnType<typeof loadPopulation> | null = null;
+  return {
+    actor, reach, db: c,
+    warehouseScope: () => (warehouses ??= scopedWarehouseIds(c, actor, { companyKeys: reach.keys })),
+    population: () => (population ??= loadPopulation(c, actor)),
+  };
+}
+
+export async function withGoalContext<T>(deps: { readonly pool: Pool }, actor: RecordsActor, fn: (ctx: GoalContext) => Promise<T>): Promise<T> {
+  return inTransaction(deps.pool, "snapshot", async (c) => fn(goalContextOn(c, actor, await reachableCompanies(c, actor))));
+}
+
+/**
+ * The Employees this principal may author goals FOR -- ids only. OFFERED == ACCEPTED: the visibility set the write commands enforce, with the caller's own
+ * Employee removed (an employee does not author their own target) and every Employee of a company the caller does not reach removed.
+ */
+export async function subjectEmployeeIds(ctx: GoalContext): Promise<string[]> {
+  const { positions, actorEmployeeId } = await ctx.population();
+  const visible = new Set(visibleEmployeeIdsFor(ctx.actor.principalId, positions));
+  if (actorEmployeeId) visible.delete(actorEmployeeId);
+  if (visible.size === 0) return [];
+  const { rows } = await ctx.db.query(
+    `SELECT id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[]) AND operating_company_id = ANY($3::text[]) ORDER BY id`,
+    [ctx.actor.tenantId, [...visible], [...ctx.reach.companies]]);
+  return rows.map((r) => String(r.id));
 }
 
 /** The current APPROVED target for each requested (metric, scope), as of a date the CALLER supplies (this authority owns no clock). */
@@ -257,14 +300,5 @@ export async function listPerformanceGoalVersions(deps: { readonly pool: Pool },
 export async function listGoalSubjects(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
   requireCapability(actor, GOAL_READ_CAPABILITY);
   acceptOnly(input, []);
-  return withGoalContext(deps, actor, async (ctx) => {
-    const { positions, actorEmployeeId } = await ctx.population();
-    const visible = new Set(visibleEmployeeIdsFor(actor.principalId, positions));
-    if (actorEmployeeId) visible.delete(actorEmployeeId);
-    if (visible.size === 0) return { employeeIds: [] as string[] };
-    const { rows } = await ctx.db.query(
-      `SELECT id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[]) AND operating_company_id = ANY($3::text[]) ORDER BY id`,
-      [actor.tenantId, [...visible], [...ctx.reach.companies]]);
-    return { employeeIds: rows.map((r) => String(r.id)) };
-  });
+  return withGoalContext(deps, actor, async (ctx) => ({ employeeIds: await subjectEmployeeIds(ctx) }));
 }

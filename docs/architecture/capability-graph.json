@@ -18,7 +18,7 @@
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 31,
-    "destinations": 101,
+    "destinations": 102,
     "destinationsHidden": 20,
     "guides": 0,
     "registerEntries": 18,
@@ -4657,10 +4657,11 @@
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 1,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4680,13 +4681,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/performanceGoalAuthoring.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
-        "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4706,13 +4710,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/performanceGoalAuthoring.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
-        "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4732,13 +4739,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/performanceGoalAuthoring.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
-        "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4758,13 +4768,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/experienceAuthority.ts",
+          "functions/src/eosOps/performanceGoalAuthoring.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
-        "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -5315,6 +5328,15 @@
       "key": "analysis",
       "label": "Analysis",
       "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "goals",
+      "label": "Goals",
+      "path": "goals",
       "legacyKey": null,
       "navHidden": false,
       "future": false,

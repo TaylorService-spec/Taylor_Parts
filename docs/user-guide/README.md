@@ -72,7 +72,10 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 
 - [Performance goals](./performance-goals.md) — where a target appears next to a figure, what "No
   target has been set", "outside your access" and "could not be read" each mean, and which targets you
-  can see. Goals are not created from EOS screens yet.
+  can see.
+- [Set, approve, replace and retire a goal](./analysis/set-approve-and-retire-goals.md) — **Analysis > Goals**:
+  set a target as a draft, have someone else approve it, replace it with one that starts later, or retire it;
+  who can do each step and what each refusal means.
 
 More guides will be added here as they're written. If a guide references a screen or control that
 isn't live yet, it says so rather than describing something you can't actually do.
