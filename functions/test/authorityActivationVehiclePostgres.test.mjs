@@ -247,7 +247,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // A6 customer-balance summary (2026-10-19): one capability (finance.accountBalance.read, a READ key) and 8 Owner-ruled grants. No schema.
     "1764680000000_account-balance-summary.sql",
     // G-1 performance goal authoring (2026-10-20): performance_goal_commands (the authoring idempotency record), four performance.goal.* capabilities (create / approve / supersede / retire) and 32 Firebase-mirrored grants.
-    "1764690000000_performance-goal-authoring.sql"],
+    "1764690000000_performance-goal-authoring.sql",
+    // F-1a issue invoice on EOS (2026-10-20): the invoice number counter, the invoice's receivable / package / idempotency columns, invoice_totals and two triggers. No capability, no grant.
+    "1764700000000_invoice-issue.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);

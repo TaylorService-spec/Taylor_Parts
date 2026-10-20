@@ -16,7 +16,7 @@ export const FINANCE_ROUTE = "/operations/finance";
 export const FINANCE_READ_OPERATIONS = Object.freeze(["readFinanceWorkspace", "readFinanceOverview", "readMyFinanceCompanyAccess", "listObligations", "readObligation", "listSettlements", "readSettlement",
   "readAccountBalanceSummary", "readMyFinancialPolicyAuthority", "readFinancialPolicy", "listFinancialPolicyVersions"]);
 export const FINANCE_COMMAND_OPERATIONS = Object.freeze(["recordSettlement", "applySettlement", "reverseSettlementApplication", "voidSettlement",
-  "reconcileSettlement", "supplyReceiptCostEvidence", "relieveIntercompanySaleInventory",
+  "reconcileSettlement", "issueInvoice", "supplyReceiptCostEvidence", "relieveIntercompanySaleInventory",
   "saveFinancialPolicyDraft", "submitFinancialPolicy", "approveFinancialPolicy", "rejectFinancialPolicy", "activateFinancialPolicy",
   "withdrawFinancialPolicy", "cancelFinancialPolicy"]);
 const OPERATIONS = new Set([...FINANCE_READ_OPERATIONS, ...FINANCE_COMMAND_OPERATIONS]);

@@ -152,7 +152,7 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     capabilityKey: "finance.payment.read",
     consumers: Object.freeze(["operations.readFinanceWorkspace", "operations.listObligations", "operations.readObligation", "operations.listSettlements",
       "operations.readSettlement", "operations.readMyFinanceCompanyAccess", "operations.recordSettlement", "operations.applySettlement",
-      "operations.reverseSettlementApplication", "operations.voidSettlement", "operations.reconcileSettlement",
+      "operations.reverseSettlementApplication", "operations.voidSettlement", "operations.reconcileSettlement", "operations.issueInvoice",
       "analysis.readAnalysisWorkspace", "analysis.readMeasureAnalysis"]),
   }),
   Object.freeze({

@@ -53,8 +53,9 @@ The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an ho
 ## Second wave: billing and corrections
 
 - **Billing Queue** — what can be invoiced and what is blocked, with the blocking reason on
-  the row. The "Create invoices" button is visible but disabled until invoice issuance is
-  switched on; a note under it says exactly why.
+  the row. If your role can issue invoices, the page lists the receivables that have no invoice
+  and an **Issue invoice** control on each ([Issue an invoice](./financials/issue-an-invoice.md));
+  otherwise the "Create invoices" button stays disabled and a note under it says who can issue.
 - **Credits & Adjustments** — the correction workspace. Its rule is printed on the page:
   corrections create new governed events; the original event remains history. "New
   correction" stays disabled until correction commands and an approval policy are activated.
@@ -138,7 +139,7 @@ In an environment where the Financials pages read from the EOS Finance register,
 - **Settlements** (was Payments) — the money EOS has evidence of (a customer payment, a provider funding receipt, a vendor payment), what has been applied to which receivable, and what is still unapplied. Reconciliation is stated: with no evidence from the accounting system, a settlement is simply *unreconciled*.
 - **Receivable record** and **Settlement record** — open any row. A receivable shows its amounts, customer, company, the **credited salesperson** (when the source Sales Order recorded one), the source Sales Order, every settlement applied to it (reversed ones are kept and marked), the accounting handoffs, and its **history** — the append-only facts, where a correction is its own entry that points back at the original. A settlement shows its applications, each linking to the receivable it settled.
 
-**What the register does not carry, and says so.** Three things on the old Invoice pages are *not supplied* by the Finance register. Each row says **Not supplied** and names the decision behind it, so a blank is never mistaken for a missing value: the **invoice number** (the formal invoice belongs to your accounting system, MD-B1-1), the **issue date** (EOS records when the receivable was *recorded*; the Period filter narrows by that date, MD-B1-2) and the **business unit** (receivables carry none, MD-B1-3).
+**What the register does not carry, and says so.** Three things on the old Invoice pages are *not supplied* by the Finance register until they exist. Each row says **Not supplied** and names the decision behind it, so a blank is never mistaken for a missing value: the **invoice number** (shown once an invoice has been issued for the receivable; until then, no invoice has been issued, MD-B1-1), the **issue date** (the invoice's own, once issued; the Period filter still narrows by the date EOS *recorded* the receivable, MD-B1-2) and the **business unit** (receivables carry none, MD-B1-3).
 
 **What you see depends on your Finance visibility.** A company assignment is still required. Inside the companies you are assigned to:
 

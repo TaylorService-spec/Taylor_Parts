@@ -74,8 +74,8 @@ export default function FinancialsReceivableDetailEos() {
                   <tr><th scope="row">Status</th><td>{POSITION_WORDS[position]} · {statusLabel(found.status)}</td></tr>
                   <tr><th scope="row">Customer</th><td>{accountId ? <Link to={`/customers/${accountId}`}>{names.get(accountId) ?? found.counterparty?.name ?? "Customer name not resolved"}</Link> : "Not recorded"}</td></tr>
                   <tr><th scope="row">Operating Company</th><td>{companyWords(found.operatingCompanyId, { short: false })}</td></tr>
-                  <tr><th scope="row">Invoice Number</th><td>{NOT_SUPPLIED.invoiceNumber.words}</td></tr>
-                  <tr><th scope="row">Issue Date</th><td>{NOT_SUPPLIED.issueDate.words}</td></tr>
+                  <tr><th scope="row">Invoice Number</th><td>{found.invoice ? found.invoice.invoiceNumber : NOT_SUPPLIED.invoiceNumber.words}</td></tr>
+                  <tr><th scope="row">Issue Date</th><td>{found.invoice ? instantWords(found.invoice.issuedAt) : NOT_SUPPLIED.issueDate.words}</td></tr>
                   <tr><th scope="row">Recorded</th><td>{instantWords(found.recordedAt)}</td></tr>
                   <tr><th scope="row">Due</th><td>{found.dueOn ? dateWords(dayMillis(found.dueOn)) : "No governed due date"}</td></tr>
                   <tr><th scope="row">Business Unit</th><td>{NOT_SUPPLIED.businessUnit.words}</td></tr>
