@@ -282,7 +282,7 @@ export const SHELL_CAPABILITY_GATES = Object.freeze({
   performanceGoal: Object.freeze(Object.values(PERFORMANCE_GOAL_GATE)),
   // A6: modules/accounts/AccountDetail.jsx (the Accounts Receivable summary).
   accountBalance: Object.freeze(Object.values(ACCOUNT_BALANCE_GATE)),
-  // F-1a: modules/financials/FinancialsBillingQueue.jsx (the Issue invoice control).
+  // F-1a: the Issue invoice control -- modules/financials/FinancialsReceivablesEos.jsx (the reachable EOS Receivables register) and the legacy FinancialsBillingQueue.jsx.
   invoiceIssue: Object.freeze(Object.values(INVOICE_ISSUE_GATE)),
 });
 

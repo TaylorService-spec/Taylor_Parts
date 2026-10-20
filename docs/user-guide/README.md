@@ -70,7 +70,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 
 ## Invoicing
 
-- [Issue an invoice](./financials/issue-an-invoice.md) — **Financials > Billing Queue**: turn a receivable that is
+- [Issue an invoice](./financials/issue-an-invoice.md) — **Financials > Receivables**: turn a receivable that is
   ready to bill into an invoice with its own number; who can do it, how the due date is set, and what each refusal means.
 
 ## Goals

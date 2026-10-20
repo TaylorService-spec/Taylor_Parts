@@ -2,9 +2,9 @@
 
 **Status: live on the nonprod EOS build once the release carrying it is deployed; production only when the Owner says so**
 
-**What this lets you do:** Turn a receivable that is ready to bill into an **invoice** with its own number (for example `INV-2026-000001`) and issue date. You do this from **Financials > Billing Queue**.
+**What this lets you do:** Turn a receivable that is ready to bill into an **invoice** with its own number (for example `INV-2026-000001`) and issue date. You do this from **Financials > Receivables**.
 
-**Who can do it:** People whose role can issue invoices (Owner, General Manager, Controller, Accounting Manager, Finance Manager and Administrators), **and** who are assigned to the operating company the sale belongs to. Everyone else sees the Billing Queue with the action switched off. Issuing is one step: **it does not need a second person to approve it.**
+**Who can do it:** People whose role can issue invoices (Owner, General Manager, Controller, Accounting Manager, Finance Manager and Administrators), **and** who are assigned to the operating company the sale belongs to. Everyone else sees the Receivables list with no Issue button. Issuing is one step: **it does not need a second person to approve it.**
 
 ## What you are issuing
 - **One invoice for one receivable.** A receivable is created when a Sales Order is billed in full and its billing package is ready. The invoice is the document for that receivable. It never holds a balance of its own: what is still owed is always the receivable's.
@@ -13,11 +13,11 @@
 - **Cash is not on the invoice.** Payments are still recorded and applied as **settlements**. Applying one reduces the receivable's outstanding amount and leaves the invoice as it was issued.
 
 ## Issue one
-1. Open **Financials > Billing Queue**.
-2. Under **Ready to Invoice**, find the Sales Order. If you work for more than one company, choose the **Company** first.
-3. Choose **Issue invoice** on its row.
+1. Open **Financials > Receivables**.
+2. Find the Sales Order receivable. Its **Invoice** column says **Not invoiced**. Use the **Company** filter if you work for more than one company.
+3. Choose **Issue invoice** in the **Action** column of its row. The button appears only on receivables that have no invoice yet, for companies you may issue for.
 4. The **due date follows the customer's payment terms** for that company. Leave the date alone and choose **Issue invoice now**.
-5. The page says "Invoice INV-… issued." and the row leaves the list. The number and issue date now show on the receivable's record.
+5. The page says "Invoice INV-… issued." and the row's **Invoice** column now shows the number and issue date. They also show on the receivable's record.
 
 ## When you need a different due date
 - You may pick a **later** date than the customer's terms, and you must say **why** in "Reason for that date". An earlier date is refused.
