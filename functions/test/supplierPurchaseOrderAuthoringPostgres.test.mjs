@@ -420,6 +420,19 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     assert.deepEqual(asCreator.allowed, { approve: false, send: false, cancel: true });
     const asOther = await auth.readSupplierPurchaseOrder({ pool }, actor([READ, APPROVE], approver), { purchaseOrderId: draft.purchaseOrderId });
     assert.deepEqual(asOther.allowed, { approve: true, send: false, cancel: false });
+    // The warehouse NAME is joined within the order's own tenant AND operating company: a warehouse of another company, or none at all, is not named
+    // (the id is still stated; the screen says "Warehouse name unavailable"). The column carries no foreign key, so both states can be stored.
+    const read = async () => ({
+      one: await auth.readSupplierPurchaseOrder({ pool }, actor([READ], approver), { purchaseOrderId: draft.purchaseOrderId }),
+      listed: (await auth.listSupplierPurchaseOrders({ pool }, actor([READ], approver), {})).purchaseOrders.find((o) => o.purchaseOrderId === draft.purchaseOrderId),
+    });
+    for (const [what, warehouseId] of [["a warehouse of ANOTHER operating company", "wh-v"], ["a warehouse that does not exist", "wh-gone"]]) {
+      await q(`UPDATE eos_ops.supplier_purchase_orders SET receiving_warehouse_id = $1 WHERE id = $2`, [warehouseId, draft.purchaseOrderId]);
+      const { one, listed } = await read();
+      assert.deepEqual([one.receivingWarehouseId, one.receivingWarehouseName, listed.receivingWarehouseName], [warehouseId, null, null], what);
+    }
+    await q(`UPDATE eos_ops.supplier_purchase_orders SET receiving_warehouse_id = 'wh-1' WHERE id = $1`, [draft.purchaseOrderId]);
+    assert.equal((await read()).one.receivingWarehouseName, "wh-1", "its own company's warehouse is named");
   });
 
   await t.test("THE PICKER lists only the caller's own orderable requests, and the active suppliers; a request on a PO leaves it", async () => {

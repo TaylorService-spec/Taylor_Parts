@@ -316,6 +316,16 @@ describe("names, not keys", () => {
     expect(within(bare).getByText("Not stated")).toBeTruthy();
   });
 
+  it("Raised by: a recorded actor the directory cannot name (a former member) reads Name unavailable -- never Unknown user, never the id; a named one is named", async () => {
+    const region = await open(fakeClient({ readOrder: vi.fn(async () => ({ ok: true, order: detail({ createdBy: "p-former" }) })) }));
+    expect(within(region).getByText("Raised by").closest("div").textContent).toContain("Name unavailable");
+    expect(region.textContent).not.toContain("p-former");
+    expect(region.textContent).not.toContain("Unknown user");
+    cleanup();
+    const named = await open(fakeClient());
+    expect(within(named).getByText("Raised by").closest("div").textContent).toContain("Bea Buyer");
+  });
+
   it("a line whose request has no number says so, and the request key is never shown", async () => {
     const region = await open(fakeClient());
     expect(within(region).getByText("RR-2026-000001")).toBeTruthy();

@@ -41,6 +41,22 @@ describe("the Jobs card parts line", () => {
     expect(card().textContent).not.toContain("No parts planned");
   });
 
+  it("a context that is still loading (null so far) keeps parts unknown and never claims there is no plan", () => {
+    ctx.current = { context: null, denied: false, failure: null, loading: true };
+    render(<TechnicianShell />);
+    openJobs();
+    expect(card().textContent).not.toContain("No parts planned");
+    expect(card().textContent).toMatch(/parts unknown/i);
+  });
+
+  it.each(["UNAVAILABLE", "NOT_AUTHORIZED", "ERROR"])("a parts subdomain in state %s with no lines is NOT a stated empty plan: parts unknown stays", (state) => {
+    ctx.current = { ...ctx.current, context: { ...named, parts: { state, lines: [] } } };
+    render(<TechnicianShell />);
+    openJobs();
+    expect(card().textContent).not.toContain("No parts planned");
+    expect(card().textContent).toMatch(/parts unknown/i);
+  });
+
   it("a job whose context was refused or is still unread never claims there is no plan", () => {
     ctx.current = { context: null, denied: true, failure: { code: "FORBIDDEN" }, loading: false };
     render(<TechnicianShell />);

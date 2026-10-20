@@ -485,7 +485,7 @@ export async function listSupplierPurchaseOrders(deps: { readonly pool: Pool }, 
                 WHERE l.tenant_id = p.tenant_id AND l.purchase_order_id = p.id) AS received_quantity
          FROM ${SCHEMA}.supplier_purchase_orders p
          LEFT JOIN ${SCHEMA}.suppliers s ON s.tenant_id = p.tenant_id AND s.supplier_id = p.supplier_id
-         LEFT JOIN ${SCHEMA}.warehouses w ON w.tenant_id = p.tenant_id AND w.id = p.receiving_warehouse_id
+         LEFT JOIN ${SCHEMA}.warehouses w ON w.tenant_id = p.tenant_id AND w.id = p.receiving_warehouse_id AND w.operating_company_key = p.operating_company_key
         WHERE p.tenant_id = $1 AND p.operating_company_key = ANY($2::text[]) AND ($3::text[] IS NULL OR p.status = ANY($3::text[]))
         ORDER BY p.created_at DESC, p.id DESC LIMIT $4`, [actor.tenantId, [...keys], statuses, SUPPLIER_PO_LIST_LIMIT]);
     return {
@@ -512,7 +512,7 @@ export async function readSupplierPurchaseOrder(deps: { readonly pool: Pool }, a
               p.created_by, p.created_at, p.approved_by, p.approved_at, p.sent_by, p.sent_at, p.cancelled_by, p.cancelled_at, p.cancellation_reason
          FROM ${SCHEMA}.supplier_purchase_orders p
          LEFT JOIN ${SCHEMA}.suppliers s ON s.tenant_id = p.tenant_id AND s.supplier_id = p.supplier_id
-         LEFT JOIN ${SCHEMA}.warehouses w ON w.tenant_id = p.tenant_id AND w.id = p.receiving_warehouse_id
+         LEFT JOIN ${SCHEMA}.warehouses w ON w.tenant_id = p.tenant_id AND w.id = p.receiving_warehouse_id AND w.operating_company_key = p.operating_company_key
         WHERE p.tenant_id = $1 AND p.id = $2 AND p.operating_company_key = ANY($3::text[])`, [actor.tenantId, i.purchaseOrderId, [...keys]]);
     if (po.rows.length === 0) refuse("PURCHASE_ORDER_NOT_FOUND", "NOT_FOUND", "purchase order not found");
     const lines = await c.query(
