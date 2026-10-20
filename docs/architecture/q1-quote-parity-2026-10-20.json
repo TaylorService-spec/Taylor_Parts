@@ -1,0 +1,421 @@
+{
+  "decision": "Q-1 PR 2 (docs only): the Firebase-parity holders for the quote path, derived A7-style. Nothing is applied; every grant below is a proposal for the Owner (OWNER DECISION Q1-14).",
+  "baseline": {
+    "firebaseSource": "functions/src/access/{compatibilityRoles,governedBusinessRoles,permissionCatalog}.ts at main b3d09dc3, compiled (lib/) and read read-only",
+    "eosSource": "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json at main b3d09dc3 (the repository's record of the nonprod grants). The live nonprod eos_policy.role_capabilities was NOT read by this lane; the controller re-confirms before any migration."
+  },
+  "keys": {
+    "opportunity.read": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "dispatcher",
+        "financeManager",
+        "generalManager",
+        "marketingManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "dispatcher",
+        "financeManager",
+        "generalManager",
+        "marketingManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "opportunity.write": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "opportunity.createSalesOrder": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [
+        "salesManager"
+      ],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesAgreement.read": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesAgreement.create": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesAgreement.updateDraft": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesAgreement.accept": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [
+        "salesManager"
+      ],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesOrder.read": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "dispatcher",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "marketingManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager",
+        "warehouseAssociate",
+        "warehouseManager"
+      ],
+      "eosHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "dispatcher",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "marketingManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager",
+        "warehouseAssociate",
+        "warehouseManager"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesOrder.write": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesOrder.fulfill": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "owner"
+      ],
+      "eosHolders": [],
+      "firebaseHoldersMissingFromEos": [
+        "admin",
+        "dispatcher",
+        "owner"
+      ],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesOrder.service": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "owner"
+      ],
+      "eosHolders": [],
+      "firebaseHoldersMissingFromEos": [
+        "admin",
+        "dispatcher",
+        "owner"
+      ],
+      "eosHoldersBeyondFirebase": []
+    },
+    "customer.record.read": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "dispatcher",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "marketingManager",
+        "officeManager",
+        "operationsManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager",
+        "supportStaff",
+        "warehouseManager"
+      ],
+      "eosHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "dispatcher",
+        "fieldManager",
+        "financeManager",
+        "generalManager",
+        "marketingManager",
+        "officeManager",
+        "operationsManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "purchasingManager",
+        "salesManager",
+        "salesperson",
+        "shopAssociate",
+        "shopManager",
+        "supportStaff",
+        "warehouseManager"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "customer.record.create": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "officeManager",
+        "operationsManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "officeManager",
+        "operationsManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "customer.record.update": {
+      "inFirebaseCatalog": true,
+      "firebaseHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "officeManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "eosHolders": [
+        "admin",
+        "dispatcher",
+        "generalManager",
+        "officeManager",
+        "owner",
+        "salesManager",
+        "salesperson"
+      ],
+      "firebaseHoldersMissingFromEos": [],
+      "eosHoldersBeyondFirebase": []
+    },
+    "salesAgreement.tradeIn.approve": {
+      "inFirebaseCatalog": false,
+      "firebaseHolders": null,
+      "eosHolders": [
+        "generalManager",
+        "owner"
+      ]
+    },
+    "sales.discountAuthority.manage": {
+      "inFirebaseCatalog": false,
+      "firebaseHolders": null,
+      "eosHolders": [
+        "accountingManager",
+        "admin",
+        "controller",
+        "financeManager",
+        "generalManager",
+        "owner"
+      ]
+    }
+  },
+  "scopedOrConditionedInFirebase": {},
+  "toAdd": [
+    {
+      "role": "salesManager",
+      "capability": "opportunity.createSalesOrder",
+      "expectedAlreadyHeldLive": "Controller DQ-021 (2026-09-28; re-approved DQ-1 2026-09-30) grants this to salesManager through Administration (salesManagerParityDelta.ts), so it is a decision row, not baseline JSON. The live nonprod table is the authority; confirm before acting."
+    },
+    {
+      "role": "salesManager",
+      "capability": "salesAgreement.accept",
+      "expectedAlreadyHeldLive": "Controller DQ-021 (2026-09-28; re-approved DQ-1 2026-09-30) grants this to salesManager through Administration (salesManagerParityDelta.ts), so it is a decision row, not baseline JSON. The live nonprod table is the authority; confirm before acting."
+    },
+    {
+      "role": "admin",
+      "capability": "salesOrder.fulfill",
+      "note": "no EOS holder at all (B5 matrix 'Permission gaps'); owned by lane S-1, not this specification"
+    },
+    {
+      "role": "dispatcher",
+      "capability": "salesOrder.fulfill",
+      "note": "no EOS holder at all (B5 matrix 'Permission gaps'); owned by lane S-1, not this specification"
+    },
+    {
+      "role": "owner",
+      "capability": "salesOrder.fulfill",
+      "note": "no EOS holder at all (B5 matrix 'Permission gaps'); owned by lane S-1, not this specification"
+    },
+    {
+      "role": "admin",
+      "capability": "salesOrder.service",
+      "note": "no EOS holder at all (B5 matrix 'Permission gaps'); owned by lane S-1, not this specification"
+    },
+    {
+      "role": "dispatcher",
+      "capability": "salesOrder.service",
+      "note": "no EOS holder at all (B5 matrix 'Permission gaps'); owned by lane S-1, not this specification"
+    },
+    {
+      "role": "owner",
+      "capability": "salesOrder.service",
+      "note": "no EOS holder at all (B5 matrix 'Permission gaps'); owned by lane S-1, not this specification"
+    }
+  ],
+  "toAddCount": 8,
+  "toRemove": [],
+  "note": "toRemove is empty by rule: a parity pass is additive and never revokes an EOS holder. A Firebase holder absent from EOS may be a deliberate Owner/controller decision (the EOS baseline records salesManager without accept / createSalesOrder); toAdd is therefore a LIST FOR DECISION, not a request to apply."
+}
