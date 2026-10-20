@@ -101,8 +101,11 @@ function currencyRow(r) {
  *   pages      `[{ items, truncated }]` -- the `listObligations` rows read, one page per company read.
  *   accountScoped  the rows were narrowed to ONE account, so no company total answers for them: the summary is the mirror of the account read's
  *              (accountReceivablesEos.js summarizeReceivables) over the rows, and a truncated page is then unavailable, never a partial total.
+ *   restricted the access answer's own flag: the principal reaches only the receivables credited to it / its team. An account-scoped read asks for no
+ *              overview (the overview is where `restricted` used to come from), so the flag travels from the access answer and the screen can say the
+ *              figures cover only what the reader may see.
  */
-export function receivablesEnvelope({ overview, pages, accountScoped = false }) {
+export function receivablesEnvelope({ overview, pages, accountScoped = false, restricted = false }) {
   const invoices = [];
   let truncated = false;
   for (const page of pages ?? []) {
@@ -115,6 +118,7 @@ export function receivablesEnvelope({ overview, pages, accountScoped = false }) 
     }
   }
   const out = { status: "ready", recordNoun: EOS_RECEIVABLE_NOUN, source: "EOS", invoices, payments: [], applications: [], truncated };
+  out.restricted = restricted === true;
   if (!overview && accountScoped) {
     if (truncated) return Object.freeze({ status: "unavailable", invoices: Object.freeze([]), recordNoun: EOS_RECEIVABLE_NOUN });
     out.summary = summarizeReceivables(invoices);
@@ -131,7 +135,7 @@ export function receivablesEnvelope({ overview, pages, accountScoped = false }) 
     out.byCompany = (overview.byCompany ?? []).map((c) => ({ key: String(c.operatingCompanyId), invoiceCount: Number(c.count) || 0,
       billedByCurrency: { [c.currency]: safeInt(c.billedMinor) ?? 0 }, collectedByCurrency: { [c.currency]: safeInt(c.collectedMinor) ?? 0 },
       outstandingByCurrency: { [c.currency]: safeInt(c.outstandingMinor) ?? 0 } }));
-    out.restricted = overview.visibility?.restricted === true;
+    out.restricted = restricted === true || overview.visibility?.restricted === true;
   }
   return Object.freeze(out);
 }

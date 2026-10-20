@@ -121,7 +121,10 @@ export function accountArFromBalanceSummary(answer) {
 
 const UNATTRIBUTED = "UNATTRIBUTED";
 
-/** Mirrors summarizeAccountAr (functions/src/finance/financeReadProjection.ts), except VOID rows are excluded from open: a void record is never owed. */
+/**
+ * Mirrors the server overview (financeOperations.ts readFinanceOverview): a VOID record counts in NOTHING -- not the count, not billed, not collected,
+ * not open, and it opens no company row. The rows themselves still list (a void receivable is shown as void); only the totals leave it out.
+ */
 export function summarizeReceivables(reads) {
   const billedByCurrency = {};
   const collectedByCurrency = {};
@@ -129,7 +132,10 @@ export function summarizeReceivables(reads) {
   const byCompany = {};
   let openCount = 0;
   let overdueCount = 0;
+  let count = 0;
   for (const r of reads) {
+    if (r.arPosition === "VOID") continue;
+    count += 1;
     const key = typeof r.companyId === "string" && r.companyId.trim().length > 0 ? r.companyId : UNATTRIBUTED;
     const company = (byCompany[key] ??= {
       count: 0, openCount: 0, overdueCount: 0, billedByCurrency: {}, collectedByCurrency: {}, outstandingByCurrency: {},
@@ -139,7 +145,7 @@ export function summarizeReceivables(reads) {
     add(company.billedByCurrency, r.currency, r.totalMinor);
     add(collectedByCurrency, r.currency, r.appliedMinor);
     add(company.collectedByCurrency, r.currency, r.appliedMinor);
-    if (r.outstandingMinor > 0 && r.arPosition !== "VOID") {
+    if (r.outstandingMinor > 0) {
       openCount += 1;
       company.openCount += 1;
       add(outstandingByCurrency, r.currency, r.outstandingMinor);
@@ -152,7 +158,7 @@ export function summarizeReceivables(reads) {
   }
   const companyIds = Object.keys(byCompany).sort();
   return {
-    count: reads.length, openCount, overdueCount, billedByCurrency, collectedByCurrency, outstandingByCurrency,
+    count, openCount, overdueCount, billedByCurrency, collectedByCurrency, outstandingByCurrency,
     byCompany, companyIds, spansMultipleCompanies: companyIds.length > 1,
   };
 }

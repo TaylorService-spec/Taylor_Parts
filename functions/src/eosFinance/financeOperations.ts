@@ -218,6 +218,7 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
        JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
        LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id${withSource ? `
        LEFT JOIN eos_finance.billing_packages bp ON bp.tenant_id = o.tenant_id AND bp.id = o.source_record_id AND o.source_domain = 'BILLING_PACKAGE' AND bp.source_kind = 'SALES_ORDER'
+         AND bp.operating_company_id = o.operating_company_id
        LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = bp.tenant_id AND so.id = bp.sales_order_id` : ""}
       WHERE o.tenant_id = $1 AND ${visible} AND ${where}
       ORDER BY o.due_on NULLS LAST, o.created_at DESC, o.id LIMIT ${Number(limit)}`, params);
@@ -228,7 +229,9 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     counterparty: r.counterparty_kind === "INTERNAL_OPERATING_COMPANY" ? { kind: "INTERNAL_OPERATING_COMPANY", operatingCompanyId: r.counterparty_company }
       : { kind: "EXTERNAL_ORGANIZATION", crmAccountId: r.crm_account_id, name: r.counterparty_name ?? null },
     // F-2: the Sales Order a receivable was billed from (obligation -> billing package -> Sales Order), where the record carries one. Asked for only by
-    // listObligations; the workspace sections do not join it. A receivable with no Sales Order source answers null, never an invented reference.
+    // listObligations; the workspace sections do not join it. A receivable with no Sales Order source answers null, never an invented reference. A package
+    // of a DIFFERENT operating company than the receivable is no source (the attribution rule readObligation applies): a reader never gets another
+    // company's Sales Order number through a mismatched package.
     ...(withSource ? { sourceSalesOrder: r.source_sales_order_id ? Object.freeze({ id: String(r.source_sales_order_id), salesOrderNumber: r.source_sales_order_number ?? null }) : null } : {}),
   }));
 }

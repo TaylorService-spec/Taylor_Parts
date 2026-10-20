@@ -91,11 +91,14 @@ export async function fetchFinancialFactsFromEos(filters = {}, _limit = OBLIGATI
   const lists = rest.slice(0, wantsInvoices ? asked.length : 0);
   const settled = rest.slice(lists.length);
   const pages = lists.map((r) => ({ items: r.result?.items, truncated: Array.isArray(r.result?.items) && r.result.items.length >= OBLIGATION_PAGE_LIMIT }));
-  const envelope = receivablesEnvelope({ overview: overview.result, pages, accountScoped: wantsInvoices && accountId !== null });
+  const envelope = receivablesEnvelope({ overview: overview.result, pages, accountScoped: wantsInvoices && accountId !== null, restricted: resolved.access?.restricted === true });
   if (envelope.status !== "ready") return UNAVAILABLE;
   if (!wantsPayments) return { result: envelope };
   const facts = paymentFacts(settled.map((r) => ({ items: r.result?.items, truncated: Array.isArray(r.result?.items) && r.result.items.length >= SETTLEMENT_PAGE_LIMIT })), { accountId });
   if (facts === null) return UNAVAILABLE;
-  return { result: Object.freeze({ ...envelope, truncated: envelope.truncated || facts.truncated,
+  // The account is applied AFTER the server's 100-row cap on settlements, so a full page cannot prove an account's payments are complete:
+  // unavailable, the same rule as its receivables -- never a silently partial list.
+  if (accountId !== null && facts.truncated) return UNAVAILABLE;
+  return { result: Object.freeze({ ...envelope, truncated: envelope.truncated || facts.truncated, paymentsTruncated: facts.truncated,
     payments: types.includes("PAYMENT_RECEIPT") ? facts.payments : [], applications: types.includes("PAYMENT_APPLICATION") ? facts.applications : [] }) };
 }

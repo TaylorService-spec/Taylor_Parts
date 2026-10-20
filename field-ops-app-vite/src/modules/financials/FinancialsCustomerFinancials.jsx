@@ -133,6 +133,15 @@ export default function FinancialsCustomerFinancials() {
             </p>
           </section>
 
+          {/* A restricted reader (credited-person / team reach) is told, as on the company-wide Financials pages, that the figures cover only what they may
+              see. The flag is the server's own access answer carried on the facts envelope; nothing here decides it. */}
+          {factsAnswered && factsResult?.restricted ? (
+            <div className="fin-truth-band" role="note">
+              <strong>A part of this customer&rsquo;s book.</strong> Your Finance visibility is limited to the receivables credited to you or your team, so the
+              figures below cover only those. Other receivables of this customer are outside your visibility, not zero.
+            </div>
+          ) : null}
+
           <section className="fin-scorecard-section" aria-label="Financial summary">
             <div className="fin-scorecard fin-scorecard--five">
               {SUMMARY_SLOTS.map((slot) => (

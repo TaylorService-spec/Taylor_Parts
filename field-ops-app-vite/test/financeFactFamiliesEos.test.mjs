@@ -148,3 +148,40 @@ test("receivablesEnvelope: accountScoped without an overview totals the rows; wi
   assert.equal(receivablesEnvelope({ overview: null, pages: [rec] }).summary, undefined);
   assert.equal(receivablesEnvelope({ overview: null, pages: [{ ...rec, truncated: true }], accountScoped: true }).status, "unavailable");
 });
+
+test("an account-scoped summary leaves a VOID receivable out of count, billed and collected (the server overview's rule), though the row still lists", () => {
+  const live = row({ id: "obl-live" });
+  const voided = row({ id: "obl-void", status: "VOID", originatedMinor: "9000", settledMinor: "0", outstandingMinor: "0" });
+  const env = receivablesEnvelope({ overview: null, pages: [{ items: [live, voided], truncated: false }], accountScoped: true });
+  assert.equal(env.invoices.length, 2, "the void record is still listed, as void");
+  assert.equal(env.invoices.find((i) => i.invoiceId === "obl-void").arPosition, "VOID");
+  assert.deepEqual([env.summary.count, env.summary.billedByCurrency, env.summary.collectedByCurrency, env.summary.outstandingByCurrency],
+    [1, { USD: 40000 }, { USD: 16000 }, { USD: 24000 }]);
+  assert.deepEqual(env.summary.byCompany.taylor.billedByCurrency, { USD: 40000 });
+  const onlyVoid = receivablesEnvelope({ overview: null, pages: [{ items: [voided], truncated: false }], accountScoped: true });
+  assert.deepEqual([onlyVoid.summary.count, onlyVoid.summary.byCompany, onlyVoid.summary.billedByCurrency], [0, {}, {}], "a void-only account opens no company row");
+});
+
+test("an account-scoped read carries the access answer's restricted flag (it asks for no overview, which used to be the only source of it)", async () => {
+  const restrictedAccess = { ...access(["taylor"]), restricted: true };
+  const s = server({ readMyFinanceCompanyAccess: restrictedAccess, listObligations: { items: [row()] }, listSettlements: { items: [settlement()] } });
+  const out = await fetchFinancialFactsFromEos({ accountId: "acct-t" }, 200, { call: s.call });
+  assert.equal(s.calls.some(([op]) => op === "readFinanceOverview"), false);
+  assert.equal(out.result.restricted, true, "invoices and payments alike");
+  const full = server({ readMyFinanceCompanyAccess: access(["taylor"]), listObligations: { items: [row()] } });
+  const unrestricted = await fetchFinancialFactsFromEos({ accountId: "acct-t", factTypes: ["INVOICE"] }, 200, { call: full.call });
+  assert.equal(unrestricted.result.restricted, false);
+  const pay = server({ readMyFinanceCompanyAccess: restrictedAccess, listSettlements: { items: [settlement()] } });
+  assert.equal((await fetchFinancialFactsFromEos({ factTypes: ["PAYMENT_RECEIPT"] }, 200, { call: pay.call })).result.restricted, true, "payments-only reads carry it too");
+});
+
+test("settlement truncation is never silent: an account-scoped payment read on a full page is unavailable; otherwise it is flagged as payments truncated", async () => {
+  const fullPage = Array.from({ length: 100 }, (_, i) => settlement({ id: `stl-${i}`, applications: [] }));
+  const s = server({ readMyFinanceCompanyAccess: access(["taylor"]), listSettlements: { items: fullPage } });
+  assert.deepEqual(await fetchFinancialFactsFromEos({ accountId: "acct-t", factTypes: ["PAYMENT_RECEIPT"] }, 200, { call: s.call }), { errorStatus: "unavailable" },
+    "the account is applied after the server's cap, so a full page cannot prove the account's payments are complete");
+  const book = await fetchFinancialFactsFromEos({ factTypes: ["PAYMENT_RECEIPT"] }, 200, { call: s.call });
+  assert.deepEqual([book.result.paymentsTruncated, book.result.truncated], [true, true]);
+  const partial = server({ readMyFinanceCompanyAccess: access(["taylor"]), listSettlements: { items: [settlement()] } });
+  assert.equal((await fetchFinancialFactsFromEos({ accountId: "acct-t", factTypes: ["PAYMENT_RECEIPT"] }, 200, { call: partial.call })).result.paymentsTruncated, false);
+});

@@ -132,6 +132,9 @@ export default function FinancialsPayments() {
         meta="applications drill to invoice records · reconciliation absence stated, never implied"
         honest={honest}
         subject="Payment reads"
+        footer={answered && result?.paymentsTruncated ? (
+          <p className="fin-section-note">Showing the newest 100 settlements per read; narrow the company or period to see the rest.</p>
+        ) : null}
       >
         <div className="ns-table-wrap">
           <table className="ns-table">
