@@ -27,6 +27,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+<<<<<<< HEAD
 - Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
 - Agent/session:       Claude Code Lane UX · Role: builder; controller merges
 - Branch / worktree:   `ux/display-batch-purchasing` · `.claude/worktrees/agent-a499bba175438ba94`
@@ -37,6 +38,18 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    no screen shows a blank, a storage key or a false warning where the record holds a name, number or state
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
 - Lifecycle stage:     INTEGRATION (PR open; not merged)
+=======
+- Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
+- Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
+- Branch / worktree:   `docs/r1-production-recovery-release` · `.claude/worktrees/agent-ad1865bb5a1b23704`
+- Base commit:         `2f8be86f`
+- Owned paths:         `docs/operations/production-recovery-release-r1.md`
+- Shared paths req'd:  this registry
+- Dependencies:        none (git history + `evidence/firebase-deployed-inventory-20261019/` only)
+- Expected outcome:    Hosting `4f30ab3a`, Pages `6cac0423`, Functions `4f30ab3a` (84/84 export match) and Rules `0526140d` pinned, with tag commands for the controller
+- Protected boundaries:none reached (no deploy, tag push, cloud call, credential or workflow edit)
+- Lifecycle stage:     INTEGRATION (docs PR open; controller creates the tags after review)
+>>>>>>> origin/main
 
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
