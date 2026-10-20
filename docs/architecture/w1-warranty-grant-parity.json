@@ -1,0 +1,79 @@
+{
+  "$comment": "W-1 warranty spec companion, 2026-10-20. Firebase-parity holders derived READ-ONLY from functions/src/access/{permissionCatalog,compatibilityRoles,governedBusinessRoles}.ts at main b3d09dc3 (scratch copy in the lane scratchpad; nothing written to a role, a grant, a database or a fixture; nothing deleted). No migration is proposed by this file. The parity set for any NEW warranty key is empty.",
+  "decision": "Brief 2026-10-20: derive Firebase-parity holders A7-style. Grants not in exact Firebase parity are a STOP. None is authorized by this file.",
+  "baseline": {
+    "firebaseSource": "main b3d09dc3 functions/src/access/{permissionCatalog.ts, compatibilityRoles.ts, governedBusinessRoles.ts} and firestore.rules:1334-1363,1468-1508",
+    "eosSource": "NOT READ from any environment. EOS holders are Administration data in eos_policy.role_capabilities; the repository seed (functions/src/adminPolicy/equipmentActivationDelta.ts, Controller ruling 2026-10-01 OD-2/OD-3) is the ruled baseline, not the live table."
+  },
+  "newKeySearch": {
+    "pattern": "permission id containing warrant",
+    "firebaseMatches": [],
+    "note": "No Firebase permission key names warranty. The hidden service/warranty navigation item records 'No warranty domain, no capability, no backend' (navConfig.js:889). Firebase gated equipment by Firestore Rules (isAdminOrDispatcher), not by a permission key."
+  },
+  "newKeysFirebaseParityHolders": [],
+  "firebaseRulesAuthority": {
+    "equipment.read": ["admin", "dispatcher"],
+    "equipment.create": ["admin", "dispatcher"],
+    "equipment.update.installedDate": ["admin", "dispatcher"],
+    "equipment.update.warrantyExpiresDate": ["admin", "dispatcher"],
+    "note": "Source: firestore.rules match /equipment/{equipmentId}. installedDate and warrantyExpiresDate are in equipmentEditableKeys() and are plain optional strings. There is no Firebase warranty computation, status or judgment anywhere."
+  },
+  "keysReusedByTheRecommendedDesign": {
+    "equipment.record.read": {
+      "firebaseHolders": null,
+      "firebaseNote": "EOS-native key; Firebase equivalent is Rules isAdminOrDispatcher (read).",
+      "eosHoldersRuled": ["dispatcher", "fieldManager", "officeManager", "owner", "partsAssociate", "partsManager", "salesperson (salesChannel-scoped assignment only)"],
+      "use": "see the derived warranty status on the Equipment record and register; unchanged"
+    },
+    "equipment.record.manage": {
+      "firebaseHolders": null,
+      "firebaseNote": "EOS-native key; Firebase equivalent is Rules isAdminOrDispatcher (create, update). EOS narrowed this on purpose (2026-10-01 OD-3).",
+      "eosHoldersRuled": ["equipmentRegisterManager (initial holder: Office Manager)"],
+      "use": "record, correct or end a coverage by hand; edit installed_on and warranty_expires_on as today"
+    },
+    "workOrder.record.read": {
+      "firebaseHolders": null,
+      "firebaseNote": "EOS-native key; Firebase gates Work Order reads by Rules.",
+      "eosHoldersRuled": "per the Work Order read decision (assigned Employee for a Technician)",
+      "use": "see the derived warranty status on a Work Order the caller may already read"
+    },
+    "equipment.model.manage": {
+      "firebaseHolders": ["admin", "equipmentCatalogAdministrator"],
+      "eosHolders": null,
+      "use": "maintain the warranty terms catalog (terms keyed by manufacturer and model)"
+    },
+    "equipment.install": {
+      "firebaseHolders": ["admin", "equipmentInstaller"],
+      "eosHolders": null,
+      "use": "the install visit that supplies the start fact; unchanged"
+    },
+    "report.equipment.read": {
+      "firebaseHolders": ["admin", "owner", "reportViewer"],
+      "eosHolders": null,
+      "use": "report on Equipment"
+    },
+    "report.equipment.field.dates.read": {
+      "firebaseHolders": ["admin", "owner", "reportViewer"],
+      "eosHolders": null,
+      "use": "report on installedDate and warrantyExpiresDate (the catalog `dates` field group)"
+    }
+  },
+  "toAdd": [],
+  "toRemove": [],
+  "excluded": [
+    {
+      "capabilities": ["warranty.terms.manage", "warranty.coverage.record"],
+      "reason": "Proposed only as OD-14 option B. Firebase never held a warranty key, so the parity set is empty and every holder would be a non-parity grant: a STOP. The recommended option (OD-14 A) reuses existing keys and needs no grant."
+    },
+    {
+      "role": "dispatcher",
+      "capabilities": ["equipment.record.manage"],
+      "reason": "Firebase Rules let Dispatcher edit both dates; EOS narrowed it on purpose on 2026-10-01 (OD-3). Restoring it is a policy ruling on a role the Owner narrowed, not part of W-1 (OD-14 C)."
+    }
+  ],
+  "notes": [
+    "Declaring or reusing a capability grants nothing; Administration data decides who holds it.",
+    "The recommended design adds no read capability: warranty status is a derived projection shown through surfaces whose gates already exist.",
+    "EOS read reach is wider than Firebase's (Technician through the Work Order, Salesperson through a channel scope, the operational roles). That is an existing Owner ruling and is neither widened nor narrowed here."
+  ]
+}
