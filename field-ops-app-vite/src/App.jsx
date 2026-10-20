@@ -866,7 +866,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
     return <FinancialsOverview />;
   }
   if (domain.key === "financials" && item.key === "invoices") {
-    return <FinancialsInvoices />;
+    return <FinancialsInvoices hasCapability={operationalContext?.hasCapability} />;
   }
   if (domain.key === "financials" && item.key === "accountsReceivable") {
     return <FinancialsAccountsReceivable />;
