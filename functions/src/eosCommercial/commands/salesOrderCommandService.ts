@@ -12,6 +12,8 @@ import { deriveSalesOrderLinesFromAgreement } from "../../salesAgreement/salesAg
 import type { SalesAgreementState } from "../../salesAgreement/salesAgreementLifecycle";
 import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { allocateCommercialNumber } from "../commercialNumbering";
+import { lineFacts } from "../../eosAudit/commandAuditEvent";
+import { MAX_HANDOFF_REASON_LENGTH } from "../commercialOwnershipAuthority";
 import {
   COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireActiveSalesChannel, requireActiveTenantAccount, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
@@ -117,6 +119,13 @@ async function stageBuiltSalesOrder(
   return { salesOrderId: id, salesOrderNumber: number.number, state: built.state, ...accountable };
 }
 
+/** An existing reason limit of the Commercial domain (the handoff reason's, commercialOwnershipAuthority.ts) applied to a decision reason. */
+function requireReasonWithinLimit(reason: unknown): void {
+  if (typeof reason === "string" && reason.trim().length > MAX_HANDOFF_REASON_LENGTH) {
+    fail("REASON_TOO_LONG", "INVALID_INPUT", `reason must be at most ${MAX_HANDOFF_REASON_LENGTH} characters`);
+  }
+}
+
 const lineKey = (l: { kind: string; ref: string; qty: number }) => `${l.kind}:${l.ref}:${l.qty}`;
 const sameMultiset = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
 
@@ -156,7 +165,18 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
     // A direct Order carries NEW product references: they pass the catalog authority before any number or row.
     await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
     const created = await stageBuiltSalesOrder(db, actor, now, built, { opportunityId, salesAgreementId: null }, accountableEmployeeId);
-    return { result: created, target: { family: "salesOrder" as const, id: created.salesOrderId } };
+    return {
+      result: created, target: { family: "salesOrder" as const, id: created.salesOrderId },
+      audit: {
+        action: "salesOrder.create", targetKind: "sales_order", targetId: created.salesOrderId, before: null,
+        after: {
+          salesOrderNumber: created.salesOrderNumber, accountId: built.accountId, opportunityId, salesAgreementId: null, state: created.state,
+          salesChannel: built.salesChannel, ownerEmployeeId: built.ownerEmployeeId, operatingCompanyId: built.operatingCompanyId,
+          creditedSalespersonId: built.creditedSalespersonId, lines: lineFacts(built.lines), accountableEmployeeId: created.accountableEmployeeId,
+          accountablePersonSource: created.accountablePersonSource,
+        },
+      },
+    };
   });
 }
 
@@ -174,7 +194,17 @@ export function createSalesOrderFromOpportunity(deps: CommercialCommandDeps, act
       }
       const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id), opportunity);
       const created = await stageSalesOrderFromAgreement(db, actor, now, opportunity, agreement, input as { salesChannel: unknown });
-      return { result: { ...created, opportunityId: opportunity.id }, target: { family: "salesOrder" as const, id: created.salesOrderId } };
+      return {
+        result: { ...created, opportunityId: opportunity.id }, target: { family: "salesOrder" as const, id: created.salesOrderId },
+        audit: {
+          action: "salesOrder.createFromOpportunity", targetKind: "sales_order", targetId: created.salesOrderId, before: null,
+          after: {
+            salesOrderNumber: created.salesOrderNumber, accountId: opportunity.accountId, opportunityId: opportunity.id, salesAgreementId: agreement.id,
+            state: created.state, salesChannel: opportunity.salesChannel, accountableEmployeeId: created.accountableEmployeeId,
+            accountablePersonSource: created.accountablePersonSource,
+          },
+        },
+      };
     });
 }
 
@@ -199,7 +229,13 @@ export function transitionSalesOrder(deps: CommercialCommandDeps, actor: Commerc
         `UPDATE eos_commercial.sales_orders SET state = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2`,
         [actor.tenantId, order.id, patch.state, actor.principalId],
       );
-      return { result: { salesOrderId: order.id, state: patch.state }, target: { family: "salesOrder" as const, id: order.id } };
+      return {
+        result: { salesOrderId: order.id, state: patch.state }, target: { family: "salesOrder" as const, id: order.id },
+        audit: {
+          action: "salesOrder.transition", targetKind: "sales_order", targetId: order.id,
+          before: { state: order.state }, after: { state: patch.state, transition },
+        },
+      };
     }, { family: "salesOrder", id: input?.salesOrderId });
 }
 
@@ -227,18 +263,29 @@ export function authorizeSalesOrderServiceProvider(deps: CommercialCommandDeps, 
         fail("SERVICE_SCOPES_INVALID", "INVALID_INPUT", "scopes is a non-empty list of INSTALLATION and / or SERVICE");
       }
       if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "an authorization states its reason");
+      requireReasonWithinLimit(input.reason);
       const { rows: so } = await db.query(`SELECT operating_company_key FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, order.id]);
       const { rows: key } = await db.query(`SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys
         WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`, [actor.tenantId, String(input.serviceOperatingCompanyId ?? "")]);
       const serviceKey = key[0]?.operating_company_key ?? fail("SERVICE_COMPANY_UNKNOWN", "PRECONDITION_FAILED", "the service company is not an active operating company");
       if (serviceKey === so[0].operating_company_key) fail("SERVICE_COMPANY_IS_SELLER", "PRECONDITION_FAILED", "the seller needs no authorization to service its own Sales Order");
+      const { rows: prior } = await db.query(`SELECT scopes, status::text AS status FROM eos_commercial.sales_order_service_providers
+        WHERE tenant_id = $1 AND sales_order_id = $2 AND service_operating_company_key = $3`, [actor.tenantId, order.id, serviceKey]);
       await db.query(
         `INSERT INTO eos_commercial.sales_order_service_providers (tenant_id, sales_order_id, service_operating_company_key, scopes, status, reason, authorized_by)
          VALUES ($1,$2,$3,$4,'ACTIVE',$5,$6)
          ON CONFLICT (tenant_id, sales_order_id, service_operating_company_key) DO UPDATE SET scopes = EXCLUDED.scopes, status = 'ACTIVE', reason = EXCLUDED.reason,
            authorized_by = EXCLUDED.authorized_by, authorized_at = now(), revoked_by = NULL, revoked_at = NULL, revoke_reason = NULL`,
         [actor.tenantId, order.id, serviceKey, scopes, (input.reason as string).trim(), actor.principalId]);
-      return { result: { salesOrderId: order.id, serviceOperatingCompanyKey: serviceKey, scopes, status: "ACTIVE" }, target: { family: "salesOrder" as const, id: order.id } };
+      return {
+        result: { salesOrderId: order.id, serviceOperatingCompanyKey: serviceKey, scopes, status: "ACTIVE" }, target: { family: "salesOrder" as const, id: order.id },
+        audit: {
+          action: "salesOrder.authorizeServiceProvider", targetKind: "sales_order", targetId: order.id,
+          before: prior[0] ? { serviceOperatingCompanyKey: serviceKey, scopes: prior[0].scopes, status: prior[0].status } : null,
+          after: { serviceOperatingCompanyKey: serviceKey, scopes, status: "ACTIVE" },
+          reason: (input.reason as string).trim(),
+        },
+      };
     }, { family: "salesOrder", id: input?.salesOrderId });
 }
 
@@ -249,6 +296,9 @@ export function revokeSalesOrderServiceProvider(deps: CommercialCommandDeps, act
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       scope.admitChannel(order.salesChannel);
       if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "a revocation states its reason");
+      requireReasonWithinLimit(input.reason);
+      const { rows: companyKey } = await db.query(`SELECT operating_company_key FROM eos_policy.tenant_operating_company_keys
+        WHERE tenant_id = $1 AND operating_company_id = $2 AND status = 'ACTIVE'`, [actor.tenantId, String(input.serviceOperatingCompanyId ?? "")]);
       const { rowCount } = await db.query(
         `UPDATE eos_commercial.sales_order_service_providers p SET status = 'REVOKED', revoked_by = $4, revoked_at = now(), revoke_reason = $5
            FROM eos_policy.tenant_operating_company_keys k
@@ -256,6 +306,14 @@ export function revokeSalesOrderServiceProvider(deps: CommercialCommandDeps, act
             AND p.service_operating_company_key = k.operating_company_key AND p.status = 'ACTIVE'`,
         [actor.tenantId, order.id, String(input.serviceOperatingCompanyId ?? ""), actor.principalId, (input.reason as string).trim()]);
       if (!rowCount) fail("SERVICE_PROVIDER_NOT_AUTHORIZED", "NOT_FOUND", "no active service-provider authorization for that company");
-      return { result: { salesOrderId: order.id, status: "REVOKED" }, target: { family: "salesOrder" as const, id: order.id } };
+      return {
+        result: { salesOrderId: order.id, status: "REVOKED" }, target: { family: "salesOrder" as const, id: order.id },
+        audit: {
+          action: "salesOrder.revokeServiceProvider", targetKind: "sales_order", targetId: order.id,
+          before: { serviceOperatingCompanyKey: companyKey[0]?.operating_company_key ?? null, status: "ACTIVE" },
+          after: { serviceOperatingCompanyKey: companyKey[0]?.operating_company_key ?? null, status: "REVOKED" },
+          reason: (input.reason as string).trim(),
+        },
+      };
     }, { family: "salesOrder", id: input?.salesOrderId });
 }

@@ -50,6 +50,7 @@
 // unset, taxStatus unset or UNKNOWN) or changing either stored value requires customer.governedField.write.
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import { recordCommandAudit, textLength } from "../eosAudit/commandAuditEvent.js";
 import { CRM_ACCOUNT_STATUSES, isCrmAccountStatus, type CrmAccountStatus } from "../crm/customerIdentity.js";
 import { createPostgresEmployeeAuthority } from "../employeeIdentity/postgresEmployeeAuthority.js";
 import {
@@ -190,6 +191,15 @@ const project = (row: AccountRow): AccountProjection => {
     updatedBy: row.updated_by,
     updatedAt: isoOf(row.updated_at),
   };
+};
+
+/**
+ * Q-1 audit view of an Account. audit_events is append-only, so it carries identity, state and amounts -- never free text or
+ * contact details: notes as a length, the billing address as presence, tags as a count.
+ */
+const auditView = (p: AccountProjection): Record<string, unknown> => {
+  const { notes, billingAddress, tags, ...rest } = p;
+  return { ...rest, notesLength: textLength(notes), billingAddressPresent: billingAddress !== null, tagCount: tags.length };
 };
 
 // ════════════════════ field validation ════════════════════
@@ -480,7 +490,9 @@ export function createAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
         [accountId, tenantId, fields.columns.get("name"), fields.columns.get("status"), ownerEmployeeId, principalId, ...extra.map(([, v]) => v)],
       );
       await replaceChildren(db, tenantId, accountId, fields, false);
-      return { result: await selectAccount(db, tenantId, accountId), targetType: "ACCOUNT", targetId: accountId };
+      const created = await selectAccount(db, tenantId, accountId);
+      await recordCommandAudit(db, tenantId, principalId, { action: "crm.createAccount", targetKind: "crm_account", targetId: accountId, before: null, after: auditView(created) });
+      return { result: created, targetType: "ACCOUNT", targetId: accountId };
     },
   );
 }
@@ -519,6 +531,7 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
         [tenantId, accountId],
       );
       if (current.rows.length === 0) fail("ACCOUNT_NOT_FOUND", "NOT_FOUND", "the Account does not exist in this tenant");
+      const was = await selectAccount(db, tenantId, accountId); // Q-1 audit: the row is locked FOR UPDATE above
       // accountGovernedFieldsUnchanged: naming a governed field with its CURRENT value is not a governed write.
       for (const column of ["payment_terms", "tax_status"] as const) {
         if (fields.columns.has(column) && fields.columns.get(column) !== current.rows[0][column]) requireGovernedFieldCapability(principal);
@@ -565,7 +578,17 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
         [tenantId, accountId, principalId, ...set.values],
       );
       await replaceChildren(db, tenantId, accountId, fields, true);
-      return selectAccount(db, tenantId, accountId);
+      const updated = await selectAccount(db, tenantId, accountId);
+      await recordCommandAudit(db, tenantId, principalId, {
+        action: "crm.updateAccount", targetKind: "crm_account", targetId: accountId, before: auditView(was),
+        after: {
+          ...auditView(updated), notesChanged: was.notes !== updated.notes,
+          billingAddressChanged: JSON.stringify(was.billingAddress) !== JSON.stringify(updated.billingAddress),
+          tagsChanged: JSON.stringify(was.tags) !== JSON.stringify(updated.tags),
+        },
+        reason: owner === null ? null : terms.reason,
+      });
+      return updated;
     },
   );
 }
