@@ -400,7 +400,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Base commit:         `bfeb6dd8`
 - Owned paths:         `field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx` · `ServiceActivitySection.jsx` · `src/domain/accountHealthStrip.js` · `serviceActivityView.js` · `accountWorkOrders.js` · `src/hooks/useAccountServiceActivity.js` · `useAccountAttentionWorkOrders.js` · their tests
 - Shared paths req'd:  this registry
-- Dependencies:        none (display only; reuses `workOrderOutcome.js` UNAUTHORIZED classification)
+- Dependencies:        none (display only; a refusal is FORBIDDEN / permission-denied only, so a 401 or missing session stays "couldn't be read")
 - Expected outcome:    a refusal never reads as an outage on the Account page
 - Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
 - Lifecycle stage:     INTEGRATION (PR open)

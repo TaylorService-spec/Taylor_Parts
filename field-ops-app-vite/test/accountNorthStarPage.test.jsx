@@ -641,6 +641,42 @@ describe("Account page — a refused work-order read says 'Not available to you'
     await waitFor(() => expect(failed.result.current.loading).toBe(false));
     expect(failed.result.current).toMatchObject({ denied: false, error: true, workOrders: null });
   });
+
+  // NOT every "unauthorized" code is a refusal. An expired/absent session (401, no token) is fixed by signing in
+  // again, and an outage or a not-yet-activated authority is not a fact about the caller: all stay "couldn't be read".
+  const NOT_REFUSALS = [
+    ["UNAUTHENTICATED (401)", { code: "UNAUTHENTICATED", status: 401 }],
+    ["NOT_SIGNED_IN", { code: "NOT_SIGNED_IN" }],
+    ["UNAVAILABLE (5xx)", { code: "UNAVAILABLE", status: 503 }],
+    ["NOT_ACTIVATED", { code: "NOT_ACTIVATED", status: 503 }],
+  ];
+  const COMPANY_REFUSAL = { code: "FORBIDDEN", status: 403, reason: "COMPANY_AUTHORITY_REQUIRED" };
+
+  it.each(NOT_REFUSALS)("hooks: %s is an error, never denied (count, timeline, attention)", async (_name, shape) => {
+    const real = await vi.importActual("../src/hooks/useAccountServiceActivity");
+    const realAttention = await vi.importActual("../src/hooks/useAccountAttentionWorkOrders");
+    listWorkOrders.mockRejectedValue(Object.assign(new Error("x"), shape));
+    const count = renderHook(() => real.useAccountWorkOrderCount("acct-1", fetchAccountOpenWorkOrderCount));
+    const timeline = renderHook(() => real.useAccountWorkOrderTimeline("acct-1"));
+    const attention = renderHook(() => realAttention.useAccountAttentionWorkOrders("acct-1"));
+    for (const h of [count, timeline, attention]) {
+      await waitFor(() => expect(h.result.current.loading).toBe(false));
+      expect(h.result.current).toMatchObject({ error: true, denied: false });
+    }
+  });
+
+  it("hooks: a FORBIDDEN refusal carrying COMPANY_AUTHORITY_REQUIRED is denied (count, timeline, attention)", async () => {
+    const real = await vi.importActual("../src/hooks/useAccountServiceActivity");
+    const realAttention = await vi.importActual("../src/hooks/useAccountAttentionWorkOrders");
+    listWorkOrders.mockRejectedValue(Object.assign(new Error("x"), COMPANY_REFUSAL));
+    const count = renderHook(() => real.useAccountWorkOrderCount("acct-1", fetchAccountOpenWorkOrderCount));
+    const timeline = renderHook(() => real.useAccountWorkOrderTimeline("acct-1"));
+    const attention = renderHook(() => realAttention.useAccountAttentionWorkOrders("acct-1"));
+    for (const h of [count, timeline, attention]) {
+      await waitFor(() => expect(h.result.current.loading).toBe(false));
+      expect(h.result.current).toMatchObject({ error: false, denied: true });
+    }
+  });
 });
 
 describe("Account — North Star composition", () => {
