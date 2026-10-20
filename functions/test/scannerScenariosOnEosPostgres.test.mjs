@@ -15,7 +15,11 @@
 // PERSONA MAPPING (Firebase script persona -> EOS persona, by what the EOS authority actually grants):
 //   partsAssociate (lookups)        -> Parts Associate (partsAssociate + inventoryReceivingClerk + inventoryLookupReader)
 //   partsAssociate (put-away/count) -> Warehouse Associate. On EOS the Parts Associate holds NO put-away / count / transfer authority
-//                                      (Owner decision PA-1 is open); that refusal is asserted in SCN-6, not papered over.
+//                                      (Owner decision PA-1 is open); that refusal is asserted in SCN-6, SCN-7, SCN-8 and SCN-10, not papered over.
+//   partsManager (reconciles a count)-> Warehouse Manager. The script had the Parts Manager dispose of the count (SCN-10); on EOS the
+//                                      reconcile Role is the Warehouse Manager's (inventoryCycleCountReconciler), which holds NO counter
+//                                      authority -- the reconcile-only refusal is asserted on that same persona. The Parts Manager's
+//                                      own refusal to open a count is asserted too.
 //   warehouseManager                -> Warehouse Manager (+ transfer receiver, count reconciler, returns intake clerk)
 //   partsManager                    -> Parts Manager (+ purchasing manager)
 //   technician / serviceTechnician  -> two Technicians, each scoped to ONE truck
@@ -340,8 +344,8 @@ test("SCAN-PORT: the scanner scenarios on EOS (real PostgreSQL, real transports)
     refused(await call(wa, PLC, "recordPutAway", { warehouseId: WH, binCode: OTHER_CODE, partId: PART, quantity: 1, idempotencyKey: "scn6-wrongcode" }), 404, "BIN_NOT_FOUND");
     // Racking is never created by scanning at it.
     refused(await call(wa, PLC, "recordPutAway", { warehouseId: WH, binId: `bin_${"0".repeat(40)}`, partId: PART, quantity: 1, idempotencyKey: "scn6-unknown" }), 404, "BIN_NOT_FOUND");
-    const unknownCode = await call(wa, PLC, "recordPutAway", { warehouseId: WH, binCode: `${BIN_CODE}-NEVER`, partId: PART, quantity: 1, idempotencyKey: "scn6-unknown-code" });
-    assert.ok(unknownCode.status >= 400 && unknownCode.status < 500, `an unknown code is refused ${JSON.stringify(unknownCode.body)}`);
+    // A well-formed code that no bin of this warehouse holds (shape /^[A-Z0-9][A-Z0-9.\-_]{0,31}$/ passes) is a missing bin, nothing else.
+    refused(await call(wa, PLC, "recordPutAway", { warehouseId: WH, binCode: `${BIN_CODE}-NEVER`, partId: PART, quantity: 1, idempotencyKey: "scn6-unknown-code" }), 404, "BIN_NOT_FOUND");
     assert.equal(await placements(), before.placements + 1, "no refused stow recorded anything");
     assert.equal(ok(await call(wa, PLC, "recordPutAway", stow), "replay").outcome, "replayed", "a re-sent stow must not record twice");
     assert.equal(await placements(), before.placements + 1);
@@ -360,6 +364,9 @@ test("SCAN-PORT: the scanner scenarios on EOS (real PostgreSQL, real transports)
     assert.deepEqual((await balanceOf(pa, PART)).reserved, before.reserved, "reserved is unchanged: commitment is a work-order lifecycle effect, never a pick");
     assert.equal(await commitments(), before.commitments, "no commitment row was written");
     assert.equal(await movements(), before.movements);
+    // PA-1: the Parts Associate cannot stage a pick either (no put-away authority on EOS).
+    refused(await call(pa, PLC, "recordPutAway", { warehouseId: WH, binCode: STAGE_CODE, partId: PART, quantity: 2, pickedForWorkOrderId: "WO-SCN-7", idempotencyKey: "scn7-pa" }), 403, "CAPABILITY_MISSING", "parts associate pick");
+    assert.equal(await commitments(), before.commitments);
   });
 
   // ═════════════ SCN-8 ═════════════
@@ -416,9 +423,8 @@ test("SCAN-PORT: the scanner scenarios on EOS (real PostgreSQL, real transports)
     assert.equal(disposed.status, "REJECTED");
     assert.equal(disposed.ledgerMovementId, undefined, "a rejection has no ledger effect");
     assert.equal(await movements(), ledgerBefore);
-    for (const [label, who, key] of [["warehouse manager (reconcile only)", wm, "scn10-wm"], ["parts manager", pm, "scn10-pm"], ["technician", techA, "scn10-tech"]]) {
-      const r = await call(who, CC, "createCycleCountSheet", { location: W(WH), idempotencyKey: key });
-      assert.equal(r.status, 403, `${label} may not open a count: ${JSON.stringify(r.body)}`);
+    for (const [label, who, key] of [["warehouse manager (reconcile only)", wm, "scn10-wm"], ["parts manager", pm, "scn10-pm"], ["parts associate (PA-1)", pa, "scn10-pa"], ["technician", techA, "scn10-tech"]]) {
+      refused(await call(who, CC, "createCycleCountSheet", { location: W(WH), idempotencyKey: key }), 403, "CAPABILITY_MISSING", `${label} may not open a count`);
     }
   });
 
