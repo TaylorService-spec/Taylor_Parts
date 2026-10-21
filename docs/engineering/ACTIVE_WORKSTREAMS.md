@@ -47,7 +47,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        F-1a (#2184) and F-1b (#2188) merged; no migration, no capability, no grant
 - Expected outcome:    a voided sale can be rebilled on demand under a NEW invoice number (the voided number kept); the screen never offers Issue on a financed sale; the predicate and the command cannot disagree
 - Protected boundaries:none — no capability, grant, migration, Rules, deploy, Firebase, production or external-payment change; touches no adminPolicy, secondaryApproval or Commercial file
-- Lifecycle stage:     INTEGRATION (PR open; not merged)
+- Lifecycle stage:     MERGED `78736004` (#2195) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Lane FU-3 (2026-10-21) — PR B: the delegated self-approval exemption in Administration (Owner review of #2193, mandatory items): the exemption Object says "only the protected Owner" before any change to it, a FORBIDDEN preview reads "not authorized" (not "preview unavailable"), and the preview naming the affected Employee and the effective-access view showing the source Role / Direct Exception are proved by test. PR A (#2197): `reorderConsumersDeniedVsAbsent` registered in required CI.
 - Agent/session:       Claude Code Lane FU-3 · Role: builder; controller merges
@@ -58,7 +58,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    nobody is surprised by an Owner-only refusal on the exemption keys; every acceptance item of #2193 is proved by a named test
 - Protected boundaries:no migration, no capability, no grant, no Rules, deploy, Firebase or production change
-- Lifecycle stage:     INTEGRATION (PRs open; not merged)
+- Lifecycle stage:     MERGED PR A `5f542723` (#2197) and PR B `9688e5e9` (#2198) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Lane FU-1 low follow-ups (2026-10-20) — Sales Order tracker follows the server allocation read, bare `/opportunities/sales-order/:id` redirects to the canonical route, supplier PO "Loading name…" while the directory loads, R1 doc tag line corrected
 - Agent/session:       Claude Code Lane FU-1 · Role: builder; controller merges
@@ -69,7 +69,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    no stale "not recorded" allocation copy; the bare Sales Order URL lands on the page; no false "Name unavailable" during a load
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
-- Lifecycle stage:     INTEGRATION (PR open; not merged)
+- Lifecycle stage:     MERGED `4876712b` (#2192) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
 - Agent/session:       Claude Code Lane UX · Role: builder; controller merges
@@ -80,7 +80,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    no screen shows a blank, a storage key or a false warning where the record holds a name, number or state
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
-- Lifecycle stage:     INTEGRATION (PR open; not merged)
+- Lifecycle stage:     MERGED `9f839135` (#2176) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Lane HARDEN-2 — display-batch review follow-ups (#2176): "Name unavailable" vs "Not recorded", warehouse join tenant key, negative tests, myWork/MultiScan/job-card tests
 - Agent/session:       Claude Code Lane HARDEN-2 · Role: builder; controller merges
@@ -91,7 +91,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        #2176 (stacked on its head until it merges)
 - Expected outcome:    a former member's recorded actor reads "Name unavailable", never "Not recorded"; no cross-tenant warehouse name
 - Protected boundaries:none — no capability, grant, migration, Firebase or production change
-- Lifecycle stage:     INTEGRATION (PR open; not merged)
+- Lifecycle stage:     MERGED `ec4df468` (#2180) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Production recovery release R1 — record the production Hosting/Pages/Functions/Rules revisions and an operator rebuild recipe (gates all Firebase deletion)
 - Agent/session:       Claude Code lane R1 · Role: builder (docs only); controller reviews, tags and merges
@@ -102,7 +102,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (git history + `evidence/firebase-deployed-inventory-20261019/` only)
 - Expected outcome:    Hosting `4f30ab3a`, Pages `6cac0423`, Functions `4f30ab3a` (84/84 export match) and Rules `0526140d` pinned, with tag commands for the controller
 - Protected boundaries:none reached (no deploy, tag push, cloud call, credential or workflow edit)
-- Lifecycle stage:     INTEGRATION (docs PR open; controller creates the tags after review)
+- Lifecycle stage:     MERGED `bfeb6dd8` (#2179) (docs; the controller creates the tags) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          CI reliability — assignmentScopeRuntimePostgres teardown drain (pg-pool end() resolves before clients close; forced DROP kills a closing backend → unhandled 57P01)
 - Agent/session:       Claude Code Lane Firebase · Role: builder; Lane D: independent reviewer; controller merges
@@ -135,7 +135,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        one TODO scenario part (reservation-netted availability) waits on lane RES (S1b)
 - Expected outcome:    B5 acceptance "twelve scanner scenarios" is a CI regression suite on EOS instead of a manual run against retired callables
 - Protected boundaries:none; no capability, grant, migration, Rules, deploy or Firebase change
-- Lifecycle stage:     INTEGRATION (test-only PR; open, not merged)
+- Lifecycle stage:     MERGED `ec66b089` (#2177) (test-only) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Dispatcher Board interactions — drag reaches every lane (scrolling grid), tap placement ("Place on a lane"), lane names open an in-board technician review with back-state, Dispatch gated on workOrder.lifecycle.dispatch (Owner "DISPATCH BOARD INTERACTIONS" 2026-10-17)
 - Agent/session:       Claude Code EOS controller · Role: builder; Lane D: independent reviewer
@@ -458,7 +458,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (PR #2168 merged; readObligation aligned)
 - Expected outcome:    five small follow-ups pinned by tests
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
-- Lifecycle stage:     INTEGRATION
+- Lifecycle stage:     MERGED `5b2e58d0` (#2178) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Finance F-2 — the EOS finance reads serve every fact family the Firebase AR / Financials surfaces show (payment receipts and applications, the account-narrowed totals, the Sales Order reference), then the F-1 invoicing spec (docs only)
 - Agent/session:       Claude Code Lane F · Role: builder; controller merges
@@ -469,7 +469,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (read-only; no capability, migration or grant)
 - Expected outcome:    `financeReadCallableClient` has no consumer the EOS path cannot serve; the F-1 decisions are numbered for the Owner
 - Protected boundaries:none reached (F-1 build waits on the Owner's answers)
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     PR 1 MERGED `2f8be86f` (#2168); PR 2 (the F-1 invoicing specification) is tracked with F-1a `5c1fe280` (#2184) -- confirm before closing this row -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Lane Q-1 — quotes and approvals: PR 1 audit on every applied Commercial and CRM command (build); PR 2 the quote / discount approval specification (docs, Owner decisions; nothing of the workflow is built) (B5 matrix stage 6; scenarios A and E)
 - Agent/session:       Claude Code lane Q-1 · Role: builder; controller merges
@@ -480,7 +480,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    every applied Commercial / CRM command is audited; the quote and discount approval choices are numbered Owner decisions
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
-- Lifecycle stage:     INTEGRATION (PR 1) · DESIGNED (PR 2)
+- Lifecycle stage:     PR 1 MERGED `237b4897` (#2169); PR 2 (specification) not confirmed merged by the git log since 2026-10-19 -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Account page honest refusal wording (UX-2) · a refused work-order read (403 / FORBIDDEN) reads "Not available to you" in Work order attention, Open work orders (standing strip) and Service activity; "Couldn't be read" stays for genuine failures
 - Agent/session:       Claude Code lane UX-2 · Role: builder; controller reviews and merges
@@ -491,7 +491,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (display only; a refusal is FORBIDDEN / permission-denied only, so a 401 or missing session stays "couldn't be read")
 - Expected outcome:    a refusal never reads as an outage on the Account page
 - Protected boundaries:none reached (no capability, grant, migration, Firebase, workflow or production change; no work-order read is granted)
-- Lifecycle stage:     INTEGRATION (PR open)
+- Lifecycle stage:     MERGED `a9ab16c7` (#2181) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
 
 - Capability:          Lane S1b (2026-10-20) — hard stock reservations per operating company AND warehouse: reserve / release / consume / cancel with a lock-ordered no-oversell gate, replay by key + fingerprint, one audit row per applied command, serial Parts refused, readPartBalance per-location reserved / available with NOT_YET_ACTIVATED and SCOPE_PARTIAL
 - Agent/session:       Claude Code Lane S1b · Role: builder; controller merges
@@ -503,6 +503,8 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    a hard reservation cannot lack a company or a warehouse, cannot oversell, replays safely and is governed end to end
 - Protected boundaries:none reached — no capability, grant, Firebase or production change; activation is an operator row
 
+- Lifecycle stage:     MERGED `0ee9188a` (#2186) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
+
 - Capability:          Lane S1c (2026-10-20) — Sales Order allocation on EOS: `allocateSalesOrderLine` / `releaseSalesOrderAllocation` / `readSalesOrderAllocations` on `/operations/inventory` (a hard reservation of a PART line at a company AND warehouse the caller states; capability -> company -> warehouse scope; Part and quantity bound to the line; non-terminal order; releases on cancel / fulfil / close in the order's own transaction); the Sales Order allocation control
 - Agent/session:       Claude Code Lane S1c · Role: builder; controller reviews, writes the migration and merges
 - Branch / worktree:   `worktree-agent-a5bac7040d1f407d4` · `.claude/worktrees/agent-a5bac7040d1f407d4`
@@ -513,6 +515,8 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    a Sales Order line's stock can be set aside at a warehouse the caller chooses, and cannot be set aside for anything else
 - Protected boundaries:none reached by this branch — the capability and its grants are the controller's migration; Work Order dispatch is not wired; no production or Firebase change
 
+- Lifecycle stage:     MERGED `85121fd8` (#2189); holders `174ba281` (#2191) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
+
 - Capability:          Lane DOC (overnight 2026-10-20) — Service Work Order invoicing policy requirements (B5 gap; prepare only) + fresh Firebase dependency reconciliation against the Owner baseline (no deletion)
 - Agent/session:       Claude Code lane DOC · Role: builder (docs and read-only); controller reviews and merges
 - Branch / worktree:   `worktree-agent-a96482df91bab3cf0` · `.claude/worktrees/agent-a96482df91bab3cf0`
@@ -522,7 +526,18 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (cites open specs F-1 #2175, S1a #2167, T-1 #2173, REC #2174, W-1 #2171 by number only)
 - Expected outcome:    the Owner can answer the service-billing policy questions and approve or refuse each Firebase deletion tier against measured counts
 - Protected boundaries:none reached (no rate, grant, migration, code, deletion, deploy or production change; DECISIONS.md untouched)
-- Lifecycle stage:     INTEGRATION (PR open; not merged)
+- Lifecycle stage:     MERGED `cbb30946` (#2185) (docs) -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
+
+- Capability:          Lane UAT (2026-10-21) — role x object UAT, phase 1: the Security Role / Business Object census, the EXPECTED access manifest, the persona walkthrough and API-negative plan, the Ventana fixture plan and script, the coverage denominators and the Codex UAT handoff package (docs only; READ-ONLY)
+- Agent/session:       Claude Code Lane UAT · Role: builder (docs); controller merges
+- Branch / worktree:   `uat/role-object-census` · `.claude/worktrees/agent-ae61b83a1614b03bb`
+- Base commit:         `835e5982`
+- Owned paths:         `docs/uat/**` (new directory; generator in `docs/uat/tools/`)
+- Shared paths req'd:  this registry (lifecycle lines of already-merged rows; one new row)
+- Dependencies:        the controller's read-only nonprod census (`D:/eos-lanes/evidence/uat-nonprod-census-2026-10-21.json`); Codex handoff requires #2201 merged; rows marked `after #2200` / `after #2199` depend on DWO / CLC
+- Expected outcome:    Codex can run an independent persona-by-persona browser and authorization test against nonprod with exact expectations, and every UNDETERMINED expectation is an Owner question
+- Protected boundaries:none reached — no product code, grant, migration, deploy, credential, Postgres run or nonprod write; the Ventana script is run by the controller, not by this lane
+- Lifecycle stage:     INTEGRATION (docs PR open; not merged)
 
 ## Ready for assignment
 
