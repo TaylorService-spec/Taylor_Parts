@@ -403,7 +403,6 @@ describe("Receivables — Issue invoice: in flight and refused (F-1a-UI)", () =>
     expect((await screen.findByRole("alert")).textContent).toMatch(/not known whether the invoice was issued/);
     expect(screen.getByRole("button", { name: "Issue invoice now" }).disabled).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).disabled).toBe(false);
-    expect(callApi.mock.calls.find(([op]) => op === "issueInvoice")[2].signal.aborted).toBe(true);
   });
 });
 

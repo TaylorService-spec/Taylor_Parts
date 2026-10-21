@@ -39,11 +39,10 @@ export const ISSUE_UNRESOLVED_MESSAGE = "The invoice request did not finish in t
 
 /** `issueInvoice` that always settles: a request that never answers (or a transport that throws) becomes a refusal value, never a panel stuck "in flight" with Cancel disabled. */
 async function callIssueWithin(callApi, input, waitMs = ISSUE_WAIT_MS) {
-  const ctl = new AbortController();
   let timer;
-  const timeout = new Promise((resolve) => { timer = setTimeout(() => { ctl.abort(); resolve({ ok: false, message: ISSUE_UNRESOLVED_MESSAGE }); }, waitMs); });
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => { resolve({ ok: false, message: ISSUE_UNRESOLVED_MESSAGE }); }, waitMs); });
   try {
-    return await Promise.race([callApi("issueInvoice", input, { signal: ctl.signal }), timeout]);
+    return await Promise.race([callApi("issueInvoice", input), timeout]);
   } catch {
     return { ok: false, message: ISSUE_UNRESOLVED_MESSAGE };
   } finally {
