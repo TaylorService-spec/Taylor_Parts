@@ -122,8 +122,9 @@ function queueRow(r: Record<string, unknown>) {
     equipmentCandidateId: candidateId(r.equipment_candidate),
     attachmentCount: Array.isArray(r.attachment_refs) ? r.attachment_refs.length : 0,
     warnings: Array.isArray(r.warnings) ? (r.warnings as unknown[]).map((w) => String(w)) : [],
-    workItemId: (r.work_order_id as string | null) ?? null,
-    workOrderId: (r.work_order_id as string | null) ?? null,
+    // DWO-company: the id of a linked Work Order is shown only where the caller's operating companies reach it (wo_reach is decided in the same SELECT); otherwise it is as if unlinked.
+    workItemId: r.wo_reach === false ? null : (r.work_order_id as string | null) ?? null,
+    workOrderId: r.wo_reach === false ? null : (r.work_order_id as string | null) ?? null,
     duplicateOfRequestId: (r.duplicate_of_request_id as string | null) ?? null,
     // ── what a reviewer needs to see at a glance (Controller SERVICE EXPERIENCE COMPLETION: final Service UX) ──
     createdAt: millis(r.created_at),
@@ -165,16 +166,19 @@ export async function listInboundWork(deps: Deps, actor: LifecycleActor, input: 
   if (!Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > MAX_QUEUE_LIMIT) {
     refuse("LIMIT_INVALID", "INVALID_INPUT", `limit is an integer 1-${MAX_QUEUE_LIMIT}`);
   }
+  const listReach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
   const { rows } = await deps.pool.query(
     `SELECT r.id, r.status, r.received_at, r.sender, r.subject, r.request_type, r.priority, r.queue, r.suggested_operating_company_id,
             r.operating_company_id, r.customer_candidate, r.equipment_candidate, r.attachment_refs, r.warnings, r.work_order_id,
+            (r.work_order_id IS NULL OR EXISTS (SELECT 1 FROM eos_ops.work_orders wl WHERE wl.tenant_id = r.tenant_id AND wl.id = r.work_order_id
+                                                  AND ${listReach.sql("wl.operating_company_key", 4, { assignment: false })})) AS wo_reach,
             r.duplicate_of_request_id, r.created_at, r.source_mailbox_id, r.source_mailbox_name, r.destination, r.status_note,
             r.thread_association, r.attachment_custody, r.accept_claimed_by_principal_id, r.accept_claimed_at, r.accept_pending_work_order_id,
             ${CLAIMANT_COLUMNS}
        FROM eos_ops.inbound_work_requests r
       WHERE r.tenant_id = $1 AND r.status = ANY($2::text[])
       ORDER BY r.received_at DESC NULLS LAST, r.created_at DESC, r.id LIMIT $3`,
-    [actor.tenantId, statuses, (limit as number) + 1]);
+    [actor.tenantId, statuses, (limit as number) + 1, ...listReach.sqlParams()]);
   return { rows: rows.slice(0, limit as number).map(queueRow), truncated: rows.length > (limit as number) };
 }
 
@@ -186,9 +190,9 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
   // DWO-company: the linked Work Order's NUMBER is shown only where the caller's operating companies reach that Work Order.
   const reach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
   const { rows } = await deps.pool.query(
-    `SELECT r.*, w.work_order_number, l.link_kind, ${CLAIMANT_COLUMNS}
+    `SELECT r.*, w.work_order_number, (r.work_order_id IS NULL OR w.id IS NOT NULL) AS wo_reach, l.link_kind, ${CLAIMANT_COLUMNS}
        FROM eos_ops.inbound_work_requests r
-       LEFT JOIN eos_ops.work_orders w ON w.tenant_id = r.tenant_id AND w.id = r.work_order_id AND ${reach.sql("w.operating_company_key", 3)}
+       LEFT JOIN eos_ops.work_orders w ON w.tenant_id = r.tenant_id AND w.id = r.work_order_id AND ${reach.sql("w.operating_company_key", 3, { assignment: false })}
        LEFT JOIN eos_ops.inbound_work_order_links l ON l.tenant_id = r.tenant_id AND l.request_id = r.id
       WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, input.requestId, ...reach.sqlParams()]);
   if (rows.length === 0) refuse("INBOUND_REQUEST_NOT_FOUND", "NOT_FOUND", "that inbound request does not exist");
@@ -372,7 +376,11 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
 
   if ("replay" in claim) {
     const r = claim.replay;
-    const wo = await deps.pool.query(`SELECT work_order_number FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, r.work_order_id]);
+    // DWO-company: an accepted intake whose Work Order the caller's companies do not reach is answered as a Work Order that does not exist.
+    const replayReach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
+    const wo = await deps.pool.query(`SELECT work_order_number FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 AND ${replayReach.sql("operating_company_key", 3, { assignment: false })}`,
+      [actor.tenantId, r.work_order_id, ...replayReach.sqlParams()]);
+    if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "that Work Order does not exist");
     return { requestId, workOrderId: r.work_order_id, workItemId: r.work_order_id, workOrderNumber: wo.rows[0]?.work_order_number ?? null,
       operatingCompanyId: r.operating_company_id, replayed: true };
   }
@@ -387,10 +395,13 @@ export async function acceptInboundWork(deps: Deps, actor: LifecycleActor, input
     // under the intake's own derived create key, for the customer / site / type / operating company the completing
     // reviewer stated, and still operational. Any conflict REFUSES: the carried Work Order is never silently replaced,
     // no second one is created, and the claim and its history stay exactly as they are for a governed human resolution.
+    // DWO-company: a carried Work Order the caller's companies do not reach reads as one that no longer exists -- no company, type, customer or status of it is disclosed.
+    const carriedReach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
     const carried = await deps.pool.query(
       `SELECT id, work_order_number, status::text AS status, customer_id, location_id, work_order_type::text AS work_order_type,
               operating_company_key, create_idempotency_key
-         FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, r.accept_pending_work_order_id]);
+         FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 AND ${carriedReach.sql("operating_company_key", 3, { assignment: false })}`,
+      [actor.tenantId, r.accept_pending_work_order_id, ...carriedReach.sqlParams()]);
     const w = carried.rows[0];
     const conflicts: string[] = [];
     if (!w) conflicts.push("the carried Work Order no longer exists");
@@ -533,7 +544,7 @@ export async function attachInboundWork(deps: Deps, actor: LifecycleActor, input
     const reach = await requireWorkOrderCompanyReach(c, actor.tenantId, actor.principalId, refuse);
     const wo = await c.query(
       `SELECT id, work_order_number, status, customer_id, location_id FROM eos_ops.work_orders
-        WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR SHARE`,
+        WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: false })} FOR SHARE`,
       [actor.tenantId, input.workOrderId, ...reach.sqlParams()]);
     if (rows[0].status === "ATTACHED" && rows[0].work_order_id === input.workOrderId && wo.rows.length > 0) {
       return { requestId: input.requestId, workOrderId: input.workOrderId, workItemId: input.workOrderId,

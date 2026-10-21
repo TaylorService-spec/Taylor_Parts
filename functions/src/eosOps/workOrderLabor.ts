@@ -367,7 +367,7 @@ async function correctLabor(deps: Deps, actor: LifecycleActor, input: Record<str
   return inTransaction(deps.pool, async (client) => {
     const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse);
     const wo = await client.query(
-      `SELECT 1 FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+      `SELECT 1 FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: false })} FOR UPDATE`,
       [actor.tenantId, request.workOrderId, ...reach.sqlParams()]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
     if (await isQuarantined(client, actor.tenantId, request.workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);

@@ -22,6 +22,10 @@ company you work for**.
 - **Technicians keep every job assigned to them.** A technician sees and works every work order it is
   assigned to, and every work order of the companies it works for. Nothing a technician legitimately
   does changes. A technician cannot see another company's work orders that are not assigned to it.
+  Being assigned a job lets the technician do the field work on that job only (see it, accept it, travel,
+  arrive, work it, record parts and time, install equipment, complete it). It does not let the technician
+  schedule, dispatch, cancel or bill it, and it does not put another company's job into the office lists.
+  An assignment that has ended or moved to someone else no longer opens the job.
 - **Coordinated visits show only your companies' work orders.** A work order of another company is
   dropped from the list completely, together with the sales order it belongs to.
 - **Everything in your own company works as before.** Your role and your assignments still apply
@@ -43,9 +47,21 @@ When a Ventana sale is serviced by Taylor under the seller's service-provider au
 The authorization lets Taylor create and complete that work against the Ventana sales order; it does not
 open Taylor's work order to Ventana's people.
 
+## A seller sees the progress of the work done for its sale
+
+When one company sells and another company does the service work under the seller's service-provider
+authorization, the seller can open a **read-only view** of that work from its own sales order. It shows
+the work order number, the sales order, the company doing the work, the type of service, the status, the
+scheduled window, how far along it is, and the outcome the customer is told about. It does **not** show
+technician notes, labor rates or costs, restricted attachments, security details or the servicing
+company's finances, and the seller cannot change, schedule, dispatch, reassign, complete or cancel the work.
+The same read-only line appears on the seller's coordinated visits list while the authorization is active.
+It is shown only for work orders linked to that sales order, never for a customer's other work.
+
 ## The Administrator and the Owner
 
-The Administrator's reach on work orders is unchanged. Where the Administrator could already act on any
-company's work order, it still can; where the work order list or the scheduling actions were already limited
-to the Administrator's own companies, they still are. The Owner follows the companies it has been given
-through governed company access.
+The Administrator can **read** work orders for every company in the tenant (Taylor and Ventana alike):
+the work order list, the Service Office list, the technician picker, schedule views, reports, search and
+the detail page. What the Administrator can **change** is unchanged: every action still needs its own
+permission, the same lifecycle rules, and the same company limits it had before. The Owner follows the
+companies it has been given through governed company access.

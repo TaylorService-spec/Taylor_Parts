@@ -170,7 +170,7 @@ export const readTechnicianExecutionStats: WorkOrderOp = async (deps, caller, in
        FROM ${SCHEMA}.work_orders w
        JOIN ${SCHEMA}.work_order_assignments a
          ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
-      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 3)}
+      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 3, { assignment: false })}
       ORDER BY w.id`,
     [tenantId, employeeId, ...reach.sqlParams()]);
 
@@ -239,7 +239,7 @@ export const readWorkOrderConsumptionSnapshot: WorkOrderOp = async (deps, caller
     `SELECT u.part_id, SUM(u.qty_used)::bigint AS total, COUNT(*)::int AS frequency
        FROM (${ACTUALS_BY_WORK_ORDER_PART}) u
        JOIN ${SCHEMA}.work_orders w ON w.tenant_id = u.tenant_id AND w.id = u.work_order_id
-      WHERE u.tenant_id = $1 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 2)}
+      WHERE u.tenant_id = $1 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 2, { assignment: false })}
       GROUP BY u.part_id
       ORDER BY SUM(u.qty_used) DESC, u.part_id`,
     [caller.actor.tenantId, ...reach.sqlParams()]);
@@ -280,7 +280,7 @@ export const readTechnicianVolumeBreakdown: WorkOrderOp = async (deps, caller, i
        JOIN ${SCHEMA}.work_order_assignments a
          ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
        LEFT JOIN eos_workforce.employees e ON e.tenant_id = a.tenant_id AND e.id = a.assignee_employee_id
-      WHERE w.tenant_id = $1 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 2)}
+      WHERE w.tenant_id = $1 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 2, { assignment: false })}
       GROUP BY a.assignee_employee_id, e.preferred_name, e.display_name, e.first_name, e.last_name
       ORDER BY completed_count DESC, a.assignee_employee_id`,
     [caller.actor.tenantId, ...reach.sqlParams()]);

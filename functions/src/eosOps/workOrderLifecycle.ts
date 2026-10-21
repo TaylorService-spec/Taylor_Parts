@@ -435,6 +435,12 @@ export async function authorizeEdgeOrRefuse(
 export const MAX_TRANSITION_NOTE = 2000;
 
 /**
+ * The edges the ASSIGNED technician performs in the field. Only these may reach their Work Order through the OPEN assignment alone; ready, cancel, close and every office edge
+ * need the company (an assignment never authorizes cancellation, dispatch, scheduling or billing).
+ */
+const FIELD_EDGE_ACTIONS: ReadonlySet<string> = new Set(["accept", "startTravel", "arrive", "startWork", "complete"]);
+
+/**
  * THE ONE STATUS WRITER. Lock the row, prove the expected state, write the status (with its timestamp and,
  * for a scheduling command, the placement) and append the transition -- inside a transaction the CALLER owns,
  * so a command edge commits its own facts (assignment, schedule history) in the same unit.
@@ -473,7 +479,7 @@ export async function applyTransitionWithinTransaction(
   const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse, { message: "no operating-company authority" });
   const current = await client.query(
     `SELECT status::text AS status FROM ${SCHEMA}.work_orders
-      WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+      WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: FIELD_EDGE_ACTIONS.has(ruleForEdge.action) })} FOR UPDATE`,
     [actor.tenantId, input.workOrderId, ...reach.sqlParams()]);
   if (current.rows.length === 0) {
     refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${input.workOrderId} in this tenant`);

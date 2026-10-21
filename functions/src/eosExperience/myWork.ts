@@ -397,7 +397,7 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
     // and its text (complaint, customer name) is never matched against the query.
     if (k.workOrder) {
       const woReach = workOrderReach ?? (workOrderReach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId));
-      sql = sql.replace("{{WO_COMPANY}}", woReach.sql("w.operating_company_key", 4));
+      sql = sql.replace("{{WO_COMPANY}}", woReach.sql("w.operating_company_key", 4, { assignment: false }));
       params = [actor.tenantId, pattern, channels, ...woReach.sqlParams()];
     }
     const used = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));

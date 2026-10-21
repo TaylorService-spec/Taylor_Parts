@@ -49,7 +49,7 @@ export function listAssignedWorkForEmployee(deps: EmployeeReadDeps, actor: Emplo
              FROM eos_ops.work_order_assignments a
              JOIN eos_ops.work_orders w ON w.tenant_id = a.tenant_id AND w.id = a.work_order_id
              LEFT JOIN eos_crm.accounts a2 ON a2.tenant_id = w.tenant_id AND a2.id = w.customer_id
-            WHERE a.tenant_id = $1 AND a.assignee_employee_id = $2 AND a.effective_to IS NULL AND ${woReach.sql("w.operating_company_key", 4)}
+            WHERE a.tenant_id = $1 AND a.assignee_employee_id = $2 AND a.effective_to IS NULL AND ${woReach.sql("w.operating_company_key", 4, { assignment: false })}
             ORDER BY w.scheduled_start NULLS LAST, w.work_order_number LIMIT $3`, [tenantId, p.employeeId, p.limit + 1, ...woReach.sqlParams()]));
       } else {
         const reach = await queueReachKeys(db, { tenantId, principalId } as never);

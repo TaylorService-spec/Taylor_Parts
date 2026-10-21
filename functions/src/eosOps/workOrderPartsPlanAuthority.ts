@@ -208,7 +208,7 @@ export async function setPartsPlan(
     const reach = await requireWorkOrderCompanyReach(client, tenantId, principalId, refuse);
     const wo = await client.query(
       `SELECT status::text AS status FROM ${SCHEMA}.work_orders
-        WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+        WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: false })} FOR UPDATE`,
       [tenantId, workOrderId, ...reach.sqlParams()],
     );
     if (wo.rows.length === 0) {

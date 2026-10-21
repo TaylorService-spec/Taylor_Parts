@@ -25,7 +25,7 @@ import { WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION } from "./workOrderAssignmentAuthority";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
 import { resolveCompanyAuthority } from "./companyAuthority";
-import { requireWorkOrderCompanyReach, resolveWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
+import { requireWorkOrderCompanyReach, resolveWorkOrderCompanyReach, resolveWorkOrderReadAuthority } from "./workOrderCompanyAuthority";
 import { ListQueryError, appliedListQuery, compileListQuery, describeListQuery, pageOfListQuery, validateListQuery } from "./listQuery";
 import { workOrderListFieldsFor } from "./workOrderListQuery";
 
@@ -208,7 +208,7 @@ const requireListRead = (actor: LifecycleActor): void => {
  * assignments. No authority = no list, refused exactly as Analysis refuses it.
  */
 async function listCompanyKeys(pool: Pool, actor: LifecycleActor): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(pool, actor.tenantId, actor.principalId);
+  const authority = await resolveWorkOrderReadAuthority(pool, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
   }
@@ -394,7 +394,7 @@ export async function listWorkOrderTechnicians(
   if (workOrderId !== undefined && workOrderId !== null && !ID_SHAPE(workOrderId)) {
     refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "workOrderId must be a governed Work Order id");
   }
-  const authority = await resolveCompanyAuthority(deps.pool, actor.tenantId, actor.principalId);
+  const authority = await resolveWorkOrderReadAuthority(deps.pool, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
   }

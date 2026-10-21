@@ -29,8 +29,8 @@
 //
 // This file confers nothing: it never adds a capability and never widens a read beyond what the capability and the relation already allowed.
 import type { PoolClient } from "pg";
-import { resolveCompanyAuthority } from "./companyAuthority";
-import { principalHasProtectedAdministratorStanding } from "./administrationReach";
+import { resolveCompanyAuthority, type CompanyAuthority } from "./companyAuthority";
+import { authorizedCompanyKeys, principalHasProtectedAdministratorStanding } from "./administrationReach";
 
 type Db = Pick<PoolClient, "query">;
 
@@ -52,8 +52,13 @@ export interface WorkOrderCompanyReach {
   /**
    * A boolean SQL expression over a Work Order row, using $firstParam and $firstParam+1. `column` is `operating_company_key` of an UNALIASED eos_ops.work_orders (the row is then
    * addressed as work_orders) or `alias.operating_company_key`.
+   *
+   * `assignment` (default true) is the OPEN-assignment branch. It is for the FIELD side of a Work Order: detail, field context, labor, parts used, install, accept / travel /
+   * arrive / start / complete, My Work. It is `false` for the OFFICE side -- Schedule, Reschedule, Dispatch, Unschedule, cancel / close by the office, parts planning, the
+   * estimate, the office lists, search, aggregates, self-scheduling links and the inbound queue -- so an assignment never authorizes dispatch, scheduling, cancellation,
+   * billing or cross-company office access. The bind arity is the same either way (the second bind is then referenced by a no-op).
    */
-  sql(column: string, firstParam: number): string;
+  sql(column: string, firstParam: number, options?: { readonly assignment?: boolean }): string;
 }
 
 const COLUMN = /^(?:[a-z_][a-z0-9_]*\.)?operating_company_key$/;
@@ -70,11 +75,13 @@ export function workOrderCompanyReachOf(f: {
     employeeIds: employees,
     admits: (companyKey: string | null | undefined): boolean => f.unrestricted || (typeof companyKey === "string" && keys.includes(companyKey)),
     sqlParams: (): readonly unknown[] => [keys, employees],
-    sql(column: string, firstParam: number): string {
+    sql(column: string, firstParam: number, options: { readonly assignment?: boolean } = {}): string {
       // The column is a code-supplied identifier, never input; the check keeps it that way.
       if (!COLUMN.test(column) || !Number.isInteger(firstParam) || firstParam < 1) throw new Error("work order company predicate: bad column or parameter index");
       const row = column.includes(".") ? column.slice(0, column.indexOf(".")) : "work_orders";
-      return `(${f.unrestricted ? "TRUE" : "FALSE"} OR ${column} = ANY($${firstParam}::text[])`
+      const company = `${f.unrestricted ? "TRUE" : "FALSE"} OR ${column} = ANY($${firstParam}::text[])`;
+      if (options.assignment === false) return `((${company}) AND ($${firstParam + 1}::text[] IS NULL OR TRUE))`;
+      return `(${company}`
         + ` OR EXISTS (SELECT 1 FROM eos_ops.work_order_assignments wra WHERE wra.tenant_id = ${row}.tenant_id AND wra.work_order_id = ${row}.id AND wra.effective_to IS NULL`
         + ` AND wra.assignee_employee_id = ANY($${firstParam + 1}::text[])))`;
     },
@@ -95,7 +102,26 @@ export async function resolveWorkOrderCompanyReach(
   const employeeIds = authority.gap !== null ? [] : (await db.query<{ employee_id: string }>(
     `SELECT employee_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`, [tenantId, principalId])).rows
     .map((r) => String(r.employee_id));
-  return workOrderCompanyReachOf({ unrestricted: false, hasAuthority: authority.companies.length > 0, companyKeys: authority.companyKeys, employeeIds });
+  // An OPEN assignment alone is authority over ITS Work Order even where the home company is inactive or unkeyed -- but only for an identity that resolved (an enabled Principal
+  // with an active membership and exactly one active link to an access-eligible Employee). A terminated or ineligible Employee, a disabled Principal and an ambiguous link have a
+  // gap and no employee ids; an ended or reassigned assignment is not OPEN; and every capability and lifecycle rule still applies.
+  return workOrderCompanyReachOf({ unrestricted: false, hasAuthority: authority.companies.length > 0 || employeeIds.length > 0, companyKeys: authority.companyKeys, employeeIds });
+}
+
+/**
+ * READ authority over Work Orders (Owner DWO-2, 2026-10-21): the protected Administrator has consistent tenant-wide administrative READ visibility -- every ACTIVE operating
+ * company and key of the tenant -- for the office list, the technician picker, schedule views, placement suggestions, analytics, search and detail. Everyone else (the
+ * protected Owner included) follows its own company authority. Read visibility authorizes NO mutation: every mutation keeps its own capability, lifecycle, integrity and audit
+ * rules and its own company reach (Schedule / Reschedule / Dispatch / Create / working hours / unavailability stay bounded by the caller's own authority, as before).
+ */
+export async function resolveWorkOrderReadAuthority(db: Db, tenantId: string, principalId: string): Promise<CompanyAuthority> {
+  if (await principalHasProtectedAdministratorStanding(db, tenantId, principalId)) {
+    const { rows } = await db.query<{ id: string }>(
+      `SELECT operating_company_id AS id FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY 1`, [tenantId]);
+    const keys = await authorizedCompanyKeys(db, tenantId);
+    return Object.freeze({ companies: Object.freeze(rows.map((r) => String(r.id))), companyKeys: Object.freeze([...keys]), gap: null });
+  }
+  return resolveCompanyAuthority(db, tenantId, principalId);
 }
 
 export const COMPANY_AUTHORITY_REQUIRED_MESSAGE =
