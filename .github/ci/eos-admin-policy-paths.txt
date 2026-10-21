@@ -1027,4 +1027,7 @@ functions/src/access/secondaryApprovalExemptionCore.ts
 functions/src/access/secondaryApprovalExemption.ts
 functions/test/saeProtectedOwnerExemption.test.mjs
 functions/test/saeProtectedOwnerExemptionPostgres.test.mjs
+# SAE Rule 2 delegated exemption (2026-10-20): the Owner-only grant / revoke gate for the approval.selfApproval.exempt* family and its Postgres proof.
+functions/src/adminPolicy/exemptionAdministration.ts
+functions/test/saeDelegatedExemptionPostgres.test.mjs
 functions/test/support/protectedOwnerFixture.mjs

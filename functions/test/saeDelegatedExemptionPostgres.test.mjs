@@ -136,7 +136,7 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     const g2 = await grantDirect(owner, directUser, "FINANCIALS");
     assert.equal(g2.ok, true, JSON.stringify(g2).slice(0, 400));
     assert.deepEqual(await traces(), { ...before, roles: before.roles + 3, direct: before.direct + 1, audits: before.audits + 4 }, "four grants, four audit rows");
-    const audit = await one(`SELECT actor_uid, action, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'grantObjectActionToRole' ORDER BY occurred_at LIMIT 1`, [TENANT]);
+    const audit = await one(`SELECT actor_uid, action, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'grantObjectActionToRole' AND after->>'capabilityKey' = 'approval.selfApproval.exemptFinancials' ORDER BY occurred_at LIMIT 1`, [TENANT]);
     assert.equal(audit.actor_uid, owner.principalId);
     assert.equal(audit.after.capabilityKey, "approval.selfApproval.exemptFinancials");
     assert.equal(audit.after.granteeKey, "saeFinLead");
@@ -178,7 +178,8 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     assert.equal(preview.data.outcome, "WOULD_APPLY");
     assert.deepEqual(await traces(), before, "a preview leaves no trace");
     // an ordinary change keeps its ordinary gate: the Administrator previews it, the Owner (no admin.securityPolicy.write) is FORBIDDEN
-    const ordinary = { operation: "grantObjectActionToRole", input: { roleKey: "saePurchLead", objectKey: "workOrder", actionKey: "read", reason: "preview" } };
+    const readPair = await one(`SELECT object_key, action_key FROM eos_policy.capabilities WHERE key = 'finance.policy.read'`);
+    const ordinary = { operation: "grantObjectActionToRole", input: { roleKey: "saePurchLead", objectKey: readPair.object_key, actionKey: readPair.action_key, reason: "preview" } };
     assert.equal((await adminAs(adminDual.subject, "previewAuthorityChange", { change: ordinary })).ok, true);
     assert.deepEqual((({ ok, code }) => [ok, code])(await adminAs(owner.subject, "previewAuthorityChange", { change: ordinary })), [false, "FORBIDDEN"]);
   });

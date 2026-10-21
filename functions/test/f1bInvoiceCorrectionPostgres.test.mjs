@@ -952,6 +952,189 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
       approval_basis='PROTECTED_OWNER', approval_grant_source='PROTECTED_OWNER_MEMBERSHIP' WHERE id='icr-sae-4'`, [O.principalId]), /CORRECTION_PEOPLE|invoice_correction_approval_basis_shape/);
   });
 
+  // ════════════════════ SAE Rule 2: the DELEGATED exemption (DECISIONS #SAE-2; Owner ruling D3) ════════════════════
+  // A delegated FINANCIALS grant (a Role carrying the key, or a direct grant) removes ONLY the second person. The request key, the approval key, company authority, the amount and state
+  // rules, the invoice's integrity and the absence of any payment path are exactly as for everyone else; a revoke or an expiry takes effect on the next call.
+  const dgrant = (principalId, key, expires = null) => q(
+    `INSERT INTO eos_policy.principal_capabilities (id,tenant_id,principal_id,capability_id,granted_by,created_by,updated_by,exception_reason,expires_at)
+     SELECT 'pc-' || $3 || '-' || c.id, $2, $3, c.id, 'fixture', 'fixture', 'fixture', 'SAE-2 test', $4 FROM eos_policy.capabilities c WHERE c.key = $1`, [key, TENANT, principalId, expires]);
+  const drevoke = (principalId, key) => q(`DELETE FROM eos_policy.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = $3)`, [TENANT, principalId, key]);
+  const dsae = {};
+
+  await t.test("SAE-6 DELEGATED: a Financials-exempt grantee (direct grant, then Role grant, then the all-workflows key) decides a correction they requested -- applied, basis DELEGATED_EXEMPTION + provenance on the row, the audit and the read; the invoice is untouched; refunds record only", async () => {
+    const seam = require("../lib/access/secondaryApprovalExemption.js");
+    const D = await person("uid-sae2-direct", ["f1bRequester", "f1bApprover"], { id: "e-sae2-direct", name: "Dee Direct" });
+    assert.equal((await admin("createRole", { key: "f1bExemptRole", name: "F1b exempt role", reason: "local test tenant only (SAE-2)" })).ok, true);
+    const R = await person("uid-sae2-role", ["f1bRequester", "f1bApprover", "f1bExemptRole"], { id: "e-sae2-role", name: "Rita Role" });
+    const A = await person("uid-sae2-all", ["f1bRequester", "f1bApprover"], { id: "e-sae2-all", name: "Al All" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [D, R, A]);
+    await dgrant(D.principalId, "approval.selfApproval.exemptFinancials");
+    await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by)
+             SELECT 'rc-sae2-' || r.id, $1, r.id, c.id, 'fixture', 'fixture', 'fixture' FROM eos_policy.roles r, eos_policy.capabilities c
+              WHERE r.tenant_id = $1 AND r.key = 'f1bExemptRole' AND c.key = 'approval.selfApproval.exemptFinancials'`, [TENANT]);
+    await dgrant(A.principalId, "approval.selfApproval.exemptAll");
+    Object.assign(dsae, { D, R, A });
+    // the SQL proof and the TypeScript seam agree for each grantee and for a non-grantee (the Owner of PR-1 is exempt by Rule 1, not by a grant)
+    for (const [label, who, expected] of [["direct", D, true], ["role", R, true], ["all", A, true], ["plain", sae.people.lookalike, false], ["administrator", sae.people.administrator, false]]) {
+      const sql = (await one(`SELECT eos_policy.has_delegated_self_approval_exemption($1, $2, 'FINANCIALS') AS b`, [TENANT, who.principalId])).b;
+      const ts = await seam.resolveSecondaryApprovalExemption(pool, TENANT, who.principalId, "finance.invoiceCorrection");
+      assert.equal(sql, expected, `${label}: SQL proof`);
+      assert.equal(ts.exempt, expected, `${label}: TypeScript seam`);
+      if (expected) assert.equal(ts.basis, "DELEGATED_EXEMPTION");
+    }
+    const S = await issued({ price: 30000, account: "acct-a" });
+    const S_HASH = await invoiceHash(S.invoice.id);
+    for (const [label, who, source] of [["direct", D, /^direct:/], ["role", R, /^role:f1bExemptRole$/], ["all", A, /^direct:/]]) {
+      const c = ok(await request(who, { kind: "CREDIT_MEMO", invoiceId: S.invoice.id, amountMinor: 100, reason: `SAE-2 ${label}` }), `${label} req`).correction;
+      const before = await state();
+      const r = ok(await approve(who, c, { reason: "Delegated decision" }), `${label} delegated self-approval`);
+      assert.equal(r.outcome, "applied");
+      assert.deepEqual([r.correction.status, r.correction.requestedBy, r.correction.decidedBy, r.correction.approvalBasis, r.correction.approvalScope],
+        ["APPLIED", who.principalId, who.principalId, "DELEGATED_EXEMPTION", "FINANCIALS"], label);
+      assert.match(r.correction.approvalGrantSource, source, label);
+      const row = await one(`SELECT approval_basis, approval_scope, approval_grant_source FROM eos_finance.invoice_corrections WHERE id = $1`, [c.id]);
+      assert.deepEqual([row.approval_basis, row.approval_scope], ["DELEGATED_EXEMPTION", "FINANCIALS"], label);
+      assert.match(row.approval_grant_source, source, label);
+      const audit = await one(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'finance.correction.approve' AND target_id = $2`, [TENANT, c.id]);
+      assert.deepEqual([audit.after.approvalBasis, audit.after.approvalScope, audit.after.decidedBy, audit.after.requestedBy], ["DELEGATED_EXEMPTION", "FINANCIALS", who.principalId, who.principalId], label);
+      assert.match(audit.after.approvalGrantSource, source, label);
+      assert.equal((await state()).audits, before.audits + 1, `${label}: ONE audit row for the applied approval`);
+      assert.equal(await invoiceHash(S.invoice.id), S_HASH, `${label}: the issued invoice is untouched`);
+    }
+    assert.equal((await bal(S.obligation)).outstanding, "29700", "three credits of 100, derived");
+    // a refund: records only, no payment path, for a delegated grantee too
+    const RF = await issued({ price: 12000, account: "acct-c" });
+    const pay = ok(await fn(ctrl, "recordSettlement", { operatingCompanyId: "taylor", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c" }, kind: "CUSTOMER_PAYMENT",
+      amountMinor: 12000, currency: "USD", sourceReference: "CHK-SAE2", idempotencyKey: key("stl") }), "pay").settlement;
+    ok(await fn(ctrl, "applySettlement", { settlementId: pay.id, applications: [{ obligationId: RF.obligation, amountMinor: 12000 }], idempotencyKey: key("app") }), "apply");
+    const appRow = await one(`SELECT id FROM eos_finance.settlement_applications WHERE tenant_id=$1 AND settlement_id=$2 AND status='APPLIED'`, [TENANT, pay.id]);
+    const handoffs = await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]);
+    const rf = ok(await request(D, { kind: "REFUND", invoiceId: RF.invoice.id, amountMinor: 3000, applicationId: appRow.id, reason: "Customer returned a unit" }), "refund req").correction;
+    const rfDone = ok(await approve(D, rf, { reason: "Return verified" }), "refund delegated approval");
+    assert.deepEqual([rfDone.correction.status, rfDone.refundRecorded, rfDone.notice, rfDone.correction.approvalBasis], ["APPLIED", true, "refund recorded; no payment has been sent", "DELEGATED_EXEMPTION"]);
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.accounting_handoffs WHERE tenant_id=$1`, [TENANT]), handoffs, "no external payment path: nothing is handed off or sent");
+    // a void before money moves, and the amount rule, still apply
+    const V = await issued({ price: 2200, account: "acct-a" });
+    const vr = ok(await request(D, { kind: "VOID", invoiceId: V.invoice.id, reason: "Billed to the wrong customer" }), "void req").correction;
+    assert.equal(ok(await approve(D, vr, { reason: "Confirmed" }), "void delegated approval").correction.approvalBasis, "DELEGATED_EXEMPTION");
+    const P2 = await issued({ price: 900, account: "acct-b" });
+    refused(await request(D, { kind: "CREDIT_MEMO", invoiceId: P2.invoice.id, amountMinor: 901, reason: "too much" }), 412, "AMOUNT_EXCEEDS_OUTSTANDING");
+    dsae.P = P2;
+  });
+
+  await t.test("SAE-7 DELEGATED SCOPE AND SEPARATION: a Purchasing-only grantee, an expired grant, a revoked grant, a look-alike role, a relinked Employee, the Administrator and a grantee without the approval key all keep the refusal, with zero trace", async () => {
+    const P = dsae.P;
+    const pending = async (who, amount = 3) => ok(await request(who, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: amount, reason: "SAE-2 probe" }), "probe req").correction;
+    const refuseSelf = async (label, who, c, status = 412, code = "SELF_APPROVAL_FORBIDDEN") => {
+      const before = await state();
+      refused(await approve(who, c), status, code, label);
+      assert.deepEqual(await state(), before, `${label}: zero trace (state hash)`);
+      assert.equal((await one(`SELECT status FROM eos_finance.invoice_corrections WHERE id = $1`, [c.id])).status, "PENDING");
+    };
+    const wrong = await person("uid-sae2-purch", ["f1bRequester", "f1bApprover"], { id: "e-sae2-purch", name: "Pat Purchasing-only" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [wrong]);
+    await dgrant(wrong.principalId, "approval.selfApproval.exemptPurchasing");
+    await refuseSelf("Purchasing-only grantee", wrong, await pending(wrong));
+    // expired and revoked: the very next call keeps the second person
+    const exp = await person("uid-sae2-exp", ["f1bRequester", "f1bApprover"], { id: "e-sae2-exp", name: "Eve Expired" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [exp]);
+    await dgrant(exp.principalId, "approval.selfApproval.exemptFinancials", new Date(Date.now() + 3_600_000).toISOString());
+    const ec = await pending(exp);
+    await q(`UPDATE eos_policy.principal_capabilities SET expires_at = now() - interval '1 minute' WHERE tenant_id = $1 AND principal_id = $2`, [TENANT, exp.principalId]);
+    await refuseSelf("expired grant", exp, ec);
+    const { D, R } = dsae;
+    const dc = await pending(D);
+    await drevoke(D.principalId, "approval.selfApproval.exemptFinancials");
+    await refuseSelf("revoked direct grant", D, dc);
+    await q(`DELETE FROM eos_policy.role_capabilities WHERE tenant_id = $1 AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = 'approval.selfApproval.exemptFinancials')`, [TENANT]);
+    await refuseSelf("revoked Role grant", R, await pending(R));
+    // a Role merely NAMED like a key carries nothing
+    assert.equal((await admin("createRole", { key: "exemptFinancials", name: "approval.selfApproval.exemptFinancials", reason: "local test tenant only (SAE-2)" })).ok, true);
+    const look = await person("uid-sae2-look", ["f1bRequester", "f1bApprover", "exemptFinancials"], { id: "e-sae2-look", name: "Lou Lookalike" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [look]);
+    await refuseSelf("role named like the key", look, await pending(look));
+    // the Administrator (standing, no grant) and a relinked Employee
+    await refuseSelf("Administrator without a grant", sae.people.administrator, await pending(sae.people.administrator));
+    const owner = await person("uid-sae2-rl", ["f1bRequester", "f1bApprover"], { id: "e-sae2-rl", name: "Rae Relink" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [owner]);
+    await dgrant(owner.principalId, "approval.selfApproval.exemptFinancials");
+    const rc = await pending(owner);
+    const imp = await person("uid-sae2-imp", ["f1bApprover"]);
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [imp]);
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [owner.principalId]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ('lnk-sae2-imp',$1,$2,'e-sae2-rl','taylor','OPERATOR_ASSERTED','active','fixture','relinked the grantee''s Employee to another Principal')`, [TENANT, imp.principalId]);
+    await refuseSelf("relinked Employee: the grantee's old Principal no longer owns the Employee, and the new Principal holds no grant", imp, rc);
+    // the exemption adds no authority: an all-workflows grantee without the approval key is refused for the key; a Ventana-only grantee reads a Taylor correction as nonexistent
+    const noKey = await person("uid-sae2-nokey", ["f1bRequester"], { id: "e-sae2-nokey", name: "Nan NoKey" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [noKey]);
+    await dgrant(noKey.principalId, "approval.selfApproval.exemptAll");
+    await refuseSelf("grantee without the approval key", noKey, await pending(noKey), 403, "CAPABILITY_REQUIRED");
+    const vGrantee = await person("uid-sae2-vent", ["f1bRequester", "f1bApprover"], { id: "e-sae2-vent", name: "Val Ventana" });
+    await assignFinanceCompanies({ admin, q, tenant: TENANT }, [vGrantee], ["ventana"]);
+    await dgrant(vGrantee.principalId, "approval.selfApproval.exemptAll");
+    const s4 = await state();
+    refused(await approve(vGrantee, rc), 404, "CORRECTION_NOT_FOUND", "a foreign company reads as nonexistent, even for a delegated grantee");
+    refused(await request(vGrantee, { kind: "CREDIT_MEMO", invoiceId: P.invoice.id, amountMinor: 1, reason: "x" }), 404, "INVOICE_NOT_FOUND");
+    assert.deepEqual(await state(), s4);
+    // a client flag is not an input
+    for (const extra of [{ delegated: true }, { exempt: true }, { approvalBasis: "DELEGATED_EXEMPTION" }, { grantSource: "direct:x" }]) {
+      const before = await state();
+      refused(await fn(look, "decideInvoiceCorrection", { correctionId: rc.id, decision: "REJECT", reason: "x", idempotencyKey: key("dec"), ...extra }), 400, "FIELD_NOT_ACCEPTED", JSON.stringify(extra));
+      assert.deepEqual(await state(), before);
+    }
+  });
+
+  await t.test("SAE-8 THE DATABASE says it too: a same-person decision under a DELEGATED basis is stored only while the SQL proof holds for that Employee, on UPDATE and on INSERT, and a forged basis by a non-grantee is refused", async () => {
+    const { A } = dsae; // the all-workflows grantee
+    const adm = sae.people.administrator;
+    const X = await issued({ price: 4000, account: "acct-b" });
+    const rawPending = (id, who, emp) => q(
+      `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id, request_idempotency_key, request_fingerprint)
+       VALUES ($1,$2,'taylor',$3,$4,'CREDIT_MEMO',100,'USD','raw','PENDING',$5,$6,$1,'fp')`, [id, TENANT, X.invoice.id, X.obligation, who, emp]);
+    const decideRaw = (id, who, emp, basis) => q(
+      `UPDATE eos_finance.invoice_corrections SET status='APPLIED', decided_by=$2, decided_by_employee_id=$3, decided_at=now(), decision_reason='r', decision_idempotency_key=$1, decision_fingerprint='f',
+              approval_basis=$4, approval_grant_source=$5 WHERE id=$1`, [id, who, emp, basis, basis ? "direct:raw" : null]);
+    await rawPending("icr-sae2-1", A.principalId, "e-sae2-all");
+    await assert.rejects(decideRaw("icr-sae2-1", A.principalId, "e-sae2-all", null), /SELF_APPROVAL_FORBIDDEN/, "the grantee decides their own WITHOUT recording the basis: refused");
+    await assert.rejects(decideRaw("icr-sae2-1", A.principalId, "e-sae2-all", "NO_SUCH_BASIS"), /invoice_correction_approval_basis_known|SELF_APPROVAL_FORBIDDEN/);
+    await decideRaw("icr-sae2-1", A.principalId, "e-sae2-all", "DELEGATED_EXEMPTION");
+    assert.equal((await one(`SELECT approval_basis FROM eos_finance.invoice_corrections WHERE id = 'icr-sae2-1'`)).approval_basis, "DELEGATED_EXEMPTION", "a grantee, with the basis, is accepted");
+    await assert.rejects(q(`UPDATE eos_finance.invoice_corrections SET approval_basis = NULL, approval_grant_source = NULL WHERE id = 'icr-sae2-1'`), /CORRECTION_IMMUTABLE|invoice_correction_approval_basis_shape/, "a recorded basis is never erased");
+    // a forged DELEGATED basis by a non-grantee (the Administrator, and a grantee for ANOTHER Employee's name) is refused, on UPDATE and on INSERT
+    await rawPending("icr-sae2-2", adm.principalId, "e-sae-admin");
+    await assert.rejects(decideRaw("icr-sae2-2", adm.principalId, "e-sae-admin", "DELEGATED_EXEMPTION"), /SELF_APPROVAL_FORBIDDEN/, "no grant: a forged basis is refused");
+    await rawPending("icr-sae2-3", A.principalId, "e-sae2-all");
+    await assert.rejects(decideRaw("icr-sae2-3", A.principalId, "e-sae-owner", "DELEGATED_EXEMPTION"), /SELF_APPROVAL_FORBIDDEN|CORRECTION_PEOPLE|CORRECTION_EMPLOYEE_UNLINKED/, "a grant is proved ON THE EMPLOYEE recorded, not on any name");
+    const insertDecided = (id, who, emp, status, basis) => q(
+      `INSERT INTO eos_finance.invoice_corrections (id, tenant_id, operating_company_id, invoice_id, obligation_id, kind, amount_minor, currency, reason, status, requested_by, requested_by_employee_id,
+          request_idempotency_key, request_fingerprint, decided_by, decided_by_employee_id, decided_at, decision_reason, decision_idempotency_key, decision_fingerprint, approval_basis, approval_grant_source)
+       VALUES ($1,$2,'taylor',$3,$4,'CREDIT_MEMO',100,'USD','raw',$7,$5,$6,$1,'fp',$5,$6,now(),'r',$1,'f',$8,$9)`,
+      [id, TENANT, X.invoice.id, X.obligation, who, emp, status, basis, basis ? "direct:raw" : null]);
+    await assert.rejects(insertDecided("icr-sae2-ins-1", adm.principalId, "e-sae-admin", "APPLIED", "DELEGATED_EXEMPTION"), /SELF_APPROVAL_FORBIDDEN/, "INSERT: a forged DELEGATED basis by a non-grantee");
+    await assert.rejects(insertDecided("icr-sae2-ins-2", A.principalId, "e-sae2-all", "APPLIED", null), /SELF_APPROVAL_FORBIDDEN/, "INSERT: same person, no basis, even for a grantee");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoice_corrections WHERE id LIKE 'icr-sae2-ins-%'`), 0, "every refusal left nothing");
+    await insertDecided("icr-sae2-ins-3", A.principalId, "e-sae2-all", "APPLIED", "DELEGATED_EXEMPTION");
+    // judged at the moment: the fact is admitted while the grant stands, and not once it is revoked; the decision made earlier is never re-judged
+    const rawFact = (src) => q(
+      `INSERT INTO eos_finance.financial_facts (id, tenant_id, operating_company_id, counterparty_id, fact_class, fact_type, source_domain, source_record_id, amount_minor, currency, basis, effective_at, idempotency_key, request_fingerprint, obligation_id, created_by)
+       SELECT $1::text, $2::text, o.operating_company_id, o.counterparty_id, 'OBLIGATION', 'RECEIVABLE_CREDITED', 'INVOICE_CORRECTION', $3::text, -100, o.currency, 'raw', now(), $1::text, 'fp', o.id, 'raw'
+         FROM eos_finance.obligations o WHERE o.id = $4::text`, [`ff-sae2-${src}`, TENANT, src, X.obligation]);
+    await rawFact("icr-sae2-1");
+    await rawPending("icr-sae2-4", A.principalId, "e-sae2-all");
+    await decideRaw("icr-sae2-4", A.principalId, "e-sae2-all", "DELEGATED_EXEMPTION");
+    await drevoke(A.principalId, "approval.selfApproval.exemptAll");
+    await assert.rejects(rawFact("icr-sae2-4"), /ADJUSTMENT_NOT_APPROVED/, "judged at that moment: the grant has been revoked");
+    await rawPending("icr-sae2-5", A.principalId, "e-sae2-all");
+    await assert.rejects(decideRaw("icr-sae2-5", A.principalId, "e-sae2-all", "DELEGATED_EXEMPTION"), /SELF_APPROVAL_FORBIDDEN/, "a revoked grantee cannot decide their own");
+    assert.equal((await one(`SELECT approval_basis FROM eos_finance.invoice_corrections WHERE id = 'icr-sae2-1'`)).approval_basis, "DELEGATED_EXEMPTION", "the row decided earlier still stands as decided");
+    await dgrant(A.principalId, "approval.selfApproval.exemptAll");
+    await rawFact("icr-sae2-4");
+    // existing non-grantee, non-Owner two-person path is unchanged: a different decider carries no basis
+    await rawPending("icr-sae2-6", sae.owner.principalId, "e-sae-owner");
+    await assert.rejects(decideRaw("icr-sae2-6", adm.principalId, "e-sae-admin", "DELEGATED_EXEMPTION"), /CORRECTION_PEOPLE/, "an ordinary two-person decision carries no basis");
+  });
+
   await t.test("NO PAYOUT PATH: the Finance transport has no operation that moves money out, and every refund record carries nothing to execute", async () => {
     assert.deepEqual(financeOps.FINANCE_OPERATIONS.filter((n) => /payout|disburs|cashout|send|execute|initiate|transfer|wire|release/i.test(n)), []);
     const refunds = (await q(`SELECT method, correlation_id, notes, replaces_settlement_id FROM eos_finance.settlements WHERE tenant_id=$1 AND kind='CUSTOMER_REFUND'`, [TENANT])).rows;
