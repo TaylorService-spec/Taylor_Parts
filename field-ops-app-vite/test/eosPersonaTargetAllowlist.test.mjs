@@ -214,3 +214,66 @@ test("normalisation: trailing slash, explicit default port and upper-case host a
     }
   }
 });
+
+test("callEosApiAsPersona: a route is a path, never an authority -- every host-smuggling route is refused with zero transmissions", async () => {
+  for (const route of ["@evil.example/x", ".evil.example/x", ":1@evil.example/", "//evil.example/x", "\\\\evil.example/x", "\\evil.example/x", "x", "", undefined, 42]) {
+    const s = stub();
+    await assert.rejects(
+      callEosApiAsPersona("dispatcher", route, {}, { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: API, fetch: s.fetch }),
+      refusal("INVALID_ROUTE"), String(route));
+    assert.equal(s.calls.length, 0, `${String(route)}: no issuer call and no bearer token`);
+    assert.equal(transmitted(s.calls), false);
+  }
+  // A well-formed path is sent to the registered API, with the bearer token.
+  const ok = stub((url) => url.endsWith("/auth/nonprod/persona-session")
+    ? { ok: true, status: 200, json: async () => ({ ok: true, token: TOKEN, expiresAt: "2099-01-01T00:00:00Z", personaKey: "dispatcher", principalId: "pr-1" }) }
+    : { ok: true, status: 200, json: async () => ({ ok: true }) });
+  await callEosApiAsPersona("dispatcher", "/operations/x", {}, { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: API, fetch: ok.fetch });
+  assert.equal(ok.calls[1].url, `${API}/operations/x`);
+  assert.equal(ok.calls[1].init.headers.authorization, `Bearer ${TOKEN}`);
+});
+
+test("registry fail-closed: an unrecognised role (missing, 'Production', 'prod', 'production ') voids the whole resolution", () => {
+  const valid = { id: "env-a", role: "sandbox", eosApi: { baseUrl: "https://api-a.example" }, surfaces: [{ url: "https://app-a.example", eosApplication: true }] };
+  for (const role of [undefined, "Production", "prod", "production ", ""]) {
+    const bad = { id: "env-x", ...(role === undefined ? {} : { role }), eosApi: { baseUrl: "https://api-x.example" }, surfaces: [{ url: "https://app-x.example", eosApplication: true }] };
+    const registry = { environments: [valid, bad] };
+    // Neither the odd entry's own URLs NOR a perfectly valid entry's URLs resolve.
+    for (const opts of [{ baseUrl: "https://api-x.example", origin: "https://app-x.example" }, { baseUrl: "https://api-a.example", origin: "https://app-a.example" }]) {
+      assert.throws(() => resolveEosTargetFrom(registry, opts), refusal("REGISTRY_ROLE_UNKNOWN"), `role=${JSON.stringify(role)}`);
+    }
+  }
+});
+
+test("a production entry that overlaps a nonprod entry wins: PRODUCTION_REFUSED, and a malformed production entry is an EosPersonaSessionError", () => {
+  const overlap = { environments: [
+    { id: "env-a", role: "sandbox", eosApi: { baseUrl: "https://shared.example" }, surfaces: [{ url: "https://app-shared.example", eosApplication: true }] },
+    { id: "env-p", role: "production", eosApi: { baseUrl: "https://shared.example" }, surfaces: [{ url: "https://app-shared.example/field-ops" }] },
+  ] };
+  assert.throws(() => resolveEosTargetFrom(overlap, { baseUrl: "https://shared.example" }), refusal("PRODUCTION_REFUSED"));
+  assert.throws(() => resolveEosTargetFrom({ environments: [overlap.environments[0], { ...overlap.environments[1], eosApi: null }] },
+    { baseUrl: "https://shared.example", origin: "https://app-shared.example" }), refusal("PRODUCTION_REFUSED"));
+  const malformed = { environments: [overlap.environments[0], { id: "env-p", role: "production", eosApi: { baseUrl: "not a url" }, surfaces: [] }] };
+  assert.throws(() => resolveEosTargetFrom(malformed, { baseUrl: "https://shared.example" }), (e) => e instanceof client.EosPersonaSessionError);
+});
+
+test("pinned parser edges: trailing-dot host, IPv4/IPv6 literals, percent-encoded hosts and backslash userinfo are refused with zero calls", async () => {
+  for (const baseUrl of [
+    "https://eos-api-nonprod.onrender.com.", "https://eos-api-nonprod.onrender.com.:443",
+    "https://1.2.3.4", "https://[::1]", "https://[::ffff:1.2.3.4]", "https://2130706433", "https://0x7f.0.0.1",
+    "https://eos%2dapi-nonprod.onrender.com", "https://eos-api-nonprod%2eonrender.com", "https://%65os-api-nonprod.onrender.com",
+    "https://eos-api-nonprod.onrender.com\\@evil.example", "https://evil.example\\@eos-api-nonprod.onrender.com",
+    "https://eos-api-nonprod.onrender.com\\.evil.example", "https://evil.example%5c@eos-api-nonprod.onrender.com",
+  ]) {
+    for (const [name, call] of Object.entries(BOTH)) {
+      const s = stub();
+      await assert.rejects(call({ baseUrl, fetch: s.fetch }), (e) => e.name === "EosPersonaSessionError" && !SECRETS.some((x) => e.message.includes(x)), `${name} ${baseUrl}`);
+      assert.equal(s.calls.length, 0, `${name} ${baseUrl}`);
+    }
+  }
+  for (const origin of ["https://verenwardeos.vercel.app.", "https://[::1]", "https://5.6.7.8", "https://verenwardeos%2evercel.app", "https://verenwardeos.vercel.app\\@evil.example"]) {
+    const s = stub();
+    await assert.rejects(login({ baseUrl: API, origin, fetch: s.fetch }), (e) => e.name === "EosPersonaSessionError", origin);
+    assert.equal(s.calls.length, 0, origin);
+  }
+});

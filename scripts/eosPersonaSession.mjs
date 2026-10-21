@@ -32,6 +32,9 @@ export class EosPersonaSessionError extends Error {
   }
 }
 
+// The nonproduction roles in config/environments.json (scripts/environmentArchitecture.test.mjs pins the full set:
+// sandbox, integration, production). Anything else is REGISTRY_ROLE_UNKNOWN.
+const NONPROD_ROLES = new Set(["sandbox", "integration"]);
 const REGISTRY_PATH = join(REPO_ROOT, "config", "environments.json");
 
 /** What may be echoed about a refused URL: scheme://host[:port] only -- never userinfo, path, query or an unparseable string. */
@@ -41,6 +44,10 @@ function describeUrl(raw) {
 
 /** Normalise to a bare origin (lower-case host, default port dropped). https only; no userinfo, path, query or fragment. */
 function normalizeOrigin(raw, what) {
+  // The RAW text must already be plain: the URL parser would quietly decode "%2d" or turn "\" into "/", and strip tabs/newlines.
+  if (!/^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(String(raw))) {
+    throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} is not a plain https origin: ${describeUrl(raw)}`);
+  }
   let u;
   try { u = new URL(String(raw)); } catch { throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} is not a URL: ${describeUrl(raw)}`); }
   if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || u.pathname !== "/") {
@@ -55,14 +62,24 @@ function normalizeOrigin(raw, what) {
  */
 export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId, env = process.env, needOrigin = false } = {}) {
   const envs = registry.environments ?? [];
-  const nonprod = envs.filter((e) => e.role !== "production");
+  // Explicit roles, fail closed: one entry whose role is neither listed nor exactly "production" voids the WHOLE
+  // resolution, so a typo ("Production", "prod", "production ", a missing role) can never make a production entry look nonprod.
+  for (const e of envs) {
+    if (!NONPROD_ROLES.has(e.role) && e.role !== "production") {
+      throw new EosPersonaSessionError("REGISTRY_ROLE_UNKNOWN", `environment '${e.id}' has an unrecognised role; the target allowlist cannot be trusted`);
+    }
+  }
+  const nonprod = envs.filter((e) => NONPROD_ROLES.has(e.role));
   const production = envs.filter((e) => e.role === "production");
   const surfaceOrigins = (e) => (e.surfaces ?? []).filter((x) => x.eosApplication === true).map((x) => normalizeOrigin(x.url, "registered surface"));
   const apiOwner = (o) => nonprod.find((e) => e.eosApi?.baseUrl && normalizeOrigin(e.eosApi.baseUrl, "registered eosApi") === o);
   const originOwner = (o) => nonprod.find((e) => surfaceOrigins(e).includes(o));
-  // Only to give a known production URL the clearer PRODUCTION_REFUSED code; the allowlist alone is what refuses.
-  const isProduction = (o) => production.some((e) => (e.eosApi?.baseUrl && new URL(e.eosApi.baseUrl).origin === o)
-    || (e.surfaces ?? []).some((x) => new URL(x.url).origin === o));
+  // A production entry owning the URL refuses it OUTRIGHT, even if a nonprod entry also lists it (overlap).
+  const registeredOrigin = (raw) => {
+    try { return new URL(String(raw)).origin; } catch { throw new EosPersonaSessionError("INVALID_TARGET_URL", "a registered production URL is not a URL"); }
+  };
+  const isProduction = (o) => production.some((e) => (e.eosApi?.baseUrl && registeredOrigin(e.eosApi.baseUrl) === o)
+    || (e.surfaces ?? []).some((x) => registeredOrigin(x.url) === o));
 
   let apiInput = baseUrl ?? env.EOS_API_BASE_URL;
   if (!apiInput) {
@@ -74,11 +91,9 @@ export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId,
     apiInput = entry.eosApi.baseUrl;
   }
   const base = normalizeOrigin(apiInput, "the EOS API base URL");
+  if (isProduction(base)) throw new EosPersonaSessionError("PRODUCTION_REFUSED", `the EOS API ${base} is a production URL`);
   const owner = apiOwner(base);
-  if (!owner) {
-    throw new EosPersonaSessionError(isProduction(base) ? "PRODUCTION_REFUSED" : "API_NOT_REGISTERED",
-      `the EOS API ${base} is not a registered nonproduction EOS API`);
-  }
+  if (!owner) throw new EosPersonaSessionError("API_NOT_REGISTERED", `the EOS API ${base} is not a registered nonproduction EOS API`);
   if (environmentId && owner.id !== environmentId) {
     throw new EosPersonaSessionError("ENVIRONMENT_MISMATCH", `the EOS API ${base} belongs to '${owner.id}', not '${environmentId}'`);
   }
@@ -86,10 +101,10 @@ export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId,
   let resolvedOrigin = null;
   if (origin !== undefined && origin !== null) {
     resolvedOrigin = normalizeOrigin(origin, "the browser origin");
+    if (isProduction(resolvedOrigin)) throw new EosPersonaSessionError("PRODUCTION_REFUSED", `the browser origin ${resolvedOrigin} is a production URL`);
     const o = originOwner(resolvedOrigin);
     if (!o) {
-      throw new EosPersonaSessionError(isProduction(resolvedOrigin) ? "PRODUCTION_REFUSED" : "ORIGIN_NOT_REGISTERED",
-        `the browser origin ${resolvedOrigin} is not a registered nonproduction EOS application surface`);
+      throw new EosPersonaSessionError("ORIGIN_NOT_REGISTERED", `the browser origin ${resolvedOrigin} is not a registered nonproduction EOS application surface`);
     }
     if (o.id !== owner.id) {
       throw new EosPersonaSessionError("ENVIRONMENT_MISMATCH", `the browser origin ${resolvedOrigin} belongs to '${o.id}' but the EOS API ${base} belongs to '${owner.id}'`);
@@ -161,8 +176,16 @@ export async function issueEosPersonaSession(personaKey, options = {}) {
 
 /** Call one EOS API route as a persona. Returns the parsed JSON body and status. */
 export async function callEosApiAsPersona(personaKey, route, payload, options = {}) {
+  // The route is a PATH on the validated base, never an authority: "@evil.example/x", ".evil.example/x", ":1@evil.example/",
+  // "//evil.example/x" and a leading backslash would all move the bearer token off-environment. Checked BEFORE a session is issued.
+  if (typeof route !== "string" || !/^\/(?![\/\\])/.test(route)) {
+    throw new EosPersonaSessionError("INVALID_ROUTE", "the route must be a path beginning with a single '/'");
+  }
   const session = await issueEosPersonaSession(personaKey, options);
   const { base } = resolveEosTarget({ ...options, env: options.env ?? process.env });
+  let target;
+  try { target = new URL(base + route); } catch { throw new EosPersonaSessionError("INVALID_ROUTE", "the route does not form a URL"); }
+  if (target.origin !== base) throw new EosPersonaSessionError("INVALID_ROUTE", "the route leaves the approved EOS API origin");
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const res = await postGuarded(fetchImpl, `${base}${route}`, {
     method: "POST",
