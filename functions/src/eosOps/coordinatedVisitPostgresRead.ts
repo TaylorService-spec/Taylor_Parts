@@ -284,7 +284,7 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
   }
 
   let visibleOrders: ReadonlySet<string> | null = null;
-  if (reach) {
+  if (reach && reach.basis !== "PROTECTED_ADMINISTRATOR") { // the protected Administrator is unrestricted: its read (dangling anchors included) is unchanged
     const anchors = [...new Set(coordinated.map((r) => String(r.sales_order_id)))];
     const { rows: seen } = anchors.length === 0 ? { rows: [] as Record<string, unknown>[] } : await db.query(
       `SELECT s.id FROM eos_commercial.sales_orders s WHERE s.tenant_id = $1 AND s.id = ANY($2::text[]) AND ${reach.sql("s", 3)}`,
