@@ -272,7 +272,7 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
     }
     for (const expected of ["REBILLED", "BILLING_PACKAGE_ALREADY_PREPARED"]) assert.ok(seen.has(expected), `the sweep exercised ${expected}`);
     const v5 = byOrder.get(V5.so);
-    assert.deepEqual(v5.map((r) => r.rebill.reason).sort(), [null, "NOT_LATEST_VOIDED_INVOICE"], "V5 shows both: the older voided row is not the latest");
+    assert.deepEqual(v5.map((r) => String(r.rebill.reason)).sort(), ["NOT_LATEST_VOIDED_INVOICE", "null"], "V5 shows both: the older voided row is not the latest, the newer one is offered");
   });
 
   await t.test("ISSUABLE never disagrees with issueInvoice: false -> refused with exactly the reason (a financed sale included); true -> issues", async () => {

@@ -432,16 +432,16 @@ export interface RebillFacts {
   /** The order's LATEST invoice (by issue time) exists and is VOIDED. */
   readonly latestInvoiceVoided: boolean;
 }
-export interface RebillBlocker { readonly code: string; readonly category: "PRECONDITION_FAILED" | "CONFLICT"; readonly message: string }
+export interface RebillBlocker { readonly code: string; readonly category: "PRECONDITION_FAILED" | "CONFLICT"; readonly reason: string }
 /**
  * Why a Sales Order cannot be REBILLED (prepared again for billing), or null. REBILL ONLY (Owner: "prepare rebill after an eligible void", not on-demand
  * re-versioning): the order must be ELIGIBLE in full, hold no current package, and its latest invoice must be a voided one. ONE function, two callers:
  * the command (which refuses with exactly this code) and the receivable read, which shows Prepare rebill only where this is null.
  */
 export function rebillBlocker(f: RebillFacts): RebillBlocker | null {
-  if (!f.orderFullyEligible) return { code: "SALES_ORDER_NOT_ELIGIBLE", category: "PRECONDITION_FAILED", message: "the Sales Order is not ELIGIBLE in full; only such an order is prepared for billing" };
-  if (f.hasCurrentPackage) return { code: "BILLING_PACKAGE_ALREADY_PREPARED", category: "CONFLICT", message: "the Sales Order already has a current billing package; a package is prepared again only after a void retires it" };
-  if (!f.latestInvoiceVoided) return { code: "NOT_LATEST_VOIDED_INVOICE", category: "PRECONDITION_FAILED", message: "a rebill follows a voided invoice: this Sales Order's latest invoice is not a voided one" };
+  if (!f.orderFullyEligible) return { code: "SALES_ORDER_NOT_ELIGIBLE", category: "PRECONDITION_FAILED", reason: "the Sales Order is not ELIGIBLE in full; only such an order is prepared for billing" };
+  if (f.hasCurrentPackage) return { code: "BILLING_PACKAGE_ALREADY_PREPARED", category: "CONFLICT", reason: "the Sales Order already has a current billing package; a package is prepared again only after a void retires it" };
+  if (!f.latestInvoiceVoided) return { code: "NOT_LATEST_VOIDED_INVOICE", category: "PRECONDITION_FAILED", reason: "a rebill follows a voided invoice: this Sales Order's latest invoice is not a voided one" };
   return null;
 }
 
@@ -502,7 +502,7 @@ export async function prepareBillingPackageCommand(pool: Pool, actor: FinanceAct
               (SELECT i.voided_at IS NOT NULL FROM eos_finance.invoices i WHERE i.tenant_id = $1 AND i.sales_order_id = $2 ORDER BY i.issued_at DESC, i.id DESC LIMIT 1) AS latest_voided`,
       [actor.tenantId, salesOrderId]);
     const blocked = rebillBlocker({ orderFullyEligible: facts[0]?.fully_eligible === true, hasCurrentPackage: facts[0]?.has_current === true, latestInvoiceVoided: facts[0]?.latest_voided === true });
-    if (blocked) throw new FinanceFoundationError(blocked.code, blocked.category, blocked.message);
+    if (blocked) throw new FinanceFoundationError(blocked.code, blocked.category, blocked.reason);
     const out = await prepareBillingPackageOn(c, actor, { salesOrderId, idempotencyKey: key });
     if (out.outcome === "NOT_ELIGIBLE") {
       throw new FinanceFoundationError("SALES_ORDER_NOT_ELIGIBLE", "PRECONDITION_FAILED", `the Sales Order is ${out.eligibility}; only an order ELIGIBLE in full is prepared for billing`);
