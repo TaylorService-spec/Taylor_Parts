@@ -1,0 +1,249 @@
+{
+ "pin": "835e5982ba64b29020815e5dc749ea17568c1c1e",
+ "totals": {
+  "RUN_NOW": 9955,
+  "NEEDS_RECORDS_UNVERIFIED": 1456,
+  "NEEDS_VENTANA_FIXTURES": 316,
+  "BLOCKED_UNMERGED_PR": 188,
+  "BLOCKED_OWNER_QUESTION": 121,
+  "NOT_APPLICABLE": 256,
+  "TOTAL": 12292
+ },
+ "matrix": {
+  "capability": {
+   "RUN_NOW": 3360,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 3360
+  },
+  "cred": {
+   "RUN_NOW": 2879,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 81,
+   "NOT_APPLICABLE": 240,
+   "TOTAL": 3200
+  },
+  "navigation": {
+   "RUN_NOW": 1216,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 1216
+  },
+  "workflow": {
+   "RUN_NOW": 0,
+   "NEEDS_RECORDS_UNVERIFIED": 752,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 16,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 768
+  },
+  "api-probe": {
+   "RUN_NOW": 2032,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 2032
+  },
+  "record-reach": {
+   "RUN_NOW": 0,
+   "NEEDS_RECORDS_UNVERIFIED": 432,
+   "NEEDS_VENTANA_FIXTURES": 316,
+   "BLOCKED_UNMERGED_PR": 172,
+   "BLOCKED_OWNER_QUESTION": 24,
+   "NOT_APPLICABLE": 16,
+   "TOTAL": 960
+  },
+  "search": {
+   "RUN_NOW": 160,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 160
+  },
+  "dashboard": {
+   "RUN_NOW": 68,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 68
+  },
+  "analysis": {
+   "RUN_NOW": 160,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 160
+  },
+  "direct-route": {
+   "RUN_NOW": 64,
+   "NEEDS_RECORDS_UNVERIFIED": 176,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 240
+  },
+  "sae-self-approval": {
+   "RUN_NOW": 0,
+   "NEEDS_RECORDS_UNVERIFIED": 96,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 96
+  },
+  "sae-grant": {
+   "RUN_NOW": 16,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 16
+  },
+  "clc": {
+   "RUN_NOW": 0,
+   "NEEDS_RECORDS_UNVERIFIED": 0,
+   "NEEDS_VENTANA_FIXTURES": 0,
+   "BLOCKED_UNMERGED_PR": 16,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 16
+  }
+ },
+ "expectedCounts": {
+  "ALLOW": 1964,
+  "DENY": 8536,
+  "SCOPED": 123,
+  "VISIBLE": 292,
+  "HIDDEN": 924,
+  "PRESENT": 68,
+  "CONDITIONAL": 7,
+  "UNDETERMINED": 121,
+  "NOT_APPLICABLE": 256,
+  "ALLOW_PREVIEW_ONLY": 1
+ },
+ "roleLevel": {
+  "roleCapabilityCells": 11550,
+  "roleCredCells": 11000,
+  "roleReadbackCalls": 55
+ },
+ "fieldStats": {
+  "visiblePositive": 1599,
+  "editPositive": 515,
+  "doorwayNegatives": 343,
+  "perPersona": {
+   "ownerExecutive": {
+    "visible": 211,
+    "edit": 95,
+    "doorwayNegatives": 14
+   },
+   "administrator": {
+    "visible": 246,
+    "edit": 95,
+    "doorwayNegatives": 12
+   },
+   "generalManager": {
+    "visible": 174,
+    "edit": 95,
+    "doorwayNegatives": 17
+   },
+   "officeManager": {
+    "visible": 21,
+    "edit": 21,
+    "doorwayNegatives": 27
+   },
+   "serviceManager": {
+    "visible": 95,
+    "edit": 27,
+    "doorwayNegatives": 22
+   },
+   "dispatcher": {
+    "visible": 174,
+    "edit": 34,
+    "doorwayNegatives": 16
+   },
+   "serviceTechnician": {
+    "visible": 10,
+    "edit": 0,
+    "doorwayNegatives": 27
+   },
+   "partsAssociate": {
+    "visible": 113,
+    "edit": 0,
+    "doorwayNegatives": 21
+   },
+   "partsManager": {
+    "visible": 118,
+    "edit": 27,
+    "doorwayNegatives": 20
+   },
+   "warehouseAssociate": {
+    "visible": 87,
+    "edit": 0,
+    "doorwayNegatives": 22
+   },
+   "warehouseManager": {
+    "visible": 108,
+    "edit": 27,
+    "doorwayNegatives": 21
+   },
+   "retailSales": {
+    "visible": 62,
+    "edit": 47,
+    "doorwayNegatives": 24
+   },
+   "nationalAccountsSales": {
+    "visible": 62,
+    "edit": 47,
+    "doorwayNegatives": 24
+   },
+   "financeAccounting": {
+    "visible": 118,
+    "edit": 0,
+    "doorwayNegatives": 20
+   },
+   "reportingAnalyst": {
+    "visible": 0,
+    "edit": 0,
+    "doorwayNegatives": 28
+   },
+   "generalEmployee": {
+    "visible": 0,
+    "edit": 0,
+    "doorwayNegatives": 28
+   }
+  }
+ },
+ "universe": {
+  "roles": 55,
+  "personas": 16,
+  "registeredObjects": 50,
+  "capabilityObjects": 54,
+  "capabilities": 210,
+  "builtDestinations": 76,
+  "destinations": 92,
+  "extraRoutes": 15,
+  "operations": 452,
+  "probes": 127,
+  "workflowActions": 48,
+  "recordKinds": 20
+ }
+}

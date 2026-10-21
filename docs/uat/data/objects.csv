@@ -1,0 +1,55 @@
+key,label,registered,domain,fieldsCensus,fieldsSeed,capabilitiesN,credRows,rolesRead,rolesCreate,rolesEdit,rolesAnyCapability,opCount,hasPage,hasApi,pagesList
+account,Accounts,true,CRM,21,21,5,20,20,8,9,21,8,true,true,customers/customers; financials/customerFinancials; reporting/builder; administration/duplicateRules; /customers/:accountId
+auditLog,Audit Log,true,Administration,0,0,1,12,12,0,0,11,0,true,false,financials/audit; administration/auditLogs
+commissions,Commissions,true,Sales / Finance,0,0,0,1,1,0,0,0,0,false,false,
+contact,Contacts,true,CRM,6,6,0,1,1,0,0,0,5,true,true,reporting/builder; /customers/:accountId
+cycleCount,Cycle Count,true,Inventory,0,0,5,0,0,0,0,3,9,true,true,inventory/warehouseWorkspace; inventory/cycleCounts; inventoryRole/warehouse
+dataImport,Data Import,true,Administration,0,0,1,0,0,0,0,1,3,true,true,administration/dataImport
+employee,Users,true,Administration,22,22,8,3,3,1,2,3,33,true,true,administration/users; /my-profile; /administration/users/:employeeId; /administration/users/functional-roles
+equipment,Equipment / Installed Base,true,Service,13,13,3,1,1,0,0,10,9,true,true,equipment/equipment; reporting/builder; /equipment/:equipmentId
+equipmentModel,Equipment Model,true,,15,15,2,2,2,0,0,6,3,true,true,equipment/equipment; inventory/partMaster
+financeConfiguration,Finance Configuration,true,Finance,0,0,1,0,0,0,0,6,10,true,true,financials/governance
+financialPolicy,Financial Policy,true,Finance,0,0,4,0,0,0,0,4,9,true,true,financials/governance; administration/financialPolicy
+inboundMailbox,Inbound Mailbox,true,Service,0,0,1,0,0,0,0,2,13,true,true,administration/emailCommunications
+inboundWorkRequest,Inbound Work Request,true,Service,0,0,5,0,0,0,0,5,8,true,true,service/inboundWork
+inventoryAction,Inventory Adjustments,true,Inventory,8,8,1,13,11,4,4,11,1,true,true,dashboard/operationsDashboard; inventory/cycleCounts
+inventoryTransaction,Inventory Stock,true,Inventory,15,15,3,19,18,0,4,21,6,true,true,dashboard/operationsDashboard; service/technicianWorkspace; inventory/warehouseWorkspace; inventory/truckInventory; financials/intercompany; /inventory/:partId
+invoice,Invoices / AR,true,Finance,20,20,5,14,14,7,7,14,5,true,true,financials/overview; financials/billingQueue; financials/invoices; financials/accountsReceivable; financials/creditsAdjustments; financials/customerFinancials; financials/intercompany; /financials/invoices/:invoiceId
+location,Customer Locations,true,CRM,9,9,0,1,1,0,0,0,4,true,true,inventory/warehouseWorkspace; inventory/warehouses; reporting/builder; administration/warehouseRacking; /customers/:accountId
+manufacturer,Manufacturer,true,,9,9,1,19,19,0,0,19,6,true,true,inventory/parts; inventory/partMaster; inventory/manufacturers
+marketingInitiatives,Marketing Initiatives,true,Marketing,0,0,0,2,1,0,0,0,0,false,false,
+mobileLocation,Mobile Location,true,,9,9,2,1,1,0,0,2,6,true,true,inventory/truckInventory
+opportunity,Opportunities,true,Sales,10,10,3,10,10,0,6,10,6,true,true,customers/opportunities; /customers/:accountId; /customers/opportunities/:opportunityId
+part,Parts Catalog,true,Inventory,27,27,5,21,19,0,9,23,7,true,true,dashboard/operationsDashboard; service/technicianWorkspace; service/scan; inventory/parts; inventory/partMaster; /inventory/:partId
+partAlias,Part Alias,true,,16,16,0,1,1,0,0,0,6,true,true,inventory/parts; inventory/partMaster; /inventory/:partId
+payment,Payments,true,Finance,12,12,10,14,14,6,6,15,0,true,false,financials/overview; financials/payments; /financials/payments/:paymentId
+principal,Principal,true,Administration,0,0,1,0,0,0,0,2,17,true,true,administration/users; administration/permissionPreview; /account/security; /administration/users/:employeeId
+purchaseOrder,Purchase Orders,true,Procurement,10,10,8,12,12,6,0,13,8,true,true,inventoryRole/manager; purchasing/purchaseOrders
+purchaseOrderVoid,Purchase Order Void,true,,6,6,0,1,1,0,0,0,1,true,true,purchasing/purchaseOrders
+receivingOrder,Receiving,true,Inventory,18,18,3,4,4,0,4,8,8,true,true,service/scan; inventory/receiving; inventoryRole/warehouse; purchasing/receipts
+rentalAgreement,Rental Agreement,true,Rental,0,0,3,0,0,0,0,11,14,true,true,rental/rental
+rentalEquipment,Rental Equipment,true,Rental,0,0,3,0,0,0,0,8,4,true,true,rental/rental
+reorderRequest,Reorder Requests,true,Procurement,37,37,12,8,7,5,0,10,16,true,true,inventory/reorderQueue; inventoryRole/manager; inventoryRole/mine
+reportDefinition,Report Definition,true,Administration,0,0,5,3,3,0,0,4,6,true,true,reporting/savedReports
+rolesPermissions,Roles / Permissions,true,Administration,0,0,5,2,2,0,2,2,31,true,true,administration/rolesPermissions; administration/objects; administration/permissions; /administration/users/:employeeId
+salesAgreement,Sales Agreement,true,,24,24,5,6,6,6,6,6,7,true,true,customers/salesAgreements; /customers/opportunities/sales-agreement/:salesAgreementId
+salesDiscountAuthority,Sales Discount Authority,true,Sales,0,0,1,0,0,0,0,6,2,true,true,administration/salesConfiguration
+salesOrder,Sales Orders,true,Sales,13,13,4,18,18,6,6,19,11,true,true,customers/salesOrders; service/coordinatedVisits; /customers/opportunities/sales-order/:salesOrderId; /opportunities/sales-order/:salesOrderId
+salesTerritory,Sales Territory,true,,7,6,0,2,1,0,0,0,0,false,false,
+selfApprovalExemption,Self-Approval Exemption,true,Administration,0,0,7,0,0,0,0,0,0,false,false,
+serializedAssets,Serialized Assets,true,Inventory,0,0,2,15,15,0,0,15,1,false,true,
+settlement,Settlement,true,Finance,0,0,4,0,0,0,0,5,7,true,true,financials/accountsReceivable; financials/payments; financials/reconciliation
+supplier,Supplier,true,,16,16,1,1,1,0,0,5,5,true,true,purchasing/suppliers
+supplierCatalogItem,Supplier Catalog Item,true,,19,16,7,1,1,0,0,3,5,true,true,purchasing/suppliers; /inventory/:partId
+systemConfiguration,System Configuration,true,Administration,0,0,1,0,0,0,0,2,3,true,true,administration/systemConfiguration
+technicianTimeNonWork,Technician Time / Non-work,true,Service,0,0,0,1,1,0,0,0,2,false,true,
+transferOrder,Transfer Orders,true,Inventory,15,15,5,13,11,3,4,14,5,true,true,inventory/warehouseWorkspace; inventory/transfers; inventoryRole/warehouse
+truck,Truck,true,,13,13,0,1,1,0,0,0,9,true,true,inventory/truckInventory
+warehouse,Warehouse,true,,4,4,4,4,4,0,0,10,16,true,true,inventory/warehouses; administration/warehouseRacking
+workflowDefinition,Workflow,true,Administration,0,0,6,0,0,0,0,2,12,true,true,administration/workflows
+workflowInstance,Workflow Instance,true,Administration,0,0,0,0,0,0,0,0,7,true,true,administration/workflows
+workOrder,Work Orders,true,Service,10,10,15,13,11,11,12,13,44,true,true,serviceOperations/serviceOperations; service/workOrders; service/jobAssignments; service/dispatch; service/coordinatedVisits; service/coordinatedMission; service/technicianWorkspace; service/scan; service/dispatcherBoard; service/scheduling; service/dispatchScheduling; /service/work-orders/new; /service/work-orders/:workOrderId
+crmActivity,CRM Activity,false,Customers,,0,2,0,0,0,0,3,0,false,false,
+inventoryReturn,Inventory Return,false,Inventory,,0,1,0,0,0,0,1,0,false,false,
+performanceGoal,Performance Goal,false,Administration,,0,5,0,0,0,0,12,0,true,false,analysis/goals
+report,Report,false,Administration,,0,34,0,0,0,0,4,0,false,false,
