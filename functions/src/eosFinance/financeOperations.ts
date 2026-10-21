@@ -41,7 +41,7 @@ import {
   applyFinancialSettlement, readSettlement, reconcileFinancialSettlement, recordFinancialSettlement, reverseSettlementApplication, voidFinancialSettlement,
 } from "./settlement";
 import { INVOICE_ISSUE_CAPABILITY, issueBlocker, issueFinancialInvoice } from "./invoiceIssue";
-import { prepareBillingPackageCommand } from "./billingPackage";
+import { prepareBillingPackageCommand, rebillBlocker } from "./billingPackage";
 import {
   CORRECTION_APPROVAL_CAPABILITIES, CORRECTION_APPROVE_CAPABILITY, CORRECTION_REQUEST_CAPABILITIES, CORRECTION_REQUEST_CAPABILITY, INVOICE_CORRECTION_KINDS,
   correctionScope, decideInvoiceCorrection, invoiceCompany, listInvoiceCorrections, readInvoiceCorrectionOn, requestInvoiceCorrection, type InvoiceCorrectionKind,
@@ -215,7 +215,11 @@ const dateText = (v: unknown): string | null => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** FU-2: the Issue offer for one receivable row -- the package/receivable predicate the issueInvoice command itself uses. */
+/**
+ * FU-2: the Issue offer for one receivable row -- the package/receivable predicate the issueInvoice command itself uses; `reason` is the refusal code the command gives.
+ * ONE corner differs: a package of a DIFFERENT operating company than its receivable cannot be joined here (see obligationRows), so the read reports it as
+ * UNSUPPORTED_BILLING_SOURCE where the command would say RECEIVABLE_PACKAGE_MISMATCH. Both are "not issuable"; the control is withheld either way.
+ */
 function issuableOf(r: Record<string, any>): { readonly eligible: boolean; readonly reason: string | null } {
   const pkg = r.bp_id ? { source_kind: r.bp_source_kind, tax_evidence_status: r.bp_tax_evidence_status, tax_minor: r.bp_tax_minor, status: r.bp_status,
     readiness_exceptions: r.bp_readiness_exceptions, obligor_basis: r.bp_obligor_basis, counterparty_id: r.bp_counterparty_id,
@@ -224,11 +228,15 @@ function issuableOf(r: Record<string, any>): { readonly eligible: boolean; reado
   const blocker = issueBlocker(pkg, receivable, r.invoice_number ?? null);
   return Object.freeze({ eligible: blocker === null, reason: blocker?.code ?? null });
 }
-/** FU-2: the rebill offer for a VOIDED invoice's row: its Sales Order is ELIGIBLE in full, has no current (HELD / READY) package, and this is the order's latest voided invoice. */
+/**
+ * FU-2: the rebill offer for a VOIDED invoice's row, decided by the SAME predicate prepareBillingPackage refuses with (billingPackage.ts rebillBlocker): the Sales Order is
+ * ELIGIBLE in full, has no current (HELD / READY) package, and this voided invoice is the order's latest invoice. A row with no Sales Order has nothing to rebill.
+ */
 function rebillOf(r: Record<string, any>): { readonly eligible: boolean; readonly reason: string | null } {
-  const reason = !r.source_sales_order_id ? "NO_SALES_ORDER" : r.order_fully_eligible !== true ? "SALES_ORDER_NOT_ELIGIBLE"
-    : r.order_has_current_package === true ? "BILLING_PACKAGE_ALREADY_PREPARED" : r.is_latest_voided_invoice !== true ? "NOT_LATEST_VOIDED_INVOICE" : null;
-  return Object.freeze({ eligible: reason === null, reason });
+  if (!r.source_sales_order_id) return Object.freeze({ eligible: false, reason: "NO_SALES_ORDER" });
+  const blocker = rebillBlocker({ orderFullyEligible: r.order_fully_eligible === true, hasCurrentPackage: r.order_has_current_package === true,
+    latestInvoiceVoided: Boolean(r.invoice_voided_at) && r.is_latest_invoice === true });
+  return Object.freeze({ eligible: blocker === null, reason: blocker?.code ?? null });
 }
 
 /** An open obligation past its due date on the company's own business calendar (alias `o`). */
@@ -259,7 +267,7 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
                 AND cp.status IN ('HELD', 'READY')) END AS order_has_current_package,
             CASE WHEN inv.voided_at IS NOT NULL THEN
               NOT EXISTS (SELECT 1 FROM eos_finance.invoices later WHERE later.tenant_id = inv.tenant_id AND later.sales_order_id = inv.sales_order_id
-                AND later.voided_at IS NOT NULL AND (later.issued_at, later.id) > (inv.issued_at, inv.id)) END AS is_latest_voided_invoice` : ""}
+                AND (later.issued_at, later.id) > (inv.issued_at, inv.id)) END AS is_latest_invoice` : ""}
        FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
        JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
        LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id${withSource ? `
@@ -286,7 +294,7 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
       accountingReference: r.invoice_accounting_reference ?? null,
       voidedAt: r.invoice_voided_at ? new Date(r.invoice_voided_at).toISOString() : null }) : null } : {}),
     // FU-2 (F-1a low finding): whether Issue may be offered, decided by the SAME predicate issueInvoice refuses with (invoiceIssue.ts issueBlocker) -- the screen
-    // offers Issue only where this is true and never on a financed sale. `reason` is the refusal code the command would give. The command still re-decides.
+    // offers Issue only where this is true and never on a financed sale. `reason` is the refusal code the command gives (one corner reads differently: see issuableOf). The command still re-decides.
     ...(withSource ? { issuable: issuableOf(r) } : {}),
     // FU-2: for a VOIDED invoice, whether its Sales Order can be prepared again for billing (the rebill), decided here; null for an invoice that is not void.
     ...(withSource ? { rebill: r.invoice_voided_at ? rebillOf(r) : null } : {}),
@@ -774,7 +782,7 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
   },
   // FU-2: PREPARE the billing package of ONE Sales Order on demand -- the rebill trigger after an approved void. REUSES finance.invoice.issue (preparing the package is the
   // first half of issuing; no new key). Order: capability, then the ORDER's company against the caller's Finance company assignment at FULL reach (a foreign, unresolvable or
-  // missing order answers exactly like a missing one), then the command (order ELIGIBLE in full, then the existing idempotent preparation), all before any write.
+  // missing order answers exactly like a missing one), then the command (REBILL ONLY: rebillBlocker, then the existing idempotent preparation), all before any write.
   prepareBillingPackage: async (deps, caller, input) => {
     requireCapability(caller, INVOICE_ISSUE_CAPABILITY);
     if (typeof input.salesOrderId === "string" && input.salesOrderId.trim() !== "") {

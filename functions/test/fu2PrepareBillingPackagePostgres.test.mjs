@@ -72,7 +72,7 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
   const deps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   let gn = 0;
   /** A direct sale: an accepted Agreement, its Sales Order and (unless `fulfil` is false) the fulfillment that makes it ELIGIBLE in full; made READY by the first preparation. */
-  const directPackage = async ({ account = "acct-a", price = 40000, tax = 0, companyKey = "taylor", fulfil = true } = {}) => {
+  const directPackage = async ({ account = "acct-a", price = 40000, tax = 0, companyKey = "taylor", fulfil = true, prepare: prepareNow = true } = {}) => {
     const opp = `opp-fu2-${++gn}`;
     await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, sales_channel, stage, operating_company_key,
                credited_salesperson_employee_id, created_by, updated_by) VALUES ($1,$2,$1,$3,'e-seller','RETAIL','DECISION',$4,'e-seller','f','f')`, [opp, TENANT, account, companyKey]);
@@ -88,6 +88,7 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
     if (!fulfil) return { so, packageId: null, obligation: null };
     await q(`INSERT INTO eos_commercial.sales_order_fulfillments (id, tenant_id, sales_order_id, line_number, line_kind, line_ref, quantity, source_kind, source_work_order_id, evidence_kind, operating_company_key, operating_company_id, account_id, fulfilled_at, recorded_by)
              VALUES ($1,$2,$3,1,'SERVICE','SVC-X',1,'WORK_ORDER_COMPLETION',$4,'SERVICE_PERFORMED',$5,$5,$6,now(),'f')`, [`ful-${so}`, TENANT, so, `wo-${so}`, companyKey, account]);
+    if (!prepareNow) return { so, packageId: null, obligation: null };
     const out = await pkg.prepareBillingPackage(pool, sys, { salesOrderId: so });
     assert.equal(out.status, "READY");
     const obligation = (await one(`SELECT id FROM eos_finance.obligations WHERE tenant_id=$1 AND source_record_id=$2 AND kind='RECEIVABLE'`, [TENANT, out.packageId]))?.id ?? null;
@@ -171,10 +172,26 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
     const b2 = await trace();
     refused(await prepare(ctrl, { salesOrderId: other.so, idempotencyKey: rebillKey }), 409, "IDEMPOTENCY_KEY_REUSED");
     assert.deepEqual(await trace(), b2);
-    // a NEW key on an order whose current package is unchanged is the existing idempotent preparation: it replays, never a second version
-    const same = ok(await prepare(ctrl, { salesOrderId: V1.so, idempotencyKey: key("prep") }), "new key");
-    assert.deepEqual([same.outcome, same.version], ["replayed", 2]);
+    // REBILL ONLY: a NEW key on an order that already holds a current package is refused, never a second version
+    refused(await prepare(ctrl, { salesOrderId: V1.so, idempotencyKey: key("prep") }), 409, "BILLING_PACKAGE_ALREADY_PREPARED");
     assert.deepEqual(await trace(), b2, "no second package version");
+  });
+
+  await t.test("REBILL ONLY: a live READY package is never re-versioned, even when its evidence changed; a never-invoiced order is not a rebill -- zero trace", async () => {
+    // a live READY package (never invoiced), then the order's evidence changes: the ordinary preparation WOULD supersede it; this command refuses
+    const live = await directPackage({ price: 600, account: "acct-b" });
+    await q(`UPDATE eos_commercial.sales_order_lines SET unit_price_minor = unit_price_minor + 1 WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, live.so]);
+    // a fulfilled order that has no package and no invoice at all
+    const bare = await directPackage({ price: 650, account: "acct-b", prepare: false });
+    const before = await trace();
+    refused(await prepare(ctrl, { salesOrderId: live.so, idempotencyKey: key("prep") }), 409, "BILLING_PACKAGE_ALREADY_PREPARED", "changed evidence under a live package");
+    refused(await prepare(ctrl, { salesOrderId: bare.so, idempotencyKey: key("prep") }), 412, "NOT_LATEST_VOIDED_INVOICE", "never invoiced: not a rebill");
+    assert.deepEqual(await trace(), before, "no package, line, receivable, fact, handoff or audit row");
+    assert.equal((await one(`SELECT status FROM eos_finance.billing_packages WHERE id=$1`, [live.packageId])).status, "READY", "the live package was not superseded");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.billing_packages WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, bare.so]), 0);
+    // the read agrees: neither order has a voided invoice, so neither shows a rebill
+    const rows = await register();
+    assert.ok(rows.filter((r) => r.sourceSalesOrder?.id === live.so).every((r) => r.rebill === null));
   });
 
   await t.test("REFUSED, ZERO TRACE: a non-holder, a foreign company, a missing order, an order not ELIGIBLE, a closed input", async () => {
@@ -191,8 +208,9 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
     refused(await prepare(ctrl, { idempotencyKey: key("prep") }), 400, "SALES_ORDER_ID_REQUIRED");
     refused(await prepare(ctrl, { salesOrderId: V1.so, idempotencyKey: key("prep"), operatingCompanyId: "ventana" }), 400, "FIELD_NOT_ACCEPTED");
     assert.deepEqual(await trace(), before, "no package, line, receivable, fact, handoff, invoice or audit row");
-    // Ventana's own Finance prepares Ventana's order (it was already prepared READY by the fixture: an idempotent replay)
-    assert.equal(ok(await prepare(ctrlV, { salesOrderId: ventana.so, idempotencyKey: key("prep") }), "ventana").outcome, "replayed");
+    // Ventana's own Finance is past the company check on Ventana's order; the order holds a live package, so it is not a rebill
+    refused(await prepare(ctrlV, { salesOrderId: ventana.so, idempotencyKey: key("prep") }), 409, "BILLING_PACKAGE_ALREADY_PREPARED");
+    assert.deepEqual(await trace(), before);
   });
 
   await t.test("CONCURRENCY: two prepares of one voided order give ONE new package version", async () => {
@@ -200,9 +218,10 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
     await voidInvoice(V2.invoice);
     const before = await trace();
     const results = await Promise.all([prepare(ctrl, { salesOrderId: V2.so, idempotencyKey: key("prep") }), prepare(ctrl, { salesOrderId: V2.so, idempotencyKey: key("prep") })]);
-    const outcomes = results.map((r) => ok(r, "concurrent").outcome).sort();
-    assert.deepEqual(outcomes, ["recorded", "replayed"], "the loser replays the winner's package");
-    assert.equal(new Set(results.map((r) => r.body.result.packageId)).size, 1, "both answer the same package");
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 409], "one prepares; the other waits for the order lock and is then refused");
+    const loser = results.find((r) => r.status === 409);
+    assert.equal(loser.body.code, "BILLING_PACKAGE_ALREADY_PREPARED");
+    assert.equal(results.find((r) => r.status === 200).body.result.outcome, "recorded");
     assert.equal((await trace()).packages - before.packages, 1, "ONE new package version");
     assert.deepEqual((await q(`SELECT version, status FROM eos_finance.billing_packages WHERE tenant_id=$1 AND sales_order_id=$2 ORDER BY version`, [TENANT, V2.so])).rows.map((r) => `${r.version}:${r.status}`), ["1:SUPERSEDED", "2:READY"]);
     assert.equal((await trace()).audits - before.audits, 1, "ONE audit row");
@@ -217,6 +236,43 @@ test("FU-2 rebill trigger and Issue eligibility over PostgreSQL", { skip: SKIP, 
     const inv3 = await issueOn(third.packageId);
     assert.ok(![V1.invoice.invoiceNumber, V1.rebilled.invoiceNumber].includes(inv3.invoiceNumber), "a third, new number");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_finance.invoices WHERE tenant_id=$1 AND sales_order_id=$2`, [TENANT, V1.so]), 3);
+    // the first rebill key still replays, and answers the LIVE row: that package has since been retired by the second void
+    const before = await trace();
+    const replay = ok(await prepare(ctrl, { salesOrderId: V1.so, idempotencyKey: rebillKey }), "replay after the package moved on");
+    assert.deepEqual([replay.outcome, replay.version, replay.status], ["replayed", 2, "SUPERSEDED"]);
+    assert.deepEqual(await trace(), before);
+  });
+
+  await t.test("REBILL PARITY: for every voided invoice the register lists, the command rebills exactly where the read offers it, and refuses with the read's reason where it does not", async () => {
+    // V4: voided, nothing prepared -> offered. V5: rebilled and voided AGAIN -> the older voided row is not the latest, the newer one is offered.
+    const V4 = await issued({ price: 910 });
+    await voidInvoice(V4.invoice);
+    const V5 = await issued({ price: 920 });
+    await voidInvoice(V5.invoice);
+    const p5 = ok(await prepare(ctrl, { salesOrderId: V5.so, idempotencyKey: key("prep") }), "V5 prepare");
+    const inv5b = await issueOn(p5.packageId);
+    await voidInvoice(inv5b);
+    const voidedRows = (await register()).filter((r) => r.rebill !== null);
+    const byOrder = new Map();
+    for (const r of voidedRows) byOrder.set(r.sourceSalesOrder.id, [...(byOrder.get(r.sourceSalesOrder.id) ?? []), r]);
+    assert.ok([V1.so, V4.so, V5.so].every((so) => byOrder.has(so)), "the fixtures are listed");
+    const seen = new Set();
+    for (const [so, rows] of byOrder) {
+      const offered = rows.filter((r) => r.rebill.eligible);
+      assert.ok(offered.length <= 1, `${so}: at most one voided invoice per order offers the rebill`);
+      const attempt = await prepare(ctrl, { salesOrderId: so, idempotencyKey: key("prep") });
+      if (offered.length === 1) {
+        assert.equal(attempt.status, 200, `${so} is offered, so it rebills: ${JSON.stringify(attempt.body).slice(0, 300)}`);
+        seen.add("REBILLED");
+      } else {
+        assert.notEqual(attempt.status, 200, `${so} is not offered, so it is refused`);
+        for (const r of rows) assert.equal(attempt.body.code, r.rebill.reason, `${so}: the read's reason is the command's refusal`);
+        seen.add(rows[0].rebill.reason);
+      }
+    }
+    for (const expected of ["REBILLED", "BILLING_PACKAGE_ALREADY_PREPARED"]) assert.ok(seen.has(expected), `the sweep exercised ${expected}`);
+    const v5 = byOrder.get(V5.so);
+    assert.deepEqual(v5.map((r) => r.rebill.reason).sort(), [null, "NOT_LATEST_VOIDED_INVOICE"], "V5 shows both: the older voided row is not the latest");
   });
 
   await t.test("ISSUABLE never disagrees with issueInvoice: false -> refused with exactly the reason (a financed sale included); true -> issues", async () => {

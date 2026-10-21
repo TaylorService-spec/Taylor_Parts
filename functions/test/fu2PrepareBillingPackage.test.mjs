@@ -98,40 +98,80 @@ test("COMMAND input is closed and refused before any connection", async () => {
   assert.equal(await run({ salesOrderId: "so-1", idempotencyKey: "k", operatingCompanyId: "taylor" }), "FIELD_NOT_ACCEPTED", "the company is the order's, never a field");
 });
 
-const cmdRules = ({ order = true, audit = [], eligibility = "NOT_YET" } = {}) => [
+const cmdRules = ({ order = true, audit = [], live = [], facts = { fully_eligible: true, has_current: false, latest_voided: true } } = {}) => [
   [/FROM eos_commercial\.sales_orders WHERE tenant_id = \$1 AND id = \$2 FOR NO KEY UPDATE/, () => ({ rows: order ? [{ id: "so-1" }] : [] })],
-  [/FROM eos_policy\.audit_events WHERE tenant_id = \$1 AND action = 'finance\.billingPackage\.prepare' AND actor_uid = \$2 AND after->>'idempotencyKey' = \$3/, () => ({ rows: audit })],
+  [/pg_advisory_xact_lock\(hashtext\(\$1\)\)/, () => ({ rows: [{}] })],
+  [/FROM eos_policy\.audit_events WHERE tenant_id = \$1 AND action = 'finance\.billingPackage\.prepare' AND actor_uid = \$2 AND after @> jsonb_build_object\('idempotencyKey', \$3::text\) ORDER BY occurred_at, id LIMIT 1/, () => ({ rows: audit })],
+  [/FROM eos_finance\.billing_packages WHERE tenant_id = \$1 AND id = \$2$/, () => ({ rows: live })],
+  [/^SELECT \(SELECT count\(\*\) > 0 AND count\(\*\) = count\(\*\) FILTER/, () => ({ rows: [facts] })],
   [/FROM eos_commercial\.sales_orders so LEFT JOIN eos_commercial\.sales_agreements a/, () => ({ rows: [{ id: "so-1", state: "IN_FULFILLMENT", operating_company_key: "taylor", account_id: "acct-a", currency: "USD", sales_agreement_id: null }] })],
-  [/FROM eos_commercial\.sales_order_line_billing_eligibility WHERE tenant_id = \$1 AND sales_order_id = \$2/, () => ({ rows: [{ line_number: 1, eligibility }] })],
+  [/FROM eos_commercial\.sales_order_line_billing_eligibility WHERE tenant_id = \$1 AND sales_order_id = \$2/, () => ({ rows: [{ line_number: 1, eligibility: "NOT_YET" }] })],
 ];
+const noPrepare = (log) => !log.some((s) => /sales_orders so LEFT JOIN/.test(s));
 
-test("COMMAND: the Sales Order is locked first; a missing order and an order not ELIGIBLE in full roll back with ZERO writes", async () => {
+test("COMMAND: the Sales Order is locked first; a missing order and every rebill blocker roll back with ZERO writes, before any preparation", async () => {
   const missing = mockPool(cmdRules({ order: false }));
   const e1 = await failure(pkg.prepareBillingPackageCommand(missing, ACTOR, { salesOrderId: "so-1", idempotencyKey: "k" }));
   assert.deepEqual([e1?.code, e1?.category], ["SALES_ORDER_NOT_FOUND", "NOT_FOUND"]);
   assert.deepEqual(writes(missing.log), []);
   assert.match(missing.log[1], /FOR NO KEY UPDATE/, "the order row is the first statement after BEGIN: two prepares of one order take turns");
-  for (const eligibility of ["NOT_YET", "CANCELLED"]) {
-    const pool = mockPool(cmdRules({ eligibility }));
+  const cases = [
+    [{ fully_eligible: false, has_current: false, latest_voided: true }, "SALES_ORDER_NOT_ELIGIBLE", "PRECONDITION_FAILED"],
+    [{ fully_eligible: true, has_current: true, latest_voided: true }, "BILLING_PACKAGE_ALREADY_PREPARED", "CONFLICT"],
+    [{ fully_eligible: true, has_current: true, latest_voided: false }, "BILLING_PACKAGE_ALREADY_PREPARED", "CONFLICT"], // a live package is never re-versioned, whatever its evidence
+    [{ fully_eligible: true, has_current: false, latest_voided: false }, "NOT_LATEST_VOIDED_INVOICE", "PRECONDITION_FAILED"], // the latest invoice is live
+    [{ fully_eligible: true, has_current: false, latest_voided: null }, "NOT_LATEST_VOIDED_INVOICE", "PRECONDITION_FAILED"], // never invoiced: not a rebill
+  ];
+  for (const [facts, codeExpected, categoryExpected] of cases) {
+    const pool = mockPool(cmdRules({ facts }));
     const e = await failure(pkg.prepareBillingPackageCommand(pool, ACTOR, { salesOrderId: "so-1", idempotencyKey: "k" }));
-    assert.deepEqual([e?.code, e?.category], ["SALES_ORDER_NOT_ELIGIBLE", "PRECONDITION_FAILED"], eligibility);
+    assert.deepEqual([e?.code, e?.category], [codeExpected, categoryExpected], JSON.stringify(facts));
     assert.deepEqual(writes(pool.log), [], "zero trace");
+    assert.ok(noPrepare(pool.log), "refused BEFORE the preparation runs");
     assert.equal(pool.log.at(-1), "ROLLBACK");
     assert.ok(!pool.log.includes("COMMIT"));
   }
 });
 
-test("REPLAY: the same key returns the recorded package and writes nothing; the same key for another order is IDEMPOTENCY_KEY_REUSED", async () => {
+test("REPLAY: the same key returns the LIVE package row and writes nothing; the same key for another order is IDEMPOTENCY_KEY_REUSED; the lookup is serialized and indexed", async () => {
   const audit = [{ target_id: "bpk_2", after: { salesOrderId: "so-1", version: 2, status: "READY", readinessExceptions: [], totalMinor: "3000", idempotencyKey: "k-1" } }];
-  const pool = mockPool(cmdRules({ audit }));
+  // the package has moved on since the command applied (voided again): the replay answers what is true now, not the snapshot
+  const live = [{ id: "bpk_2", version: 2, status: "SUPERSEDED", readiness_exceptions: [], total_minor: "3000" }];
+  const pool = mockPool(cmdRules({ audit, live }));
   const r = await pkg.prepareBillingPackageCommand(pool, ACTOR, { salesOrderId: "so-1", idempotencyKey: "k-1" });
-  assert.deepEqual({ ...r }, { outcome: "replayed", packageId: "bpk_2", version: 2, status: "READY", readinessExceptions: [], totalMinor: "3000" });
+  assert.deepEqual({ ...r }, { outcome: "replayed", packageId: "bpk_2", version: 2, status: "SUPERSEDED", readinessExceptions: [], totalMinor: "3000" });
   assert.deepEqual(writes(pool.log), []);
   assert.equal(pool.log.at(-1), "COMMIT");
-  const other = mockPool(cmdRules({ audit }));
+  assert.ok(noPrepare(pool.log));
+  const lockAt = pool.log.findIndex((s) => /pg_advisory_xact_lock/.test(s)), lookupAt = pool.log.findIndex((s) => /FROM eos_policy\.audit_events/.test(s));
+  assert.ok(lockAt > 0 && lockAt < lookupAt, "the per-(actor, key) advisory lock is taken BEFORE the key lookup");
+  const other = mockPool(cmdRules({ audit, live }));
   const e = await failure(pkg.prepareBillingPackageCommand(other, ACTOR, { salesOrderId: "so-9", idempotencyKey: "k-1" }));
   assert.deepEqual([e?.code, e?.category], ["IDEMPOTENCY_KEY_REUSED", "CONFLICT"]);
   assert.deepEqual(writes(other.log), []);
+});
+
+test("PREDICATE: rebillBlocker is REBILL ONLY -- eligible in full, no current package, latest invoice voided -- and names the first failing condition", () => {
+  const b = (o) => pkg.rebillBlocker({ orderFullyEligible: true, hasCurrentPackage: false, latestInvoiceVoided: true, ...o })?.code ?? null;
+  assert.equal(b({}), null);
+  assert.equal(b({ orderFullyEligible: false }), "SALES_ORDER_NOT_ELIGIBLE");
+  assert.equal(b({ orderFullyEligible: false, hasCurrentPackage: true, latestInvoiceVoided: false }), "SALES_ORDER_NOT_ELIGIBLE", "eligibility is named first");
+  assert.equal(b({ hasCurrentPackage: true }), "BILLING_PACKAGE_ALREADY_PREPARED");
+  assert.equal(b({ hasCurrentPackage: true, latestInvoiceVoided: false }), "BILLING_PACKAGE_ALREADY_PREPARED");
+  assert.equal(b({ latestInvoiceVoided: false }), "NOT_LATEST_VOIDED_INVOICE", "never invoiced, or the latest invoice is live: not a rebill");
+  assert.equal(pkg.rebillBlocker({ orderFullyEligible: true, hasCurrentPackage: true, latestInvoiceVoided: true }).category, "CONFLICT");
+});
+
+test("ONE FUNCTION, TWO CALLERS (rebill): the command and the receivable read both decide through rebillBlocker, and the key lookup uses the GIN-indexed containment", () => {
+  const cmd = code("eosFinance/billingPackage.ts");
+  const body = cmd.slice(cmd.indexOf("export async function prepareBillingPackageCommand"), cmd.indexOf("export async function prepareEligibleBillingPackages"));
+  assert.match(body, /rebillBlocker\(\{/);
+  assert.match(body, /after @> jsonb_build_object\('idempotencyKey', \$3::text\)/);
+  assert.doesNotMatch(body, /->>/, "no ->> equality on the audit row: it cannot use the GIN index");
+  assert.match(body, /ORDER BY occurred_at, id LIMIT 1/);
+  const read = code("eosFinance/financeOperations.ts");
+  assert.match(read, /rebillBlocker\(\{ orderFullyEligible/);
+  assert.doesNotMatch(read, /BILLING_PACKAGE_ALREADY_PREPARED|SALES_ORDER_NOT_ELIGIBLE|NOT_LATEST_VOIDED_INVOICE/, "the read re-states no rebill refusal");
 });
 
 test("ONE AUDIT ROW per applied command: the existing preparation audit row carries the key, and the command writes no other row of its own", () => {
