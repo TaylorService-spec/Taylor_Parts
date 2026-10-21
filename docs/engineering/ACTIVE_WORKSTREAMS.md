@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane FU-1 low follow-ups (2026-10-20) — Sales Order tracker follows the server allocation read, bare `/opportunities/sales-order/:id` redirects to the canonical route, supplier PO "Loading name…" while the directory loads, R1 doc tag line corrected
+- Agent/session:       Claude Code Lane FU-1 · Role: builder; controller merges
+- Branch / worktree:   `fu1/low-followups` · `.claude/worktrees/agent-a073b3972e3908774`
+- Base commit:         `174ba281`
+- Owned paths:         `modules/sales/{SalesOrderDetail,SalesOrderAllocation,SalesOrderFulfillmentSection,SalesOrderBareRedirect}.jsx` · `domain/salesOrderFulfillmentProgress.js` (one blocker line) · `modules/purchasing/SupplierPurchaseOrders.jsx` · `App.jsx` (one route + import) · `docs/operations/production-recovery-release-r1.md`
+- Shared paths req'd:  this registry
+- Dependencies:        none
+- Expected outcome:    no stale "not recorded" allocation copy; the bare Sales Order URL lands on the page; no false "Name unavailable" during a load
+- Protected boundaries:none — no capability, grant, migration, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 - Capability:          Lane UX display batch (overnight 2026-10-20) — show the name or number a record already holds instead of a blank, a key or a false warning: Ordered By / Received By / Assigned on reorder cards, RR numbers, warehouse names (supplier PO detail, cycle count sheets), receipt order number, completed-receipt state, raise-form checkbox name, "No parts planned" job card line, assign refresh (PL4)
 - Agent/session:       Claude Code Lane UX · Role: builder; controller merges
 - Branch / worktree:   `ux/display-batch-purchasing` · `.claude/worktrees/agent-a499bba175438ba94`

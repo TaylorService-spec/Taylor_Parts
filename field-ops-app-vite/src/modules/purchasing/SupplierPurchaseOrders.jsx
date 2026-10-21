@@ -78,9 +78,10 @@ export default function SupplierPurchaseOrders({ hasCapability, client = supplie
     for (const k of ["createdBy", "approvedBy", "sentBy", "cancelledBy"]) if (detail.order?.[k]) ids.add(detail.order[k]);
     return [...ids].filter(Boolean);
   }, [list.orders, detail.order]);
-  const { byUserId } = useGovernedEmployeeDirectory({ actorIds });
+  const { byUserId, loading: namesLoading } = useGovernedEmployeeDirectory({ actorIds });
   // A recorded actor the directory cannot name (a former member) is "Name unavailable" -- the fact was recorded.
-  const nameOf = (id) => (id ? (byUserId?.get(id)?.displayName ?? "Name unavailable") : "—");
+  // While the directory is still being read the name is simply not here YET: say so, never "Name unavailable" (a settled fact about the person).
+  const nameOf = (id) => (id ? (byUserId?.get(id)?.displayName ?? (namesLoading ? "Loading name…" : "Name unavailable")) : "—");
 
   const active = FILTERS.find((f) => f.key === filterKey) ?? FILTERS[0];
   const rows = active.statuses ? list.orders.filter((o) => active.statuses.includes(o.status)) : list.orders;

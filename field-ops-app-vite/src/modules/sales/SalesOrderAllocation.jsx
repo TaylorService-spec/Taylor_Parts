@@ -28,8 +28,11 @@ const refusalWords = (answer) => answer.message ?? GENERIC[answer.errorStatus] ?
 
 const OPEN_STATES = new Set(["CONFIRMED", "IN_FULFILLMENT"]);
 
-/** @param {{ salesOrderId: string, client?: typeof salesOrderCommandClient, onChanged?: () => void }} props */
-export default function SalesOrderAllocation({ salesOrderId, client = salesOrderCommandClient, onChanged }) {
+/** @param {{ salesOrderId: string, client?: typeof salesOrderCommandClient, onChanged?: () => void, onRead?: (data: object) => void }} props
+ *  `onRead` hands the page the server's own allocation read after every successful read, so the fulfilment tracker shows the same figures. */
+export default function SalesOrderAllocation({ salesOrderId, client = salesOrderCommandClient, onChanged, onRead }) {
+  const onReadRef = useRef(onRead);
+  onReadRef.current = onRead;
   const [load, setLoad] = useState({ status: "loading", data: null });
   const [warehouseId, setWarehouseId] = useState("");
   const [quantities, setQuantities] = useState({});
@@ -49,6 +52,7 @@ export default function SalesOrderAllocation({ salesOrderId, client = salesOrder
       return;
     }
     setLoad({ status: "ready", data: answer.result });
+    onReadRef.current?.(answer.result);
     setWarehouseId((prev) => (answer.result.warehouses.some((w) => w.warehouseId === prev && w.active) ? prev
       : (answer.result.warehouses.find((w) => w.active)?.warehouseId ?? "")));
   }, [client, salesOrderId]);

@@ -47,10 +47,18 @@ const STATE_SUFFIX = {
 const fmtDate = (millis) =>
   Number.isFinite(millis) ? new Date(millis).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null;
 
-export default function SalesOrderFulfillmentSection({ salesOrder, workOrders = null, custodyHandoff = null }) {
+// `allocations` is the server's allocation read (readSalesOrderAllocations), or null when it has not been read. Its PART lines carry the
+// ordered and allocated figures; nothing is inferred beyond them. Without it, allocation is UNKNOWN, never "none".
+const withAllocations = (salesOrder, allocations) => {
+  const lines = Array.isArray(allocations?.lines) ? allocations.lines.filter((l) => l.kind === "PART") : [];
+  return lines.length === 0 ? salesOrder
+    : { ...salesOrder, lines: lines.map((l) => ({ orderedQty: l.orderedQty, allocatedQty: l.allocatedTotal })) };
+};
+
+export default function SalesOrderFulfillmentSection({ salesOrder, workOrders = null, custodyHandoff = null, allocations = null }) {
   const progress = useMemo(
-    () => projectFulfillmentProgress(salesOrder, workOrders, custodyHandoff),
-    [salesOrder, workOrders, custodyHandoff],
+    () => projectFulfillmentProgress(withAllocations(salesOrder, allocations), workOrders, custodyHandoff),
+    [salesOrder, workOrders, custodyHandoff, allocations],
   );
 
   const steps = progress.steps.map((s) => ({
@@ -74,7 +82,7 @@ export default function SalesOrderFulfillmentSection({ salesOrder, workOrders = 
         <dt>Allocation</dt>
         <dd>
           {qty.allocated === null ? (
-            <span className="fo-muted">Not recorded on this order</span>
+            <span className="fo-muted">Not read yet. See the Allocation section.</span>
           ) : (
             `${qty.allocated} of ${qty.ordered} allocated`
           )}
