@@ -56,14 +56,16 @@ test("SAL-03(c): owner eligibility on company-less Opportunities and Sales Agree
   }
   await bindOperatingCompany(q, T, "taylor", "taylor-ops-t1");
   await bindOperatingCompany(q, T, "ventana", "ventana-ops-t1");
-  for (const [id, co] of [["e-tay", "taylor"], ["e-tay2", "taylor"], ["e-ven", "ventana"], ["e-ven2", "ventana"], ["e-nohome", null]]) {
+  // A company that is governed but has NO active key binding: its Employee's home company cannot be shown to lie inside anyone's authority.
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1','unkeyed','ACTIVE','test-fixture','fixture','fixture')`);
+  for (const [id, co] of [["e-tay", "taylor"], ["e-tay2", "taylor"], ["e-ven", "ventana"], ["e-ven2", "ventana"], ["e-nohome", "unkeyed"]]) {
     await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1,'t1','ACTIVE',$2,'2020-01-01T00:00:00Z')`, [id, co]);
   }
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES
     ('a-plain','t1','Plain Customer','ACTIVE','e-tay','x','x'),
     ('a-tay2','t1','Taylor-side Customer owned by the second Taylor seller','ACTIVE','e-tay2','x','x'),
     ('a-ven','t1','Ventana-owned Customer','ACTIVE','e-ven','x','x'),
-    ('a-nohome','t1','Customer owned by an Employee with no home company','ACTIVE','e-nohome','x','x'),
+    ('a-nohome','t1','Customer owned by an Employee whose home company has no active key','ACTIVE','e-nohome','x','x'),
     ('a-ownerless','t1','Ownerless Customer','ACTIVE',NULL,'x','x')`);
   const principal = async (id, employeeId, company) => {
     await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ($1,$1,'proof','active')`, [id]);
@@ -111,7 +113,7 @@ test("SAL-03(c): owner eligibility on company-less Opportunities and Sales Agree
 
   await t.test("NEGATIVE: no OTHER Employee may be named, even a same-company one who is neither the creator nor the Account's owner", async () => {
     OWNER_NOT_FOUND(await mkOpp(tay, { ownerEmployeeId: "e-tay2" }), "same-company bystander on a-plain (owner e-tay)");
-    OWNER_NOT_FOUND(await mkOpp(tay, { ownerEmployeeId: "e-nohome" }), "an Employee with no home company");
+    OWNER_NOT_FOUND(await mkOpp(tay, { ownerEmployeeId: "e-nohome" }), "an Employee whose home company has no active key");
     assert.equal(await countOppsOwnedBy("e-tay2"), 0);
   });
 
@@ -126,7 +128,7 @@ test("SAL-03(c): owner eligibility on company-less Opportunities and Sales Agree
     const reverse = await mkOpp(ven, { accountId: "a-tay2" });
     assert.equal(reverse.code, "OWNER_REQUIRED", "Ventana creator, Taylor-owned account");
     OWNER_NOT_FOUND(await mkOpp(ven, { accountId: "a-tay2", ownerEmployeeId: "e-tay2" }), "Ventana creator naming the Taylor account owner");
-    // An account owner with no home company cannot be shown to be inside the creator's companies: fail closed.
+    // An account owner whose home company has no active key cannot be shown to be inside the creator's companies: fail closed.
     assert.equal((await mkOpp(tay, { accountId: "a-nohome" })).code, "OWNER_REQUIRED");
     assert.equal(await countOppsOwnedBy("e-ven"), 0);
   });
