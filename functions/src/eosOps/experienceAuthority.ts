@@ -249,6 +249,8 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("inventory.reorderQueue", "Reorder Queue", [
     { capabilityKey: "reorder.request.read.queue" },
     { capabilityKey: "reorder.request.read", predicates: [OPERATIONAL_SCOPE("REORDER_QUEUE")] },
+    // PARTS-404 / RO-02: the unscoped read is ALSO reached through the caller's own WAREHOUSE scopes (queueReadReach: its scoped warehouses inside its company authority).
+    { capabilityKey: "reorder.request.read", predicates: [OPERATIONAL_SCOPE("WAREHOUSE")] },
   ]),
   surface("receiving.checkIn", "Receiving", [{ capabilityKey: "inventory.stock.receive" }]),
   surface("warehouse.management", "Warehouses", [

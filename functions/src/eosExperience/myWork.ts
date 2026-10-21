@@ -20,7 +20,8 @@
 import type { Pool, PoolClient } from "pg";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "../eosOps/workOrderOperationTypes";
 import { EOS_WORK_ORDER_OPERATIONS } from "../eosOps/workOrderOperations";
-import { queueReachKeys, readMyAssignedReorders, readReorderQueue } from "../eosOps/reorderLifecycleCommands";
+import { queueReadReach, readMyAssignedReorders, readReorderQueue } from "../eosOps/reorderLifecycleCommands";
+import type { ReorderReadReach } from "../eosOps/reorderQueueReach";
 import { listTransferOrders } from "../eosOps/partsReads";
 import { postgresPrincipalDimensionReader } from "../eosOps/contextualAuthorization";
 import { admittedScopeValues } from "../adminPolicy/assignmentScopeRuntime";
@@ -340,7 +341,7 @@ const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
   { kind: "reorderRequest", label: "Reorder Request", capabilities: ["reorder.request.read"], reach: "REORDER_QUEUE",
     sql: `SELECT r.id, r.reorder_request_number AS label, concat_ws(' · ', r.part_id, r.status::text) AS detail FROM eos_ops.reorder_requests r
            -- ($3 is bound but unused by this kind; the cast gives it a type so the driver can prepare the statement)
-           WHERE r.tenant_id = $1 AND (r.reorder_request_number ILIKE $2 OR r.part_id ILIKE $2) AND r.operating_company_key = ANY($4::text[]) AND ($3::text[] IS NULL OR TRUE) ORDER BY r.created_at DESC LIMIT 8` },
+           WHERE r.tenant_id = $1 AND (r.reorder_request_number ILIKE $2 OR r.part_id ILIKE $2) AND (r.operating_company_key = ANY($4::text[]) OR (r.warehouse_id = ANY($5::text[]) AND r.operating_company_key = ANY($6::text[]))) AND ($3::text[] IS NULL OR TRUE) ORDER BY r.created_at DESC LIMIT 8` },
   // UI corrections item E (2026-10-08): a holder of employee.record.read only WITHIN operating-company scopes is searched
   // inside exactly those companies ($3), the same reach listEmployees / listWorkforceRoster apply; a flat holder is global.
   { kind: "employee", label: "Employee", capabilities: ["employee.record.read"], companyScopedBy: "employee.record.read",
@@ -365,7 +366,7 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
   const actor = caller.actor;
   const results: Array<{ kind: string; kindLabel: string; id: string; label: string; detail: string | null; path: string | null }> = [];
   const notSearched: string[] = [];
-  let reachKeys: readonly string[] | null = null;
+  let readReach: ReorderReadReach | null = null;
   let searchReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
   for (const k of SEARCH_KINDS) {
     const flat = k.capabilities.some((c) => actor.capabilities.has(c));
@@ -373,16 +374,18 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
       : k.companyScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.companyScopedBy, "operatingCompany") : null;
     if (!flat && (!channels || channels.length === 0)) { notSearched.push(k.kind); continue; }
     let reach: readonly string[] | null = null;
+    let warehouseReach: readonly string[] = [], warehouseCompanies: readonly string[] = [];
     if (k.reach === "REORDER_QUEUE") {
-      const keys: readonly string[] = reachKeys ?? await queueReachKeys(deps.pool, actor);
-      reachKeys = keys;
-      if (keys.length === 0) { notSearched.push(k.kind); continue; }
-      reach = keys;
+      // PARTS-404 / RO-02: the company-keyed queue reach OR the caller's WAREHOUSE scopes inside its company authority.
+      const found: ReorderReadReach = readReach ?? await queueReadReach(deps.pool, actor);
+      readReach = found;
+      if (found.companyKeys.length === 0 && found.warehouseIds.length === 0) { notSearched.push(k.kind); continue; }
+      reach = found.companyKeys; warehouseReach = found.warehouseIds; warehouseCompanies = found.warehouseCompanyKeys;
     }
     // Q-1a: a Commercial kind is ALSO bounded by the caller's operating-company authority: a foreign record, or another person's company-less one, is never
     // found, and its text (an Opportunity's need included) is never matched against the query.
     let sql = k.sql;
-    let params: unknown[] = [actor.tenantId, pattern, channels, reach];  // a commercial kind replaces the reach slot with its company reach (below)
+    let params: unknown[] = [actor.tenantId, pattern, channels, reach, warehouseReach, warehouseCompanies];  // a commercial kind replaces the reach slot with its company reach (below)
     if (k.commercial) {
       const company = searchReach ?? (searchReach = await (deps.companyReach ?? resolveCommercialCompanyReach)(deps.pool, actor.tenantId, actor.principalId));
       sql = sql.replace(/\{\{COMPANY_([a-z])\}\}/g, (_m, alias: string) => company.sql(alias, 4));

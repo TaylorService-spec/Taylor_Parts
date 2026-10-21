@@ -280,6 +280,17 @@ test("OPERATIONAL SCOPE is the second path to the Reorder queue, and neither pat
   assert.deepEqual(queueHolder, ["inventory.reorderQueue"]);
 });
 
+test("PARTS-404 / RO-02: a WAREHOUSE scope is the third path to the Reorder queue door -- the unscoped read plus the scope, and neither alone", async () => {
+  const warehouse = { employeeId: "e-wm", workEligibility: [], operationalScopes: [{ scopeType: "WAREHOUSE", scopeId: "wh-a" }] };
+  assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), warehouse)).includes("inventory.reorderQueue"), true);
+  // The scope alone confers nothing; the read alone (no scope) still does not open the door.
+  assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.create.manual"]), warehouse)).includes("inventory.reorderQueue"), false);
+  assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), { employeeId: "e-wm", workEligibility: [], operationalScopes: [] })).includes("inventory.reorderQueue"), false);
+  // A MOBILE-only Technician (no queue, no warehouse scope) is unchanged.
+  const mobile = { employeeId: "e-t", workEligibility: ["SERVICE_TECHNICIAN"], operationalScopes: [{ scopeType: "MOBILE", scopeId: "loc-truck-1" }] };
+  assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), mobile)).includes("inventory.reorderQueue"), false);
+});
+
 test("the protected Administrator's REACH earns inventory.reorderQueue with reorder.request.read and no Employee scope; nobody else's does (F1, G3)", async () => {
   // The client's Reorder-queue bell is gated on this surface (DECISIONS #244): the Administrator keeps it through reach, a holder of
   // reorder.request.read without the REORDER_QUEUE scope and without standing does not.
