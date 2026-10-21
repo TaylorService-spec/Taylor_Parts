@@ -66,6 +66,12 @@ const SESSION_CACHE = new Map();
 export const eosPersonaSessionAvailable = (env = process.env) =>
   typeof env.EOS_PERSONA_ISSUER_CREDENTIAL === "string" && env.EOS_PERSONA_ISSUER_CREDENTIAL.length > 0;
 
+/** The page a token is seeded into must be the registered EOS application surface (same guard as the API target). */
+export async function assertEosApplicationUrl(url, options = {}) {
+  const mod = await import(pathToFileURL(join(REPO_ROOT, "scripts", "eosPersonaSession.mjs")).href);
+  return mod.assertEosApplicationUrl(url, options);
+}
+
 /** Issue an EOS persona session (no password file, no Firebase). */
 export async function issueEosPersonaSession(personaId, options = {}) {
   const mod = await import(pathToFileURL(join(REPO_ROOT, "scripts", "eosPersonaSession.mjs")).href);
@@ -188,6 +194,8 @@ export const LOCAL_TO_EOS_PERSONA = Object.freeze({
  */
 export async function openEosPersonaSession(page, url, personaKey, options = {}) {
   const personaId = LOCAL_TO_EOS_PERSONA[personaKey] ?? personaKey;
+  // Before any credential is sent: a token is never seeded into a page that is not the registered EOS application.
+  await assertEosApplicationUrl(url, options);
   const session = await issueEosPersonaSession(personaId, options);
   await seedEosSession(page, session);
   await page.goto(url, { waitUntil: "domcontentloaded", ...(options.timeout ? { timeout: options.timeout } : {}) });

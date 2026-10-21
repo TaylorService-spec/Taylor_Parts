@@ -45,8 +45,8 @@ function describeUrl(raw) {
 /** Normalise to a bare origin (lower-case host, default port dropped). https only; no userinfo, path, query or fragment. */
 function normalizeOrigin(raw, what, allowLoopbackHttp = false) {
   // The RAW text must already be plain: the URL parser would quietly decode "%2d" or turn "\" into "/", and strip tabs/newlines.
-  // http is accepted ONLY for a loopback host and ONLY when the caller injected the registry (allowLoopbackHttp); the
-  // committed registry, env vars and a bare baseUrl never get it.
+  // http is accepted ONLY for a loopback host and ONLY in the fixed test context (allowLoopbackHttp, createLoopbackTestEosPersonaClient);
+  // the committed registry, env vars, options and a bare baseUrl never get it.
   const plain = /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(String(raw))
     || (allowLoopbackHttp && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/i.test(String(raw)));
   if (!plain) {
@@ -122,23 +122,41 @@ function resolveWith(registry, allowLoopbackHttp, { baseUrl, origin, environment
 }
 
 /**
- * Validate against an EXPLICITLY INJECTED registry (a test seam: a suite that runs a local EOS API passes a synthetic
- * registry whose nonprod entry is that loopback server). Only here may a registered entry be http, and only on loopback.
+ * PURE validator over a registry the CALLER holds (unit tests with synthetic https registries). It sends nothing and
+ * never accepts http. No sending path uses a caller-held registry: see `resolveTarget`.
  */
 export function resolveEosTargetFrom(registry, options = {}) {
-  return resolveWith(registry, true, options);
+  return resolveWith(registry, false, options);
 }
 
-/** Validate against the committed registry, or an injected `options.registry`. Never loopback/http for the committed one. */
-export function resolveEosTarget({ registry, ...options } = {}) {
-  return registry
-    ? resolveEosTargetFrom(registry, options)
-    : resolveWith(JSON.parse(readFileSync(REGISTRY_PATH, "utf8")), false, options);
+// The sending paths resolve through a context that is FIXED at module load, never from `options`:
+//  - COMMITTED: the allowlist is config/environments.json, https only. This is what every exported function uses.
+//  - the loopback TEST context (createLoopbackTestEosPersonaClient): a one-entry synthetic registry, built here from a
+//    loopback URL, http allowed for that loopback host only. Nothing a caller passes in `options` (`registry`, `baseUrl`,
+//    env vars) can select, replace or widen a context.
+const COMMITTED = Object.freeze({ loadRegistry: () => JSON.parse(readFileSync(REGISTRY_PATH, "utf8")), allowLoopbackHttp: false });
+function resolveTarget(ctx, options = {}) {
+  return resolveWith(ctx.loadRegistry(), ctx.allowLoopbackHttp, options);
+}
+
+/** Resolve the EOS target (API base and, when asked, browser origin) against the committed allowlist. */
+export function resolveEosTarget(options = {}) {
+  return resolveTarget(COMMITTED, options);
 }
 
 /** Resolve the EOS API base URL; only a registered nonproduction EOS API is returned (see resolveEosTarget). */
 export function eosApiBaseUrl(options = {}) {
   return resolveEosTarget(options).base;
+}
+
+/**
+ * Token destinations include the BROWSER: a harness seeds the session into the page it then loads. `url` must be the
+ * registered EOS application surface of the same environment as the EOS API (else a token is seeded into a foreign page).
+ */
+export function assertEosApplicationUrl(url, options = {}) {
+  let origin;
+  try { origin = new URL(String(url)).origin; } catch { throw new EosPersonaSessionError("INVALID_TARGET_URL", "the application URL is not a URL"); }
+  return resolveEosTarget({ ...options, origin });
 }
 
 /**
@@ -160,14 +178,14 @@ const SESSION_CACHE = new Map();
  * Issue (or reuse, while more than 2 minutes remain) an EOS session for a persona.
  * Returns { proof: "issuer-api", token, expiresAt, personaKey, principalId }. Throws EosPersonaSessionError; never leaks secrets.
  */
-export async function issueEosPersonaSession(personaKey, options = {}) {
+async function issueImpl(ctx, personaKey, options = {}) {
   const env = options.env ?? process.env;
   const credential = options.credential ?? env[PERSONA_ISSUER_CREDENTIAL_ENV];
   if (typeof credential !== "string" || credential.length === 0) {
     throw new EosPersonaSessionError("NO_ISSUER_CREDENTIAL",
       `${PERSONA_ISSUER_CREDENTIAL_ENV} is not set. It is supplied explicitly (CI secret or operator shell); it is never discovered.`);
   }
-  const { base } = resolveEosTarget({ ...options, env });
+  const { base } = resolveTarget(ctx, { ...options, env });
   const cacheKey = `${base}::${personaKey}`;
   const cached = SESSION_CACHE.get(cacheKey);
   if (cached && Date.parse(cached.expiresAt) - Date.now() > 2 * 60 * 1000) return cached;
@@ -190,14 +208,14 @@ export async function issueEosPersonaSession(personaKey, options = {}) {
 }
 
 /** Call one EOS API route as a persona. Returns the parsed JSON body and status. */
-export async function callEosApiAsPersona(personaKey, route, payload, options = {}) {
+async function callImpl(ctx, personaKey, route, payload, options = {}) {
   // The route is a PATH on the validated base, never an authority: "@evil.example/x", ".evil.example/x", ":1@evil.example/",
   // "//evil.example/x" and a leading backslash would all move the bearer token off-environment. Checked BEFORE a session is issued.
   if (typeof route !== "string" || !/^\/(?![\/\\])/.test(route)) {
     throw new EosPersonaSessionError("INVALID_ROUTE", "the route must be a path beginning with a single '/'");
   }
-  const session = await issueEosPersonaSession(personaKey, options);
-  const { base } = resolveEosTarget({ ...options, env: options.env ?? process.env });
+  const session = await issueImpl(ctx, personaKey, options);
+  const { base } = resolveTarget(ctx, { ...options, env: options.env ?? process.env });
   let target;
   try { target = new URL(base + route); } catch { throw new EosPersonaSessionError("INVALID_ROUTE", "the route does not form a URL"); }
   if (target.origin !== base) throw new EosPersonaSessionError("INVALID_ROUTE", "the route leaves the approved EOS API origin");
@@ -247,14 +265,14 @@ export function totpCode(secretBase32, nowMs = Date.now()) {
  * Sign an ENROLLED persona in with its password and authenticator. Returns { proof: "login-mfa", token, expiresAt, personaKey }.
  * Throws EosPersonaSessionError carrying a code only.
  */
-export async function loginEosPersona(personaKey, options = {}) {
+async function loginImpl(ctx, personaKey, options = {}) {
   const env = options.env ?? process.env;
   const file = options.credentialsFile ?? env[PERSONA_CREDENTIALS_FILE_ENV];
   if (typeof file !== "string" || file.length === 0) {
     throw new EosPersonaSessionError("NO_CREDENTIALS_FILE", `${PERSONA_CREDENTIALS_FILE_ENV} is not set. The enrollment tool's output file is named explicitly; it is never discovered.`);
   }
   // The target is validated BEFORE the credentials file is even read, so a refused target never touches a secret.
-  const { base, origin } = resolveEosTarget({ ...options, env, needOrigin: true });
+  const { base, origin } = resolveTarget(ctx, { ...options, env, needOrigin: true });
   let entry;
   try {
     entry = (JSON.parse(readFileSync(file, "utf8")).entries ?? []).find((e) => e.personaKey === personaKey && e.state === "enrolled");
@@ -277,6 +295,39 @@ export async function loginEosPersona(personaKey, options = {}) {
   const session = r.session;
   if (typeof session?.accessToken !== "string") throw new EosPersonaSessionError("LOGIN_FAILED", "no session was issued");
   return Object.freeze({ proof: "login-mfa", token: session.accessToken, expiresAt: session.accessTokenExpiresAt, personaKey });
+}
+
+// ════════════════════ THE EXPORTED API: bound to the COMMITTED allowlist ════════════════════
+/** Issue (or reuse) a persona session from the EOS persona issuer. proof: "issuer-api" (synthetic API persona). */
+export const issueEosPersonaSession = (personaKey, options) => issueImpl(COMMITTED, personaKey, options);
+/** Call one EOS API route as a persona (path only; see callImpl). */
+export const callEosApiAsPersona = (personaKey, route, payload, options) => callImpl(COMMITTED, personaKey, route, payload, options);
+/** Real browser-style password + MFA login of an enrolled persona. proof: "login-mfa". */
+export const loginEosPersona = (personaKey, options) => loginImpl(COMMITTED, personaKey, options);
+
+// ════════════════════ TEST-ONLY: a local loopback EOS API ════════════════════
+// A suite that runs the EOS API in-process on loopback http (functions/test, field-ops-app-vite/test) needs a target that
+// the committed allowlist, correctly, does not contain. This is the ONE way to get one, and it is deliberately narrow:
+// it takes only loopback URLs (never a registry), builds its own single-entry synthetic registry, and returns a client
+// bound to it. It is NOT reachable through any option of the functions above. A structure test
+// (field-ops-app-vite/test/eosPersonaTargetAllowlist.test.mjs) fails if any file outside a test directory mentions it.
+const LOOPBACK_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+export function createLoopbackTestEosPersonaClient(loopbackApiUrl, { loopbackApplicationUrl } = {}) {
+  for (const u of [loopbackApiUrl, loopbackApplicationUrl]) {
+    if (u !== undefined && (typeof u !== "string" || !LOOPBACK_ORIGIN.test(u))) {
+      throw new EosPersonaSessionError("LOOPBACK_ONLY", "the test client accepts loopback http origins only (127.0.0.1, localhost, [::1])");
+    }
+  }
+  if (loopbackApiUrl === undefined) throw new EosPersonaSessionError("LOOPBACK_ONLY", "a loopback API URL is required");
+  const registry = Object.freeze({ environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: loopbackApiUrl },
+    surfaces: loopbackApplicationUrl ? [{ url: loopbackApplicationUrl, eosApplication: true }] : [] }] });
+  const ctx = Object.freeze({ loadRegistry: () => registry, allowLoopbackHttp: true });
+  return Object.freeze({
+    issueEosPersonaSession: (personaKey, options) => issueImpl(ctx, personaKey, options),
+    callEosApiAsPersona: (personaKey, route, payload, options) => callImpl(ctx, personaKey, route, payload, options),
+    loginEosPersona: (personaKey, options) => loginImpl(ctx, personaKey, options),
+    resolveEosTarget: (options) => resolveTarget(ctx, options),
+  });
 }
 
 /** The sessionStorage key the client reads (field-ops-app-vite/src/auth/eosSession.js). */

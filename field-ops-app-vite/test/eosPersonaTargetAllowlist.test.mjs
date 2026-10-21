@@ -8,7 +8,7 @@
 // Every fetch here is a stub that records each call; "no secret transmitted" is asserted against those records.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -278,46 +278,125 @@ test("pinned parser edges: trailing-dot host, IPv4/IPv6 literals, percent-encode
   }
 });
 
-test("an INJECTED registry may register a loopback http server; the same URL is refused against the real registry however it arrives", async () => {
-  for (const host of ["127.0.0.1", "localhost", "[::1]"]) {
-    const local = `http://${host}:8787`;
-    const registry = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: local }, surfaces: [{ url: "http://localhost:5173", eosApplication: true }] }] };
-    const a = stub();
-    assert.equal((await issue({ baseUrl: local, registry, fetch: a.fetch })).proof, "issuer-api");
-    assert.equal(a.calls[0].url, `${local}/auth/nonprod/persona-session`);
-    clearEosPersonaSessionCache();
-    const b = stub();
-    assert.equal((await login({ registry, fetch: b.fetch })).proof, "login-mfa");
-    assert.equal(b.calls[0].init.headers.origin, "http://localhost:5173");
-    clearEosPersonaSessionCache();
-
-    // Real registry: loopback http is refused as baseUrl, as EOS_API_BASE_URL, and as an origin -- zero calls, no secret.
-    for (const [name, call] of Object.entries(BOTH)) {
-      for (const opts of [{ baseUrl: local }, { env: { EOS_API_BASE_URL: local } }, { baseUrl: API, origin: "http://localhost:5173" }]) {
+test("a caller-supplied registry can never replace, widen or override the committed allowlist, on any exported path", async () => {
+  const evil = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: "https://evil.example" },
+    surfaces: [{ url: "https://evil.example", eosApplication: true }, { url: "http://evil.example", eosApplication: true }] }] };
+  const loopback = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: "http://127.0.0.1:8787" }, surfaces: [] }] };
+  for (const registry of [evil, loopback]) {
+    for (const baseUrl of ["https://evil.example", "http://127.0.0.1:8787"]) {
+      const calls = [];
+      for (const [name, call] of Object.entries(BOTH)) {
         const s = stub();
-        await assert.rejects(call({ fetch: s.fetch, ...opts }), (e) => e.name === "EosPersonaSessionError", `${name} ${JSON.stringify(opts)}`);
-        assert.equal(s.calls.length, 0);
-        assert.equal(transmitted(s.calls), false);
+        await assert.rejects(call({ baseUrl, registry, fetch: s.fetch }), (e) => e.name === "EosPersonaSessionError", `${name} ${baseUrl}`);
+        calls.push(...s.calls);
       }
+      const t = stub();
+      await assert.rejects(callEosApiAsPersona("dispatcher", "/x", {}, { env: {}, credential: ISSUER_CREDENTIAL, baseUrl, registry, fetch: t.fetch }), (e) => e.name === "EosPersonaSessionError");
+      assert.equal(calls.length + t.calls.length, 0, "the option is ignored: nothing is sent");
     }
   }
-  // The injection is an option only: nothing in the environment can supply a registry.
-  const s = stub();
-  await assert.rejects(issue({ env: { EOS_API_BASE_URL: "http://127.0.0.1:8787", EOS_PERSONA_REGISTRY: "{}" }, fetch: s.fetch }), (e) => e.name === "EosPersonaSessionError");
-  assert.equal(s.calls.length, 0);
+  // A registry option does not even change what the committed allowlist resolves.
+  assert.equal(client.resolveEosTarget({ registry: evil, env: {} }).base, API);
+  // The pure validator never accepts http, injected or not.
+  assert.throws(() => resolveEosTargetFrom(loopback, { baseUrl: "http://127.0.0.1:8787" }), refusal("INVALID_TARGET_URL"));
 });
 
-test("an injected registry entry that is http but NOT loopback is refused, as are loopback lookalikes", async () => {
-  for (const url of ["http://api.example", "http://127.0.0.1.evil.example", "http://localhost.evil.example:8787", "http://10.0.0.5:8787", "http://[::2]:8787", "http://0.0.0.0:8787", "http://127.0.0.2:8787"]) {
-    const registry = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: url }, surfaces: [] }] };
-    for (const [name, call] of Object.entries(BOTH)) {
-      const s = stub();
-      await assert.rejects(call({ baseUrl: url, registry, fetch: s.fetch }), refusal("INVALID_TARGET_URL"), `${name} ${url}`);
-      assert.equal(s.calls.length, 0);
+test("the test-only loopback client: works for issuer, login and API calls against ITS loopback server only", async () => {
+  for (const host of ["127.0.0.1", "localhost", "[::1]"]) {
+    const local = `http://${host}:8787`;
+    const lb = client.createLoopbackTestEosPersonaClient(local, { loopbackApplicationUrl: "http://localhost:5173" });
+    const a = stub();
+    assert.equal((await lb.issueEosPersonaSession("dispatcher", { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: local, fetch: a.fetch })).proof, "issuer-api");
+    assert.equal(a.calls[0].url, `${local}/auth/nonprod/persona-session`);
+    assert.equal(a.calls[0].init.redirect, "manual");
+    clearEosPersonaSessionCache();
+    const b = stub();
+    assert.equal((await lb.loginEosPersona("dispatcher", { env: {}, credentialsFile: credsFile, nowMs: 59_000, fetch: b.fetch })).proof, "login-mfa");
+    assert.equal(b.calls[0].init.headers.origin, "http://localhost:5173");
+    clearEosPersonaSessionCache();
+    const c = stub((url) => url.endsWith("/auth/nonprod/persona-session")
+      ? { ok: true, status: 200, json: async () => ({ ok: true, token: TOKEN, expiresAt: "2099-01-01T00:00:00Z", personaKey: "dispatcher", principalId: "pr-1" }) }
+      : { ok: true, status: 200, json: async () => ({ ok: true }) });
+    await lb.callEosApiAsPersona("dispatcher", "/operations/x", {}, { env: {}, credential: ISSUER_CREDENTIAL, fetch: c.fetch });
+    assert.equal(c.calls[1].url, `${local}/operations/x`);
+    assert.equal(c.calls[1].init.headers.authorization, `Bearer ${TOKEN}`);
+    clearEosPersonaSessionCache();
+
+    // Still guarded: another loopback port, a remote host, a remote origin and a smuggling route are all refused, zero calls.
+    for (const [name, run] of Object.entries({
+      otherPort: () => lb.issueEosPersonaSession("dispatcher", { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: "http://127.0.0.1:9999", fetch: () => assert.fail("sent") }),
+      remoteHttps: () => lb.issueEosPersonaSession("dispatcher", { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: "https://evil.example", fetch: () => assert.fail("sent") }),
+      remoteHttp: () => lb.issueEosPersonaSession("dispatcher", { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: "http://evil.example", fetch: () => assert.fail("sent") }),
+      remoteOrigin: () => lb.loginEosPersona("dispatcher", { env: {}, credentialsFile: credsFile, origin: "http://evil.example", fetch: () => assert.fail("sent") }),
+      route: () => lb.callEosApiAsPersona("dispatcher", "@evil.example/x", {}, { env: {}, credential: ISSUER_CREDENTIAL, fetch: () => assert.fail("sent") }),
+      env: () => lb.issueEosPersonaSession("dispatcher", { env: { EOS_API_BASE_URL: "http://evil.example" }, credential: ISSUER_CREDENTIAL, fetch: () => assert.fail("sent") }),
+    })) {
+      await assert.rejects(run(), (e) => e.name === "EosPersonaSessionError", name);
     }
   }
-  // An injected registry still fails closed on roles and still refuses production overlap.
-  const prod = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: "http://127.0.0.1:1" }, surfaces: [] },
-    { id: "p", role: "production", eosApi: { baseUrl: "http://127.0.0.1:1" }, surfaces: [] }] };
-  assert.throws(() => resolveEosTargetFrom(prod, { baseUrl: "http://127.0.0.1:1" }), refusal("PRODUCTION_REFUSED"));
+});
+
+test("the test-only loopback client refuses every non-loopback spelling at construction (no registry is ever accepted)", () => {
+  for (const url of [
+    "https://evil.example", "http://evil.example", "http://api.example", "http://127.0.0.1.evil.example", "http://localhost.evil.example:8787",
+    "http://10.0.0.5:8787", "http://[::2]:8787", "http://0.0.0.0:8787", "http://127.0.0.2:8787",
+    "http://2130706433", "http://0x7f.0.0.1", "http://0177.0.0.1", "http://127.1", "http://127.0.0.1@evil.example", "http://127.0.0.1:8787/x",
+    "http://127.0.0.1:8787?x=1", "http://localhost\\@evil.example", "https://127.0.0.1:8787",
+    { environments: [] }, null, 42,
+  ]) {
+    assert.throws(() => client.createLoopbackTestEosPersonaClient(url), refusal("LOOPBACK_ONLY"), JSON.stringify(url));
+  }
+  assert.throws(() => client.createLoopbackTestEosPersonaClient("http://127.0.0.1:8787", { loopbackApplicationUrl: "http://evil.example" }), refusal("LOOPBACK_ONLY"));
+  assert.throws(() => client.createLoopbackTestEosPersonaClient("http://127.0.0.1:8787", { loopbackApplicationUrl: "https://evil.example" }), refusal("LOOPBACK_ONLY"));
+  assert.throws(() => client.createLoopbackTestEosPersonaClient(), refusal("LOOPBACK_ONLY"));
+});
+
+test("a browser harness seeds a token only into the registered EOS application surface of the same environment", () => {
+  assert.equal(client.assertEosApplicationUrl(`${APP}/some/page?x=1`, { env: {}, baseUrl: API }).origin, APP);
+  assert.equal(client.assertEosApplicationUrl(`${APP}/`, { env: {} }).origin, APP);
+  for (const url of ["https://evil.example/", "https://app.test/", NOT_APP_SURFACE, PROD_SURFACE, `${APP}.evil.example/`, "http://verenwardeos.vercel.app/", "javascript:1", "not a url", undefined]) {
+    assert.throws(() => client.assertEosApplicationUrl(url, { env: {}, baseUrl: API }), (e) => e.name === "EosPersonaSessionError", String(url));
+  }
+});
+
+test("openEosPersonaSession refuses a foreign page BEFORE issuing or seeding any token", async () => {
+  const deployed = await import(pathToFileURL(join(REPO, "field-ops-app-vite", ".claude", "skills", "run-field-ops-app-vite", "deployedSession.mjs")).href);
+  const page = { log: [], async addInitScript() { this.log.push("seed"); }, async goto() { this.log.push("goto"); } };
+  for (const url of ["https://evil.example/", "https://app.test/", NOT_APP_SURFACE, `${APP}.evil.example/`, "http://verenwardeos.vercel.app/"]) {
+    const s = stub();
+    await assert.rejects(deployed.openEosPersonaSession(page, url, "administrator", { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: API, fetch: s.fetch }), (e) => e.name === "EosPersonaSessionError", url);
+    assert.equal(s.calls.length, 0, `${url}: no issuer call`);
+  }
+  assert.deepEqual(page.log, [], "the page was never seeded or navigated");
+  const ok = stub();
+  await deployed.openEosPersonaSession(page, `${APP}/`, "administrator", { env: {}, credential: ISSUER_CREDENTIAL, baseUrl: API, fetch: ok.fetch });
+  assert.deepEqual(page.log, ["seed", "goto"]);
+});
+
+test("STRUCTURE: nothing outside a test directory can reach the loopback exception", () => {
+  const SKIP = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
+  const EXT = /\.(mjs|cjs|js|jsx|ts|tsx|sh|ps1|yml|yaml|json)$/;
+  const TOKENS = ["createLoopbackTestEosPersonaClient", "allowLoopbackHttp"];
+  const users = [];
+  const walk = (dir, rel) => {
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      const r = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isDirectory()) {
+        if (SKIP.has(d.name) || r === ".claude/worktrees") continue;
+        walk(join(dir, d.name), r);
+      } else if (EXT.test(d.name) && statSync(join(dir, d.name)).size < 2_000_000) {
+        const text = readFileSync(join(dir, d.name), "utf8");
+        if (TOKENS.some((t) => text.includes(t))) users.push(r);
+      }
+    }
+  };
+  walk(REPO, "");
+  const inTestDir = (r) => r.split("/").slice(0, -1).includes("test");
+  const outside = users.filter((r) => r !== "scripts/eosPersonaSession.mjs" && !inTestDir(r));
+  assert.deepEqual(outside, [], "only the module itself and files under a test/ directory may mention the loopback exception");
+  assert.ok(users.includes("functions/test/eosIdentitySessionPostgres.test.mjs"), "the Postgres suite is the intended consumer");
+  // And the module's own exported option surface never takes a registry: no exported function reads `options.registry`.
+  const src = readFileSync(join(REPO, "scripts", "eosPersonaSession.mjs"), "utf8");
+  assert.ok(!/options\.registry|\{\s*registry\b/.test(src.replace(/function resolveWith\(registry/, "")), "no sending path reads a caller-supplied registry");
+  assert.ok(!/from "(firebase|firebase-admin|firebase-functions|googleapis|google-auth-library)/.test(src), "no Firebase/Google import");
 });
