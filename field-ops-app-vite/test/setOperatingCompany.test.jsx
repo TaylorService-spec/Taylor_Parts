@@ -85,6 +85,18 @@ describe("SetOperatingCompany", () => {
     expect(assign.mock.calls[2][0].idempotencyKey).not.toBe(assign.mock.calls[0][0].idempotencyKey);
   });
 
+  it("COMPANY_TRANSFER_DECISION_REQUIRED is shown in honest words (the creator is outside the company; a separate transfer decision is needed) and the control stays open", async () => {
+    const assign = vi.fn().mockResolvedValue({ errorStatus: "failed-precondition", errorDetail: "COMPANY_TRANSFER_DECISION_REQUIRED", message: "server words" });
+    const onApplied = vi.fn();
+    render(<SetOperatingCompany family="OPPORTUNITY" recordId="opp-1" assignment={offer} assign={assign} onApplied={onApplied} />);
+    open();
+    why("A reason.");
+    fireEvent.click(screen.getByRole("button", { name: "Set operating company" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/created this record does not work in that company.*separate decision/));
+    expect(onApplied).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Reason/)).toBeTruthy();
+  });
+
   it("Cancel closes without calling the server", () => {
     const assign = vi.fn();
     render(<SetOperatingCompany family="OPPORTUNITY" recordId="opp-1" assignment={offer} assign={assign} />);

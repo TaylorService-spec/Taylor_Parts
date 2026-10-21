@@ -12,17 +12,17 @@
 //                            the protected Administrator, the protected Owner) or the company rule is NONEXISTENT (RECORD_NOT_FOUND), and is never locked
 //   3. TARGET REACH          the caller reaches the company it assigns (the SAME Q-1a decision a creation uses); a company it does not reach reads as an ungoverned one
 //   4. STILL COMPANY-LESS    a record that already has a company refuses OPERATING_COMPANY_ALREADY_SET and changes nothing
-//   5. CREATOR AUTHORITY     (Owner ruling SAL-03(c) / #2199, 2026-10-21) the company assigned must be within the record CREATOR's valid operating-company authority: the stored
-//                            created_by principal, resolved server-side through the governed Employee-based resolver (home company + explicit company-authority grants, resolveCompanyAuthority).
-//                            NO bypass for the Administrator or the protected Owner (they still need steps 1-3 as the actor); this check is ADDITIONAL. No creator, a creator with no Employee link,
-//                            an unresolvable creator, or a creator outside the target company is refused COMPANY_TRANSFER_DECISION_REQUIRED (a separate governed transfer decision is required).
-//                            The SAME check covers every record the command would change (a company-less Agreement inheriting the Opportunity's company); any failure refuses the whole command.
-//                            Placed after STILL COMPANY-LESS so an already-set company still answers OPERATING_COMPANY_ALREADY_SET. Ownership and created_by are never rewritten.
-//   6. LINEAGE            an Agreement's company must equal its Opportunity's, and NO RELATED RECORD IS EVER REWRITTEN (Owner ruling 2026-10-21): a conflict is refused with
+//   5. LINEAGE            an Agreement's company must equal its Opportunity's, and NO RELATED RECORD IS EVER REWRITTEN (Owner ruling 2026-10-21): a conflict is refused with
 //                            LINEAGE_DISAGREEMENT (neutral wording when the related record is not visible). An Agreement whose Opportunity has no company, or another one, is
 //                            refused; an Opportunity whose Agreement is already in another company refuses the whole command. A COMPANY-LESS Agreement INHERITS the
 //                            Opportunity's company in the same transaction (Owner ruling 2026-10-21): its own audit row, listed in the result; a child never changes once set.
 //                            An Order is NOT NULL and never applies.
+//   6. CREATOR AUTHORITY     (Owner ruling SAL-03(c) / #2199, 2026-10-21) the company assigned must be within the record CREATOR's valid operating-company authority: the stored
+//                            created_by principal, resolved server-side through the governed Employee-based resolver (home company + explicit company-authority grants, resolveCompanyAuthority).
+//                            NO bypass for the Administrator or the protected Owner (they still need steps 1-3 as the actor); this check is ADDITIONAL. No creator, a creator with no Employee link,
+//                            an unresolvable creator, or a creator outside the target company is refused COMPANY_TRANSFER_DECISION_REQUIRED (a separate governed transfer decision is required).
+//                            The SAME check covers every record the command would change (a company-less Agreement inheriting the Opportunity's company); any failure refuses the whole command.
+//                            Placed AFTER lineage validation (Owner-approved reconciliation) and before the first write, so a lineage conflict still answers LINEAGE_DISAGREEMENT and a refusal writes nothing. Ownership and created_by are never rewritten.
 //
 // ONE audit row per applied command (action = the operation), carrying the governed reason and the before (null) / after company. Replay is the kernel's
 // receipt; two assigns on one record have exactly one winner (the record is locked, and the UPDATE also requires the company to still be NULL).
@@ -99,21 +99,24 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
       fail("OPERATING_COMPANY_ALREADY_SET", "PRECONDITION_FAILED", "the record already has an operating company; this command sets it once and never changes it");
     }
 
-    // 5. CREATOR AUTHORITY -- the record's stored creator (the row this transaction has locked), then every company-less child that would inherit.
-    const own = await db.query<{ created_by: string | null }>(
-      `SELECT created_by FROM eos_commercial.${family === "opportunity" ? "opportunities" : "sales_agreements"} WHERE tenant_id = $1 AND id = $2`, [tenantId, recordId]);
-    if (!(await creatorHoldsCompany(db, tenantId, own.rows[0]?.created_by ?? null, companyId))) {
-      fail("COMPANY_TRANSFER_DECISION_REQUIRED", "PRECONDITION_FAILED", TRANSFER_DECISION_REQUIRED);
-    }
-    if (family === "opportunity") {
-      const heirs = await db.query<{ created_by: string | null }>(
-        `SELECT DISTINCT created_by FROM eos_commercial.sales_agreements WHERE tenant_id = $1 AND opportunity_id = $2 AND operating_company_key IS NULL`, [tenantId, recordId]);
-      for (const heir of heirs.rows) {
-        if (!(await creatorHoldsCompany(db, tenantId, heir.created_by, companyId))) fail("COMPANY_TRANSFER_DECISION_REQUIRED", "PRECONDITION_FAILED", TRANSFER_DECISION_REQUIRED);
+    // 6. CREATOR AUTHORITY -- run AFTER lineage validation and BEFORE the first write (called at the one UPDATE site of each branch below): the record's stored creator
+    // (the row this transaction has locked), then every company-less child that would inherit. One bounded resolver read per distinct creator.
+    const requireCreatorAuthority = async (): Promise<void> => {
+      const own = await db.query<{ created_by: string | null }>(
+        `SELECT created_by FROM eos_commercial.${family === "opportunity" ? "opportunities" : "sales_agreements"} WHERE tenant_id = $1 AND id = $2`, [tenantId, recordId]);
+      if (!(await creatorHoldsCompany(db, tenantId, own.rows[0]?.created_by ?? null, companyId))) {
+        fail("COMPANY_TRANSFER_DECISION_REQUIRED", "PRECONDITION_FAILED", TRANSFER_DECISION_REQUIRED);
       }
-    }
+      if (family === "opportunity") {
+        const heirs = await db.query<{ created_by: string | null }>(
+          `SELECT DISTINCT created_by FROM eos_commercial.sales_agreements WHERE tenant_id = $1 AND opportunity_id = $2 AND operating_company_key IS NULL`, [tenantId, recordId]);
+        for (const heir of heirs.rows) {
+          if (!(await creatorHoldsCompany(db, tenantId, heir.created_by, companyId))) fail("COMPANY_TRANSFER_DECISION_REQUIRED", "PRECONDITION_FAILED", TRANSFER_DECISION_REQUIRED);
+        }
+      }
+    };
 
-    // 6. LINEAGE -- consistency is CHECKED first, and only a NULL child ever inherits (Owner rulings 2026-10-21). A conflict refuses the whole command.
+    // 5. LINEAGE -- consistency is CHECKED first, and only a NULL child ever inherits (Owner rulings 2026-10-21). A conflict refuses the whole command.
     let editVersion: number | null = null;
     const inherited: string[] = [];
     if (family === "opportunity") {
@@ -128,6 +131,7 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
         fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED", seen === null ? RELATED_RECORD_NEUTRAL
           : `this Opportunity's Sales Agreement is already in operating company '${seen}', which differs from '${companyId}'; an Agreement and its Opportunity must carry the same company, so choose the Agreement's company`);
       }
+      await requireCreatorAuthority();
       const set = await db.query(
         `UPDATE eos_commercial.opportunities SET operating_company_key = $3, edit_version = edit_version + 1, updated_by = $4, updated_at = now()
           WHERE tenant_id = $1 AND id = $2 AND operating_company_key IS NULL RETURNING edit_version`,
@@ -171,6 +175,7 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
             : `this Sales Agreement's Opportunity is in operating company '${seen}', not '${companyId}'; a Sales Agreement can only be set to its Opportunity's company`);
         }
       }
+      await requireCreatorAuthority();
       const set = await db.query(
         `UPDATE eos_commercial.sales_agreements SET operating_company_key = $3, updated_by = $4, updated_at = now()
           WHERE tenant_id = $1 AND id = $2 AND operating_company_key IS NULL`,

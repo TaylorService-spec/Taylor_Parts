@@ -22,6 +22,7 @@ const WORDS = Object.freeze({
   REASON_TOO_LONG: `The reason is too long (${MAX_REASON} characters at most).`,
   OPERATING_COMPANY_ALREADY_SET: "This record already has an operating company. It is set once and cannot be changed here.",
   LINEAGE_DISAGREEMENT: "The operating company has to match the records this one belongs to. Set it on the Opportunity first; the agreement follows it.",
+  COMPANY_TRANSFER_DECISION_REQUIRED: "The person who created this record does not work in that company, so it can't be moved there from here. Moving a record into another company needs a separate decision.",
   OPERATING_COMPANY_NOT_GOVERNED: "That operating company is not available to you.",
   RECORD_NOT_FOUND: "This record could not be found. Reload the page.",
   CAPABILITY_REQUIRED: "You are not authorized to set an operating company.",

@@ -39,12 +39,30 @@ const agrRow = (over = {}) => ({
 /** A client that answers exactly what the command asks, records every statement, and can replay a committed receipt. */
 function world(cfg = {}) {
   const log = [];
+  const creators = { "p-creator": { home: "taylor", grants: [] }, "p-dual": { home: "taylor", grants: ["ventana"] }, "p-unlinked": { home: "taylor", unlinked: true }, ...(cfg.creators ?? {}) };
+  const creatorsFor = (id) => creators[id] ?? null;
   const client = {
     async query(sql, params) {
       const s = String(sql).replace(/\s+/g, " ").trim();
       log.push({ s, params });
       if (/^(BEGIN|COMMIT|ROLLBACK)/.test(s) || /pg_advisory_xact_lock/.test(s)) return { rows: [] };
       if (/^SELECT result, target_family, target_id FROM eos_commercial\.command_receipts/.test(s)) return { rows: cfg.receipt ? [cfg.receipt] : [] };
+      // The record CREATOR's governed company authority (resolveCompanyAuthority runs for real, never injected): a synthetic principal with standing, a LINKED active
+      // Employee whose home company is a real binding, plus optional explicit grants. cfg.creators overrides/adds principals; a null entry has no standing at all.
+      if (/FROM eos_policy\.principals p JOIN eos_policy\.tenant_memberships m/.test(s)) return { rows: creatorsFor(params[1]) ? [{}] : [] };
+      if (/FROM eos_policy\.employee_principal_links l LEFT JOIN eos_workforce\.employees e/.test(s)) {
+        const c = creatorsFor(params[1]);
+        return { rows: !c || c.unlinked ? [] : [{ employee_id: `e-${params[1]}`, employment_status: "ACTIVE", operating_company_id: c.home }] };
+      }
+      if (/^SELECT c\.operating_company_id AS id FROM eos_policy\.tenant_operating_companies c/.test(s)) {
+        const c = creatorsFor(params[1]);
+        return { rows: [...new Set([c.home, ...(c.grants ?? [])])].sort().map((id) => ({ id })) };
+      }
+      if (/^SELECT DISTINCT operating_company_key AS key FROM eos_policy\.tenant_operating_company_keys/.test(s)) return { rows: params[1].map((id) => ({ key: KEY_OF[id] })) };
+      if (/^SELECT created_by FROM eos_commercial\.(opportunities|sales_agreements) WHERE/.test(s)) return { rows: [{ created_by: cfg.createdBy === undefined ? "p-creator" : cfg.createdBy }] };
+      if (/^SELECT DISTINCT created_by FROM eos_commercial\.sales_agreements/.test(s)) {
+        return { rows: (cfg.heirCreators ?? ((cfg.children ?? []).length > 0 ? ["p-creator"] : [])).map((created_by) => ({ created_by })) };
+      }
       if (/tenant_memberships/.test(s)) return { rows: [{}] };
       if (/FROM eos_commercial\.opportunities o WHERE .* FOR UPDATE OF o/.test(s)) return { rows: cfg.opportunity ? [cfg.opportunity] : [] };
       if (/FROM eos_commercial\.opportunity_lines/.test(s) || /FROM eos_commercial\.sales_agreement_lines/.test(s)) return { rows: [] };
@@ -348,7 +366,15 @@ test("STRUCTURE: the command locks through the Q-1a store, never reads the recor
   assert.match(src, /runCommercialCommand\(deps, actor, "recordCompany\.assign"/);
   assert.match(src, /lockOpportunity\(db, tenantId, recordId, scope\)/);
   assert.match(src, /lockAgreement\(db, tenantId, recordId, scope\)/);
-  assert.equal([...src.matchAll(/operating_company_key IS NULL/g)].length, 3, "every UPDATE (the parent, the inheriting children, the Agreement) requires the company to still be NULL");
+  // 4 = the 3 UPDATEs (the parent, the inheriting children, the Agreement), each requiring the company to still be NULL, plus the ONE creator-authority read of the
+  // company-less children that would inherit (SELECT DISTINCT created_by ... WHERE tenant_id AND opportunity_id: one lookup on sales_agreements_by_opportunity, bounded by that
+  // Opportunity's Agreements). The count was verified against the source, not just bumped.
+  assert.equal([...src.matchAll(/operating_company_key IS NULL/g)].length, 4, "every UPDATE (the parent, the inheriting children, the Agreement) requires the company to still be NULL, plus the creator read of the heirs");
+  assert.equal([...src.matchAll(/UPDATE eos_commercial\.\w+ SET operating_company_key[^`]*operating_company_key IS NULL/g)].length, 3, "exactly three UPDATEs, each NULL-only");
+  assert.match(src, /SELECT DISTINCT created_by FROM eos_commercial\.sales_agreements WHERE tenant_id = \$1 AND opportunity_id = \$2 AND operating_company_key IS NULL/, "the extra occurrence is the heirs' creator read");
+  assert.doesNotMatch(src, /companyReach/, "the creator's authority is resolved by the governed resolver, never through the injectable test seam");
+  assert.ok(src.indexOf("LINEAGE_DISAGREEMENT") < src.indexOf("await requireCreatorAuthority()"), "lineage validation, then the creator check");
+  assert.ok(src.lastIndexOf("await requireCreatorAuthority()") < src.lastIndexOf("UPDATE eos_commercial.sales_agreements SET operating_company_key = $3, updated_by") && src.indexOf("await requireCreatorAuthority()") < src.indexOf("UPDATE eos_commercial.opportunities SET"), "and the creator check precedes every write");
   assert.doesNotMatch(src, /SET operating_company_key = \$3, edit_version[^`]*sales_agreements|cascade(?!d)/i, "no cascade verb; inheritance is the NULL-only UPDATE below");
   assert.doesNotMatch(src, /operating_company_key = NULL/, "no clear");
   assert.match(src, /action: "recordCompany\.assign"[\s\S]*reason,/);
@@ -404,4 +430,53 @@ test("NAMED-ONLY GRANT: an object-wide GRANT of `opportunity` never confers comm
   // the preview is the same command: the port routes applyObjectWideRoleAuthority to it, so there is no second expansion to leak the key
   assert.doesNotMatch(readFileSync(join(SRC, "adminPolicy", "authorityChangePreviewPort.ts"), "utf8"), /actionsForObject/);
   assert.equal([...readFileSync(join(SRC, "adminPolicy", "policyCommands.ts"), "utf8").matchAll(/NAMED_ONLY_GRANT_CAPABILITIES/g)].length, 2, "imported and applied once, in the object-wide expansion only");
+});
+
+// ════════════════════ creator authority (Owner ruling 2026-10-21: "company assignment constrained by the record creator's company authority; no Administrator bypass") ════════════════════
+
+const bothReach = { companyReach: async () => authority.commercialCompanyReachOf({ unrestricted: false, protectedOwner: false, companyKeys: ["taylor-ops", "ventana-ops"], employeeIds: ["e-owner"], creatorId: "p-1" }) };
+const adminReach = { companyReach: async () => authority.commercialCompanyReachOf({ unrestricted: true, protectedOwner: false, companyKeys: [], employeeIds: [], creatorId: "p-1" }) };
+const TRANSFER = "COMPANY_TRANSFER_DECISION_REQUIRED";
+
+test("CREATOR AUTHORITY: every shortfall of the creator -- outside the company, no Employee link, no standing, no creator -- is one neutral refusal, after lineage, with zero trace; no actor reach (even unrestricted) bypasses it", async () => {
+  const cases = [
+    ["a creator outside the target company", { createdBy: "p-creator" }, "ventana", bothReach],
+    ["the unrestricted Administrator, creator outside the company", { createdBy: "p-creator" }, "ventana", adminReach],
+    ["a creator with no Employee link", { createdBy: "p-unlinked" }, "taylor", {}],
+    ["a creator that does not exist", { createdBy: "p-ghost" }, "taylor", {}],
+    ["no creator recorded", { createdBy: null }, "taylor", {}],
+  ];
+  for (const [what, cfg, company, over] of cases) {
+    const w = world({ opportunity: oppRow(), ...cfg });
+    const err = await run(w, good({ operatingCompanyId: company }), ACTOR, over);
+    assert.deepEqual([err.code, err.category], [TRANSFER, "PRECONDITION_FAILED"], what);
+    assert.match(err.message, /separate governed transfer decision/);
+    assert.doesNotMatch(err.message, /taylor|ventana/i, `${what}: names no company`);
+    zeroTrace(w, what);
+  }
+  // Lineage is validated BEFORE the creator check: a disagreeing Agreement still answers LINEAGE_DISAGREEMENT even though the creator is outside the company.
+  const lin = world({ opportunity: oppRow(), disagreeingChild: "ventana-ops", createdBy: "p-creator" });
+  assert.equal((await run(lin, good())).code, "LINEAGE_DISAGREEMENT");
+  zeroTrace(lin, "lineage first");
+});
+
+test("CREATOR AUTHORITY: a child that would inherit is checked too, and one failing creator refuses the whole command", async () => {
+  const w = world({ opportunity: oppRow(), createdBy: "p-dual", children: [{ id: "sag-child" }], heirCreators: ["p-dual", "p-creator"] });
+  const err = await run(w, good({ operatingCompanyId: "ventana" }), ACTOR, bothReach);
+  assert.equal(err.code, TRANSFER);
+  zeroTrace(w, "child creator lacks Ventana");
+  const open = world({ opportunity: oppRow(), createdBy: "p-dual", children: [{ id: "sag-child" }], heirCreators: ["p-dual"] });
+  const out = await run(open, good({ operatingCompanyId: "ventana" }), ACTOR, bothReach);
+  assert.deepEqual([out.replayed, out.inheritedSalesAgreementIds], [false, ["sag-child"]], out.message);
+});
+
+test("CREATOR AUTHORITY: the creator's home company and an explicit grant are accepted; an Agreement is checked on its own creator", async () => {
+  const home = world({ opportunity: oppRow(), createdBy: "p-creator" });
+  assert.equal((await run(home, good())).replayed, false);
+  const dual = world({ opportunity: oppRow(), createdBy: "p-dual" });
+  assert.equal((await run(dual, good({ operatingCompanyId: "ventana" }), ACTOR, bothReach)).replayed, false);
+  const agr = world({ agreement: agrRow({ opportunity_id: null }), createdBy: "p-creator" });
+  const err = await run(agr, good({ family: "SALES_AGREEMENT", recordId: "sag-1", operatingCompanyId: "ventana" }), ACTOR, bothReach);
+  assert.equal(err.code, TRANSFER);
+  zeroTrace(agr, "Agreement, creator outside Ventana");
 });

@@ -171,20 +171,28 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     for (const [who, expected] of [[tay, true], [vcreator, true], [admin, true], [own, true], [other, false], [ven, false], [dual, false]]) {
       assert.equal(await visible(who, oppRead.getOpportunityDetail, "opportunityId", oN.opportunityId), expected, `before: ${who}`);
     }
-    const out = await assign(tay, { recordId: oN.opportunityId, operatingCompanyId: "taylor" });
-    assert.deepEqual(out, { family: "OPPORTUNITY", recordId: oN.opportunityId, operatingCompanyId: "taylor", editVersion: 2, inheritedSalesAgreementIds: [], replayed: false });
-    assert.equal(await keyOf("opportunities", oN.opportunityId), "taylor-ops-t1");
-    const rows = await audits(oN.opportunityId);
+    // Owner ruling 2026-10-21, "company assignment constrained by the record creator's company authority; no Administrator bypass" (SAL-03(c) / #2199): this record's
+    // CREATOR is a Ventana employee, so it can NOT be moved into Taylor -- a Taylor owner reaching Taylor is not enough. Refused, nothing written, creator keeps access.
+    const refused = await refusedWithZeroTrace(() => assign(tay, { recordId: oN.opportunityId, operatingCompanyId: "taylor" }), "COMPANY_TRANSFER_DECISION_REQUIRED", "Ventana-created record, Taylor target");
+    assert.equal(refused.category, "PRECONDITION_FAILED");
+    assert.equal(await keyOf("opportunities", oN.opportunityId), null);
+    assert.equal(await visible(vcreator, oppRead.getOpportunityDetail, "opportunityId", oN.opportunityId), true, "the creator keeps access after a refusal");
+    // A record created by a Taylor employee is assigned Taylor normally.
+    const oP = await companyless(creator);
+    const out = await assign(tay, { recordId: oP.opportunityId, operatingCompanyId: "taylor" });
+    assert.deepEqual(out, { family: "OPPORTUNITY", recordId: oP.opportunityId, operatingCompanyId: "taylor", editVersion: 2, inheritedSalesAgreementIds: [], replayed: false });
+    assert.equal(await keyOf("opportunities", oP.opportunityId), "taylor-ops-t1");
+    const rows = await audits(oP.opportunityId);
     assert.equal(rows.length, 1, "ONE audit row per applied command");
     assert.deepEqual([rows[0].actor_uid, rows[0].target_kind, rows[0].reason], [tay, "opportunity", REASON]);
     assert.deepEqual(rows[0].before, { operatingCompanyId: null, operatingCompanyKey: null });
     assert.deepEqual({ ...rows[0].after, authorizedBy: undefined }, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops-t1", editVersion: 2, inheritedSalesAgreementIds: [], authorizedBy: undefined });
-    // After: normal company authority. Its Ventana CREATOR loses it; Taylor's people (including a colleague who never owned it) gain it; Ventana never sees it.
-    for (const [who, expected] of [[vcreator, false], [ven, false], [tay, true], [other, true], [dual, true], [admin, true], [own, true]]) {
-      assert.equal(await visible(who, oppRead.getOpportunityDetail, "opportunityId", oN.opportunityId), expected, `after: ${who}`);
+    // After: normal company authority. Taylor's people (including a colleague who never owned it) gain it; Ventana never sees it.
+    for (const [who, expected] of [[creator, true], [vcreator, false], [ven, false], [tay, true], [other, true], [dual, true], [admin, true], [own, true]]) {
+      assert.equal(await visible(who, oppRead.getOpportunityDetail, "opportunityId", oP.opportunityId), expected, `after: ${who}`);
     }
-    assert.equal((await refusal(() => opp.updateOpportunity(wdeps, actor(vcreator), { idempotencyKey: key(), opportunityId: oN.opportunityId, expectedEditVersion: 2, need: "x" }))).code, "RECORD_NOT_FOUND",
-      "a non-reaching former creator can no longer even edit it");
+    assert.equal((await refusal(() => opp.updateOpportunity(wdeps, actor(ven), { idempotencyKey: key(), opportunityId: oP.opportunityId, expectedEditVersion: 2, need: "x" }))).code, "RECORD_NOT_FOUND",
+      "a non-reaching person cannot even edit it");
   });
 
   await t.test("(2) an AGREEMENT (a legacy company-less Agreement under an Opportunity that has a company): it takes the Opportunity's company", async () => {
@@ -357,16 +365,21 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
 
   // ════════════════════ THE PROTECTED ADMINISTRATOR AND THE PROTECTED OWNER ════════════════════
 
-  await t.test("(10) the protected ADMINISTRATOR (unrestricted reach, once the key is granted) assigns ANY company, and its audit row carries the standing stamp", async () => {
+  // Owner ruling 2026-10-21, "company assignment constrained by the record creator's company authority; no Administrator bypass" (SAL-03(c) / #2199): the protected
+  // Administrator's unrestricted REACH no longer lets it move a record into a company its CREATOR does not hold. It still assigns the creator's own company.
+  await t.test("(10) the protected ADMINISTRATOR (unrestricted reach, once the key is granted) assigns the creator's company with the standing stamp, but NOT a company the creator lacks (no Administrator bypass)", async () => {
     const o = await companyless(creator);
-    const out = await assign(admin, { recordId: o.opportunityId, operatingCompanyId: "ventana" });
+    const err = await refusedWithZeroTrace(() => assign(admin, { recordId: o.opportunityId, operatingCompanyId: "ventana" }), "COMPANY_TRANSFER_DECISION_REQUIRED", "Administrator, Ventana on a Taylor-created record");
+    assert.equal(err.category, "PRECONDITION_FAILED");
+    assert.match(err.message, /separate governed transfer decision/);
+    assert.equal(await keyOf("opportunities", o.opportunityId), null);
+    assert.equal(await visible(creator, oppRead.getOpportunityDetail, "opportunityId", o.opportunityId), true, "the Taylor creator still sees the record it created");
+    const out = await assign(admin, { recordId: o.opportunityId, operatingCompanyId: "taylor" });
     assert.equal(out.replayed, false);
-    assert.equal(await keyOf("opportunities", o.opportunityId), "ventana-ops-t1");
+    assert.equal(await keyOf("opportunities", o.opportunityId), "taylor-ops-t1");
     const [row] = await audits(o.opportunityId);
     assert.ok(row.after.authorizedBy, "the protected-Administrator provenance stamp");
-    assert.equal(row.after.operatingCompanyId, "ventana");
-    // and the Taylor creator, who reached only Taylor, no longer sees the record it created
-    assert.equal(await visible(creator, oppRead.getOpportunityDetail, "opportunityId", o.opportunityId), false);
+    assert.equal(row.after.operatingCompanyId, "taylor");
   });
 
   await t.test("(11) the protected OWNER follows its OWN companies: it sees every company-less record, but assigns only a company it reaches", async () => {
@@ -480,5 +493,67 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     assert.deepEqual([...(await reach(vcreator)).companyKeys], ["ventana-ops-t1"]);
     assert.deepEqual([...(await reach(dual)).companyKeys].sort(), ["taylor-ops-t1", "ventana-ops-t1"]);
     assert.equal((await reach(admin)).basis, "PROTECTED_ADMINISTRATOR");
+  });
+
+  // ════════════════════ CREATOR AUTHORITY (Owner ruling 2026-10-21: "company assignment constrained by the record creator's company authority; no Administrator bypass") ════════════════════
+  // The assigned company must be within the valid company authority of the record's stored creator (Employee-based, resolved by the governed resolver). The actor still
+  // needs the capability, visibility and target reach. Nothing is granted, nothing is rewritten, and a refusal leaves zero trace.
+
+  await t.test("(16) CREATOR AUTHORITY refuses: no actor reaches a company the CREATOR does not hold -- not the Administrator, not a dual-company caller -- and a creator with no Employee link or no standing", async () => {
+    const TRANSFER = "COMPANY_TRANSFER_DECISION_REQUIRED";
+    const o = await companyless(creator); // a Taylor creator
+    const byAdmin = await refusedWithZeroTrace(() => assign(admin, { recordId: o.opportunityId, operatingCompanyId: "ventana" }), TRANSFER, "Administrator, Ventana on a Taylor-created record");
+    assert.deepEqual([byAdmin.category, /separate governed transfer decision/.test(byAdmin.message)], ["PRECONDITION_FAILED", true]);
+    assert.doesNotMatch(byAdmin.message, /ventana|taylor/i, "the refusal names no company");
+    await refusedWithZeroTrace(() => assign(dual, { recordId: o.opportunityId,operatingCompanyId: "ventana" }), "RECORD_NOT_FOUND", "a dual-company actor who is neither owner nor creator cannot even see it");
+    // A dual-company OWNER who reaches Ventana is still refused when the creator is Taylor-only.
+    await q(`UPDATE eos_commercial.opportunities SET owner_employee_id = 'e-dual' WHERE id = $1`, [o.opportunityId]);
+    await refusedWithZeroTrace(() => assign(dual, { recordId: o.opportunityId, operatingCompanyId: "ventana" }), TRANSFER, "dual-company owner, Taylor-only creator, Ventana");
+    assert.equal(await keyOf("opportunities", o.opportunityId), null);
+
+    // A creator with NO Employee link, a creator with no standing, and a creator that does not exist: refused for the Administrator and for a reaching owner.
+    const nolink = await principal("p-nolink");
+    for (const [label, createdBy] of [["no Employee link", nolink], ["a principal that does not exist", "p-ghost"]]) {
+      const r = await companyless(creator);
+      await q(`UPDATE eos_commercial.opportunities SET created_by = $2 WHERE id = $1`, [r.opportunityId, createdBy]);
+      await refusedWithZeroTrace(() => assign(admin, { recordId: r.opportunityId, operatingCompanyId: "taylor" }), TRANSFER, `Administrator, creator with ${label}`);
+      await refusedWithZeroTrace(() => assign(tay, { recordId: r.opportunityId, operatingCompanyId: "taylor" }), TRANSFER, `owner, creator with ${label}`);
+      assert.equal(await keyOf("opportunities", r.opportunityId), null);
+    }
+
+    // A child Agreement whose creator lacks the company refuses the WHOLE command (both records stay company-less; zero trace). The parent's creator holds both companies.
+    const parent = await oppIn(dual, { accountId: "acct-null", operatingCompanyId: undefined, need: "Child creator lacks the company" });
+    const child = await agreementIn(tay, parent.opportunityId); // created by a Taylor-only principal
+    const ref = await refusedWithZeroTrace(() => assign(dual, { recordId: parent.opportunityId, operatingCompanyId: "ventana" }), TRANSFER, "child Agreement created by a Taylor-only principal");
+    assert.equal(ref.category, "PRECONDITION_FAILED");
+    assert.equal(await keyOf("opportunities", parent.opportunityId), null);
+    assert.equal(await keyOf("sales_agreements", child.salesAgreementId), null);
+    assert.deepEqual([(await audits(parent.opportunityId)).length, (await audits(child.salesAgreementId)).length], [0, 0]);
+  });
+
+  await t.test("(17) CREATOR AUTHORITY allows: the creator's home company (by the Administrator or an authorized actor), either company for a dual-company creator, and Agreement inheritance when its creator holds the company; audit rows keep their shape", async () => {
+    // The creator's home company, by the protected Administrator (Ventana creator, Ventana target).
+    const v = await companyless(vcreator);
+    const byAdmin = await assign(admin, { recordId: v.opportunityId, operatingCompanyId: "ventana" });
+    assert.equal(byAdmin.replayed, false);
+    assert.equal(await keyOf("opportunities", v.opportunityId), "ventana-ops-t1");
+    // A dual-company creator (explicit grant) can be assigned either company.
+    for (const [company, expectedKey] of [["taylor", "taylor-ops-t1"], ["ventana", "ventana-ops-t1"]]) {
+      const d = await oppIn(dual, { accountId: "acct-null", operatingCompanyId: undefined, need: `Dual creator -> ${company}` });
+      assert.equal((await assign(dual, { recordId: d.opportunityId, operatingCompanyId: company })).replayed, false);
+      assert.equal(await keyOf("opportunities", d.opportunityId), expectedKey);
+    }
+    // Agreement inheritance works when the child's creator also holds the company.
+    const parent = await oppIn(dual, { accountId: "acct-null", operatingCompanyId: undefined, need: "Inheritance" });
+    const child = await agreementIn(dual, parent.opportunityId);
+    const out = await assign(dual, { recordId: parent.opportunityId, operatingCompanyId: "ventana" });
+    assert.deepEqual(out.inheritedSalesAgreementIds, [child.salesAgreementId]);
+    assert.equal(await keyOf("opportunities", parent.opportunityId), "ventana-ops-t1");
+    assert.equal(await keyOf("sales_agreements", child.salesAgreementId), "ventana-ops-t1");
+    // Audit rows are unchanged in shape; ownership and creator are never rewritten.
+    const [pr] = await audits(parent.opportunityId);
+    assert.deepEqual(Object.keys(pr.after).filter((k) => k !== "authorizedBy").sort(), ["editVersion", "inheritedSalesAgreementIds", "operatingCompanyId", "operatingCompanyKey"]);
+    assert.deepEqual(Object.keys(pr.before).sort(), ["operatingCompanyId", "operatingCompanyKey"]);
+    assert.equal((await q(`SELECT created_by, owner_employee_id FROM eos_commercial.opportunities WHERE id = $1`, [parent.opportunityId])).rows[0].created_by, dual);
   });
 });

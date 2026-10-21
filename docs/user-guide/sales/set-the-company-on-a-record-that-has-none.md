@@ -31,8 +31,9 @@ words as a company that does not exist.
 - **It can be set once.** The company cannot be changed or cleared afterwards, from this screen or
   any other. The screen says so before it asks.
 - **After it is set, the normal company rule applies.** People who work for that company can see the
-  record. Its owner and creator keep it **only if they work for that company too**: if you set a company
-  they do not work for, they stop seeing the record.
+  record. Its owner keeps it **only if they work for that company too**. The company you set must be one the
+  record's **creator** works for (or has been given access to), and this applies to everyone, including the
+  Administrator; otherwise the system refuses and nothing is saved.
 - **An agreement always carries its opportunity's company.**
   - Setting the company on an **Opportunity** also gives it to the Opportunity's Sales Agreement **if the
     agreement has none**, in the same step. The result lists the agreement, and the agreement gets its own
@@ -54,6 +55,7 @@ words as a company that does not exist.
 | *This record already has an operating company* | Someone set it first (two people trying at once: exactly one succeeds). It is not changed. |
 | *This Sales Agreement's Opportunity has no operating company yet ...* or *... is in operating company X, not Y* | An agreement and its opportunity must agree. Set the Opportunity first, then the agreement to the same company. |
 | *This Opportunity's Sales Agreement is already in ...* or *the company of a related record cannot be confirmed from here* | The agreement already has a different company. Nothing is saved or overwritten. Choose the agreement's company, or ask someone who can see it. |
+| *The person who created this record does not work in that company ... needs a separate decision* | You can only set a company that the record's **creator** works for (or holds access to), even if you are the Administrator. Moving a record into any other company is a separate decision this screen does not make; nothing is saved. |
 | *Say why the operating company is being set* | The reason is required. |
 
 A refused attempt changes nothing and leaves no record, number or audit entry. If a click is repeated
