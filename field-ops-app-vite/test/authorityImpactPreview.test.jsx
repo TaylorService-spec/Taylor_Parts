@@ -10,6 +10,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { GrantCellControls } from "../src/modules/administration/GrantControls.jsx";
+import EmployeeEffectiveAccess from "../src/modules/administration/EmployeeEffectiveAccess.jsx";
+import EmployeeDirectExceptions from "../src/modules/administration/EmployeeDirectExceptions.jsx";
+import { EXEMPTION_OWNER_ONLY_NOTE, isExemptionFamilyObject } from "../src/modules/administration/exemptionFamily.js";
 import ObjectAuthorityMatrix from "../src/modules/administration/ObjectAuthorityMatrix.jsx";
 import { isStalePreview } from "../src/modules/administration/AuthorityImpactPreview.jsx";
 import { AUTHORITY_CHANGE_INPUT, AUTHORITY_CHANGE_OPERATIONS, createAdminControlPlaneClient } from "../src/services/adminControlPlaneClient.js";
@@ -329,5 +332,123 @@ describe("the client seam: one builder for the preview and the commit", () => {
     expect(isStalePreview(STALE)).toBe(true);
     expect(isStalePreview({ ok: false, code: "CONFLICT", message: "WOULD_REMOVE_LAST_ADMINISTRATION_PATH: x" })).toBe(false);
     expect(isStalePreview({ ok: true })).toBe(false);
+  });
+});
+
+// SAE Rule 2 IN ADMINISTRATION (DECISIONS #SAE-2; Owner review of #2193, mandatory items) -- how the existing screens present the
+// delegated self-approval exemption (approval.selfApproval.exempt*, Object `selfApprovalExemption`).
+//
+//   VISIBLE      the Employee effective-access view lists a Role-inherited exemption key with its source Security Role and a direct one as a
+//                Direct Exception -- the server's explanation, drawn, no special case.
+//   OWNER        the protected Owner's grant is previewed (the preview names the affected person and the key they gain), confirmed with the
+//                preview's digest, and committed.
+//   ADMINISTRATOR the server's FORBIDDEN preview is shown as "not authorized" with the Owner-only sentence; Confirm stays disabled; the
+//                grant command is never called. The same note appears before any change to the Object, on every change path.
+//   ORDINARY     a change to any other Object carries no such note.
+const OBJECT = "selfApprovalExemption";
+const FORBIDDEN = { ok: false, code: "FORBIDDEN", message: "not authorized: only the governed protected Owner grants or revokes a self-approval exemption" };
+
+const action = (actionKey, over = {}) => ({
+  objectKey: OBJECT, actionKey, actionKind: "BUSINESS_ACTION", capabilityKey: `approval.selfApproval.${actionKey}`,
+  result: "DENIED", reasonCode: "CAPABILITY_MISSING", sourceRoles: [], scopedSources: [], directGrant: null, provenance: "NONE",
+  withheldFromFlatSetKernels: false, surfaces: [], workflowSource: null, ...over,
+});
+const EXPLAIN = {
+  tenantId: "t-1", principalId: "pr-9", securityRoleKeys: ["purchLead"], accessVersion: 3,
+  assignments: { excluded: [], scoped: [] }, employeeId: "emp-9", workEligibility: [], operationalScopes: [],
+  capabilities: ["approval.selfApproval.exemptPurchasing", "approval.selfApproval.exemptFinancials"], conditionallyHeld: [], surfaces: [],
+  actions: [
+    // inherited through a Security Role
+    action("exemptPurchasing", { result: "ALLOWED", reasonCode: "ALLOWED", provenance: "ROLE", sourceRoles: [{ roleKey: "purchLead", condition: null }] }),
+    // granted directly
+    action("exemptFinancials", { result: "ALLOWED", reasonCode: "ALLOWED", provenance: "DIRECT",
+      directGrant: { label: "DIRECT_EXCEPTION", source: "DIRECT_EXCEPTION", exceptionReason: "Owner: covers month-end close", expiresAt: null,
+        grantedBy: "prn-owner", grantedAt: "2026-10-21T09:00:00.000Z", condition: null, enforced: true } }),
+    action("exemptGoals"),
+  ],
+};
+const explainApi = () => ({ explainEffectiveAccess: vi.fn(async () => ({ ok: true, data: EXPLAIN })) });
+
+describe("the exemption keys are visible with their source", () => {
+  it("the effective-access view shows a Role-inherited key with its source Role, a direct key as a Direct Exception, and an unheld key only on request", async () => {
+    render(<EmployeeEffectiveAccess api={explainApi()} principalId="pr-9" />);
+    await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).toBeTruthy());
+    const inherited = document.querySelector('[data-capability="approval.selfApproval.exemptPurchasing"]');
+    expect(inherited.getAttribute("data-result")).toBe("ALLOWED");
+    expect(inherited.querySelector('[data-provenance="ROLE"]')).toBeTruthy();
+    expect(inherited.textContent).toMatch(/Purch Lead/i);
+    expect(inherited.querySelector("[data-direct-grant]")).toBeNull();
+    const direct = document.querySelector('[data-capability="approval.selfApproval.exemptFinancials"]');
+    expect(direct.querySelector('[data-provenance="DIRECT"]')).toBeTruthy();
+    expect(direct.querySelector('[data-direct-grant="DIRECT_EXCEPTION"]').textContent).toMatch(/Owner: covers month-end close/);
+    expect(document.querySelector('[data-capability="approval.selfApproval.exemptGoals"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /All Catalog Actions/ }));
+    expect(document.querySelector('[data-capability="approval.selfApproval.exemptGoals"]')).toBeTruthy();
+  });
+
+  it("the Employee's Direct Exceptions section lists the direct exemption key", async () => {
+    render(<EmployeeDirectExceptions api={{ ...explainApi(), listObjectsWithActions: vi.fn(async () => ({ ok: true, data: [] })), listSupportedConditionKinds: vi.fn(async () => ({ ok: true, data: { kinds: [] } })) }} principalId="pr-9" />);
+    await waitFor(() => expect(document.querySelector('[data-direct-exceptions="READY"]')).toBeTruthy());
+    expect(document.querySelector('[data-direct-exception="approval.selfApproval.exemptFinancials"]')).toBeTruthy();
+  });
+});
+
+function openGrant(api, objectKey = OBJECT, actionKey = "exemptGoals", capabilityKey = "approval.selfApproval.exemptGoals") {
+  render(<GrantCellControls api={api} objectKey={objectKey} actionKey={actionKey} roleKey="purchLead" capabilityKey={capabilityKey}
+    cell={{ held: false, source: "NONE" }} vocabulary={{ status: "ready", kinds: [] }} />);
+  fireEvent.click(screen.getByRole("button", { name: `Grant ${actionKey} to purchLead` }));
+  return screen.getByRole("form", { name: `Grant ${actionKey} for purchLead` });
+}
+
+describe("granting a key on the exemption Object", () => {
+  it("OWNER: the note is shown, the preview names who gains the key, Confirm sends the digest and commits", async () => {
+    const affected = [{ principalId: "pr-9", protectedStanding: null, status: null, notes: [], changes: { flat: { added: ["approval.selfApproval.exemptGoals"], removed: [] } } }];
+    const api = {
+      previewAuthorityChange: vi.fn(async () => ({ ok: true, data: previewReport({ detail: "FULL", affectedCount: 1, affected }) })),
+      grantObjectActionToRole: vi.fn(async () => ({ ok: true, data: {} })),
+    };
+    const form = openGrant(api);
+    expect(within(form).getByText(EXEMPTION_OWNER_ONLY_NOTE)).toBeTruthy();
+    typeReason(form, "Owner delegates Goals approval");
+    await previewImpact(form);
+    expect(api.previewAuthorityChange).toHaveBeenCalledWith("grantObjectActionToRole",
+      { objectKey: OBJECT, actionKey: "exemptGoals", roleKey: "purchLead", reason: "Owner delegates Goals approval" });
+    expect(form.querySelector('[data-preview-principal="pr-9"]').textContent).toMatch(/gains approval\.selfApproval\.exemptGoals/);
+    const confirm = within(form).getByRole("button", { name: "Confirm Grant" });
+    expect(confirm.disabled).toBe(false);
+    await act(async () => { fireEvent.click(confirm); });
+    expect(api.grantObjectActionToRole).toHaveBeenCalledWith({
+      objectKey: OBJECT, actionKey: "exemptGoals", roleKey: "purchLead", reason: "Owner delegates Goals approval", previewDigest: PREVIEW_DIGEST });
+  });
+
+  it("ADMINISTRATOR: the server's FORBIDDEN is shown as not authorized with the Owner-only sentence; Confirm stays disabled; nothing is committed", async () => {
+    const api = { previewAuthorityChange: vi.fn(async () => FORBIDDEN), grantObjectActionToRole: vi.fn() };
+    const form = openGrant(api);
+    expect(within(form).getByText(EXEMPTION_OWNER_ONLY_NOTE)).toBeTruthy();
+    typeReason(form, "Administrator tries");
+    fireEvent.click(within(form).getByRole("button", { name: "Preview impact" }));
+    await waitFor(() => expect(form.querySelector('[data-preview-failure="FORBIDDEN"]')).toBeTruthy());
+    const failure = form.querySelector('[data-preview-failure="FORBIDDEN"]');
+    expect(failure.textContent).toMatch(/not authorized to make this change/);
+    expect(failure.textContent).toMatch(/only the governed protected Owner/);
+    expect(failure.textContent).not.toMatch(/preview is unavailable/);
+    expect(failure.getAttribute("data-preview-unavailable")).toBe("blocked");
+    const confirm = within(form).getByRole("button", { name: "Confirm Grant" });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.submit(form);
+    expect(api.grantObjectActionToRole).not.toHaveBeenCalled();
+  });
+
+  it("an ordinary Object carries no Owner-only note", () => {
+    const form = openGrant({ previewAuthorityChange: vi.fn(), grantObjectActionToRole: vi.fn() }, "workOrder", "dispatch", "workOrder.lifecycle.dispatch");
+    expect(form.querySelector("[data-exemption-owner-only]")).toBeNull();
+  });
+});
+
+describe("the family test", () => {
+  it("names the Object alone, trimmed exactly as the server trims it", () => {
+    expect(isExemptionFamilyObject(OBJECT)).toBe(true);
+    expect(isExemptionFamilyObject(` ${OBJECT} `)).toBe(true);
+    for (const other of ["workOrder", "", null, undefined, 7, "selfApprovalExemptions"]) expect(isExemptionFamilyObject(other)).toBe(false);
   });
 });
