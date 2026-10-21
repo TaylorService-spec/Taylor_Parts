@@ -42,8 +42,11 @@ git tag -a production-release/pages-6cac04232c81 6cac04232c813af7695187ee7a4ced7
 # Functions tag, same commit as Hosting (ratified and pushed):
 git tag -a production-release/functions-4f30ab3ad7c4 4f30ab3ad7c434da0dd8ff043ecd65d0bdef8a72 \
   -m "Production Functions: 84 callables; export set matches exactly (docs/operations/production-recovery-release-r1.md)"
-git push origin production-release/hosting-4f30ab3ad7c4 production-release/pages-6cac04232c81
+git push origin production-release/hosting-4f30ab3ad7c4 production-release/pages-6cac04232c81 \
+  production-release/functions-4f30ab3ad7c4 production-release/rules-0526140d49ea
 ```
+
+All four tags above are on `origin` (verified with `git ls-remote --tags origin 'production-release/*'`, 2026-10-21). The Rules tag is not commit-based and was created separately (see the Rules section); it is listed in the push so the recipe names every recorded tag.
 
 ## 3. Functions source revision
 
