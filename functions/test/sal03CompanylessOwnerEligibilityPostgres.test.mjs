@@ -123,13 +123,18 @@ test("SAL-03(c): owner eligibility on company-less Opportunities and Sales Agree
     assert.equal(blank.code, "OWNER_REQUIRED", "inherited foreign owner reads as an Account with nothing to inherit");
     assert.equal(blank.category, "INVALID_INPUT");
     assert.ok(!blank.message.includes("e-ven"), "the refusal never names the foreign Employee");
+    // No oracle: byte-identical to the refusal for a truly ownerless Account (code, category AND full message).
+    const ownerless = await mkOpp(tay, { accountId: "a-ownerless" });
+    assert.deepEqual([blank.code, blank.category, blank.message], [ownerless.code, ownerless.category, ownerless.message], "foreign-inherited == ownerless-account refusal");
     const named = await mkOpp(tay, { accountId: "a-ven", ownerEmployeeId: "e-ven" });
     OWNER_NOT_FOUND(named, "explicitly naming the foreign account owner");
     const reverse = await mkOpp(ven, { accountId: "a-tay2" });
     assert.equal(reverse.code, "OWNER_REQUIRED", "Ventana creator, Taylor-owned account");
     OWNER_NOT_FOUND(await mkOpp(ven, { accountId: "a-tay2", ownerEmployeeId: "e-tay2" }), "Ventana creator naming the Taylor account owner");
     // An account owner whose home company has no active key cannot be shown to be inside the creator's companies: fail closed.
-    assert.equal((await mkOpp(tay, { accountId: "a-nohome" })).code, "OWNER_REQUIRED");
+    const nohome = await mkOpp(tay, { accountId: "a-nohome" });
+    assert.deepEqual([nohome.code, nohome.category, nohome.message], [ownerless.code, ownerless.category, ownerless.message]);
+    assert.deepEqual([reverse.code, reverse.category, reverse.message], [ownerless.code, ownerless.category, ownerless.message]);
     assert.equal(await countOppsOwnedBy("e-ven"), 0);
   });
 
@@ -259,6 +264,34 @@ test("SAL-03(c): owner eligibility on company-less Opportunities and Sales Agree
     assert.equal((await oppRow(id)).owner_employee_id, "e-ven", "no rewrite");
     OWNER_NOT_FOUND(await editOpp(tay, id, { ownerEmployeeId: "e-ven2" }), "but handing it to ANOTHER foreign Employee is a new owner value and is refused");
     ok(await editOpp(tay, id, { ownerEmployeeId: "e-tay" }), "and the creator can take it back");
+  });
+
+  await t.test("POSITIVE: a dual-company creator (Taylor home + explicit Ventana company-authority grant) may inherit a Ventana account owner; a creator with NO Employee link fails closed", async () => {
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ('e-dual','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
+    const dual = await principal("p-dual", "e-dual", "taylor");
+    {
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query(`SELECT set_config('eos_policy.administration_command', 'on', true)`);
+        await c.query(`INSERT INTO eos_policy.employee_company_authority_grants (id, tenant_id, employee_id, operating_company_id, reason, granted_by)
+                       VALUES ('g-dual','t1','e-dual','ventana','fixture: reaches both companies','fixture')`);
+        await c.query("COMMIT");
+      } finally { c.release(); }
+    }
+    const inherited = await mkOpp(dual, { accountId: "a-ven" });   // blank owner -> the Ventana account owner, inside the creator's companies
+    ok(inherited, "dual-company creator inherits the Ventana account owner");
+    assert.equal((await oppRow(inherited.v.opportunityId)).owner_employee_id, "e-ven");
+    OWNER_NOT_FOUND(await mkOpp(dual, { accountId: "a-plain", ownerEmployeeId: "e-ven2" }), "but still no arbitrary Ventana bystander");
+    // A Principal with a tenant membership but NO Employee link has no company authority and no own Employee: it can inherit nothing.
+    await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ('p-nolink','p-nolink','proof','active')`);
+    await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-p-nolink','t1','p-nolink')`);
+    const blank = await mkOpp("p-nolink", { accountId: "a-plain" });
+    assert.equal(blank.ok, false, "no link: blank owner (inherit) refused");
+    assert.equal(blank.code, "OWNER_REQUIRED");
+    const named = await mkOpp("p-nolink", { accountId: "a-plain", ownerEmployeeId: "e-tay" });
+    OWNER_NOT_FOUND(named, "no link: naming the account owner explicitly");
+    OWNER_NOT_FOUND(await mkOpp("p-nolink", { ownerEmployeeId: "e-ven" }), "no link: naming a foreign Employee");
   });
 
   await t.test("DOCUMENTED: Sales Orders always carry a company (NOT NULL), so the company-less rule never applies to them", async () => {

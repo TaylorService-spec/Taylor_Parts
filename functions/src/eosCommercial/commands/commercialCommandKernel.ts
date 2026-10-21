@@ -446,7 +446,7 @@ export async function requireEligibleCompanylessOwner(
 ): Promise<void> {
   const refuse = (): never => facts.inherited === true
     ? fail("OWNER_REQUIRED", "INVALID_INPUT",
-      "No owner: none was supplied and the Account has no governed owner to inherit (no upstream owner supplied). "
+      "No owner: none was supplied and the Account has no governed owner to inherit (no ownerEmployeeId). "
       + "Ownership is never assigned to the caller, the creator, or an arbitrary employee.")
     : fail("OWNER_NOT_FOUND", "NOT_FOUND", `the owner ${facts.ownerEmployeeId} is not an Employee of this tenant`);
   const creator = facts.recordCreatorPrincipalId;
