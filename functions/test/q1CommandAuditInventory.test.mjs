@@ -31,6 +31,7 @@ const COMMERCIAL = {
   transitionSalesOrder: ["eosCommercial/commands/salesOrderCommandService.ts", "salesOrder.transition"],
   authorizeSalesOrderServiceProvider: ["eosCommercial/commands/salesOrderCommandService.ts", "salesOrder.authorizeServiceProvider"],
   revokeSalesOrderServiceProvider: ["eosCommercial/commands/salesOrderCommandService.ts", "salesOrder.revokeServiceProvider"],
+  assignRecordOperatingCompany: ["eosCommercial/commands/commercialRecordCompanyService.ts", "commercial.recordCompany.assign"],
 };
 const CRM_MUTATIONS = ["createAccount", "updateAccount", "createContact", "importAccountContacts", "updateContact", "createAccountLocation", "updateAccountLocation", "createAccountActivity"];
 

@@ -595,3 +595,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    a seller sees and changes only the records of the companies it reaches; nothing about another company's record, count or timing leaks; the Administrator and National Accounts behaviour are unchanged
 - Protected boundaries:no migration, no capability, no grant, no Rules, deploy, Firebase or production action
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+
+- Capability:          CLC (2026-10-21) — the governed, audited, set-once correction of a COMPANY-LESS Opportunity or Sales Agreement (Owner review 2026-10-20, direction 2026-10-21; closes the #Q-1a-company design gap): `assignRecordOperatingCompany` (capability -> record visible under the null-company rule -> caller reaches the target company -> still company-less -> lineage), one new capability `commercial.recordCompany.assign` registered with NO grants, one audit row per applied command, and a server-gated "Set operating company" control on the Opportunity and Sales Agreement record pages
+- Agent/session:       Claude Code lane CLC · Role: builder; controller reviews and merges
+- Branch / worktree:   `clc/companyless-record-correction` · `D:/Taylor_Parts/.claude/worktrees/agent-a9d5f63d580379fc5`
+- Base commit:         `835e5982`
+- Owned paths:         `functions/src/eosCommercial/commands/commercialRecordCompanyService.ts` · `functions/src/eosCommercial/recordCompanyOffer.ts` · `functions/test/commercialRecordCompany{,Postgres}.test.mjs` · `field-ops-app-vite/src/modules/sales/SetOperatingCompany.jsx` · `field-ops-app-vite/test/setOperatingCompany.test.jsx`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` (#CLC) · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/governance/precedence-sweep.json` · `docs/user-guide/sales/set-the-company-on-a-record-that-has-none.md` · `docs/user-guide/README.md` · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` · `functions/scripts/fixtures/sampleCompany.v2.json` · the Commercial transport / kernel / record store / two detail reads · the migration and capability-count pins (the migration itself is written by the controller from the `.sql.txt`)
+- Dependencies:        Q-1a (#2194) for the reach resolver and the null-company rule; lane DWO (Dispatch Work Order company boundary) runs in parallel and shares no file
+- Expected outcome:    a company-less Opportunity or Agreement can be given its company, once, by a holder of the new key who can see it and reaches the company; nothing else about reach, grants or visibility changes; no one holds the key until the Owner grants it
+- Protected boundaries:no grant, no Rules, deploy, Firebase or production action; the migration file is the controller's
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
