@@ -148,6 +148,10 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
     if (typeof sourceOpportunityId === "string" && sourceOpportunityId.trim() !== "") {
       const opportunity = await lockOpportunity(db, actor.tenantId, sourceOpportunityId, scope);
       if (!opportunity) fail("SOURCE_OPPORTUNITY_NOT_FOUND", "NOT_FOUND", "the source Opportunity does not exist in this tenant");
+      // Q-1a (residual A): the lineage must agree on the company, exactly as for an Agreement. A stated company that differs from the source Opportunity's is refused.
+      if (built.operatingCompanyId !== opportunity!.operatingCompanyId) {
+        fail("OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED", "a Sales Order carries its source Opportunity's operating company");
+      }
       if (opportunity!.outcome !== "WON") fail("OPPORTUNITY_NOT_WON", "PRECONDITION_FAILED", "the source Opportunity is not WON");
       if (opportunity!.accountId !== built.accountId) fail("SOURCE_ACCOUNT_MISMATCH", "PRECONDITION_FAILED", "the source Opportunity is for a different Account");
       salesChannelFromSource(opportunity!, built.salesChannel);

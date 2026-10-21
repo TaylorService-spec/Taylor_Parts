@@ -120,10 +120,13 @@ test("Q-1a breadth: search, My Work, record ownership, coordinated visits, CRM a
     const read = (who) => coordinated.readCoordinatedOperations({ pool }, { tenantId: T, principalId: who, capabilities: new Set([coordinated.COORDINATED_VISIT_CAPABILITY.key]) });
     const mine = await read(tay.principalId);
     assert.deepEqual(mine.salesOrderReferences, { "so-t": "SO-2026-Q1A001" }, "no number for the Ventana order");
+    assert.deepEqual(mine.workOrders.map((w) => [w.id, w.salesOrderId]).sort(), [["wo-t", "so-t"], ["wo-v", null]], "the foreign anchor is null, not just unnamed");
+    assert.ok(!JSON.stringify(mine).includes("so-v") && !JSON.stringify(mine).includes("SO-2026-Q1A002"), "no foreign Sales Order id or number anywhere in the serialised result");
     const lines = (r, wo) => r.workOrders.find((w) => w.id === wo).salesOrderLineRefs.map((l) => l.ref);
     assert.deepEqual([lines(mine, "wo-t"), lines(mine, "wo-v")], [["PART-A"], []], "no line refs of the Ventana order");
     const all = await read(adminP.principalId);
     assert.deepEqual(all.salesOrderReferences, { "so-t": "SO-2026-Q1A001", "so-v": "SO-2026-Q1A002" }, "the protected Administrator is unchanged");
+    assert.deepEqual(all.workOrders.map((w) => [w.id, w.salesOrderId]).sort(), [["wo-t", "so-t"], ["wo-v", "so-v"]]);
     assert.deepEqual([lines(all, "wo-t"), lines(all, "wo-v")], [["PART-A"], ["PART-A"]]);
     assert.deepEqual((await read(none.principalId)).salesOrderReferences, {});
   });

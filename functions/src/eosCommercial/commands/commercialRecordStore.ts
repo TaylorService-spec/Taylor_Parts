@@ -61,6 +61,8 @@ export const operatingCompanyIdOfKey = (alias: string): string =>
 export interface OpportunityLineRow { kind: "EQUIPMENT_MODEL" | "PART" | "SERVICE"; ref: string; qty: number }
 export interface OpportunityRow {
   id: string; number: string; accountId: string; ownerEmployeeId: string; operatingCompanyId: string | null;
+  /** The RAW stored company key (the resolved id above is null when the key is unbound or inactive). */
+  operatingCompanyKey: string | null;
   salesChannel: string | null; stage: string | null; outcome: string | null; closedAtMillis: number | null;
   need: string | null; expectedValue: number | null; expectedCloseAtMillis: number | null; nextAction: string | null;
   creditedSalespersonId: string | null; accountableEmployeeId: string | null; editVersion: number; lines: OpportunityLineRow[];
@@ -70,7 +72,7 @@ export async function lockOpportunity(db: Queryable, tenantId: string, id: strin
   const company = scope.companyFilter("o", 3); // Q-1a: a foreign-company record is not found, and never locked
   const { rows } = await db.query(
     `SELECT o.id, o.opportunity_number, o.account_id, o.owner_employee_id, ${operatingCompanyIdOfKey("o")} AS operating_company_id,
-            o.sales_channel::text, o.stage::text, o.outcome::text, o.closed_at, o.need, o.expected_value::float8 AS expected_value,
+            o.operating_company_key, o.sales_channel::text, o.stage::text, o.outcome::text, o.closed_at, o.need, o.expected_value::float8 AS expected_value,
             o.expected_close_at, o.next_action, o.credited_salesperson_employee_id, o.accountable_employee_id, o.edit_version
        FROM ${S}.opportunities o WHERE o.tenant_id = $1 AND o.id = $2 AND ${company.sql} FOR UPDATE OF o`,
     [tenantId, id, ...company.params],
@@ -83,7 +85,7 @@ export async function lockOpportunity(db: Queryable, tenantId: string, id: strin
   );
   return {
     id: r.id, number: r.opportunity_number, accountId: r.account_id, ownerEmployeeId: r.owner_employee_id,
-    operatingCompanyId: r.operating_company_id, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome,
+    operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key ?? null, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome,
     closedAtMillis: millis(r.closed_at), need: r.need, expectedValue: r.expected_value, expectedCloseAtMillis: millis(r.expected_close_at),
     nextAction: r.next_action, creditedSalespersonId: r.credited_salesperson_employee_id, accountableEmployeeId: r.accountable_employee_id,
     editVersion: Number(r.edit_version), lines: lines.rows.map((l) => ({ kind: l.kind, ref: l.ref, qty: l.qty })),

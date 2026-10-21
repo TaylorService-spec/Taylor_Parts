@@ -138,10 +138,10 @@ const COMMERCIAL = [
   { kind: "salesOrder", table: "eos_commercial.sales_orders", number: "sales_order_number", state: "state::text", capability: "salesOrder.read", channel: "o.sales_channel::text" },
 ] as const;
 
-async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, employeeId: string, column: "owner_employee_id" | "accountable_employee_id", key: SectionKey, companyReach?: CommercialCompanyResolver): Promise<Section> {
+async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, employeeId: string, column: "owner_employee_id" | "accountable_employee_id", key: SectionKey, reachResolver?: CommercialCompanyResolver): Promise<Section> {
   const items: Item[] = [];
   // Q-1a (Owner ruling Q1-11): the caller's operating-company authority bounds every family, before the channel (the SAME reach the Commercial reads use).
-  const company = await (companyReach ?? resolveCommercialCompanyReach)(db, caller.actor.tenantId, caller.actor.principalId);
+  const company = await (reachResolver ?? resolveCommercialCompanyReach)(db, caller.actor.tenantId, caller.actor.principalId);
   const refusedFamilies: string[] = [];
   for (const f of COMMERCIAL) {
     const flat = caller.actor.capabilities.has(f.capability);
@@ -366,7 +366,7 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
   const results: Array<{ kind: string; kindLabel: string; id: string; label: string; detail: string | null; path: string | null }> = [];
   const notSearched: string[] = [];
   let reachKeys: readonly string[] | null = null;
-  let companyReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
+  let searchReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
   for (const k of SEARCH_KINDS) {
     const flat = k.capabilities.some((c) => actor.capabilities.has(c));
     const channels = k.channelScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.channelScopedBy, "salesChannel")
@@ -384,7 +384,7 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
     let sql = k.sql;
     let params: unknown[] = [actor.tenantId, pattern, channels, reach];  // a commercial kind replaces the reach slot with its company reach (below)
     if (k.commercial) {
-      const company = companyReach ?? (companyReach = await (deps.companyReach ?? resolveCommercialCompanyReach)(deps.pool, actor.tenantId, actor.principalId));
+      const company = searchReach ?? (searchReach = await (deps.companyReach ?? resolveCommercialCompanyReach)(deps.pool, actor.tenantId, actor.principalId));
       sql = sql.replace(/\{\{COMPANY_([a-z])\}\}/g, (_m, alias: string) => company.sql(alias, 4));
       params = [actor.tenantId, pattern, channels, ...company.sqlParams()];
     }

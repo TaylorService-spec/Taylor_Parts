@@ -267,7 +267,12 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       const established = await resolveCreationAccountablePerson(db, actor.tenantId, "salesAgreement", accountableEmployeeId, built.ownerEmployeeId);
       const number = await allocateCommercialNumber(db, actor.tenantId, "SALES_AGREEMENT", now);
       const id = newRecordId("sag");
-      await admitNewRecordCompany(db, actor.tenantId, scope, built.operatingCompanyId); // Q-1a: the company it is booked to (inherited from the admitted Opportunity)
+      // Q-1a: the company it is booked to is the admitted Opportunity's. A parent whose stored key no longer resolves to a bound ACTIVE company (built.operatingCompanyId is
+      // null) still hands its RAW key down, so the child can never be company-less when the parent was not.
+      const inheritRawKey = built.operatingCompanyId === null && opportunity.operatingCompanyKey !== null;
+      if (inheritRawKey) scope.admitNewCompany(opportunity.operatingCompanyKey, null);
+      else await admitNewRecordCompany(db, actor.tenantId, scope, built.operatingCompanyId);
+      const agreementCompanyKey = inheritRawKey ? opportunity.operatingCompanyKey : await operatingCompanyKeyFor(db, actor.tenantId, built.operatingCompanyId);
       await db.query(
         `INSERT INTO eos_commercial.sales_agreements (id, tenant_id, sales_agreement_number, account_id, opportunity_id, owner_employee_id,
            operating_company_key, state, currency, credited_salesperson_employee_id, location_id, customer_po, is_lease, fulfillment_intent,
@@ -276,7 +281,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
            customer_discount_kind, customer_discount_basis_points, customer_discount_amount_minor)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT','USD',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21,$22,$23,$24,$25,$26,$27,$28)`,
         [id, actor.tenantId, number.number, built.accountId, opportunity.id, built.ownerEmployeeId,
-          await operatingCompanyKeyFor(db, actor.tenantId, built.operatingCompanyId),
+          agreementCompanyKey,
           built.creditedSalespersonId, built.locationId, built.customerPO, built.isLease, built.fulfillmentIntent, built.shippingInstructions,
           built.shipVia, built.specialInstructions, built.totals.shippingMinor, built.totals.installChargeMinor, built.totals.taxMinor,
           built.totals.downPaymentMinor, built.totals.tradeInMinor, actor.principalId,
@@ -285,7 +290,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       );
       await replaceAgreementLines(db, actor.tenantId, id, agreementLineRows(built.lines));
       if (tradeIns !== undefined) {
-        await replaceTradeIns(db, actor.tenantId, id, await operatingCompanyKeyFor(db, actor.tenantId, built.operatingCompanyId), actor.principalId, tradeIns);
+        await replaceTradeIns(db, actor.tenantId, id, agreementCompanyKey, actor.principalId, tradeIns);
       }
       const accountable = await stageCreationAccountablePerson(db, actor.tenantId, actor.principalId, "salesAgreement", id, established);
       return {

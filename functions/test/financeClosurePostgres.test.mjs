@@ -521,13 +521,13 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
              VALUES ($1,'so-ventana',1,'SERVICE','SVC-INSTALL','INSTALLATION',1,90000)`, [TENANT]);
     const create = (type) => call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-cust", locationId: "loc-c", workOrderType: type,
       priority: 2, salesOrderId: "so-ventana", salesOrderLines: [1] });
-    refused(await create("SERVICE_CALL"), 412, "SALES_ORDER_COMPANY_MISMATCH", "no arbitrary cross-company Work Order");
+    refused(await create("SERVICE_CALL"), 404, "SALES_ORDER_NOT_FOUND", "no arbitrary cross-company Work Order (a Ventana order is nonexistent to a Taylor-only dispatcher, Q-1a)");
     await assert.rejects(soCommands.authorizeSalesOrderServiceProvider(commercialDeps, { ...sellerActor, capabilities: new Set(["salesAgreement.read"]) },
       { idempotencyKey: key("auth"), salesOrderId: "so-ventana", serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "x" }), (e) => e.code === "CAPABILITY_REQUIRED");
     const auth = await soCommands.authorizeSalesOrderServiceProvider(commercialDeps, sellerActor, { idempotencyKey: key("auth"), salesOrderId: "so-ventana",
       serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "Taylor Service installs for Ventana's customer" });
     assert.deepEqual([(auth.result ?? auth).serviceOperatingCompanyKey, (auth.result ?? auth).status], ["taylor", "ACTIVE"]);
-    refused(await create("INSTALL"), 412, "SALES_ORDER_COMPANY_MISMATCH", "the authorization covers SERVICE only");
+    refused(await create("INSTALL"), 404, "SALES_ORDER_NOT_FOUND", "the authorization covers SERVICE only");
     const woId = ok(await create("SERVICE_CALL"), "authorized cross-company Work Order").workOrderId;
     assert.equal((await one(`SELECT operating_company_key k FROM eos_ops.work_orders WHERE id=$1`, [woId])).k, "taylor", "the Work Order is the service-performing company's");
     ok(await call(dispatcher, WO, "markWorkOrderReady", { workOrderId: woId }), "ready");
@@ -541,7 +541,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.deepEqual([f.operating_company_key, f.operating_company_id, f.service_operating_company_key], ["ventana", "ventana", "taylor"], "seller = Ventana; service provider = Taylor");
     assert.equal((await one(`SELECT operating_company_key k FROM eos_commercial.sales_orders WHERE id='so-ventana'`)).k, "ventana", "the seller is never rewritten");
     await soCommands.revokeSalesOrderServiceProvider(commercialDeps, sellerActor, { idempotencyKey: key("rev"), salesOrderId: "so-ventana", serviceOperatingCompanyId: "taylor", reason: "done" });
-    refused(await create("SERVICE_CALL"), 412, "SALES_ORDER_COMPANY_MISMATCH", "revoked");
+    refused(await create("SERVICE_CALL"), 404, "SALES_ORDER_NOT_FOUND", "revoked");
   });
 
   await t.test("CORR: reverse -> balance restored; re-apply; void refused with live applications; void + replacement; reconciliation", async () => {

@@ -24,6 +24,7 @@
 // Ventana is ACTIVE for the tenant with no key binding today, so a native Ventana Work Order fails
 // closed with OPERATING_COMPANY_KEY_NOT_BOUND. That is the model working, not a gap to paper over.
 import { serviceProviderAuthorized } from "../eosCommercial/fulfillment/serviceProviderAuthorization";
+import { resolveCommercialCompanyReach } from "../eosCommercial/commercialCompanyAuthority";
 import type { Pool } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding.js";
@@ -262,6 +263,12 @@ export async function createWorkOrder(
       // company and Work Order type -- the seller stays the seller; this Work Order is the service-performing company's.
       if (o.operating_company_key !== operatingCompanyKey
           && !(await serviceProviderAuthorized(client, actor.tenantId, input.salesOrderId, operatingCompanyKey, input.workOrderType))) {
+        // Q-1a (Owner review item 7): an order of a company the caller does not reach reads EXACTLY as a missing one. Only a caller who reaches the order's company
+        // (its Commercial company authority) is told it belongs to another company.
+        const commercial = await resolveCommercialCompanyReach(client, actor.tenantId, actor.principalId);
+        if (!commercial.admits({ operatingCompanyKey: o.operating_company_key, ownerRef: null, createdBy: null })) {
+          refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order in this tenant");
+        }
         refuse("SALES_ORDER_COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to another operating company");
       }
       if (o.account_id !== input.customerId) refuse("SALES_ORDER_CUSTOMER_MISMATCH", "PRECONDITION_FAILED", "the Sales Order is for another customer");

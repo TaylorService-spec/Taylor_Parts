@@ -147,14 +147,14 @@ export function createAccountActivity(deps: CrmDeps, actor: CrmActorContext, inp
     },
     async (client, a, p) => {
       await requireTenantAccount(client, a.tenantId, p.accountId);
-      let companyReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
+      let linkReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
       for (const [field, table, code, message] of LINKS) {
         const id = p[field];
         if (id === null) continue;
         const commercial = table.startsWith("eos_commercial.");
-        if (commercial) companyReach = companyReach ?? await (deps.companyReach ?? resolveCommercialCompanyReach)(client, a.tenantId, a.principalId);
+        if (commercial) linkReach = linkReach ?? await (deps.companyReach ?? resolveCommercialCompanyReach)(client, a.tenantId, a.principalId);
         const found = commercial
-          ? await client.query(`SELECT 1 FROM ${table} t WHERE t.tenant_id = $1 AND t.id = $2 AND t.account_id = $3 AND ${companyReach!.sql("t", 4)}`, [a.tenantId, id, p.accountId, ...companyReach!.sqlParams()])
+          ? await client.query(`SELECT 1 FROM ${table} t WHERE t.tenant_id = $1 AND t.id = $2 AND t.account_id = $3 AND ${linkReach!.sql("t", 4)}`, [a.tenantId, id, p.accountId, ...linkReach!.sqlParams()])
           : await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND account_id = $3`, [a.tenantId, id, p.accountId]);
         if (found.rows.length === 0) fail(code, "NOT_FOUND", message);
       }

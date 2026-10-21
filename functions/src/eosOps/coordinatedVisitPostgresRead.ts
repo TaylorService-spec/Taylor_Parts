@@ -137,7 +137,8 @@ export interface CoordinatedWorkOrderPostgresProjection {
   readonly status: string | null;
   readonly customerId: string | null;
   readonly locationId: string | null;
-  readonly salesOrderId: string;
+  /** The anchoring Sales Order; NULL when the caller does not reach it (Q-1a): the Work Order is then not part of any Sales Order visit the caller can see. */
+  readonly salesOrderId: string | null;
   readonly salesOrderLineRefs: readonly CoordinatedSalesOrderLineRef[];
 }
 
@@ -298,14 +299,14 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
     status: stated(r.status),
     customerId: stated(r.customer_id),
     locationId: stated(r.location_id),
-    salesOrderId: String(r.sales_order_id),
+    salesOrderId: reachable(r) ? String(r.sales_order_id) : null,
     salesOrderLineRefs: lineRefs.get(`${String(r.id)}\u0000${String(r.sales_order_id)}`) ?? Object.freeze([]),
   }));
 
   return Object.freeze({
     status: "ready" as const,
     workOrders: Object.freeze(workOrders),
-    salesOrderReferences: await resolveSalesOrderReferencesFromPostgres(db, tenantId, workOrders.map((w) => w.salesOrderId).filter((id) => visibleOrders === null || visibleOrders.has(id))),
+    salesOrderReferences: await resolveSalesOrderReferencesFromPostgres(db, tenantId, workOrders.map((w) => w.salesOrderId).filter((id): id is string => id !== null)),
     skipped,
     truncated,
   });

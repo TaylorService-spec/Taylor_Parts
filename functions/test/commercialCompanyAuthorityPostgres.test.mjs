@@ -402,6 +402,7 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
 
   // ════════════════════ OWNER REVIEW ITEMS 7, 8, 9, 12 ════════════════════
   const crmActivity = require("../lib/eosCrm/crmActivityAuthority.js");
+  const workOrderCreate = require("../lib/eosOps/workOrderCreateCommand.js");
   const commercialHttp = require("../lib/eosCommercial/commercialHttp.js");
   const STATE_TABLES = ["eos_commercial.opportunities", "eos_commercial.opportunity_lines", "eos_commercial.sales_agreements", "eos_commercial.sales_agreement_lines",
     "eos_commercial.sales_agreement_trade_ins", "eos_commercial.sales_orders", "eos_commercial.sales_order_lines", "eos_commercial.sales_order_service_providers",
@@ -442,6 +443,8 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
       authorizeSalesOrderServiceProvider: [(id) => so.authorizeSalesOrderServiceProvider(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "r" }), sV.salesOrderId, "sor-missing"],
       revokeSalesOrderServiceProvider: [(id) => so.revokeSalesOrderServiceProvider(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, serviceOperatingCompanyId: "taylor", reason: "r" }), sV.salesOrderId, "sor-missing"],
       // Not on the Commercial transport, but they accept a Commercial id:
+      createWorkOrder: [(id) => workOrderCreate.createWorkOrder({ pool }, { tenantId: T, principalId: tay, capabilities: new Set([workOrderCreate.WORK_ORDER_CREATE]), operatingCompanyId: "taylor" },
+        { customerId: "acct-ven", locationId: "loc-x", workOrderType: "SERVICE_CALL", priority: 2, salesOrderId: id, salesOrderLines: [1] }), sV.salesOrderId, "sor-missing"],
       allocateSalesOrderLine: [(id) => alloc.allocateSalesOrderLine({ pool }, fulfil, { ...alloc1, salesOrderId: id, partId: "part-b", quantity: 1, idempotencyKey: key() }), sV.salesOrderId, "sor-missing"],
       releaseSalesOrderAllocation: [(id) => alloc.releaseSalesOrderAllocation({ pool }, fulfil, { ...alloc1, salesOrderId: id, reason: "r", idempotencyKey: key() }), sV.salesOrderId, "sor-missing"],
       readSalesOrderAllocations: [(id) => alloc.readSalesOrderAllocations({ pool }, fulfil, { salesOrderId: id }), sV.salesOrderId, "sor-missing"],
@@ -525,5 +528,26 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
     assert.equal((await refusal(() => edit(only(tay, "NATIONAL_ACCOUNTS"), oVN.opportunityId))).code, "RECORD_NOT_FOUND");
     assert.equal((await refusal(() => edit(only(tay, "RETAIL"), oTN.opportunityId))).code, "OUTSIDE_SALES_CHANNEL_SCOPE");
     assert.equal((await refusal(() => edit(only(other, "NATIONAL_ACCOUNTS"), oNN.opportunityId))).code, "RECORD_NOT_FOUND", "ownership still decides a company-less National record");
+  });
+
+  await t.test("(p) OWNER RE-REVIEW residuals: a direct Order must agree with its source Opportunity's company; a child inherits the RAW key; createWorkOrder answers NOT FOUND for an unreached order", async () => {
+    // A: stating a company that differs from the source Opportunity's is refused, by a caller who reaches both.
+    const both = actor(dual);
+    const mismatch = await refusal(() => so.createSalesOrder(wdeps, both, { idempotencyKey: key(), accountId: "acct-tay", ownerEmployeeId: "e-tay", operatingCompanyId: "ventana", salesChannel: "RETAIL",
+      sourceOpportunityId: oT.opportunityId, lines: [{ kind: "PART", ref: "part-b", orderedQty: 3, unitPrice: 2500 }] }));
+    assert.deepEqual([mismatch.code, mismatch.category], ["OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED"]);
+    assert.equal((await refusal(() => so.createSalesOrder(wdeps, actor(admin), { idempotencyKey: key(), accountId: "acct-tay", ownerEmployeeId: "e-tay", operatingCompanyId: "ventana", salesChannel: "RETAIL",
+      sourceOpportunityId: oT.opportunityId, lines: [{ kind: "PART", ref: "part-b", orderedQty: 3, unitPrice: 2500 }] }))).code, "OPERATING_COMPANY_MISMATCH", "the Administrator is held to the same lineage rule");
+    // B: an Opportunity whose stored key no longer resolves to a bound company still hands its RAW key to its Agreement -- never a company-less child.
+    const parent = await oppIn(actor(admin), { operatingCompanyId: "taylor", need: "Unbound-key parent" });
+    await q(`UPDATE eos_commercial.opportunities SET operating_company_key = 'unbound-ops-key' WHERE id = $1`, [parent.opportunityId]);
+    const child = await agreementIn(actor(admin), parent.opportunityId);
+    assert.equal((await row("sales_agreements", child.salesAgreementId)).operating_company_key, "unbound-ops-key", "the raw key, not null");
+    assert.equal((await refusal(() => saRead.getSalesAgreementDetail(rdeps, actor(tay), { salesAgreementId: child.salesAgreementId }))).code, "RECORD_NOT_FOUND", "and Taylor, which does not reach that key, cannot see it");
+    // createWorkOrder: a foreign order is NOT FOUND for a caller who does not reach it, an honest company mismatch for one who does.
+    const wo = (who, id) => workOrderCreate.createWorkOrder({ pool }, { tenantId: T, principalId: who, capabilities: new Set([workOrderCreate.WORK_ORDER_CREATE]), operatingCompanyId: "taylor" },
+      { customerId: "acct-ven", locationId: "loc-x", workOrderType: "SERVICE_CALL", priority: 2, salesOrderId: id, salesOrderLines: [1] });
+    assert.deepEqual(words(await refusal(() => wo(tay, sV.salesOrderId))), words(await refusal(() => wo(tay, "sor-missing"))));
+    assert.equal((await refusal(() => wo(dual, sV.salesOrderId))).code, "SALES_ORDER_COMPANY_MISMATCH", "a caller who reaches Ventana is told why");
   });
 });

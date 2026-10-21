@@ -4,8 +4,8 @@
 // commercialCompanyAuthorityPostgres.test.mjs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -234,7 +234,7 @@ test("STRUCTURE: the Commercial surfaces outside the transport's record reads al
   // M-1 coordinated visits: the anchoring Sales Order's number and line refs pass the Sales Order reach.
   has("eosOps/coordinatedVisitPostgresRead.ts", ["reach.sql(\"s\", 3)", "visibleOrders", "resolveCommercialCompanyReach"]);
   // L-1 CRM activity: the Opportunity and Sales Order link probes.
-  has("eosCrm/crmActivityAuthority.ts", ['companyReach!.sql("t", 4)', "resolveCommercialCompanyReach", "reachableCommercialIds("]); // the probe AND the activity list projection
+  has("eosCrm/crmActivityAuthority.ts", ['linkReach!.sql("t", 4)', "resolveCommercialCompanyReach", "reachableCommercialIds("]); // the probe AND the activity list projection
   // Owner review item 9: the summary link fields of details, lists and the Account projection are masked to the reachable.
   has("eosCommercial/reads/commercialReadKernel.ts", ["export async function maskUnreachedLinks", 'company.sql("lo", 3)', 'company.sql("la", 3)']);
   has("eosCommercial/reads/salesAgreementReadProjection.ts", ["maskUnreachedLinks(db, tenantId, reach.company", "maskUnreachedLinks(db, tenantId, o.company"]);
@@ -243,4 +243,26 @@ test("STRUCTURE: the Commercial surfaces outside the transport's record reads al
   has("eosCommercial/commands/salesAgreementCommandService.ts", ["OPERATING_COMPANY_MISMATCH", "rawFields.operatingCompanyId"]);
   // None of the new seams is composed by the deployed server.
   assert.doesNotMatch(code("eosApi/server.ts"), /companyReach/);
+});
+
+test("STRUCTURE: NO production composition root composes a companyReach seam -- it is only ever declared and forwarded (Owner re-review)", () => {
+  const files = [];
+  const walk = (d) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (p.endsWith(".ts")) files.push(p); } };
+  walk(SRC);
+  const offenders = [];
+  for (const f of files) {
+    const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    if (!/commercialCompanyAuthority|CommercialCompanyResolver/.test(src)) continue; // an unrelated identifier of the same name (the report engine's company lists)
+    // A declaration is `companyReach?:` (optional), a forward is `companyReach: deps.companyReach` / `companyReach: d.companyReach`; anything else is a value being composed.
+    for (const m of src.matchAll(/\bcompanyReach\s*(:|=)(?!=)\s*([^,;)}\n]*)/g)) {
+      if (!/^(deps|d)\.companyReach\b/.test(m[2].trim())) offenders.push(`${relative(SRC, f)}: ${m[0]}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "a value is composed into companyReach in production source");
+  // The composition roots in particular: the API server, the Firebase entry point and everything under eosApi/ never mention it.
+  for (const f of files.filter((x) => /[\\/]eosApi[\\/]/.test(x) || /[\\/]index\.ts$/.test(x) && relative(SRC, x) === "index.ts")) {
+    assert.doesNotMatch(readFileSync(f, "utf8"), /companyReach/, relative(SRC, f));
+  }
+  // And nothing in src imports the test double.
+  for (const f of files) assert.doesNotMatch(readFileSync(f, "utf8"), /commercialCompanyReachFixture/, relative(SRC, f));
 });

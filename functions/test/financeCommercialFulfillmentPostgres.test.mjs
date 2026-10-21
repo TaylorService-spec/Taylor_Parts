@@ -256,7 +256,7 @@ test("Commercial fulfillment -> billing eligibility over the governed Work Order
       priority: 2, salesOrderId: "so-nowhere", salesOrderLines: [1] }), 404, "SALES_ORDER_NOT_FOUND", "a Sales Order that does not exist");
     const ventanaSo = await salesOrder({ company: "ventana", lines: [{ n: 1, kind: "PART", ref: "PRT-HOSE", qty: 1 }] });
     refused(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL",
-      priority: 2, salesOrderId: ventanaSo, salesOrderLines: [1] }), 412, "SALES_ORDER_COMPANY_MISMATCH", "a Taylor job cannot fulfil Ventana's order");
+      priority: 2, salesOrderId: ventanaSo, salesOrderLines: [1] }), 404, "SALES_ORDER_NOT_FOUND", "a Taylor job cannot fulfil Ventana's order");
     const otherSo = await salesOrder({ account: "acct-o", location: "loc-o", lines: [{ n: 1, kind: "PART", ref: "PRT-HOSE", qty: 1 }] });
     refused(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL",
       priority: 2, salesOrderId: otherSo, salesOrderLines: [1] }), 412, "SALES_ORDER_CUSTOMER_MISMATCH");
