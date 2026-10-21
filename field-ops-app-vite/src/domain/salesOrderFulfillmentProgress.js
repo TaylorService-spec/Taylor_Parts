@@ -158,7 +158,7 @@ export function projectFulfillmentProgress(salesOrder, workOrders, custodyHandof
   // 2. INVENTORY ALLOCATED — every ordered unit allocated. Partial is CURRENT, not complete.
   if (qty.allocated === null) {
     at.allocated = STEP_STATE.UNKNOWN;
-    blockers.push("Allocation quantities are not recorded on this order.");
+    blockers.push("Allocation figures have not been read for this order, so allocation progress is unknown.");
   } else if (qty.ordered > 0 && qty.allocated >= qty.ordered) {
     at.allocated = STEP_STATE.COMPLETE;
   } else if (qty.allocated > 0) {
