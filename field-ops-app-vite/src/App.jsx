@@ -983,8 +983,8 @@ function WarehouseWorkspaceSurface({ role }) {
 // render and re-run every route memo that depends on it.
 const NO_LEGACY_KEYS = Object.freeze([]);
 
-// Exported for the route-level tests (test/deniedDirectRoute.test.jsx); App() remains the only production caller.
-export function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
+// Exported (at the end of this file) for the route-level tests (test/deniedDirectRoute.test.jsx); App() remains the only production caller.
+function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   // ════════════ WAVE 16 / LANE BQ -- THE CUTOVER, WHERE THE ROUTES ARE DECIDED ════════════
   //
   // Owner ruling F, option B: when the EOS experience authority is the navigation source it is the
@@ -1581,3 +1581,7 @@ export default function App() {
     </SessionAccessContext.Provider>
   );
 }
+
+// A named export at the END rather than `export function` above: the static Scan guard (test/useInventoryScanCapabilities.test.jsx)
+// slices each surface at the next top-level `function` line, so an export keyword on AppRoutes would widen the slice it checks.
+export { AppRoutes };
