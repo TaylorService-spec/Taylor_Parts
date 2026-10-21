@@ -12,7 +12,13 @@
 //                            the protected Administrator, the protected Owner) or the company rule is NONEXISTENT (RECORD_NOT_FOUND), and is never locked
 //   3. TARGET REACH          the caller reaches the company it assigns (the SAME Q-1a decision a creation uses); a company it does not reach reads as an ungoverned one
 //   4. STILL COMPANY-LESS    a record that already has a company refuses OPERATING_COMPANY_ALREADY_SET and changes nothing
-//   5. LINEAGE               an Agreement's company must equal its Opportunity's, and NO RELATED RECORD IS EVER REWRITTEN (Owner ruling 2026-10-21): a conflict is refused with
+//   5. CREATOR AUTHORITY     (Owner ruling SAL-03(c) / #2199, 2026-10-21) the company assigned must be within the record CREATOR's valid operating-company authority: the stored
+//                            created_by principal, resolved server-side through the governed Employee-based resolver (home company + explicit company-authority grants, resolveCompanyAuthority).
+//                            NO bypass for the Administrator or the protected Owner (they still need steps 1-3 as the actor); this check is ADDITIONAL. No creator, a creator with no Employee link,
+//                            an unresolvable creator, or a creator outside the target company is refused COMPANY_TRANSFER_DECISION_REQUIRED (a separate governed transfer decision is required).
+//                            The SAME check covers every record the command would change (a company-less Agreement inheriting the Opportunity's company); any failure refuses the whole command.
+//                            Placed after STILL COMPANY-LESS so an already-set company still answers OPERATING_COMPANY_ALREADY_SET. Ownership and created_by are never rewritten.
+//   6. LINEAGE            an Agreement's company must equal its Opportunity's, and NO RELATED RECORD IS EVER REWRITTEN (Owner ruling 2026-10-21): a conflict is refused with
 //                            LINEAGE_DISAGREEMENT (neutral wording when the related record is not visible). An Agreement whose Opportunity has no company, or another one, is
 //                            refused; an Opportunity whose Agreement is already in another company refuses the whole command. A COMPANY-LESS Agreement INHERITS the
 //                            Opportunity's company in the same transaction (Owner ruling 2026-10-21): its own audit row, listed in the result; a child never changes once set.
@@ -25,6 +31,7 @@
 import { recordCommandAudit } from "../../eosAudit/commandAuditEvent";
 import { fail, runCommercialCommand, COMMERCIAL_RECORD_COMPANY_ASSIGN_CAPABILITY, type CommercialActorContext, type CommercialCommandDeps } from "./commercialCommandKernel";
 import { lockAgreement, lockOpportunity, operatingCompanyKeyFor } from "./commercialRecordStore";
+import { resolveCompanyAuthority } from "../../eosOps/companyAuthority";
 import { sourceOpportunityChannel } from "./salesAgreementCommandService";
 
 const FAMILY_OF: Readonly<Record<string, "opportunity" | "salesAgreement">> = Object.freeze({ OPPORTUNITY: "opportunity", SALES_AGREEMENT: "salesAgreement" });
@@ -44,6 +51,16 @@ async function visibleCompanyId(db: Parameters<typeof operatingCompanyKeyFor>[0]
   const { rows } = await db.query<{ operating_company_id: string }>(
     `SELECT operating_company_id FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1 AND operating_company_key = $2 AND status = 'ACTIVE'`, [tenantId, companyKey]);
   return rows[0]?.operating_company_id ?? null;
+}
+
+/** ONE neutral refusal for every creator shortfall (no creator, no Employee link, unresolvable, outside the company, or a hidden child's creator): it names no company and no record. */
+const TRANSFER_DECISION_REQUIRED = "the record's creator is not within the authority of the company you are assigning; moving a record into that company needs a separate governed transfer decision, which this command does not make";
+
+/** True only when the stored creator Principal resolves, through the governed Employee-based resolver, to authority over `companyId`. Fails closed on every gap. */
+async function creatorHoldsCompany(db: Parameters<typeof operatingCompanyKeyFor>[0], tenantId: string, createdBy: string | null, companyId: string): Promise<boolean> {
+  if (createdBy === null || createdBy.trim() === "") return false;
+  const authority = await resolveCompanyAuthority(db, tenantId, createdBy);
+  return authority.gap === null && authority.companies.includes(companyId);
 }
 
 export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
@@ -82,7 +99,21 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
       fail("OPERATING_COMPANY_ALREADY_SET", "PRECONDITION_FAILED", "the record already has an operating company; this command sets it once and never changes it");
     }
 
-    // 5. LINEAGE -- consistency is CHECKED first, and only a NULL child ever inherits (Owner rulings 2026-10-21). A conflict refuses the whole command.
+    // 5. CREATOR AUTHORITY -- the record's stored creator (the row this transaction has locked), then every company-less child that would inherit.
+    const own = await db.query<{ created_by: string | null }>(
+      `SELECT created_by FROM eos_commercial.${family === "opportunity" ? "opportunities" : "sales_agreements"} WHERE tenant_id = $1 AND id = $2`, [tenantId, recordId]);
+    if (!(await creatorHoldsCompany(db, tenantId, own.rows[0]?.created_by ?? null, companyId))) {
+      fail("COMPANY_TRANSFER_DECISION_REQUIRED", "PRECONDITION_FAILED", TRANSFER_DECISION_REQUIRED);
+    }
+    if (family === "opportunity") {
+      const heirs = await db.query<{ created_by: string | null }>(
+        `SELECT DISTINCT created_by FROM eos_commercial.sales_agreements WHERE tenant_id = $1 AND opportunity_id = $2 AND operating_company_key IS NULL`, [tenantId, recordId]);
+      for (const heir of heirs.rows) {
+        if (!(await creatorHoldsCompany(db, tenantId, heir.created_by, companyId))) fail("COMPANY_TRANSFER_DECISION_REQUIRED", "PRECONDITION_FAILED", TRANSFER_DECISION_REQUIRED);
+      }
+    }
+
+    // 6. LINEAGE -- consistency is CHECKED first, and only a NULL child ever inherits (Owner rulings 2026-10-21). A conflict refuses the whole command.
     let editVersion: number | null = null;
     const inherited: string[] = [];
     if (family === "opportunity") {
