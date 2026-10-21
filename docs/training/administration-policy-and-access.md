@@ -64,6 +64,7 @@ authority applies. **Effective Access** shows the combined answer.
 | change what a Security Role may do (grant, revoke, condition) and create/edit Roles; grant Direct Exceptions | `admin.securityPolicy.write` | **Administrator only** |
 | give or remove a person's Security Roles | `admin.roleAssignment.write` | Administrator, Owner |
 | staff or remove the **Administrator** for another person | `admin.administratorRole.assign` | **Owner only** |
+| delegate, or take back, the **self-approval exemption** (`approval.selfApproval.exempt*`) | the verified protected Owner (not a capability the Administrator can hold) | **Owner only** (section 13) |
 | set Job Role / Work Eligibility / Operational Scope | `admin.employeeJobRole.write` · `admin.employeeWorkEligibility.write` · `admin.employeeOperationalScope.write` | Administrator, Owner |
 | change a person's Functional Roles or the Functional Role catalog | `admin.employeeFunctionalRole.write` | **nobody yet** (see limitations) |
 | edit or publish workflow definitions | `workflowDefinition.edit` · `.publish` · … | **nobody yet** (see limitations) |
@@ -292,6 +293,62 @@ refuses those changes. A tenant's first Owner is established by governed system 
 screens. **Owner succession or transfer is not available in this release** — escalate it.
 
 ![The protected Owner assignment](images/administration/20-owner-protected-owner-role.png)
+
+### 13. Delegate the self-approval exemption (Owner only)
+
+Some approvals normally need a **second person**: the person who asked for a credit, a purchase order, a goal or a
+count adjustment cannot also approve it. The protected **Owner** is exempt from that rule on their own. The Owner
+can also **delegate** the exemption to a Security Role or to one person. Delegating it removes **only** the
+second-person requirement, for the kind of work you choose. It gives the person no other power.
+
+**There are seven keys, on the Object *Self-Approval Exemption*:**
+
+| Key (as shown in Object Security) | Lets the holder approve their own request for |
+|---|---|
+| `exemptFinancials` | Finance: invoice corrections, refund records, voids, Financial Policy decisions |
+| `exemptPurchasing` | supplier purchase orders |
+| `exemptInventory` | cycle count variance reconciliation and other inventory approvals |
+| `exemptGoals` | performance goals |
+| `exemptSales`, `exemptService` | Sales and Service approvals (none exist yet, so these do nothing today) |
+| `exemptAll` | every kind of work above |
+
+**Who can do this.** Only the **Owner**. The Administrator cannot grant, revoke or hand out these keys, even though
+the Administrator changes what other Security Roles may do. If anyone else tries, EOS refuses with *not authorized:
+only the governed protected Owner grants or revokes a self-approval exemption* and nothing is changed or recorded.
+Giving a person a Security Role that already **carries** one of these keys (step 1 of this guide) is also the Owner's
+action.
+
+**To delegate it to a Security Role (everyone who holds the Role gets it):**
+
+1. Signed in as the Owner, open `Administration ▸ Objects` → **By object** → **Self-Approval Exemption**.
+2. Pick the key (for example `exemptPurchasing`) and select **Grant to another Security Role**.
+3. Choose the **Security Role**, type the **Reason**, and select **Confirm grant**. Do not set a condition: these keys
+   cannot be conditioned.
+
+**To delegate it to one person:** open the person → **Direct Exceptions** → **Grant a direct exception**, choose the
+Object **Self-Approval Exemption** and the key, optionally set **Expires**, type the **Reason**, and select **Grant
+direct exception**. Use a Security Role if more than one person needs it.
+
+**To take it back:** use **Revoke** on the same row (Object Security) or on the Direct Exception, with a reason. It
+stops working **immediately**: the person's very next approval of their own request is refused again.
+
+**What a delegated exemption does not do** (the Owner's rulings):
+
+- **It applies to every operating company.** Company scope is not available yet; a grant cannot be limited to Taylor
+  or Ventana. Do not delegate it to someone who should not approve their own work in both companies.
+- The person **still needs the permission to request and to approve** that kind of work. The exemption never adds it.
+  A person holding `exemptAll` but not the approval permission is still refused.
+- It does **not** let anyone work on their **own** record where the rule is about their own record (for example a
+  goal aimed at their own Employee is still refused), and it does **not** relax any Administration protection:
+  nobody gives themselves a Role or a permission, and the Owner cannot grant the key to a Role the Owner holds or to
+  themselves.
+- Company and tenant boundaries, balances, stock, required reasons and evidence, and the audit trail are all
+  unchanged. Every approval made under a delegated exemption is recorded as **DELEGATED_EXEMPTION**, with the kind of
+  work and where the grant came from (the Role, or the direct grant), so it can be found and reported later.
+- **Nothing is delegated until the Owner grants it.** Registering the keys grants them to nobody.
+
+**Preview.** Like any change to who may do what, a grant or revoke can be previewed first (Permission Preview). Only
+the Owner can preview or commit a change to these keys.
 
 ## What EOS does automatically
 

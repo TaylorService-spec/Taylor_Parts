@@ -290,6 +290,57 @@ test("SAE: the governed protected Owner reconciles a variance they counted thems
   refused(await call(NOCAP, "reconcileCycleCountLine", { sheetId: s2, partId: PART, decision: "APPROVE", reason: "x" }), 403, "CAPABILITY_MISSING");
 });
 
+test("SAE-2: an INVENTORY-exempt grantee (Role grant, then direct grant) reconciles a variance they counted, only within scope; wrong-scope, expired, revoked and absent grants keep SEPARATION_OF_DUTIES; the grant adds no capability", { skip: SKIP }, async () => {
+  const countAndReconcile = async (who, key, sheetKey) => {
+    const s = ok(await call(who, "createCycleCountSheet", { location: { type: "BIN", locationId: BIN_A }, idempotencyKey: sheetKey })).sheet.sheetId;
+    ok(await call(who, "openCycleCountLine", { sheetId: s, partId: PART }));
+    const expected = (await q(`SELECT expected_quantity FROM eos_ops.cycle_count_lines WHERE tenant_id = $1 AND sheet_id = $2`, [TENANT, s])).rows[0].expected_quantity;
+    ok(await call(who, "submitCycleCountLine", { sheetId: s, partId: PART, countedQuantity: expected + 1 }));
+    return { s, reconcile: () => call(who, "reconcileCycleCountLine", { sheetId: s, partId: PART, decision: "APPROVE", reason: `SAE-2 ${key}` }) };
+  };
+  const pidOf = async (subject) => (await q(`SELECT id FROM eos_policy.principals WHERE external_subject = $1`, [subject])).rows[0].id;
+  const grant = (pid, key, expires = null) => q(
+    `INSERT INTO eos_policy.principal_capabilities (id,tenant_id,principal_id,capability_id,granted_by,created_by,updated_by,exception_reason,expires_at)
+     SELECT 'pc-' || $2 || '-' || c.id, $3, $2, c.id, 'f', 'f', 'f', 'SAE-2 test', $4 FROM eos_policy.capabilities c WHERE c.key = $1`, [key, pid, TENANT, expires]);
+  const revoke = (pid, key) => q(`DELETE FROM eos_policy.principal_capabilities WHERE principal_id = $1 AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = $2)`, [pid, key]);
+  const lastAudit = async (pid) => (await q(`SELECT after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'cycleCount.line.reconcile' AND actor_uid = $2 ORDER BY occurred_at DESC LIMIT 1`, [TENANT, pid])).rows[0].after;
+
+  // A. a ROLE grant: the persona's own Role carries exemptInventory
+  const BY_ROLE = await persona({ subject: "cc-delegate-role", capabilities: [...REVIEWER_CAPS, ...COUNTER_CAPS, "approval.selfApproval.exemptInventory"] });
+  const rolePid = await pidOf(BY_ROLE);
+  const a = await countAndReconcile(BY_ROLE, "role", "k-sae2-role");
+  const done = ok(await a.reconcile());
+  assert.deepEqual([done.outcome, done.line.status], ["applied", "RECONCILED"]);
+  const audit = await lastAudit(rolePid);
+  assert.deepEqual([audit.approvalBasis, audit.approvalScope], ["DELEGATED_EXEMPTION", "INVENTORY"]);
+  assert.match(audit.approvalGrantSource, /^role:/);
+  // B. wrong scope (Role carries exemptFinancials only): SEPARATION_OF_DUTIES, nothing written
+  const WRONG = await persona({ subject: "cc-delegate-wrong", capabilities: [...REVIEWER_CAPS, ...COUNTER_CAPS, "approval.selfApproval.exemptFinancials"] });
+  const w = await countAndReconcile(WRONG, "wrong", "k-sae2-wrong");
+  const ledger = await count(`SELECT count(*) AS n FROM eos_ops.inventory_movements WHERE source_kind = 'CYCLE_COUNT_LINE'`);
+  refused(await w.reconcile(), 403, "SEPARATION_OF_DUTIES");
+  assert.equal(await count(`SELECT count(*) AS n FROM eos_ops.inventory_movements WHERE source_kind = 'CYCLE_COUNT_LINE'`), ledger, "a refusal posts no ledger movement");
+  // C. direct grants: absent -> refused; INVENTORY direct -> applied; revoked / expired -> refused; the all-workflows key counts
+  const DIRECT = await persona({ subject: "cc-delegate-direct", capabilities: [...REVIEWER_CAPS, ...COUNTER_CAPS] });
+  const dpid = await pidOf(DIRECT);
+  const d1 = await countAndReconcile(DIRECT, "d1", "k-sae2-d1");
+  refused(await d1.reconcile(), 403, "SEPARATION_OF_DUTIES");
+  await grant(dpid, "approval.selfApproval.exemptInventory");
+  assert.equal(ok(await d1.reconcile()).outcome, "applied");
+  assert.match((await lastAudit(dpid)).approvalGrantSource, /^direct:/);
+  const d2 = await countAndReconcile(DIRECT, "d2", "k-sae2-d2");
+  await revoke(dpid, "approval.selfApproval.exemptInventory");
+  refused(await d2.reconcile(), 403, "SEPARATION_OF_DUTIES");
+  await grant(dpid, "approval.selfApproval.exemptAll", new Date(Date.now() - 60_000).toISOString());
+  refused(await d2.reconcile(), 403, "SEPARATION_OF_DUTIES");
+  await revoke(dpid, "approval.selfApproval.exemptAll");
+  await grant(dpid, "approval.selfApproval.exemptAll");
+  assert.equal(ok(await d2.reconcile()).outcome, "applied");
+  // D. the exemption adds no authority: a grantee without the reconcile capability is refused for the capability
+  const NOCAP = await persona({ subject: "cc-delegate-nocap", capabilities: [...COUNTER_CAPS, "approval.selfApproval.exemptInventory"] });
+  refused(await call(NOCAP, "reconcileCycleCountLine", { sheetId: a.s, partId: PART, decision: "APPROVE", reason: "x" }), 403, "CAPABILITY_MISSING");
+});
+
 test("close needs every line decided; after close, a retry of the decision still replays; new work is refused", { skip: SKIP }, async () => {
   ok(await call(COUNTER, "openCycleCountLine", { sheetId: SHEET, partId: PART_OTHER }));
   refused(await call(REVIEWER, "closeCycleCountSheet", { sheetId: SHEET }), 412, "SHEET_STATUS_INVALID");

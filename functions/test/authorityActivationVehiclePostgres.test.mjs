@@ -259,7 +259,9 @@ test("the activation migration was APPENDED: only the later Administration and w
     // SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam, the invoice-correction people trigger, the adjustment / void gates and the Financial Policy decider trigger; no capability, no grant.
     "1764716000000_protected-owner-secondary-approval-exemption.sql",
     // S1c holders (Owner ruling 2026-10-20): salesOrder.fulfill to generalManager, warehouseManager, fieldManager and partsManager (4 grants). No capability, no schema.
-    "1764717000000_sales-order-allocation-owner-holders.sql"],
+    "1764717000000_sales-order-allocation-owner-holders.sql",
+    // SAE Rule 2 delegated self-approval exemption (2026-10-20): seven approval.selfApproval.exempt* capabilities (NO grants), the SQL proof functions and the delegated branch of the people triggers.
+    "1764718000000_delegated-self-approval-exemption.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -502,6 +504,8 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // SUP-1 supplier terms (1764530000000): -7 capabilities (4 record + 3 COMMERCIAL), no grant (it registers and grants nothing).
     // Financial Policy withdraw / cancel (1764570000000): schema only -- peeled first. Financial Policy foundation (1764560000000): -4 capabilities, no grant -- next. EOS native login (1764550000000): schema only, after.
     // CRM activity (1764590000000): -2 capabilities, -6 grants -- peeled first. Returns intake (1764580000000): -1 capability, -1 grant -- next.
+    runMigrate(url, "down", 1); // SAE Rule 2 delegated exemption (1764718000000): -7 capabilities (approval.selfApproval.exempt*), NO grants; its down refuses while a correction was decided under a delegated exemption or any Role / direct grant / decision names a key
+    assert.deepEqual(await counts(), { caps: 203, grants: 736, mine: 26 });
     runMigrate(url, "down", 1); // S1c holders (1764717000000): -4 grants (generalManager, warehouseManager, fieldManager, partsManager), no capability; its down refuses only while an Administration decision names the key for those Roles
     assert.deepEqual(await counts(), { caps: 203, grants: 732, mine: 26 });
     runMigrate(url, "down", 1); // SAE protected-Owner exemption (1764716000000): schema/functions only, no capability, no grant; its down refuses only if a decision was recorded under the exemption
@@ -662,7 +666,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the S1c holders migration (1764717000000) first -- 4 grants, no capability
+    runMigrate(url, "down", 1); // peel the SAE Rule 2 delegated exemption migration (1764718000000) first -- 7 capabilities, no grants
+    runMigrate(url, "down", 1); // then the S1c holders migration (1764717000000) -- 4 grants, no capability
     runMigrate(url, "down", 1); // then the SAE protected-Owner exemption migration (1764716000000) -- functions and a trigger swap only
     runMigrate(url, "down", 1); // peel the S1c Sales Order allocation migration (1764714000000) first -- 1 capability, 3 grants
     runMigrate(url, "down", 1); // then the F-1b invoice corrections migration (1764712000000) -- 3 capabilities, no grants, one table

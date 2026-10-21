@@ -105,6 +105,7 @@ test("the governed seed no longer declares either retired Object", () => {
   // salesDiscountAuthority + systemConfiguration (#204), settlement (#206), rentalAgreement + rentalEquipment (#207),
   // financialPolicy (#232); then inventoryReturn (#242, Firebase exit F7a) and crmActivity (#243, F7b) -- 51; then report + performanceGoal (Firebase exit B4) -- 53. Pinned as the
   // exact key list, so a registration is a named change here, never a silent count.
+  // Then selfApprovalExemption (SAE Rule 2, DECISIONS #SAE-2): the Object the seven approval.selfApproval.exempt* capabilities hang on (no verb, no grant).
   // The retirement this file guards is unaffected: registering a later Object does not un-retire dispatchSchedule or
   // notifications, and the assertions below still name them.
   assert.deepEqual(seed.objects.map((o) => o.key).sort(), [
@@ -113,7 +114,7 @@ test("the governed seed no longer declares either retired Object", () => {
     "invoice", "location", "manufacturer", "marketingInitiatives", "mobileLocation", "opportunity", "part", "partAlias", "payment",
     "performanceGoal", "principal", "purchaseOrder", "purchaseOrderVoid", "receivingOrder", "rentalAgreement", "rentalEquipment", "reorderRequest",
     "report", "reportDefinition", "rolesPermissions", "salesAgreement", "salesDiscountAuthority", "salesOrder", "salesTerritory",
-    "serializedAssets", "settlement", "supplier", "supplierCatalogItem", "systemConfiguration", "technicianTimeNonWork",
+    "selfApprovalExemption", "serializedAssets", "settlement", "supplier", "supplierCatalogItem", "systemConfiguration", "technicianTimeNonWork",
     "transferOrder", "truck", "warehouse", "workOrder", "workflowDefinition", "workflowInstance",
   ]);
   for (const key of RETIRED) {

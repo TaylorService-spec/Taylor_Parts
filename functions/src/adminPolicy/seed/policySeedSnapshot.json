@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 53,
+    "objects": 54,
     "objectsWithFields": 28,
     "fields": 400
   },
@@ -6850,6 +6850,22 @@
       "label": "Performance Goal",
       "labelPlural": "Performance Goals",
       "description": "A governed performance goal: a versioned, effective-dated, approved TARGET (never an actual), read by scope (Firebase exit B4, DECISIONS #B4). Its one capability is performance.goal.read; the Firebase authoring verbs (create, approve, supersede, retire) have no EOS consumer yet and are not registered. A security subject with no field and no CRED verb.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "selfApprovalExemption",
+      "label": "Self-Approval Exemption",
+      "labelPlural": "Self-Approval Exemptions",
+      "description": "A delegated exemption from the second-person approval requirement, one key per workflow scope (Financials, Purchasing, Sales, Inventory, Service, Goals) plus an all-business-workflows key (SAE Rule 2, DECISIONS #SAE-2). A grant lets its holder approve a transaction they themselves requested, within that scope ONLY: it confers no business authority, no company, no self-targeting or identity-guard exception and no administration right. Granted and revoked ONLY by the governed protected Owner. A grant applies across ALL operating companies until company scope ships. A security subject with no field and no CRED verb.",
       "domain": "Administration",
       "source": "CAPABILITY_AUTHORITY",
       "supportsDelete": false,

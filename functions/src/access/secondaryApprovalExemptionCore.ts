@@ -32,6 +32,30 @@ export const PROTECTED_OWNER_GRANT_SOURCE = "PROTECTED_OWNER_MEMBERSHIP" as cons
 export const SELF_APPROVAL_SCOPES = Object.freeze(["FINANCIALS", "PURCHASING", "SALES", "INVENTORY", "SERVICE", "GOALS"] as const);
 export type SelfApprovalScope = (typeof SELF_APPROVAL_SCOPES)[number];
 
+/**
+ * THE DELEGATED EXEMPTION CAPABILITY FAMILY (SAE Rule 2). One capability per workflow scope plus an all-business-workflows key, on ONE governed Object. A grant of one of these keys
+ * (to a Role, inherited through a GLOBAL assignment, or directly to a Principal) confers ONLY the second-person exemption at the sites of its scope (Owner ruling D3): never a business
+ * capability, a company, a self-targeting or identity-guard exception, or any integrity rule. Granted and revoked ONLY by the verified protected Owner. Global for now: a grant applies
+ * across all operating companies until company scope ships (PR-3).
+ */
+export const SELF_APPROVAL_EXEMPT_OBJECT = "selfApprovalExemption" as const;
+export const SELF_APPROVAL_EXEMPT_KEYS: Readonly<Record<SelfApprovalScope | "ALL", string>> = Object.freeze({
+  FINANCIALS: "approval.selfApproval.exemptFinancials", PURCHASING: "approval.selfApproval.exemptPurchasing", SALES: "approval.selfApproval.exemptSales",
+  INVENTORY: "approval.selfApproval.exemptInventory", SERVICE: "approval.selfApproval.exemptService", GOALS: "approval.selfApproval.exemptGoals",
+  ALL: "approval.selfApproval.exemptAll",
+});
+/** The Object action each key sits on (the catalog's object/action shape). */
+export const SELF_APPROVAL_EXEMPT_ACTIONS: Readonly<Record<SelfApprovalScope | "ALL", string>> = Object.freeze({
+  FINANCIALS: "exemptFinancials", PURCHASING: "exemptPurchasing", SALES: "exemptSales", INVENTORY: "exemptInventory", SERVICE: "exemptService", GOALS: "exemptGoals", ALL: "exemptAll",
+});
+export const SELF_APPROVAL_EXEMPT_KEY_LIST: readonly string[] = Object.freeze(Object.values(SELF_APPROVAL_EXEMPT_KEYS));
+export const isSelfApprovalExemptKey = (key: unknown): boolean => typeof key === "string" && SELF_APPROVAL_EXEMPT_KEY_LIST.includes(key);
+/** The scope a family key names ("ALL" for the all-workflows key), or null for any other key. */
+export const scopeOfExemptKey = (key: unknown): SelfApprovalScope | "ALL" | null => {
+  for (const [scope, k] of Object.entries(SELF_APPROVAL_EXEMPT_KEYS)) if (k === key) return scope as SelfApprovalScope | "ALL";
+  return null;
+};
+
 /** THE ONE SCOPE MAP: site -> workflow scope (null = not delegable). Adding a two-person site means adding it here. */
 export const SELF_APPROVAL_SITES = Object.freeze({
   "finance.invoiceCorrection": "FINANCIALS", // F-1b credit, write-off, debit, refund record, void
