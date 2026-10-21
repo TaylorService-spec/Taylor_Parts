@@ -24,6 +24,7 @@ import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assig
 import { RESERVED_CAPABILITY_HOLDERS } from "../../adminPolicy/roleCapabilityAdministration";
 import { qualifyingGlobalRoles } from "../../eosOps/administrationReach";
 import { recordCommandAudit, wellFormed, type CommandAuditSpec } from "../../eosAudit/commandAuditEvent";
+import { resolveCompanyAuthority } from "../../eosOps/companyAuthority";
 import { resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../commercialCompanyAuthority";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
@@ -442,7 +443,6 @@ export async function requireEligibleCompanylessOwner(
   db: Queryable,
   tenantId: string,
   facts: { readonly recordCreatorPrincipalId: string | null; readonly accountId: string; readonly ownerEmployeeId: string; readonly inherited?: boolean },
-  resolver: CommercialCompanyResolver = resolveCommercialCompanyReach,
 ): Promise<void> {
   const refuse = (): never => facts.inherited === true
     ? fail("OWNER_REQUIRED", "INVALID_INPUT",
@@ -460,13 +460,14 @@ export async function requireEligibleCompanylessOwner(
     `SELECT owner_employee_id FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2`, [tenantId, facts.accountId]);
   if (account.rows.length === 0 || account.rows[0].owner_employee_id !== facts.ownerEmployeeId) return refuse();
   // ... and inheritance never crosses companies: the owner's HOME company must be inside the creator's company authority.
-  const reach = await resolver(db, tenantId, creator);
-  if (reach.basis === "PROTECTED_ADMINISTRATOR") return; // unrestricted by standing: every company is inside its authority
+  // EMPLOYEE-based authority only (home company + explicit company-access grants + operational company-scoped roles): never the protected Administrator's or
+  // protected Owner's unrestricted VISIBILITY basis (Owner ruling 2026-10-21: no Administrator exception). No usable Employee link = no authority = refusal.
+  const authority = await resolveCompanyAuthority(db, tenantId, creator);
   const home = await db.query<{ operating_company_key: string }>(
     `SELECT k.operating_company_key FROM eos_workforce.employees e
        JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = e.tenant_id AND k.operating_company_id = e.operating_company_id AND k.status = 'ACTIVE'
       WHERE e.tenant_id = $1 AND e.id = $2`, [tenantId, facts.ownerEmployeeId]);
-  if (!home.rows.some((r) => reach.companyKeys.includes(String(r.operating_company_key)))) return refuse(); // no home company bound = cannot show same-company: fail closed
+  if (!home.rows.some((r) => authority.companyKeys.includes(String(r.operating_company_key)))) return refuse(); // no home company bound = cannot show same-company: fail closed
 }
 
 /** The Account row, read in THIS tenant only. */

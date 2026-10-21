@@ -294,6 +294,43 @@ test("SAL-03(c): owner eligibility on company-less Opportunities and Sales Agree
     OWNER_NOT_FOUND(await mkOpp("p-nolink", { ownerEmployeeId: "e-ven" }), "no link: naming a foreign Employee");
   });
 
+  await t.test("OWNER RULING (no Administrator exception): the protected Administrator's inheritance is EMPLOYEE-based; its administrative read/write of existing records is unchanged", async () => {
+    await q(`INSERT INTO eos_policy.roles (id, tenant_id, key, name, origin, protected, created_by, updated_by) VALUES ('role-admin','t1','admin','Administrator','SYSTEM',true,'fixture','fixture')`);
+    const grantAdmin = (p) => q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+           VALUES ($1,'t1',$2,'role-admin','global',NULL,'active','fixture',0,'fixture','fixture')`, [`a-${p}`, p]);
+    // (a1) an Administrator with NO Employee link (the existing p-admin fixture shape)
+    await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ('p-admin','p-admin','proof','active')`);
+    await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-p-admin','t1','p-admin')`);
+    await grantAdmin("p-admin");
+    const ownerless = await mkOpp(tay, { accountId: "a-ownerless" });
+    for (const accountId of ["a-ven", "a-plain", "a-tay2"]) {   // any inherited owner, foreign or not
+      const r = await mkOpp("p-admin", { accountId });
+      assert.deepEqual([r.ok, r.code, r.category, r.message], [false, ownerless.code, ownerless.category, ownerless.message], `no-link Administrator, blank owner on ${accountId}`);
+    }
+    OWNER_NOT_FOUND(await mkOpp("p-admin", { accountId: "a-plain", ownerEmployeeId: "e-tay" }), "no-link Administrator naming the account owner");
+    OWNER_NOT_FOUND(await mkOpp("p-admin", { ownerEmployeeId: "e-ven" }), "no-link Administrator naming a foreign Employee");
+    // (a2) an Administrator WITH a Taylor Employee link: refused a Ventana account owner, allowed a Taylor account owner, and its own Employee
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ('e-admt','t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`);
+    await principal("p-admt", "e-admt", "taylor");
+    await grantAdmin("p-admt");
+    const fv = await mkOpp("p-admt", { accountId: "a-ven" });
+    assert.deepEqual([fv.ok, fv.code, fv.category, fv.message], [false, ownerless.code, ownerless.category, ownerless.message], "linked Administrator, Ventana account owner");
+    OWNER_NOT_FOUND(await mkOpp("p-admt", { accountId: "a-ven", ownerEmployeeId: "e-ven" }), "linked Administrator naming the Ventana account owner");
+    const tOk = await mkOpp("p-admt", { accountId: "a-tay2" });
+    ok(tOk, "linked Administrator inherits a Taylor account owner");
+    assert.equal((await oppRow(tOk.v.opportunityId)).owner_employee_id, "e-tay2");
+    ok(await mkOpp("p-admt", { accountId: "a-plain", ownerEmployeeId: "e-admt" }), "linked Administrator names their own Employee");
+    // (d) Q-1a is untouched: the Administrator still reads and edits an existing company-less record it did not create
+    const rec = await mkOpp(tay, { ownerEmployeeId: "e-tay" });
+    ok(rec, "setup");
+    for (const admin of ["p-admin", "p-admt"]) {
+      ok(await outcome(oppRead.getOpportunityDetail(rdeps, actor(admin), { opportunityId: rec.v.opportunityId })), `${admin} reads the existing company-less record`);
+      ok(await editOpp(admin, rec.v.opportunityId, { need: `edited by ${admin}` }), `${admin} edits it`);
+    }
+    OWNER_NOT_FOUND(await editOpp("p-admin", rec.v.opportunityId, { ownerEmployeeId: "e-ven" }), "but a reassignment is still judged against the stored creator");
+    assert.equal((await oppRow(rec.v.opportunityId)).owner_employee_id, "e-tay");
+  });
+
   await t.test("DOCUMENTED: Sales Orders always carry a company (NOT NULL), so the company-less rule never applies to them", async () => {
     const { rows } = await q(`SELECT is_nullable FROM information_schema.columns WHERE table_schema='eos_commercial' AND table_name='sales_orders' AND column_name='operating_company_key'`);
     assert.equal(rows[0].is_nullable, "NO");

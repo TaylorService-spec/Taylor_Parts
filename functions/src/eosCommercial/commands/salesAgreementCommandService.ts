@@ -262,7 +262,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       // SAL-03(c): an Agreement on a company-less Opportunity is itself company-less and owner-visible: its owner is the creating actor or its Account's governed owner inside the actor's companies.
       if (opportunity.operatingCompanyKey === null) {
         await requireEligibleCompanylessOwner(db, actor.tenantId,
-          { recordCreatorPrincipalId: actor.principalId, accountId: built.accountId, ownerEmployeeId: built.ownerEmployeeId }, deps.companyReach);
+          { recordCreatorPrincipalId: actor.principalId, accountId: built.accountId, ownerEmployeeId: built.ownerEmployeeId });
       }
       await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
       await requireCatalogReferences(deps, db, actor.tenantId, built.lines);

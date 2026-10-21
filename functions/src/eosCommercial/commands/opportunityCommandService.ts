@@ -56,7 +56,7 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
     if (built.operatingCompanyId === null) {
       const named = typeof fields.ownerEmployeeId === "string" && fields.ownerEmployeeId.trim() !== "";
       await requireEligibleCompanylessOwner(db, actor.tenantId,
-        { recordCreatorPrincipalId: actor.principalId, accountId: account.id, ownerEmployeeId: built.ownerEmployeeId, inherited: !named }, deps.companyReach);
+        { recordCreatorPrincipalId: actor.principalId, accountId: account.id, ownerEmployeeId: built.ownerEmployeeId, inherited: !named });
     }
     if (built.creditedSalespersonId !== null) await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
     // New product references pass the catalog authority before any number is allocated or row written.
@@ -172,7 +172,7 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       if (current.operatingCompanyKey === null) {
         const stored = await db.query<{ created_by: string | null }>(`SELECT created_by FROM eos_commercial.opportunities WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, current.id]);
         await requireEligibleCompanylessOwner(db, actor.tenantId,
-          { recordCreatorPrincipalId: stored.rows[0]?.created_by ?? null, accountId: (patch.accountId as string | undefined) ?? current.accountId, ownerEmployeeId: newOwner }, deps.companyReach);
+          { recordCreatorPrincipalId: stored.rows[0]?.created_by ?? null, accountId: (patch.accountId as string | undefined) ?? current.accountId, ownerEmployeeId: newOwner });
       }
       const recorded = await stageCommercialOwnershipTransfer(db, actor.tenantId, actor.principalId, {
         kind: "OPPORTUNITY", recordId: current.id, newOwnerEmployeeId: newOwner, source: handoffSource as never,
