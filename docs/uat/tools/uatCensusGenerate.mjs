@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { buildModel, toCsv } from "./uatModel.mjs";
-import { buildRecordRows, buildSearchRows, buildDashboardRows, buildAnalysisRows, buildRouteRows, buildDecisionRows, RECORD_KINDS, RULINGS } from "./uatRecords.mjs";
+import { buildRecordRows, buildSearchRows, buildDashboardRows, buildAnalysisRows, buildRouteRows, buildDecisionRows, buildChannelRows, RECORD_KINDS, RULINGS } from "./uatRecords.mjs";
 import { PROBES } from "./uatProbes.mjs";
 import { renderAll } from "./uatRender.mjs";
 import { REPO_ROOT } from "./uatExtract.mjs";
@@ -19,10 +19,11 @@ const PIN = arg("pin", "835e5982ba64b29020815e5dc749ea17568c1c1e");
 
 const m = await buildModel(CENSUS);
 if (m.probeProblems.length) { console.error("PROBE PROBLEMS", m.probeProblems); process.exit(2); }
+// ROUTE CHECK (Phase 2, item A): every path the plan sends a request to must be a route the server dispatches (and not the Administration default).
+if (m.routeCheck.problems.length) { console.error("ROUTE CHECK FAILED", m.routeCheck.problems); process.exit(2); }
 
 // ------------------------------------------------------------------ assemble every expectation row (the manifest)
-const tag = (r, extra) => ({ ...r, ...extra });
-const pe = new Map(m.personas.map((p) => [p.key, p]));
+const pe = new Map(m.personasAll.map((p) => [p.key, p]));
 const rows = [];
 for (const r of m.personaCapRows) {
   const p = pe.get(r.persona);
@@ -32,9 +33,9 @@ for (const r of m.personaCapRows) {
 }
 for (const r of m.personaCredRows) {
   rows.push({ id: `${r.persona}:cred:${r.object}:${r.verb}`, persona: r.persona, tier: "cred", roles: pe.get(r.persona).globalRoles.join("+"), company: "n/a", object: r.object, action: r.verb, expected: r.expected, basis: r.basis,
-    source: r.verb === "D" ? "policySeedSnapshot.json supportsDelete=false; census can_delete true in 0 rows" : "eos_policy.role_object_permissions (census 2026-10-21) + capabilitiesByVerb (policySeedSnapshot.json)", needsFixtures: false, undetermined: r.undetermined || undefined });
+    source: r.verb === "D" ? "policySeedSnapshot.json supportsDelete=false; census can_delete true in 0 rows" : "eos_policy.role_object_permissions (census 2026-10-21) + capabilitiesByVerb (policySeedSnapshot.json)", needsFixtures: false, undetermined: r.undetermined || undefined, integrity: r.integrity || undefined });
 }
-for (const p of m.personas) for (const d of m.destinations.filter((x) => x.status === "BUILT")) {
+for (const p of m.personasAll) for (const d of m.destinations.filter((x) => x.status === "BUILT")) {
   const visible = p.destinations.includes(d.destination);
   rows.push({ id: `${p.key}:nav:${d.destination}`, persona: p.key, tier: "navigation", roles: p.globalRoles.join("+"), company: "n/a", object: d.objects.join("|"), action: `destination ${d.path}`, expected: visible ? "VISIBLE" : "HIDDEN",
     basis: d.surfaceAccess.length ? `surface(s) ${d.surfaceAccess.join(" | ")}: ${visible ? "granted" : "not granted"}` : d.containerScope ? "container derived from reachable children" : "no governed surface: invisible to every principal under the EOS navigation source (static finding NF-01; verify live)",
@@ -48,6 +49,13 @@ for (const r of buildDashboardRows(m)) rows.push({ roles: pe.get(r.persona).glob
 for (const r of buildAnalysisRows(m)) rows.push({ roles: pe.get(r.persona).globalRoles.join("+"), action: r.op, ...r });
 for (const r of buildRouteRows(m)) rows.push({ roles: pe.get(r.persona).globalRoles.join("+"), action: r.op, ...r });
 for (const r of buildDecisionRows(m)) rows.push({ roles: pe.get(r.persona).globalRoles.join("+"), action: r.op, ...r });
+for (const r of buildChannelRows(m)) rows.push({ roles: pe.get(r.persona).globalRoles.join("+"), action: r.op, ...r });
+for (const r of rows) {
+  const p = pe.get(r.persona);
+  r.group = p.group ?? "persona";
+  // The pure-Administrator rows are evidence about the `admin` Role alone (OQ-11); the composite persona's capability rows say which Role supplies each capability.
+  if (r.persona === "administrator" && r.tier === "capability") r.viaAdminRoleOnly = (p.capSource.get(r.capability) ?? []).every((x) => x === "admin" || x === "admin(STANDING)");
+}
 
 // ------------------------------------------------------------------ field-level (rule rows, counted not expanded)
 const fieldStats = { visiblePositive: 0, editPositive: 0, doorwayNegatives: 0, perPersona: {} };
@@ -66,28 +74,39 @@ for (const p of m.personas) {
 }
 
 // ------------------------------------------------------------------ classify every row (run status) and count
-const BLOCKED_STATES = new Set(["UNDETERMINED"]);
+// Phase 2 (Owner 2026-10-21): EVERY Ventana case stays BLOCKED while the Ventana key is not bound -- never PASS, never FAIL. Codex's FIRST run is a Taylor-only baseline.
+const isVentanaCase = (r) => r.recordKind?.startsWith("V-") || r.recordKind === "X-WO-XSVC" || r.company === "ventana";
 function runStatus(r) {
-  if (r.expected === "NOT_APPLICABLE") return "NOT_APPLICABLE";
-  if (BLOCKED_STATES.has(r.expected)) return "BLOCKED_OWNER_QUESTION";
-  if (r.dependsOn?.length) return "BLOCKED_UNMERGED_PR";
-  if (r.needsFixtures && (r.recordKind?.startsWith("V-") || r.recordKind?.startsWith("X-") || r.company === "ventana")) return "NEEDS_VENTANA_FIXTURES";
-  if (r.tier === "record-reach") return "NEEDS_RECORDS_UNVERIFIED";
-  if (r.tier === "workflow" || r.tier === "sae-self-approval" || (r.tier === "direct-route" && r.needsFixtures)) return "NEEDS_RECORDS_UNVERIFIED";
-  return "RUN_NOW";
+  const blockedBy = [];
+  if (r.expected === "NOT_APPLICABLE") return { status: "NOT_APPLICABLE", blockedBy };
+  if (r.expected === "UNDETERMINED") return { status: "BLOCKED_OWNER_QUESTION", blockedBy: ["owner ruling"] };
+  if (isVentanaCase(r)) blockedBy.push("Ventana key not yet bound (docs/uat/10-ventana-key-change-procedure.md)");
+  if (r.dependsOn?.length) blockedBy.push(...r.dependsOn.map((x) => `unmerged ${x}`));
+  if (isVentanaCase(r)) return { status: "BLOCKED_VENTANA_KEY_NOT_BOUND", blockedBy };
+  if (r.dependsOn?.length) return { status: "BLOCKED_UNMERGED_PR", blockedBy };
+  if (r.tier === "sae-self-approval" && r.expected === "ALLOW") return { status: "CONTROLLER_WALK", blockedBy: ["the full grant, use, revoke walk is run by the controller (OQ-15)"] };
+  if (r.tier === "workflow" || r.tier === "sae-self-approval" || r.recordKind === "X-OPP-NOCO") return { status: "NEEDS_FIXTURES", blockedBy: ["a record in the required state/shape must exist (controller or test-created)"] };
+  return { status: "RUN_NOW", blockedBy };
 }
-for (const r of rows) r.runStatus = runStatus(r);
+for (const r of rows) { const x = runStatus(r); r.runStatus = x.status; if (x.blockedBy.length) r.blockedBy = x.blockedBy; }
 const tiers = [...new Set(rows.map((r) => r.tier))];
-const statuses = ["RUN_NOW", "NEEDS_RECORDS_UNVERIFIED", "NEEDS_VENTANA_FIXTURES", "BLOCKED_UNMERGED_PR", "BLOCKED_OWNER_QUESTION", "NOT_APPLICABLE"];
-const matrix = Object.fromEntries(tiers.map((t) => [t, Object.fromEntries(statuses.map((s) => [s, rows.filter((r) => r.tier === t && r.runStatus === s).length]))]));
-for (const t of tiers) matrix[t].TOTAL = rows.filter((r) => r.tier === t).length;
-const totals = Object.fromEntries([...statuses, "TOTAL"].map((s) => [s, s === "TOTAL" ? rows.length : rows.filter((r) => r.runStatus === s).length]));
-const expectedCounts = Object.fromEntries(["ALLOW", "DENY", "SCOPED", "VISIBLE", "HIDDEN", "PRESENT", "CONDITIONAL", "UNDETERMINED", "NOT_APPLICABLE", "ALLOW_PREVIEW_ONLY"].map((e) => [e, rows.filter((r) => r.expected === e).length]));
+const statuses = ["RUN_NOW", "NEEDS_FIXTURES", "CONTROLLER_WALK", "BLOCKED_VENTANA_KEY_NOT_BOUND", "BLOCKED_UNMERGED_PR", "BLOCKED_OWNER_QUESTION", "NOT_APPLICABLE"];
+const mainRows = rows.filter((r) => r.group === "persona");
+const pureRows = rows.filter((r) => r.group === "pure-admin");
+const tabulate = (rs) => {
+  const matrix = Object.fromEntries(tiers.map((t) => [t, Object.fromEntries(statuses.map((s) => [s, rs.filter((r) => r.tier === t && r.runStatus === s).length]))]));
+  for (const t of tiers) matrix[t].TOTAL = rs.filter((r) => r.tier === t).length;
+  const totals = Object.fromEntries([...statuses, "TOTAL"].map((s) => [s, s === "TOTAL" ? rs.length : rs.filter((r) => r.runStatus === s).length]));
+  const expectedCounts = Object.fromEntries(["ALLOW", "DENY", "SCOPED", "VISIBLE", "HIDDEN", "PRESENT", "CONDITIONAL", "UNDETERMINED", "NOT_APPLICABLE", "ALLOW_PREVIEW_ONLY"].map((e) => [e, rs.filter((r) => r.expected === e).length]));
+  return { matrix, totals, expectedCounts };
+};
+const { matrix, totals, expectedCounts } = tabulate(mainRows);
+const pure = tabulate(pureRows);
 
 // role level (A/C) cells
 const roleLevel = { roleCapabilityCells: m.roles.length * m.census.capabilities.length, roleCredCells: m.roles.length * m.census.objects.length * 4, roleReadbackCalls: m.roles.length };
 
-const model = { m, rows, fieldStats, matrix, totals, expectedCounts, roleLevel, PIN, tiers, statuses };
+const model = { m, rows, mainRows, pureRows, pure, fieldStats, matrix, totals, expectedCounts, roleLevel, PIN, tiers, statuses };
 
 // ------------------------------------------------------------------ write
 function write(p, text) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); }
@@ -97,7 +116,8 @@ const handoff = path.join(REPO_DOCS, "codex-handoff");
 // manifest (machine readable, read-only)
 const sourceIds = new Map();
 for (const r of rows) if (!sourceIds.has(r.source)) sourceIds.set(r.source, "S" + String(sourceIds.size + 1).padStart(2, "0"));
-const personaMeta = m.personas.map((p) => ({
+const personaMeta = m.personasAll.map((p) => ({
+  group: p.group ?? "persona", ...(p.group === "pure-admin" ? { note: "PURE ADMINISTRATOR evidence (OQ-11): expectations computed from the `admin` Role alone via the effective-access explanation. NOT a sign-in persona; the composite `administrator` persona is the account that signs in." } : {}),
   key: p.key, principalId: p.principalId, display: p.display, employeeId: p.employeeId, employeeName: p.employeeName, jobRoleId: p.jobRoleId, homeCompany: p.homeCompany,
   securityRoles: { global: p.globalRoles, scoped: p.scoped }, ignoredDisabledAssignments: p.disabled,
   companyReach: { operational: p.companyReach, why: p.companyReachWhy, finance: p.financeReach }, salesChannels: p.channels, operationalScopes: p.operationalScopes, declaredWorkEligibility: p.declaredEligibility,
@@ -109,16 +129,20 @@ const manifest = {
   schema: "eos.uat.expected-access-manifest/1", readOnly: true,
   note: "EXPECTED access derived from governed authority (the permission resolver's inputs: eos_policy role_capabilities, role_object_permissions, scoped assignments, company authority, surface catalog) and cited Owner rulings -- never from role names. Names only: no credential, token or secret is in this file.",
   pin: { repoCommit: PIN, censusFile: path.basename(CENSUS), censusDate: "2026-10-21", migrationsExpected: 118, migrationsNote: "count of functions/migrations/*.sql at the pinned commit; compare to GET /health migrations" },
-  dependsOnUnmergedPrs: { "#2200": "DWO Work Order company boundary", "#2199": "CLC company-less record correction", "#2201": "persona harness target allowlist (tooling)" },
+  dependsOnUnmergedPrs: { "#2200": "DWO Work Order company boundary", "#2199": "CLC company-less record correction" },
+  prerequisiteMerged: { "#2201": "persona harness target allowlist (tooling), merged as 96530fe3; must be nonprod-verified before any Codex run" },
+  phase2: { decisions: "docs/DECISIONS.md #UAT-OD-2026-10-21", firstRun: "Codex's FIRST run is a Taylor-only BASELINE, starting when #2201 is nonprod-verified. Every Ventana case is BLOCKED (reason: the Ventana key is not yet bound) -- never PASS, never FAIL.", ventanaBlockedRows: rows.filter((r) => r.runStatus === "BLOCKED_VENTANA_KEY_NOT_BOUND").length },
+  routeCheck: { note: "every API path in this plan is a route the server dispatches (ports of eosApiDomainFor and the *_ROUTE constants); the check fails the generator otherwise", problems: m.routeCheck.problems, routes: m.routeCheck.domains },
   vocabulary: { expected: { ALLOW: "permitted (subject to the record-level conditions in `basis`)", DENY: "refused (a foreign-company or conditioned record is NONEXISTENT: identical not-found)", SCOPED: "permitted only inside the stated scope (sales channel, company, warehouse)", VISIBLE: "offered in navigation", HIDDEN: "not offered", PRESENT: "dashboard section present in the persona layout", CONDITIONAL: "permitted only on the caller's own assignment", UNDETERMINED: "no governed expectation exists: do NOT assert; report observed behaviour (Owner question in docs/uat/07-owner-questions.md)", NOT_APPLICABLE: "no such act exists", ALLOW_PREVIEW_ONLY: "permitted; UAT may preview but must never commit" },
     runStatus: Object.fromEntries(statuses.map((s) => [s, s])) },
   personas: personaMeta,
   objects: m.objects.map((o) => ({ key: o.key, label: o.label, registered: o.registered, fields: o.fieldsCensus, sensitiveFields: o.sensitiveFields, capabilities: o.capabilities.map((c) => c.key), pages: o.pages, extraRoutes: o.extraRoutes, apiOperations: o.opCount })),
   fieldRule: { expectation: "A field inherits its Object's read/edit unless a Role field override exists (effectiveObjectAccess.ts rules 2-4: the doorway invariant -- a field grant never opens an Object). Overrides were 0 at the 2026-09-24 baseline; the 2026-10-21 census omitted them (CG-02).", counts: fieldStats },
-  counts: { rows: rows.length, byTier: Object.fromEntries(tiers.map((t) => [t, matrix[t].TOTAL])), byExpected: expectedCounts, byRunStatus: totals },
+  counts: { rows: rows.length, personaRows: mainRows.length, pureAdministratorRows: pureRows.length, byTier: Object.fromEntries(tiers.map((t) => [t, matrix[t].TOTAL])), byExpected: expectedCounts, byRunStatus: totals, pureAdministrator: { byExpected: pure.expectedCounts, byRunStatus: pure.totals } },
   sources: Object.fromEntries([...sourceIds].map(([text, id]) => [id, text])),
   rows: rows.map((r) => { const o = { id: r.id, persona: r.persona, tier: r.tier, roles: r.roles, company: r.company, object: r.object, action: r.action, expected: r.expected, source: sourceIds.get(r.source), basis: r.basis, runStatus: r.runStatus };
-    if (r.capability) o.capability = r.capability; if (r.dependsOn) o.dependsOn = r.dependsOn.map((x) => `after ${x}`); if (r.needsFixtures) o.needsFixtures = true; if (r.fixture) o.fixture = r.fixture; if (r.undetermined) o.undetermined = r.undetermined; if (r.recordKind) o.recordKind = r.recordKind; if (r.note) o.note = r.note; return o; }),
+    if (r.capability) o.capability = r.capability; if (r.dependsOn) o.dependsOn = r.dependsOn.map((x) => `after ${x}`); if (r.needsFixtures) o.needsFixtures = true; if (r.fixture) o.fixture = r.fixture; if (r.undetermined) o.undetermined = r.undetermined; if (r.recordKind) o.recordKind = r.recordKind; if (r.note) o.note = r.note;
+    if (r.group !== "persona") o.group = r.group; if (r.integrity) o.integrity = r.integrity; if (r.blockedBy) o.blockedBy = r.blockedBy; if (r.viaAdminRoleOnly !== undefined) o.viaAdminRoleOnly = r.viaAdminRoleOnly; return o; }),
 };
 write(path.join(handoff, "expected-access-manifest.json"), JSON.stringify(manifest) + "\n");
 
@@ -133,7 +157,8 @@ write(path.join(dataDir, "role-capability-grants.csv"), toCsv(m.roleCapRows, ["r
 write(path.join(dataDir, "role-object-cred.csv"), toCsv(m.census.role_object_permissions.map((p) => ({ role: p.role, object: p.object, create: p.can_create, read: p.can_read, edit: p.can_edit, delete: p.can_delete })), ["role", "object", "create", "read", "edit", "delete"]));
 write(path.join(dataDir, "cred-capability-divergence.csv"), toCsv([...m.divergence.map((d) => ({ kind: "CRED_VS_CAPABILITY", ...d })), ...m.credOnly.map((d) => ({ kind: "CRED_TRUE_NO_ENFORCING_CAPABILITY", ...d, cred: true, capabilityHeld: "", capabilities: "" })), ...m.editWithoutRead.map((d) => ({ kind: "CREATE_OR_EDIT_WITHOUT_READ", role: d.role, object: d.object, verb: d.edit ? "E" : "C", cred: true, capabilityHeld: "", capabilities: "" }))], ["kind", "role", "object", "verb", "cred", "capabilityHeld", "capabilities"]));
 write(path.join(dataDir, "expected-nondeny.csv"), toCsv(nonDeny.map((r) => ({ persona: r.persona, tier: r.tier, object: r.object, action: r.action, expected: r.expected, runStatus: r.runStatus, dependsOn: (r.dependsOn ?? []).join("|"), source: r.source })), ["persona", "tier", "object", "action", "expected", "runStatus", "dependsOn", "source"]));
-write(path.join(dataDir, "denominators.json"), JSON.stringify({ pin: PIN, totals, matrix, expectedCounts, roleLevel, fieldStats, universe: { roles: m.roles.length, personas: 16, registeredObjects: m.census.objects.length, capabilityObjects: m.objects.length, capabilities: m.census.capabilities.length, builtDestinations: m.destinations.filter((d) => d.status === "BUILT").length, destinations: m.destinations.length, extraRoutes: 15, operations: m.operations.length, probes: PROBES.length, workflowActions: m.wfActions.length, recordKinds: RECORD_KINDS.length } }, null, 1) + "\n");
+write(path.join(dataDir, "route-check.json"), JSON.stringify(m.routeCheck, null, 1) + "\n");
+write(path.join(dataDir, "denominators.json"), JSON.stringify({ pin: PIN, totals, matrix, expectedCounts, pureAdministrator: pure, roleLevel, fieldStats, universe: { roles: m.roles.length, personas: 16, registeredObjects: m.census.objects.length, capabilityObjects: m.objects.length, capabilities: m.census.capabilities.length, builtDestinations: m.destinations.filter((d) => d.status === "BUILT").length, destinations: m.destinations.length, extraRoutes: 15, operations: m.operations.length, probes: PROBES.length, workflowActions: m.wfActions.length, recordKinds: RECORD_KINDS.length } }, null, 1) + "\n");
 
 // docs
 const docs = renderAll(model);

@@ -16,7 +16,10 @@ export const RULINGS = Object.freeze({
   SAE2: "DECISIONS #SAE-2: delegated exemption keys approval.selfApproval.exempt*; registered with NO grants; only the protected Owner grants; global scope",
   DWO: "Owner decisions via lane DWO (PR #2200, pending merge): a foreign Work Order is nonexistent; an assigned technician keeps their own Work Order (even with an inactive company) but gains no office or scheduling authority from the assignment; DWO-1 the selling company sees ONLY a read-only service projection of a linked cross-company service Work Order; DWO-2 the Administrator reads Work Orders tenant-wide, mutations unchanged",
   CLC: "Owner decisions via lane CLC (PR #2199, pending merge): Set Operating Company (assignRecordOperatingCompany) is a named-only grant through the normal admin path (capability commercial.recordCompany.assign, registered with no grants); an Agreement inherits its Opportunity's company on assignment",
-  BF_PERSONA: "Persona layouts: functions/src/eosExperience/myWork.ts PERSONA_LAYOUTS (layout only; authority is per section)",
+  OQ06: "Owner decision OQ-06 (2026-10-21), settled by data: the technician's workOrder.record.read RECORD_ASSIGNMENT condition is ACTIVE on nonprod",
+  OQ07: "Owner decision OQ-07 (2026-10-21): shared customer Accounts -- readable across Taylor and Ventana with existing Account authorization; never grants the other company's Commercial or Finance records",
+  OQ10: "Owner decision OQ-10 (2026-10-21): Retail Sales and National Accounts Sales are distinct Job Roles; a shared Security Role is acceptable only if channel restrictions enforce the separation, proved through search, lists, details and the API",
+  BF_PERSONA:"Persona layouts: functions/src/eosExperience/myWork.ts PERSONA_LAYOUTS (layout only; authority is per section)",
 });
 
 const ALL = null;
@@ -37,11 +40,12 @@ export const RECORD_KINDS = Object.freeze([
   // ---- Ventana (SYNTHETIC; created by the fixture script -- docs/uat/05-ventana-fixture-plan.md)
   { id: "V-ACC", label: "Ventana line-of-business customer account", family: "account", company: "ventana", read: "customer.record.read", write: "customer.record.update", fixture: "F-ACC" },
   { id: "V-OPP-R", label: "Ventana RETAIL opportunity", family: "commercial", company: "ventana", channel: "RETAIL", read: "opportunity.read", write: "opportunity.write", fixture: "F-OPP" },
+  { id: "V-OPP-N", label: "Ventana NATIONAL_ACCOUNTS opportunity", family: "commercial", company: "ventana", channel: "NATIONAL_ACCOUNTS", read: "opportunity.read", write: "opportunity.write", fixture: "F-OPP-N (lane VFX S51n)" },
   { id: "V-AGR-R", label: "Ventana RETAIL sales agreement", family: "commercial", company: "ventana", channel: "RETAIL", read: "salesAgreement.read", write: "salesAgreement.updateDraft", fixture: "F-AGR" },
   { id: "V-ORD-R", label: "Ventana RETAIL sales order", family: "commercial", company: "ventana", channel: "RETAIL", read: "salesOrder.read", write: "salesOrder.write", fixture: "F-ORD" },
   { id: "V-WO", label: "Ventana Work Order", family: "workOrder", company: "ventana", assignedTo: null, read: "workOrder.record.read", write: "workOrder.lifecycle.schedule", fixture: "F-WO", dependsOn: ["#2200"] },
   { id: "V-INV", label: "Ventana stock position at a Ventana warehouse", family: "inventory", company: "ventana", read: "inventory.transaction.read", write: "inventory.stock.relocate", fixture: "F-INV" },
-  { id: "V-REC", label: "Ventana receivable (obligation)", family: "finance", company: "ventana", read: "finance.payment.read", write: "finance.settlement.record", fixture: "F-REC" },
+  { id: "V-REC", label: "Ventana receivable (obligation)", family: "finance", company: "ventana", read: "finance.payment.read", write: "finance.settlement.record", fixture: "EXISTING: 3 Ventana receivables from intercompany (PROTECTED: read-only for UAT); further F-REC rows only if the fixture lane adds them" },
   // ---- Cross-cutting
   { id: "X-OPP-NOCO", label: "Company-less Opportunity created by the generalManager persona (owner and creator: that persona)", family: "companyless", company: null, read: "opportunity.read", write: "opportunity.write", fixture: "F-NOCO (create via generalManager, no operatingCompanyId)" },
   { id: "X-WO-XSVC", label: "Taylor-selling Sales Order whose service Work Order is performed by Ventana (authorized service provider)", family: "xservice", company: "taylor", read: "salesOrder.read", write: null, fixture: "F-XSVC", dependsOn: ["#2200"] },
@@ -87,7 +91,7 @@ export function recordExpectation(p, kind, op) {
     const c = capDecision(p, cap, kind);
     if (!c.ok) return mk("DENY", c.why, RULINGS.COMPANY_V1, f);
     if (kind.company === "ventana" && !p.standing && !p.companyReach.includes("ventana")) {
-      return mk("UNDETERMINED", "an Account is a tenant-level customer record tagged by line of business (TAYLOR/VENTANA); no ruling says whether a person without Ventana reach may see a Ventana-line customer", "OWNER QUESTION OQ-07", f);
+      return mk("ALLOW", `${c.why}; shared customer master: a Ventana-line Account is readable with the existing Account authorization WITHOUT Ventana company authority, and that never exposes Ventana Commercial or Finance records`, RULINGS.OQ07, f);
     }
     return mk("ALLOW", c.why, RULINGS.COMPANY_V1, f);
   }
@@ -105,8 +109,9 @@ export function recordExpectation(p, kind, op) {
       if (op === "MUTATE") return mk("DENY", "an assignment gives no office or scheduling authority; workOrder.lifecycle.schedule is not held", RULINGS.DWO, wdep);
       return mk("ALLOW", "own assigned Work Order (workOrder.record.read + RECORD_ASSIGNMENT); kept even with an inactive company", RULINGS.DWO + " ; " + RULINGS.DQ016, wdep);
     }
-    if (technicianLike(p) && has(p, "workOrder.record.read") && op !== "MUTATE") {
-      return mk("UNDETERMINED", "the technician grant is conditioned on RECORD_ASSIGNMENT by an Administration act; capability_grant_conditions is not in the census, so whether the condition row exists in nonprod is unknown (expected DENY for an unassigned Work Order once the condition is set)", "CENSUS GAP CG-03 / " + RULINGS.DQ016, wdep);
+    const readSources = p.capSource.get("workOrder.record.read") ?? [];
+    if (technicianLike(p) && has(p, "workOrder.record.read") && op !== "MUTATE" && readSources.every((r) => r === "technician")) {
+      return mk("DENY", "the technician grant of workOrder.record.read carries an ACTIVE RECORD_ASSIGNMENT condition (controller data check 2026-10-21): an unassigned Work Order is refused", RULINGS.OQ06 + " ; " + RULINGS.DQ016, wdep);
     }
     if (!c.ok) return mk("DENY", c.why, RULINGS.COMPANY_V1, wdep);
     if (op !== "MUTATE" && p.standing) return mk("ALLOW", "DWO-2: the Administrator reads Work Orders tenant-wide", RULINGS.DWO, wdep);
@@ -136,9 +141,12 @@ export function recordExpectation(p, kind, op) {
 
 export function buildRecordRows(m) {
   const rows = [];
-  for (const p of m.personas) for (const k of RECORD_KINDS) for (const op of ["LIST", "DETAIL", "MUTATE"]) {
+  for (const p of m.personasAll) for (const k of RECORD_KINDS) for (const op of ["LIST", "DETAIL", "MUTATE"]) {
     if (k.write === null && op === "MUTATE" && k.family !== "xservice") continue;
-    const e = recordExpectation(p, k, op);
+    let e = recordExpectation(p, k, op);
+    if (k.id === "V-REC" && op === "MUTATE" && ["ALLOW", "SCOPED"].includes(e.expected)) {
+      e = { ...e, expected: "NOT_APPLICABLE", basis: "the three existing Ventana intercompany receivables are PROTECTED: UAT never mutates them (refusals for personas without the act are still tested)" };
+    }
     rows.push({ id: `${p.key}:record:${k.id}:${op}`, persona: p.key, tier: "record-reach", recordKind: k.id, company: k.company ?? "none", op, ...e, fixture: k.fixture });
   }
   return rows;
@@ -152,7 +160,7 @@ export const SEARCH_KINDS = Object.freeze([
 ]);
 export function buildSearchRows(m) {
   const rows = [];
-  for (const p of m.personas) for (const s of SEARCH_KINDS) {
+  for (const p of m.personasAll) for (const s of SEARCH_KINDS) {
     const flat = has(p, s.cap); const sc = scopedHas(p, s.cap, "salesChannel") || scopedHas(p, s.cap, "operatingCompany");
     const expected = flat ? "ALLOW" : sc ? "SCOPED" : "DENY";
     rows.push({ id: `${p.key}:search:${s.kind}`, persona: p.key, tier: "search", object: s.kind, op: "searchEos", capability: s.cap, expected,
@@ -183,7 +191,7 @@ export const PERSONA_LAYOUTS = Object.freeze({
 });
 export function buildDashboardRows(m) {
   const rows = [];
-  for (const p of m.personas) {
+  for (const p of m.personasAll) {
     const layoutKey = p.jobRoleId && PERSONA_LAYOUTS[p.jobRoleId] ? p.jobRoleId : "general-employee";
     for (const section of PERSONA_LAYOUTS[layoutKey]) {
       rows.push({ id: `${p.key}:dashboard:${section}`, persona: p.key, tier: "dashboard", object: "(My Dashboard section)", op: `section ${section}`, expected: "PRESENT",
@@ -201,7 +209,7 @@ export const ANALYSIS_FAMILIES = Object.freeze([
 ]);
 export function buildAnalysisRows(m) {
   const rows = [];
-  for (const p of m.personas) for (const [fam, cap] of ANALYSIS_FAMILIES) {
+  for (const p of m.personasAll) for (const [fam, cap] of ANALYSIS_FAMILIES) {
     const flat = has(p, cap); const sc = (p.scopedCaps.get(cap) ?? []).length > 0;
     rows.push({ id: `${p.key}:analysis:${fam}`, persona: p.key, tier: "analysis", object: fam, op: "readMeasureAnalysis", capability: cap, expected: flat ? "ALLOW" : sc ? "SCOPED" : "DENY",
       basis: fam === "payment" ? "finance measures are decided against the explicit Financials company assignment" : "measure family decided on its own read capability and company key", source: "DECISIONS #208 (analysis doors confer no data)", company: "reach-dependent", needsFixtures: false });
@@ -215,7 +223,7 @@ export function buildRouteRows(m) {
   const gateSurface = { "/customers/:accountId": "crm.accounts", "/customers/opportunities/:opportunityId": "commercial.opportunities", "/customers/opportunities/sales-order/:salesOrderId": "commercial.salesOrders",
     "/customers/opportunities/sales-agreement/:salesAgreementId": "commercial.agreements", "/equipment/:equipmentId": "equipment.register", "/inventory/:partId": "inventory.catalog",
     "/financials/invoices/:invoiceId": "financials.invoices", "/financials/payments/:paymentId": "financials.payments", "/administration/users/:employeeId": "administration.users", "/administration/users/functional-roles": "administration.users" };
-  for (const p of m.personas) for (const r of EXTRA_ROUTES) {
+  for (const p of m.personasAll) for (const r of EXTRA_ROUTES) {
     const surf = gateSurface[r.path];
     let expected, basis;
     if (r.path === "/my-profile") { expected = "ALLOW"; basis = "self view for any signed-in session"; }
@@ -233,7 +241,7 @@ export function buildRouteRows(m) {
 export function buildDecisionRows(m) {
   const rows = [];
   const scopes = ["Financials", "Purchasing", "Sales", "Inventory", "Service", "Goals"];
-  for (const p of m.personas) {
+  for (const p of m.personasAll) {
     for (const s of scopes) {
       rows.push({ id: `${p.key}:sae:self-approve:${s}`, persona: p.key, tier: "sae-self-approval", object: "selfApprovalExemption", op: `self-approve a ${s} decision`,
         expected: isOwner(p) ? "ALLOW" : "DENY",
@@ -245,6 +253,23 @@ export function buildDecisionRows(m) {
       source: RULINGS.SAE2, company: "any", needsFixtures: false });
     rows.push({ id: `${p.key}:clc:assign-company`, persona: p.key, tier: "clc", object: "opportunity|salesAgreement", op: "assignRecordOperatingCompany (commercial.recordCompany.assign)",
       expected: "DENY", basis: "named-only grant: the capability is registered with NO grants, so every persona is refused until the Owner grants it through the normal admin path", source: RULINGS.CLC, company: "any", needsFixtures: true, dependsOn: ["#2199"] });
+  }
+  return rows;
+}
+
+// -------- Retail vs National Accounts channel boundary (Owner OQ-10): distinct Job Roles; the shared Security Role is acceptable only because the channel
+// restriction enforces the separation, so it is proved through SEARCH, LIST, DETAIL and the direct API for each channel-scoped persona and BOTH channels.
+const CHANNEL_KINDS = [["opportunity", "opportunity.read", "T-OPP"], ["salesAgreement", "salesAgreement.read", "T-AGR"], ["salesOrder", "salesOrder.read", "T-ORD"]];
+export function buildChannelRows(m) {
+  const rows = [];
+  for (const p of m.personas.filter((x) => x.channels.length > 0)) {
+    for (const [kind, cap, prefix] of CHANNEL_KINDS) for (const ch of ["RETAIL", "NATIONAL_ACCOUNTS"]) for (const op of ["SEARCH", "LIST", "DETAIL", "API-DETAIL-BY-ID"]) {
+      const own = p.channels.includes(ch);
+      rows.push({ id: `${p.key}:channel:${prefix}-${ch === "RETAIL" ? "R" : "N"}:${op}`, persona: p.key, tier: "channel-boundary", object: kind, op: `${op} of a ${ch} ${kind}`, capability: cap,
+        expected: own ? "SCOPED" : "DENY",
+        basis: own ? `the persona's own channel (${ch}); the scoped ${cap} admits it` : `another channel: invisible in search, list, detail and the API (identical not-found); a write is refused OUTSIDE_SALES_CHANNEL_SCOPE after the company check. National Accounts is a channel, never a company`,
+        source: RULINGS.OQ10 + " ; " + RULINGS.P11_SALES, company: "taylor", needsFixtures: false, recordKind: `${prefix}-${ch === "RETAIL" ? "R" : "N"}` });
+    }
   }
   return rows;
 }

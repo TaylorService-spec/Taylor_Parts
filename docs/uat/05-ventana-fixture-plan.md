@@ -1,6 +1,6 @@
 # Ventana fixture plan (Owner PART 1 section 3)
 
-> **Requires #2201 merged** before the script is run. The **controller runs this on nonprod before Codex's cross-company pass**; Claude lanes and Codex never run it. Nothing in this plan or script was executed against nonprod: no nonprod write was made and no credential was read. Revised by lane VFX (2026-10-21) against `origin/main` `b433d396`; the S50-S55 inputs below were traced in command source, not run.
+> **#2201 is merged (`96530fe3`) and must be nonprod-verified** before the script is run. The **controller runs this on nonprod before Codex's cross-company pass**; Claude lanes and Codex never run it. Nothing in this plan or script was executed against nonprod: no nonprod write was made and no credential was read. Revised by lane VFX (2026-10-21) against `origin/main` `b433d396`; the S50-S55 inputs below were traced in command source, not run.
 
 ## 0. Rules that bind this fixture (Owner, 2026-10-21)
 
@@ -10,6 +10,8 @@
 4. **The three existing Ventana intercompany receivables are protected** (section 4).
 5. **Shared customers, company-owned records.** The fixture's Ventana-line Account is a *shared customer record*; every Ventana Commercial, Work Order and Finance record is *company-owned* (section 5).
 6. **Retail and National Accounts stay distinct** Job Roles separated by channel; the plan carries one Ventana record in each channel (section 5).
+
+> **Phase 2 (Owner decisions, 2026-10-21).** The key value is `ventana` and is applied through the human-authorized procedure in `10-ventana-key-change-procedure.md` (this lane edits nothing). Governed Ventana access goes to existing personas, minimally, with Taylor-only negative controls; no Ventana personas with their own logins (OQ-08, OQ-14). Lane VFX owns the exact grant list, the dry run and the fixtures; **the three existing Ventana intercompany receivables are PROTECTED** (never mutated). Until the key is bound **every Ventana case is BLOCKED** (never PASS, never FAIL), and Codex's first run is a Taylor-only baseline. The script's API routes were corrected to the server's real routes (`/workforce/employees`, `/crm/customer`, `/commercial/sales`); `tools/uatRouteCheck.mjs` verifies them.
 
 ## 1. What exists today (from the 2026-10-21 census)
 

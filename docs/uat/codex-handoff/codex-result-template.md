@@ -1,6 +1,6 @@
 # Codex UAT result template (the format Codex returns; this file is the blank form, not a result)
 
-> **Requires #2201 merged** before any run (see `README.md`). Return one document plus an evidence folder. **No password, TOTP secret or code, access token, MFA challenge, cookie, `storageState`, trace or HAR may appear in the document or the evidence folder.** Persona keys and principal ids only.
+> **#2201 is merged (`96530fe3`) and must be nonprod-verified** before any run (see `README.md`). Return one document plus an evidence folder. **No password, TOTP secret or code, access token, MFA challenge, cookie, `storageState`, trace or HAR may appear in the document or the evidence folder.** Persona keys and principal ids only.
 
 Classification for EVERY test: **PASS / FAIL / NOT CONFIGURED / BLOCKED / NOT APPLICABLE** (definitions in `README.md` section 8). Severity for FAIL and findings: Critical / High / Medium / Low / Info.
 
@@ -59,7 +59,34 @@ Direct-API evidence, each labelled by proof type. Issuer sessions appear here an
 
 Include for every refusal: HTTP status, `code`, `category`, message shape. Never include a token, header value or request body that carries a secret.
 
-## 6. Findings
+## 5b. Firebase-runtime census (per screen; P0 Firebase-exit)
+
+Method, host, path without query, and status only. Never headers, bodies, tokens or cookies. Hosts: any Firebase or Google identity, Firestore, Cloud Functions or Hosting host (`*.googleapis.com` incl. `identitytoolkit`, `securetoken`, `firestore`; `*.firebaseio.com`; `*.firebaseapp.com`; `*.web.app`; `*.cloudfunctions.net`; `firebaseinstallations.googleapis.com`).
+
+| Persona | Screen (route) | Host | Method + path | Status | Business function that depends on it | Backlog class |
+|---|---|---|---|---|---|---|
+
+Summary lines to include: total screens opened, screens with at least one Firebase/Google request, the distinct hosts, and the ranking of Firebase services by number of personas and screens affected.
+
+## 5c. Missing functionality per role
+
+| Persona | Journey the role exists for | Completed end to end on Taylor records? | Blocked at (screen, control, API code) | Missing legitimate access, or missing functionality (no governed path) | Backlog class |
+|---|---|---|---|---|---|
+
+## 5d. Pure-Administrator comparison (OQ-11) and channel boundary (OQ-10)
+
+| Check | Composite `administrator` observed | `administratorPure` expected | Result | Notes |
+|---|---|---|---|---|
+
+| Persona (retailSales / nationalAccountsSales) | Surface (search, list, detail, API by id) | Own channel | Other channel | Result |
+|---|---|---|---|---|
+
+## 6. Findings, and the consolidated operational backlog
+
+Every finding is placed in exactly one backlog class: **P0 security/data**, **P0 Firebase-exit**, **P0 workflow**, **P1 admin/config**, **P1 CI**, **P2**, **DEFERRED** (known and tracked: Q-1 decline, DWO after #2200, CLC after #2199, or a row of `09-configuration-integrity-register.md`; record it, do not re-report it as new). The backlog table below is the one place the controller reads first.
+
+| Id | Class | Severity | Persona(s) | Summary | Manifest id / evidence |
+|---|---|---|---|---|---|
 
 ### 6.1 Security findings
 
@@ -88,14 +115,14 @@ Rows whose expectation you believe is wrong (with the governing source you check
 | Persona tests, all tiers | | | | | | | |
 | Run now | | | | | | | |
 | Needs Taylor records | | | | | | | |
-| Needs Ventana fixtures | | | | | | | |
+| Ventana cases: BLOCKED (Ventana key not yet bound); never PASS, never FAIL | | 0 | 0 | 0 | 0 | all | 0 |
 | Blocked: unmerged PR (list the PR) | | | | | | | |
 | Blocked: Owner question (UNDETERMINED; not asserted) | | | | | | | |
 | Field-level | | | | | | | |
 | Role-level readback cells | | | | | | | |
 | Direct-API probes | | | | | | | |
 
-**Untested cases:** list every manifest id not executed, with the reason code (`PIN`, `CREDENTIAL`, `MFA_ENROLLMENT`, `UNMERGED_PR`, `OWNER_QUESTION`, `NO_RECORD`, `NO_FIXTURE`, `IDENTITY_MISMATCH`, `OTHER:<text>`).
+**Untested cases:** list every manifest id not executed, with the reason code (`PIN`, `CREDENTIAL`, `MFA_ENROLLMENT`, `UNMERGED_PR`, `VENTANA_KEY_NOT_BOUND`, `OWNER_QUESTION`, `NO_RECORD`, `NO_FIXTURE`, `IDENTITY_MISMATCH`, `OTHER:<text>`).
 
 ## 8. Attestation
 

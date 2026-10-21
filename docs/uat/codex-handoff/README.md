@@ -1,23 +1,35 @@
 # Codex UAT handoff: independent browser and authorization test of EOS nonprod
 
-> **REQUIRES #2201 MERGED.** The persona harness target allowlist (PR #2201: registered nonprod endpoints only; caller config cannot widen the allowlist; the loopback test exception is test-only infrastructure; one guarded transport for every credential and token; browser login separate from issuer proof) is a **prerequisite**. Until the controller confirms it is merged and the version pin below includes it, **do not start any run that sends a credential, a password, an MFA code or a token anywhere.** This README is written against that final design.
+> **#2201 IS MERGED (`96530fe3`) AND MUST BE NONPROD-VERIFIED before any run.** The persona harness target allowlist (registered nonprod endpoints only; caller config cannot widen the allowlist; the loopback test exception is test-only infrastructure; one guarded transport for every credential and token; browser login separate from issuer proof: results carry `proof: "login-mfa"` or `proof: "issuer-api"`) is a **prerequisite**. Until the controller confirms it is verified on nonprod and the version pin below includes it, **do not start any run that sends a credential, a password, an MFA code or a token anywhere.**
 >
 > Rows that depend on other unmerged PRs are marked `after #NNNN` in the manifest and are BLOCKED until the pin includes the merge: **#2200** (DWO: Work Order company boundary) and **#2199** (CLC: company-less record correction).
+>
+> **Codex's FIRST run is a Taylor-only BASELINE** (section 0). It starts as soon as #2201 is nonprod-verified. **Every Ventana case is BLOCKED** in the coverage report, with the reason "Ventana key not yet bound" (`../10-ventana-key-change-procedure.md`): never PASS, never FAIL.
 
-Issued: 2026-10-21 (America/Phoenix) · Repository pin at issue: `835e5982` (`origin/main`) · Authority: the Owner direction "Codex UAT" (2026-10-21). Claude stays the implementation controller and fixes **only** the defects Codex independently proves. Codex is the independent tester: it reports, it does not fix, it does not broaden any permission, and it does not trust the controller's own evidence.
+Issued: 2026-10-21 (America/Phoenix) · Phase 2 update: 2026-10-21 (Owner decisions applied) · Repository pin at issue: `b433d396` (`origin/main`) · Authority: the Owner direction "Codex UAT" (2026-10-21). Claude stays the implementation controller and fixes **only** the defects Codex independently proves. Codex is the independent tester: it reports, it does not fix, it does not broaden any permission, and it does not trust the controller's own evidence.
+
+## 0. The first run is a baseline
+
+The first run covers, for each of the 16 personas: the **real UI**, **real MFA**, **business functionality** (the journeys each role exists for, on the existing Taylor records), **permissions** (every runnable manifest tier), and **active Firebase runtime dependencies** (a per-screen census of network requests to any Firebase or Google identity, Firestore, Cloud Functions or Hosting host; method, host, path without query, and status only; never headers, bodies or tokens). It produces ONE consolidated operational backlog. Classify every finding as exactly one of: **P0 security/data**, **P0 Firebase-exit**, **P0 workflow**, **P1 admin/config**, **P1 CI**, **P2**, **DEFERRED** (known and already tracked, such as Q-1 decline, DWO after #2200, CLC after #2199, or a row already in `../09-configuration-integrity-register.md`; record it, do not re-report it as new). The result template has the sections: a Firebase-runtime census and a missing-functionality section per role.
+
+Scope of the baseline: Taylor only. The Taylor nonprod data exists (30 Opportunities, 17 Agreements, 13 Sales Orders, 77 Work Orders, 2 Invoices). The Ventana half, which needs the Ventana key bound and synthetic Ventana records, stays **BLOCKED (Ventana key not yet bound)**. The three existing Ventana intercompany receivables are protected and read-only. Accounts are shared customer records: readable across Taylor and Ventana with the existing Account authorization, never exposing the other company's Commercial or Finance records.
 
 ## 1. What is in this package
 
 | File | Use |
 |---|---|
-| `expected-access-manifest.json` | Read-only, machine-readable EXPECTED access: ~12k rows `persona -> role(s) -> company -> object -> action/field -> allow / deny / UNDETERMINED`, each with its governing source (capability key, role-object permission, or Owner ruling) in the top-level `sources` table. Derived from governed authority, never from role names. |
+| `expected-access-manifest.json` | Read-only, machine-readable EXPECTED access: ~13k rows `persona -> role(s) -> company -> object -> action/field -> allow / deny` (there are no UNDETERMINED rows after the Owner decisions), each with its governing source (capability key, role-object permission, or Owner ruling) in the top-level `sources` table, a `runStatus` and, where blocked, a `blockedBy` reason. Includes the separately tagged **pure-Administrator evidence** persona `administratorPure` (group `pure-admin`: the `admin` Role alone, OQ-11) and the `channel-boundary` tier (Retail vs National Accounts). Derived from governed authority, never from role names. |
 | `role-inventory.md` | Deliverable A: all 55 Security Roles, the 16 personas, roles with no assignee, personas with no role. |
 | `object-inventory.md` | Deliverable B: all Business Objects, fields, CRED, capabilities, pages, API operations, and the registered-vs-deployed reconciliation. |
 | `effective-access-matrix.md` | Deliverable C: how EXPECTED is derived, headline views, configuration divergences, the decisions that change expectations after unmerged PRs. |
 | `test-plan.md` | Deliverables D/E: per persona, positive and negative cases (Service, Sales Retail vs National Accounts, Inventory/Warehouse, Finance, Administration, Goals), search, related records, dashboards, reports, paired direct-API negatives, Taylor vs Ventana cases. |
 | `codex-result-template.md` | What you must return, and the classification you must use. |
 | `../05-ventana-fixture-plan.md`, `../tools/ventana-uat-fixture.mjs` | The synthetic Ventana fixtures. **The controller runs these before your cross-company pass.** You never run them. |
-| `../06-coverage-denominators.md`, `../07-owner-questions.md`, `../data/*.csv` | Exact test counts; the UNDETERMINED items (do not assert them); flat data. |
+| `../06-coverage-denominators.md`, `../07-owner-questions.md`, `../data/*.csv` | Exact test counts; the Owner's 2026-10-21 decisions and how each was applied; flat data. |
+| `../09-configuration-integrity-register.md` | Known grid-vs-capability divergences and other configuration findings (P1 admin/config; recorded, not failures; no automatic grants). |
+| `../11-classification-tables.md` | Hidden built pages and unassigned Roles: purpose, users, ready or placeholder, proposal. Nothing is exposed or retired by it; hidden pages stay HIDDEN. |
+| `../10-ventana-key-change-procedure.md` | The human-authorized procedure that binds the Ventana key. Until it is applied every Ventana case is BLOCKED. |
+| `../tools/uatRouteCheck.mjs` | Offline check that every API path in the plan is a route the server dispatches (`/workforce/employees`, `/crm/customer`, `/commercial/sales`, `/operations/*`, `/admin/policy`). |
 
 Regenerate nothing yourself. If a manifest row looks wrong, report it as a **manifest defect** with the evidence; do not edit the manifest.
 
@@ -45,7 +57,7 @@ Regenerate nothing yourself. If a manifest row looks wrong, report it as a **man
 3. Keep `loginEosPersona()` **API authentication** distinct from a real **Playwright browser login**. They are different proofs and go in different report sections.
 4. **Browser UAT goes through the real EOS login and MFA screens.** The TOTP code is computed from the protected enrollment file and **typed into the UI**. Do not seed a session into a browser as a substitute for the login.
 5. `EOS_PERSONA_ISSUER_CREDENTIAL` is for **nonprod direct-API authorization tests only**. Issuer sessions **never** count as login or MFA proof (section 6).
-6. **Target safety.** After #2201, verify that an explicit `baseUrl`, `EOS_API_BASE_URL` or `origin` override cannot point the harness at anything but a registered nonprod entry (test with a throwaway fake credential value and an unregistered URL; the expected result is a refusal that carries a code and the URL, **before** any request is sent). Before #2201 this is a known defect (see 5.2): do not run.
+6. **Target safety.** Verify (#2201 is merged) that an explicit `baseUrl`, `EOS_API_BASE_URL` or `origin` override cannot point the harness at anything but a registered nonprod entry (test with a throwaway fake credential value and an unregistered URL; the expected result is a refusal that carries a code and the URL, **before** any request is sent). On a pin that lacks #2201 this is a known defect (section 5): do not run.
 7. **Never expose** a password, a TOTP secret, a TOTP or recovery code, an access token, an MFA challenge value, or reusable session storage in logs, screenshots, traces, HAR files or reports (section 4.5 says how to configure Playwright so it cannot capture them).
 8. **Do not search for credential files.** The operator sets `EOS_PERSONA_CREDENTIALS_FILE` explicitly. If it is unset, the persona is BLOCKED.
 9. **Do not re-enroll** a persona with a missing or invalid MFA enrollment. Mark it **BLOCKED** and move on. Never run `functions/scripts/enrollPersonaLogins.js`.
@@ -116,13 +128,13 @@ for (const k of keys) {
 
 `API-LOGIN-OK` shows that password and TOTP complete over the API; it is **not** the browser login proof (rule 3). Any other code: BLOCKED for that persona (rule 9).
 
-## 5. Known harness finding and what to verify after #2201
+## 5. Harness finding (fixed by #2201, merged as `96530fe3`) and what to verify on nonprod
 
-### 5.1 The finding (read-only citation; the controller fixes it in #2201)
+### 5.1 The finding (read-only citation of the pre-fix code; it is the reason #2201 exists)
 
 `scripts/eosPersonaSession.mjs`, function `eosApiBaseUrl` (lines 32-41): line 33 `if (baseUrl) return ...` and line 34 `if (env.EOS_API_BASE_URL) return ...` **return before** the production-role check at line 38 (`entry.role === "production"`), so an explicit override is never checked against production or against any allow-list. The `origin` override in `loginEosPersona` (line 143, `options.origin ?? ...`) is unchecked too. Both the password+MFA path and the issuer path call `eosApiBaseUrl`, so a mistyped override could send a password, an MFA code, the issuer credential or a token to an unintended host.
 
-### 5.2 What #2201 must have changed (verify, do not assume)
+### 5.2 What #2201 changed (verify on the deployed pin, do not assume)
 
 Registered nonprod endpoints only (exact, normalized comparison); caller config cannot widen the allowlist; API and origin must belong to the same registered environment; refusal **before** any secret leaves the process; no redirect out of the approved environment; one validator for both `loginEosPersona` and `issueEosPersonaSession`; results carry `proof: "login-mfa"` or `proof: "issuer-api"`. Record the checks you ran (a fake credential with an unregistered URL, a lookalike host, a production URL) and the refusal codes.
 
@@ -132,12 +144,14 @@ Registered nonprod endpoints only (exact, normalized comparison); caller config 
 
 ## 7. Run order
 
-1. Pin check (2.1) and #2201 confirmation. 2. Credential preflight (4.6) -> BLOCKED list. 3. **Login proof**, per persona in an isolated context: password -> `MFA_REQUIRED` -> TOTP -> shell; identity check (rule 11). 4. The persona's browser matrix (test plan section 2). 5. The paired direct-API negatives (test plan section 3), by `loginEosPersona()` token or issuer token, each labelled by proof type. 6. After the controller confirms the Ventana fixtures: the cross-company pass (test plan section 4). 7. Report (`codex-result-template.md`).
+1. Pin check (2.1) and #2201 confirmation. 2. Credential preflight (4.6) -> BLOCKED list. 3. **Login proof**, per persona in an isolated context: password -> `MFA_REQUIRED` -> TOTP -> shell; identity check (rule 11). 4. The persona's browser matrix (test plan section 2). 5. The paired direct-API negatives (test plan section 3), by `loginEosPersona()` token or issuer token, each labelled by proof type. 6. Firebase-runtime census and missing-functionality notes, recorded as you walk (test plan sections 7 and 8). 7. Report (`codex-result-template.md`). The Ventana half is NOT part of the baseline: it stays BLOCKED (Ventana key not yet bound); a later pass runs it only after the controller reports the key bound and the fixtures in place.
+
+**API paths.** Direct-API calls go to the server's real routes only: `POST /workforce/employees`, `POST /crm/customer`, `POST /commercial/sales`, `POST /admin/policy`, and `POST /operations/<domain>` (`inventory`, `experience`, `cycle-count`, `relocation`, `transfer`, `placement`, `serialized-asset`, `work-orders`, `inbound-work`, `equipment`, `finance`, `rental`, `analysis`, `workspace`, `workflow`, `catalog`), each with body `{ "operation": "<name>", "input": { ... } }`. The bare prefixes `/workforce`, `/crm` and `/commercial` are NOT routes (phase 1 listed them by mistake; `tools/uatRouteCheck.mjs` now refuses them). A `UNKNOWN_OPERATION` from a path outside this list is a harness mistake, not a finding.
 
 Persona order for mutating cases: run one persona at a time; finish and close its context before the next. Do not run two personas against the same record at once.
 
 ## 8. Classification and severity
 
-Every test is exactly one of: **PASS** (observed equals expected), **FAIL** (observed differs from a determined expectation), **NOT CONFIGURED** (the record, fixture or enrollment the test needs does not exist), **BLOCKED** (cannot run: pin, credentials, MFA enrollment, unmerged PR, UNDETERMINED expectation, identity mismatch), **NOT APPLICABLE** (no such act exists). Never count BLOCKED or NOT CONFIGURED as PASS.
+Every test is exactly one of: **PASS** (observed equals expected), **FAIL** (observed differs from a determined expectation), **NOT CONFIGURED** (the record, fixture or enrollment the test needs does not exist), **BLOCKED** (cannot run: pin, credentials, MFA enrollment, unmerged PR, **Ventana key not yet bound** (every Ventana case; never PASS, never FAIL), identity mismatch), **NOT APPLICABLE** (no such act exists). Never count BLOCKED or NOT CONFIGURED as PASS.
 
 Severity for FAIL and findings: **Critical** (MFA bypass; a refusal that leaks or writes; cross-company read or write; privilege escalation; a secret exposed), **High** (an unauthorized read of company, channel, or assignment-scoped data; an unauthorized mutation attempt that is accepted), **Medium** (missing legitimate access: a persona cannot do or see what the manifest says it must; UI offers a control the API refuses), **Low** (copy, ordering, cosmetic), **Info** (static findings confirmed, drift observed).
