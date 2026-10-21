@@ -432,6 +432,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // F-1a issue invoice (1764700000000): its down refuses only if an issued invoice or a number counter exists, and nothing here wrote one, so it is peeled first of all.
     // SAE Rule 2 delegated exemption (1764718000000): its down refuses only if a correction was decided under it or a grant / decision names an exemption key, and nothing here wrote one, so it is peeled first of all.
     if ((await newest()) === "1764718000000_delegated-self-approval-exemption") migrate("down", 1);
+    // S1c holders (1764717000000): its down refuses only while an Administration decision names salesOrder.fulfill for its four Roles, and nothing here wrote one, so it is peeled first of all.
+    if ((await newest()) === "1764717000000_sales-order-allocation-owner-holders") migrate("down", 1);
     // SAE protected-Owner exemption (1764716000000): its down refuses only if a decision was recorded under the exemption, and nothing here wrote one, so it is peeled first of all.
     if ((await newest()) === "1764716000000_protected-owner-secondary-approval-exemption") migrate("down", 1);
     // S1c Sales Order allocation (1764714000000): its down refuses only if a Sales Order commitment row, an Administration decision or a direct grant names it, and nothing here wrote one, so it is peeled first of all.
