@@ -174,9 +174,3 @@ export async function extractNavigation() {
 }
 
 export function readRepoJson(rel) { return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8")); }
-export function gitHead() {
-  try {
-    const head = fs.readFileSync(path.join(REPO_ROOT, ".git"), "utf8"); // worktree pointer file
-    return head.trim();
-  } catch { return null; }
-}

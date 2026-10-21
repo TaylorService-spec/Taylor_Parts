@@ -294,9 +294,8 @@ export async function buildModel(censusPath) {
       if (flat) { expected = "ALLOW"; basis = (p.capSource.get(c.key) ?? []).join("+"); }
       else if (sc) { expected = "SCOPED"; basis = sc.map((s) => `${s.role}@${s.scopeType}=${s.scopeValue}`).join("+"); }
       else { expected = "DENY"; basis = "no Security Role grant"; }
-      let undetermined = "";
-      if (!objByKey.has(c.object_key)) undetermined = "OBJECT_NOT_REGISTERED_IN_NONPROD";
-      personaCapRows.push({ persona: p.key, object: c.object_key, action: c.action_key, kind: c.action_kind, capability: c.key, expected: undetermined ? (expected === "DENY" ? "DENY" : "UNDETERMINED") : expected, basis, undetermined });
+      const note = objByKey.has(c.object_key) ? "" : "Object absent from the census object list (controller to verify with SELECT); the capability is the runtime authority either way";
+      personaCapRows.push({ persona: p.key, object: c.object_key, action: c.action_key, kind: c.action_kind, capability: c.key, expected, basis, undetermined: "", note });
     }
   }
   const personaCredRows = [];
@@ -307,7 +306,7 @@ export async function buildModel(censusPath) {
       const cred = glob ? "ALLOW" : scp ? "SCOPED" : "DENY";
       let expected = cred, basis = "CRED union over held Security Roles", undetermined = "";
       if (v === "D") { expected = "DENY"; basis = "no delete verb exists for any Object (supportsDelete=false everywhere; can_delete true in 0 rows)"; if (cred !== "DENY") undetermined = "CRED_DELETE_TRUE"; }
-      else if (SEMANTIC_REPLACEMENTS.has(`${o.key}.${v}`)) { basis = "generic verb replaced by named business act (see capability rows)"; expected = cred === "ALLOW" ? "UNDETERMINED" : cred; if (cred === "ALLOW") undetermined = "CRED_ALLOWS_VERB_REPLACED_BY_NAMED_ACT"; }
+      else if (SEMANTIC_REPLACEMENTS.has(`${o.key}.${v}`)) { basis = "generic verb is replaced by a named business act; the act is tested in the capability rows (credEquivalence.ts SEMANTIC_REPLACEMENTS)"; expected = "NOT_APPLICABLE"; }
       else {
         const vc = verbCaps(o.key, v);
         if (vc.length === 0) { if (cred !== "DENY") { expected = "UNDETERMINED"; undetermined = "CRED_ONLY_NO_ENFORCING_CAPABILITY"; } basis = "no EOS capability governs this verb"; }

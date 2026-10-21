@@ -1,0 +1,56 @@
+key,name,protected,companyAuthorityEffect,grants,standingImplied,effectiveForHolder,activeAssignments,disabledAssignments,activeAssignees,personaAssignees,scopes,credRows,credCanRead,credCanCreate,credCanEdit,flags
+accountingManager,Accounting Manager,false,OPERATIONAL,27,0,27,1,0,persona:financeAccounting,financeAccounting,,13,13,2,3,
+admin,Administrator (compatibility),true,OPERATIONAL,136,30,166,1,1,persona:administrator,administrator,,35,35,11,14,PROTECTED
+commercialSharedContext,Commercial Shared Context,false,OPERATIONAL,4,0,4,6,2,user:Indigo Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona; user:Dana Whitfield; user:Quinn Sullivan; user:Robin Castillo; persona:retailSales; persona:nationalAccountsSales,retailSales|nationalAccountsSales,,0,0,0,0,
+controller,Controller,false,OPERATIONAL,26,0,26,1,0,persona:financeAccounting,financeAccounting,,13,13,2,2,
+crmActivityContributor,CRM Activity Contributor,false,OPERATIONAL,2,0,2,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE
+dispatcher,Dispatcher (compatibility),false,OPERATIONAL,43,0,43,3,0,persona:dispatcher; persona:administrator; fixture:SYNTHETIC NONPROD Dispatcher,dispatcher|administrator,,14,14,7,7,
+emailIntakeAdministrator,Email Intake Administrator,false,OPERATIONAL,0,0,0,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS
+equipmentCatalogAdministrator,Equipment Catalog Administrator,false,OPERATIONAL,0,0,0,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS
+equipmentInstaller,Equipment Installer,false,OPERATIONAL,1,0,1,2,0,user:Gray Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona; persona:serviceTechnician,serviceTechnician,,0,0,0,0,
+equipmentRegisterManager,Equipment Register Manager,false,OPERATIONAL,1,0,1,2,0,persona:administrator; persona:officeManager,administrator|officeManager,,0,0,0,0,
+fieldManager,Service Manager,false,OPERATIONAL,39,0,39,3,0,fixture:SYNTHETIC NONPROD Service Manager; persona:serviceManager; persona:administrator,serviceManager|administrator,,10,10,1,2,
+financeCompanyAccess,Financials Company Access,false,FINANCE_ONLY,1,0,1,8,0,persona:financeAccounting@operatingCompany=taylor; persona:financeAccounting@operatingCompany=ventana; persona:administrator@operatingCompany=ventana; persona:administrator@operatingCompany=taylor; persona:generalManager@operatingCompany=ventana; persona:generalManager@operatingCompany=taylor; persona:ownerExecutive@operatingCompany=ventana; persona:ownerExecutive@operatingCompany=taylor,financeAccounting|administrator|generalManager|ownerExecutive,operatingCompany=taylor; operatingCompany=ventana,0,0,0,0,FINANCE_ONLY
+financeManager,Finance Manager,false,OPERATIONAL,27,0,27,0,0,,,,13,13,2,3,NO_ACTIVE_ASSIGNEE
+financialPolicyPreparer,Financial Policy Preparer,false,FINANCE_ONLY,2,0,2,3,0,persona:financeAccounting@operatingCompany=taylor; persona:generalManager@operatingCompany=ventana; persona:generalManager@operatingCompany=taylor,financeAccounting|generalManager,operatingCompany=taylor; operatingCompany=ventana,0,0,0,0,FINANCE_ONLY
+financialPolicyReviewer,Financial Policy Reviewer,false,FINANCE_ONLY,1,0,1,2,0,persona:ownerExecutive@operatingCompany=ventana; persona:ownerExecutive@operatingCompany=taylor,ownerExecutive,operatingCompany=ventana; operatingCompany=taylor,0,0,0,0,FINANCE_ONLY
+generalEmployee,General Employee,false,OPERATIONAL,0,0,0,1,0,persona:generalEmployee,generalEmployee,,0,0,0,0,NO_CAPABILITY_GRANTS
+generalManager,General Manager,false,OPERATIONAL,58,0,58,2,0,fixture:SYNTHETIC NONPROD General Manager; persona:generalManager,generalManager,,16,16,7,8,
+inventoryBinAdministrator,Inventory Bin Administrator,false,OPERATIONAL,2,0,2,2,0,persona:warehouseManager; fixture:SYNTHETIC NONPROD Warehouse Manager,warehouseManager,,0,0,0,0,
+inventoryCatalogAdministrator,Inventory Catalog Administrator,false,OPERATIONAL,7,0,7,0,0,,,,2,2,0,1,NO_ACTIVE_ASSIGNEE
+inventoryCreateExecutor,Inventory CREATE Executor (temporary),false,OPERATIONAL,1,0,1,0,0,,,,1,0,0,1,NO_ACTIVE_ASSIGNEE|TEST_OR_TEMPORARY_ROLE
+inventoryCycleCountCounter,Inventory Cycle Count Counter,false,OPERATIONAL,3,0,3,3,0,user:Kendall Price; persona:warehouseAssociate; fixture:SYNTHETIC NONPROD Warehouse Associate,warehouseAssociate,,1,0,1,1,
+inventoryCycleCountReconciler,Inventory Cycle Count Reconciler,false,OPERATIONAL,2,0,2,3,0,persona:warehouseManager; persona:administrator; fixture:SYNTHETIC NONPROD Warehouse Manager,warehouseManager|administrator,,1,0,0,1,
+inventoryLookupReader,Inventory Lookup Reader,false,OPERATIONAL,3,0,3,7,0,persona:warehouseManager; persona:partsAssociate; persona:administrator; persona:warehouseAssociate; persona:partsManager; user:Gray Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona; persona:serviceTechnician,warehouseManager|partsAssociate|administrator|warehouseAssociate|partsManager|serviceTechnician,,1,1,0,0,
+inventoryPutAwayOperator,Inventory Put-Away Operator,false,OPERATIONAL,2,0,2,1,0,persona:warehouseAssociate,warehouseAssociate,,0,0,0,0,
+inventoryReceivingClerk,Inventory Receiving Clerk,false,OPERATIONAL,2,0,2,2,0,persona:partsAssociate; fixture:SYNTHETIC NONPROD Parts Associate,partsAssociate,,2,1,0,2,
+inventoryReturnsIntakeClerk,Inventory Returns Intake Clerk,false,OPERATIONAL,1,0,1,1,0,persona:administrator,administrator,,0,0,0,0,
+inventorySerializedAssetAcquirer,Inventory Serialized Asset Acquirer,false,OPERATIONAL,0,0,0,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS
+inventoryStockRelocationOperator,Inventory Stock Relocation Operator,false,OPERATIONAL,5,0,5,1,0,persona:warehouseAssociate,warehouseAssociate,,2,2,0,0,
+inventoryTransferOperator,Inventory Transfer Operator,false,OPERATIONAL,3,0,3,2,0,persona:serviceManager; persona:warehouseAssociate,serviceManager|warehouseAssociate,,1,0,1,1,
+inventoryTransferReceiver,Inventory Transfer Receiver,false,OPERATIONAL,1,0,1,1,0,persona:warehouseManager,warehouseManager,,1,0,0,1,
+marketingManager,Marketing Manager,false,OPERATIONAL,3,0,3,0,0,,,,3,3,0,0,NO_ACTIVE_ASSIGNEE
+officeManager,Office Manager,false,OPERATIONAL,7,0,7,2,0,persona:officeManager; fixture:SYNTHETIC NONPROD Office Manager,officeManager,,2,1,2,1,
+operationalConfigurationAdministrator,Operational Configuration Administrator,false,OPERATIONAL,3,0,3,3,1,persona:warehouseManager; persona:administrator; persona:officeManager,warehouseManager|administrator|officeManager,,0,0,0,0,
+operationsManager,Operations Manager,false,OPERATIONAL,20,0,20,0,0,,,,10,9,2,2,NO_ACTIVE_ASSIGNEE
+owner,Owner,true,OPERATIONAL,127,0,127,1,1,persona:ownerExecutive,ownerExecutive,,22,22,10,14,PROTECTED
+partsAssociate,Parts Associate,false,OPERATIONAL,26,0,26,3,0,persona:partsAssociate; persona:administrator; fixture:SYNTHETIC NONPROD Parts Associate,partsAssociate|administrator,,9,9,1,1,
+partsManager,Parts Manager,false,OPERATIONAL,35,0,35,3,0,fixture:SYNTHETIC NONPROD Parts Manager; persona:administrator; persona:partsManager,administrator|partsManager,,11,11,3,3,
+performanceGoalSubject,Performance Goal Subject,false,OPERATIONAL,1,0,1,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE
+purchasingManager,Purchasing Manager,false,OPERATIONAL,27,0,27,2,0,fixture:SYNTHETIC NONPROD Parts Manager; persona:partsManager,partsManager,,12,12,1,0,
+reportAuthor,Report Author,false,OPERATIONAL,3,0,3,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE
+reportFinanceViewer,Report Finance Viewer,false,OPERATIONAL,5,0,5,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE
+reportViewer,Report Viewer,false,OPERATIONAL,27,0,27,1,0,persona:reportingAnalyst,reportingAnalyst,,1,1,0,0,
+salesManager,Sales Manager,false,OPERATIONAL,27,0,27,3,2,user:Dana Whitfield@salesChannel=RETAIL; persona:administrator; user:Robin Castillo@salesChannel=NATIONAL_ACCOUNTS,administrator,salesChannel=RETAIL; salesChannel=NATIONAL_ACCOUNTS,10,10,3,4,
+salesperson,Salesperson,false,OPERATIONAL,20,0,20,6,7,user:Indigo Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona@salesChannel=RETAIL; user:Dana Whitfield@salesChannel=RETAIL; user:Quinn Sullivan@salesChannel=NATIONAL_ACCOUNTS; user:Robin Castillo@salesChannel=NATIONAL_ACCOUNTS; persona:retailSales@salesChannel=RETAIL; persona:nationalAccountsSales@salesChannel=NATIONAL_ACCOUNTS,retailSales|nationalAccountsSales,salesChannel=RETAIL; salesChannel=NATIONAL_ACCOUNTS,9,9,3,4,
+serviceInboundWorkReviewer,Service Inbound Work Reviewer,false,OPERATIONAL,6,0,6,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE
+shopAssociate,Shop Associate,false,OPERATIONAL,11,0,11,0,0,,,,9,9,1,1,NO_ACTIVE_ASSIGNEE
+shopManager,Shop Manager,false,OPERATIONAL,12,0,12,0,0,,,,10,10,1,1,NO_ACTIVE_ASSIGNEE
+supportStaff,Support Staff,false,OPERATIONAL,1,0,1,0,0,,,,1,1,0,0,NO_ACTIVE_ASSIGNEE
+technician,Technician (compatibility),false,OPERATIONAL,8,0,8,13,0,user:Ava Ramirez; user:Sofia Alvarez; user:Grace Kim; user:Ethan Clark; user:Noah Bennett; user:Gray Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona; user:Oakley Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona; fixture:SYNTHETIC NONPROD Service Technician; persona:serviceTechnician; user:Olivia Turner; user:Liam Patel; fixture:SYNTHETIC NONPROD Service Technician B; fixture:SYNTHETIC NONPROD Contract Technician,serviceTechnician,,3,3,1,1,
+technicianLaborRecorder,Technician Labor Recorder,false,OPERATIONAL,0,0,0,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS
+warehouseAssociate,Warehouse Associate,false,OPERATIONAL,15,0,15,3,0,user:Kendall Price; persona:warehouseAssociate; fixture:SYNTHETIC NONPROD Warehouse Associate,warehouseAssociate,,8,8,0,0,
+warehouseManager,Warehouse Manager,false,OPERATIONAL,26,0,26,3,0,persona:warehouseManager; persona:administrator; fixture:SYNTHETIC NONPROD Warehouse Manager,warehouseManager|administrator,,11,10,1,1,
+workOrderLaborCorrector,Work Order Labor Corrector,false,OPERATIONAL,0,0,0,0,0,,,,0,0,0,0,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS
+workOrderPartsPlanner,Work Order Parts Planner,false,OPERATIONAL,0,0,0,0,0,,,,1,0,0,1,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS
+zz_nonprod_acceptance,ZZ NONPROD Acceptance Role (post-fix),false,OPERATIONAL,0,0,0,0,8,,,,2,0,0,0,NO_ACTIVE_ASSIGNEE|NO_CAPABILITY_GRANTS|TEST_OR_TEMPORARY_ROLE
