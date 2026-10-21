@@ -225,7 +225,7 @@ test("STRUCTURE: the Commercial surfaces outside the transport's record reads al
   const has = (file, needles) => { const src = code(file); for (const n of needles) assert.ok(src.includes(n), `${file} is missing ${n}`); return src; };
   // H-1 site-wide search: the three Commercial kinds carry the predicate in their WHERE, bound after the channel and reach-key slots.
   const search = has("eosExperience/myWork.ts", ["{{COMPANY_o}} AND (o.opportunity_number ILIKE", "{{COMPANY_o}} AND (o.sales_order_number ILIKE", "{{COMPANY_g}} AND (g.sales_agreement_number ILIKE",
-    "resolveCommercialCompanyReach", "company.sql(alias, 5)"]);
+    "resolveCommercialCompanyReach", "company.sql(alias, 4)"]);
   assert.equal([...search.matchAll(/commercial: true/g)].length, 3, "exactly the three Commercial kinds");
   // L-2 My Work: every family of 'records I own / am accountable for'.
   has("eosExperience/myWork.ts", ['company.sql("o", 4)']);

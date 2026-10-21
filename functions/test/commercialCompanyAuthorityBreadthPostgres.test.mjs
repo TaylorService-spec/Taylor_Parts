@@ -21,8 +21,8 @@ const T = "t-q1ab";
 const WS = "/operations/workspace";
 
 test("Q-1a breadth: search, My Work, record ownership, coordinated visits, CRM activity links, Agreement lineage", { skip: SKIP, concurrency: 1 }, async (t) => {
-  const { q, admin, person, call, pool } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: T, prefix: "q1ab" });
-  const responsibility = require("../lib/eosWorkforce/reads/employeeResponsibilityReads.js");
+  const { q, admin, person, call, pool, repo } = await serviceBaselineTenant(t, { urlBase: URL_BASE, tenant: T, prefix: "q1ab" });
+  const workforce = require("../lib/eosWorkforce/workforceHttp.js");
   const coordinated = require("../lib/eosOps/coordinatedVisitPostgresRead.js");
   const crmActivity = require("../lib/eosCrm/crmActivityAuthority.js");
   const sa = require("../lib/eosCommercial/commands/salesAgreementCommandService.js");
@@ -90,26 +90,31 @@ test("Q-1a breadth: search, My Work, record ownership, coordinated visits, CRM a
   });
 
   await t.test("H-2 record ownership and accountability lists are bounded by company authority; a caller reaching nothing gets an empty page", async () => {
-    const actor = (principalId) => ({ tenantId: T, principalId, capabilities: new Set(["opportunity.read", "salesAgreement.read", "salesOrder.read"]) });
-    const ids = async (fn, who, family) => (await fn({ pool }, actor(who), { employeeId: "e-tay", family })).items.map((i) => i.recordId).sort();
-    const owned = responsibility.listRecordsOwnedByEmployee;
-    const accountable = responsibility.listAccountabilitiesForEmployee;
+    // Through the Workforce transport, as served: the real principals, roles and entitlements.
+    const ids = async (operation, who, family) => {
+      const r = await workforce.executeWorkforceOperation({ reader: repo, pool }, { caller: { externalSubject: who.subject, identityProvider: "firebase", requestedTenantId: null }, operation, input: { employeeId: "e-tay", family } });
+      assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+      return r.result.items.map((i) => i.recordId).sort();
+    };
+    const owned = "listRecordsOwnedByEmployee";
+    const accountable = "listAccountabilitiesForEmployee";
     for (const fn of [owned, accountable]) {
       // opp-n2 is accountable to e-tay but owned by another Employee and created by another Principal: Taylor's reader has no claim on it.
-      assert.deepEqual(await ids(fn, tay.principalId, "OPPORTUNITY"), ["opp-n", "opp-t"], "Taylor's, and the company-less one it owns");
-      assert.deepEqual(await ids(fn, ven.principalId, "OPPORTUNITY"), ["opp-v"]);
-      assert.deepEqual(await ids(fn, none.principalId, "OPPORTUNITY"), [], "an empty page, not a refusal that reveals the family has rows");
-      assert.deepEqual(await ids(fn, adminP.principalId, "OPPORTUNITY"), fn === owned ? ["opp-n", "opp-t", "opp-v"] : ["opp-n", "opp-n2", "opp-t", "opp-v"], "the protected Administrator is unchanged");
-      assert.deepEqual(await ids(fn, tay.principalId, "SALES_ORDER"), ["so-t"]);
-      assert.deepEqual(await ids(fn, tay.principalId, "SALES_AGREEMENT"), ["sag-t"]);
+      assert.deepEqual(await ids(fn, tay, "OPPORTUNITY"), ["opp-n", "opp-t"], "Taylor's, and the company-less one it owns");
+      assert.deepEqual(await ids(fn, ven, "OPPORTUNITY"), ["opp-v"]);
+      assert.deepEqual(await ids(fn, none, "OPPORTUNITY"), [], "an empty page, not a refusal that reveals the family has rows");
+      assert.deepEqual(await ids(fn, adminP, "OPPORTUNITY"), fn === owned ? ["opp-n", "opp-t", "opp-v"] : ["opp-n", "opp-n2", "opp-t", "opp-v"], "the protected Administrator is unchanged");
+      assert.deepEqual(await ids(fn, tay, "SALES_ORDER"), ["so-t"]);
+      assert.deepEqual(await ids(fn, tay, "SALES_AGREEMENT"), ["sag-t"]);
     }
   });
 
   await t.test("M-1 coordinated visits: a foreign Sales Order's number and line refs are absent; the caller's own are carried", async () => {
     const status = coordinated.ACTIVE_COORDINATION_STATUSES[0];
     for (const [wo, so] of [["wo-t", "so-t"], ["wo-v", "so-v"]]) {
+      await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('loc-1',$1,'acct-1','Downtown','f','f') ON CONFLICT DO NOTHING`, [T]);
       await q(`INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, work_order_number, status, work_order_type, priority, customer_id, location_id, sales_order_id, provenance, created_at, updated_at)
-               VALUES ($1,$2,'taylor',$3,$4,'SERVICE_CALL',3,'acct-1',NULL,$5,'MIGRATED', now(), now())`, [wo, T, `WO-2026-${wo}`, status, so]);
+               VALUES ($1,$2,'taylor',$3,$4,'SERVICE_CALL',3,'acct-1','loc-1',$5,'MIGRATED', now(), now())`, [wo, T, `WO-2026-${wo}`, status, so]);
       await q(`INSERT INTO eos_ops.work_order_sales_order_lines (tenant_id, work_order_id, sales_order_id, sales_order_line_id) VALUES ($1,$2,$3,'1')`, [T, wo, so]);
     }
     const read = (who) => coordinated.readCoordinatedOperations({ pool }, { tenantId: T, principalId: who, capabilities: new Set([coordinated.COORDINATED_VISIT_CAPABILITY.key]) });
@@ -137,9 +142,12 @@ test("Q-1a breadth: search, My Work, record ownership, coordinated visits, CRM a
   });
 
   await t.test("M-3 an Agreement carries its source Opportunity's operating company: an explicit, different one is refused, with nothing written", async () => {
+    // A fresh Taylor Opportunity with no Agreement (the one-Agreement-per-Opportunity rule would answer first on opp-t), owned by nobody who reads here.
+    await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, accountable_employee_id, operating_company_key, sales_channel, stage, need, created_by, updated_by)
+             VALUES ('opp-t2',$1,'OPP-2026-ZZZ9','acct-1','e-nobody','e-nobody','taylor','RETAIL','IDENTIFIED','lineage fixture','p-other','p-other')`, [T]);
     const before = (await q(`SELECT count(*)::int n FROM eos_commercial.sales_agreements`)).rows[0].n;
     const actor = { tenantId: T, principalId: adminP.principalId, capabilities: new Set(["salesAgreement.create"]) };
-    const e = await refusal(() => sa.createSalesAgreement({ pool }, actor, { idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-t", ownerEmployeeId: "e-tay", operatingCompanyId: "ventana" }));
+    const e = await refusal(() => sa.createSalesAgreement({ pool }, actor, { idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-t2", ownerEmployeeId: "e-tay", operatingCompanyId: "ventana" }));
     assert.deepEqual([e.code, e.category], ["OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED"]);
     const noCompany = await refusal(() => sa.createSalesAgreement({ pool }, actor, { idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-n", ownerEmployeeId: "e-tay", operatingCompanyId: "taylor" }));
     assert.equal(noCompany.code, "OPERATING_COMPANY_MISMATCH", "a company-less Opportunity does not hand its child a company");

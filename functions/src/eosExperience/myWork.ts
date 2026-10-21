@@ -297,9 +297,9 @@ interface SearchKind {
   readonly kind: string; readonly label: string; readonly capabilities: readonly string[]; readonly channelScopedBy?: string; readonly reach?: "REORDER_QUEUE";
   /** Admit a holder of this capability WITHIN operatingCompany scopes, narrowed to those companies ($3), like listEmployees. */
   readonly companyScopedBy?: string;
-  /** Q-1a: a Commercial kind -- `{{COMPANY_x}}` in `sql` becomes the caller's company predicate over alias x, bound at $5..$7. */
+  /** Q-1a: a Commercial kind -- `{{COMPANY_x}}` in `sql` becomes the caller's company predicate over alias x, bound at $4..$6 (a Commercial kind uses no reach-key slot). */
   readonly commercial?: true;
-  readonly sql: string;   // $1 tenant, $2 pattern, $3 channels (text[] | null), $4 reach keys (text[] | null), $5..$7 company reach (commercial kinds)
+  readonly sql: string;   // $1 tenant, $2 pattern, $3 channels (text[] | null), $4 reach keys (text[] | null); a commercial kind binds $1 tenant, $2 pattern, $3 channels, $4..$6 company reach
 }
 
 const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
@@ -381,11 +381,11 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
     // Q-1a: a Commercial kind is ALSO bounded by the caller's operating-company authority: a foreign record, or another person's company-less one, is never
     // found, and its text (an Opportunity's need included) is never matched against the query.
     let sql = k.sql;
-    let params: unknown[] = [actor.tenantId, pattern, channels, reach];
+    let params: unknown[] = [actor.tenantId, pattern, channels, reach];  // a commercial kind replaces the reach slot with its company reach (below)
     if (k.commercial) {
       const company = companyReach ?? (companyReach = await (deps.companyReach ?? resolveCommercialCompanyReach)(deps.pool, actor.tenantId, actor.principalId));
-      sql = sql.replace(/\{\{COMPANY_([a-z])\}\}/g, (_m, alias: string) => company.sql(alias, 5));
-      params = [...params, ...company.sqlParams()];
+      sql = sql.replace(/\{\{COMPANY_([a-z])\}\}/g, (_m, alias: string) => company.sql(alias, 4));
+      params = [actor.tenantId, pattern, channels, ...company.sqlParams()];
     }
     const used = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
     const { rows } = await deps.pool.query(sql, params.slice(0, used));
