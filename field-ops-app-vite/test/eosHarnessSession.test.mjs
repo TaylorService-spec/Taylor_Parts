@@ -24,7 +24,7 @@ const deployed = await import(pathToFileURL(join(SKILL, "deployedSession.mjs")).
 const issuerClient = await import(pathToFileURL(join(REPO, "scripts", "eosPersonaSession.mjs")).href);
 const probe = await import(pathToFileURL(join(APP, "scripts", "adminUsersResponsiveProbe.mjs")).href);
 
-const BASE = "https://eos-api.test";
+const BASE = "https://eos-api-nonprod.onrender.com"; // the registered nonprod EOS API (config/environments.json)
 const CREDENTIAL = "test-issuer-credential-not-a-secret";
 // A structurally valid, unsigned-looking compact token; the client never verifies it here.
 const TOKEN = "eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJ0ZXN0In0.c2ln";
@@ -65,7 +65,7 @@ test("openEosPersonaSession issues, seeds before boot, then navigates -- and ret
   issuerClient.clearEosPersonaSessionCache();
   const issuer = fakeIssuer();
   const page = fakePage();
-  const opened = await deployed.openEosPersonaSession(page, "https://app.test/", "admin",
+  const opened = await deployed.openEosPersonaSession(page, "https://verenwardeos.vercel.app/", "admin",
     { env, baseUrl: BASE, fetch: issuer.fetch });
 
   assert.equal(issuer.calls.length, 1);
@@ -76,7 +76,7 @@ test("openEosPersonaSession issues, seeds before boot, then navigates -- and ret
 
   assert.deepEqual(page.log.map((e) => e.op), ["addInitScript", "goto"], "seed strictly before navigation");
   assert.deepEqual(page.log[0].arg, ["eos.session.v1", TOKEN]);
-  assert.equal(page.log[1].url, "https://app.test/");
+  assert.equal(page.log[1].url, "https://verenwardeos.vercel.app/");
 
   assert.equal(opened.personaKey, "administrator");
   assert.equal(opened.principalId, "pr-test-1");
@@ -86,7 +86,7 @@ test("openEosPersonaSession issues, seeds before boot, then navigates -- and ret
 test("a canonical persona key passes through unchanged", async () => {
   issuerClient.clearEosPersonaSessionCache();
   const issuer = fakeIssuer();
-  await deployed.openEosPersonaSession(fakePage(), "https://app.test/", "financeAccounting",
+  await deployed.openEosPersonaSession(fakePage(), "https://verenwardeos.vercel.app/", "financeAccounting",
     { env, baseUrl: BASE, fetch: issuer.fetch });
   assert.equal(JSON.parse(issuer.calls[0].init.body).personaKey, "financeAccounting");
 });
@@ -96,7 +96,7 @@ test("without the issuer credential it refuses before touching the page or the n
   const issuer = fakeIssuer();
   const page = fakePage();
   await assert.rejects(
-    deployed.openEosPersonaSession(page, "https://app.test/", "administrator", { env: {}, baseUrl: BASE, fetch: issuer.fetch }),
+    deployed.openEosPersonaSession(page, "https://verenwardeos.vercel.app/", "administrator", { env: {}, baseUrl: BASE, fetch: issuer.fetch }),
     (err) => err.code === "NO_ISSUER_CREDENTIAL",
   );
   assert.equal(issuer.calls.length, 0);
@@ -108,7 +108,7 @@ test("a refused issue never seeds or navigates, and the error names no secret", 
   const issuer = fakeIssuer({ status: 401, body: { ok: false, code: "ISSUER_CREDENTIAL_REFUSED" } });
   const page = fakePage();
   await assert.rejects(
-    deployed.openEosPersonaSession(page, "https://app.test/", "administrator", { env, baseUrl: BASE, fetch: issuer.fetch }),
+    deployed.openEosPersonaSession(page, "https://verenwardeos.vercel.app/", "administrator", { env, baseUrl: BASE, fetch: issuer.fetch }),
     (err) => {
       assert.equal(err.code, "ISSUER_CREDENTIAL_REFUSED");
       assert.ok(!err.message.includes(CREDENTIAL));
@@ -142,8 +142,8 @@ test("the probe refuses production targets and defaults to the canonical adminis
   assert.equal(probe.refusesTarget("https://taylor-parts.web.app"), true);
   assert.equal(probe.refusesTarget("https://taylor-parts.firebaseapp.com"), true);
   assert.equal(probe.refusesTarget("https://nonprod-frontend.test"), false);
-  const args = probe.parseProbeArgs(["--target", "https://app.test/", "--label", "after"]);
-  assert.deepEqual(args, { target: "https://app.test", label: "after", persona: "administrator" });
+  const args = probe.parseProbeArgs(["--target", "https://verenwardeos.vercel.app/", "--label", "after"]);
+  assert.deepEqual(args, { target: "https://verenwardeos.vercel.app", label: "after", persona: "administrator" });
 });
 
 test("establishProbeSession: EOS session, shell, signed-in assertion -- in that order", async () => {
@@ -151,17 +151,17 @@ test("establishProbeSession: EOS session, shell, signed-in assertion -- in that 
   const issuer = fakeIssuer();
   const page = fakePage();
   const opened = await probe.establishProbeSession(page,
-    { target: "https://app.test", persona: "administrator", env, baseUrl: BASE, fetch: issuer.fetch });
+    { target: "https://verenwardeos.vercel.app", persona: "administrator", env, baseUrl: BASE, fetch: issuer.fetch });
   assert.equal(opened.personaKey, "administrator");
   assert.deepEqual(page.log.map((e) => e.op), ["addInitScript", "goto", "waitFor"]);
-  assert.equal(page.log[1].url, "https://app.test/");
+  assert.equal(page.log[1].url, "https://verenwardeos.vercel.app/");
   assert.equal(page.log[2].sel, probe.SHELL_SELECTOR);
 });
 
 test("establishProbeSession refuses without the credential, before any page action", async () => {
   const page = fakePage();
   await assert.rejects(
-    probe.establishProbeSession(page, { target: "https://app.test", persona: "administrator", env: {} }),
+    probe.establishProbeSession(page, { target: "https://verenwardeos.vercel.app", persona: "administrator", env: {} }),
     /EOS_PERSONA_ISSUER_CREDENTIAL is not set/,
   );
   assert.equal(page.log.length, 0);
@@ -172,7 +172,7 @@ test("establishProbeSession refuses loudly when the page is the sign-in screen",
   const issuer = fakeIssuer();
   await assert.rejects(
     probe.establishProbeSession(fakePage({ signedIn: false }),
-      { target: "https://app.test", persona: "administrator", env, baseUrl: BASE, fetch: issuer.fetch }),
+      { target: "https://verenwardeos.vercel.app", persona: "administrator", env, baseUrl: BASE, fetch: issuer.fetch }),
     /NOT SIGNED IN/,
   );
 });

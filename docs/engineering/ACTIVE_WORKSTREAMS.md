@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane HAR (2026-10-21) — persona harness target allowlist: `scripts/eosPersonaSession.mjs` (password + MFA login AND nonprod persona issuer) sends a secret ONLY to an exact, normalised, registered nonproduction EOS API / application origin from `config/environments.json`, same environment, validated before anything is sent, no redirect followed; results carry `proof: "login-mfa" | "issuer-api"` (Owner review "CODEX UAT SECURITY PREREQUISITE")
+- Agent/session:       Claude Code Lane HAR · Role: builder; controller merges
+- Branch / worktree:   `har/persona-harness-target-allowlist` · `.claude/worktrees/agent-a159114919f1cc303`
+- Base commit:         `835e5982`
+- Owned paths:         `scripts/eosPersonaSession.mjs`; `field-ops-app-vite/test/eosPersonaTargetAllowlist.test.mjs` (new); the two existing harness tests' target literals (`b2EosOnlySignIn`, `eosHarnessSession`)
+- Shared paths req'd:  `field-ops-app-vite/test/suites.json` (one registration line)
+- Dependencies:        none
+- Expected outcome:    a refused target never receives a password, MFA code, issuer credential or token; Codex UAT can use the harness safely
+- Protected boundaries:none (tooling only; no product code, no deploy, no credentials read)
+- Lifecycle stage:     INTEGRATION (PR open, controller merges)
+
 - Capability:          Lane FU-2 (2026-10-20) — Finance completion: `prepareBillingPackage { salesOrderId, idempotencyKey }` on `/operations/finance` (the governed rebill trigger after an approved void; wraps the existing preparation; REUSES `finance.invoice.issue`), the server-derived `issuable` / `rebill` verdicts on the receivable read (one predicate, `issueBlocker`, shared with `issueInvoice`), and the Receivables Prepare rebill control; Issue is never offered on a financed sale
 - Agent/session:       Claude Code Lane FU-2 · Role: builder; controller merges
 - Branch / worktree:   `fu2/rebill-and-financed-issue` · `.claude/worktrees/agent-ad004157f3f83888e`

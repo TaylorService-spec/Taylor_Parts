@@ -164,15 +164,15 @@ test("the harness signs an ENROLLED persona in through the same front door: RFC 
     if (url.endsWith("/auth/login")) return { ok: true, status: 200, json: async () => ({ ok: true, status: "MFA_REQUIRED", challenge: "eosmc_x" }) };
     return { ok: true, status: 200, json: async () => ({ ok: true, session: { accessToken: "a.b.c", accessTokenExpiresAt: "2026-10-17T00:05:00Z" } }) };
   };
-  const s = await loginEosPersona("dispatcher", { credentialsFile: file, baseUrl: "https://api.test", fetch, origin: "https://app.test", nowMs: 59_000 });
-  assert.deepEqual({ ...s }, { token: "a.b.c", expiresAt: "2026-10-17T00:05:00Z", personaKey: "dispatcher" });
+  const s = await loginEosPersona("dispatcher", { credentialsFile: file, baseUrl: "https://eos-api-nonprod.onrender.com", fetch, origin: "https://verenwardeos.vercel.app", nowMs: 59_000 });
+  assert.deepEqual({ ...s }, { proof: "login-mfa", token: "a.b.c", expiresAt: "2026-10-17T00:05:00Z", personaKey: "dispatcher" });
   assert.equal(calls[0].headers["x-eos-csrf"], "1");
-  assert.equal(calls[0].headers.origin, "https://app.test");
+  assert.equal(calls[0].headers.origin, "https://verenwardeos.vercel.app");
   assert.equal(calls[1].body.code, "287082");
-  await assert.rejects(loginEosPersona("partsManager", { credentialsFile: file, baseUrl: "https://api.test", fetch, origin: "https://app.test" }), /PERSONA_NOT_ENROLLED/);
-  await assert.rejects(loginEosPersona("dispatcher", { env: {}, baseUrl: "https://api.test", fetch }), /NO_CREDENTIALS_FILE/);
+  await assert.rejects(loginEosPersona("partsManager", { credentialsFile: file, baseUrl: "https://eos-api-nonprod.onrender.com", fetch, origin: "https://verenwardeos.vercel.app" }), /PERSONA_NOT_ENROLLED/);
+  await assert.rejects(loginEosPersona("dispatcher", { env: {}, baseUrl: "https://eos-api-nonprod.onrender.com", fetch }), /NO_CREDENTIALS_FILE/);
   const refused = async () => ({ ok: false, status: 401, json: async () => ({ ok: false, code: "LOGIN_REFUSED" }) });
-  await assert.rejects(loginEosPersona("dispatcher", { credentialsFile: file, baseUrl: "https://api.test", fetch: refused, origin: "https://app.test" }), (e) => /LOGIN_REFUSED/.test(e.message) && !e.message.includes("pw-value"));
+  await assert.rejects(loginEosPersona("dispatcher", { credentialsFile: file, baseUrl: "https://eos-api-nonprod.onrender.com", fetch: refused, origin: "https://verenwardeos.vercel.app" }), (e) => /LOGIN_REFUSED/.test(e.message) && !e.message.includes("pw-value"));
 });
 
 function readdirSyncSafe(dir) {
