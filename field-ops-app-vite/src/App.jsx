@@ -203,7 +203,7 @@ import {
   EXPERIENCE_UNAVAILABLE_REASON,
   useExperienceContext,
 } from "./hooks/useExperienceContext.js";
-import EmptyState from "./shared/ui/EmptyState.jsx";
+import DeniedDestination from "./navigation/DeniedDestination.jsx";
 import { Button } from "./shared/ui/primitives";
 
 // Sprint 2.0.1 -- Navigation Foundation (Release 2.0, Platform
@@ -983,7 +983,8 @@ function WarehouseWorkspaceSurface({ role }) {
 // render and re-run every route memo that depends on it.
 const NO_LEGACY_KEYS = Object.freeze([]);
 
-function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
+// Exported for the route-level tests (test/deniedDirectRoute.test.jsx); App() remains the only production caller.
+export function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   // ════════════ WAVE 16 / LANE BQ -- THE CUTOVER, WHERE THE ROUTES ARE DECIDED ════════════
   //
   // Owner ruling F, option B: when the EOS experience authority is the navigation source it is the
@@ -1080,6 +1081,9 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               shape existed on /customers/:accountId and /equipment/:equipmentId.
               A static segment outranks a dynamic one in the router's own ranking, so simply
               emitting these routes takes the path back from the record lookup.
+              The refusal is DeniedDestination (UAT AUTH-UI-01): the governed denial in the shell plus a
+              link to the first destination this principal can open -- it used to be a bare "no results"
+              empty state with no way onward.
               Access is unchanged -- this only gives the refusal somewhere to be said. */}
           {domain.subnav
             .filter((item) => !isNavItemVisible(item, navRole, navAllowedLegacyKeys, operationalContext))
@@ -1089,10 +1093,11 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 path={item.path || undefined}
                 index={item.path === ""}
                 element={
-                  <EmptyState
-                    variant="filtered"
-                    title={`${item.label} isn't available to your role`}
-                    message="Your account doesn't have access to this area. Contact an administrator if you believe this is an error."
+                  <DeniedDestination
+                    label={item.label}
+                    role={navRole}
+                    allowedLegacyKeys={navAllowedLegacyKeys}
+                    operationalContext={operationalContext}
                   />
                 }
               />
