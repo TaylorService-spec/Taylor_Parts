@@ -350,6 +350,18 @@ stops working **immediately**: the person's very next approval of their own requ
 **Preview.** Like any change to who may do what, a grant or revoke can be previewed first (Permission Preview). Only
 the Owner can preview or commit a change to these keys.
 
+**What you see on screen.**
+
+- Every change to these keys (a Security Role grant, a direct exception, a whole-object grant, a revoke) shows a note
+  above **Preview impact**: *Only the protected Owner can grant or revoke a self-approval exemption.* The Owner's
+  preview names each person who would gain or lose the key. If anyone else previews the change, EOS shows
+  *You are not authorized to make this change, so nothing was saved and it cannot be confirmed here*, with the same
+  *only the governed protected Owner* reason, and **Confirm** stays off. Nothing is ever saved by that attempt.
+- To see who holds an exemption, open the person → **Effective Access**. A key held through a Security Role lists that
+  **Security Role** under **Source**; a key granted to the person alone is marked **Direct Exception** with its reason
+  and expiry. The person's **Direct Exceptions** section lists the direct ones. A key the person does not hold shows as
+  Denied (turn on **All Catalog Actions** to see it).
+
 ## What EOS does automatically
 
 - **Audits every change** with the actor, time, before/after and your reason; request IDs are added as provenance.
