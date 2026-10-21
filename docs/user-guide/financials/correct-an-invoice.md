@@ -33,6 +33,14 @@ Approving a refund records the refund and lets Finance reconcile it. The result 
 ## When a void is allowed
 A void is allowed only **before any payment or adjustment has been applied** to the invoice, and it needs a reason and two people. If **any** payment has been applied (even one that was later reversed), or any credit, write-off or adjustment has been approved, the invoice cannot be voided: use a credit memo instead. An invoice already sent on to an accounting provider cannot be voided here either.
 
+## Rebill after a void
+A void retires the sale's billing package and its receivable. The voided invoice **keeps its number forever** (the number is never reused). To bill the sale again:
+1. Open **Financials > Receivables** and find the **voided** invoice. Its row shows **Prepare rebill** only when the system says the sale can be billed again: the Sales Order is complete in full, nothing is already prepared for it, and this is the latest voided invoice of that sale.
+2. Choose **Prepare rebill**, then **Prepare rebill now**. This needs the same permission as issuing an invoice and the sale's company. It prepares a **new billing package**; nothing is invoiced yet.
+3. The page says a new billing package was prepared. The sale now has a **new receivable** in the list. Use **Issue invoice** on it as usual (see [Issue an invoice](issue-an-invoice.md)). It gets a **new invoice number**.
+
+Pressing the button twice, or retrying after a dropped connection, gives you the same package, not a second one. This is only for a sale whose latest invoice was voided: if the sale is not complete in full, already has a current billing package, or was never invoiced, the system refuses and nothing is created. A sale can be voided and rebilled more than once; each rebill is a new version with its own number.
+
 ## Asking for a correction
 1. Open the invoice's receivable and choose the kind of correction.
 2. Enter the **amount** (a void takes none: it is the whole invoice), and the **reason**. A refund also names the payment application it returns.

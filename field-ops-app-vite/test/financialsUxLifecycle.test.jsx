@@ -523,7 +523,7 @@ describe("F12 · Governance distinguishes its four states", () => {
 const holder = (key) => key === "finance.invoice.issue";
 const ROW = { id: "obl-1", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", sourceDomain: "BILLING_PACKAGE", sourceRecordId: "bpk-1",
   originatedMinor: "40000", settledMinor: "0", outstandingMinor: "40000", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-c", name: "Harbor Grill" },
-  sourceSalesOrder: { id: "so-1", salesOrderNumber: "SO-1" }, invoice: null };
+  sourceSalesOrder: { id: "so-1", salesOrderNumber: "SO-1" }, invoice: null, issuable: { eligible: true, reason: null } };
 const access = (issue = true) => ({ ok: true, result: { principalId: "p", consolidated: false, companies: [{ operatingCompanyId: "taylor", name: "Taylor Freezer of Arizona", actions: { view: true, issue } }] } });
 const server = (over = {}) => vi.fn(async (op, input) => {
   if (op === "readMyFinanceCompanyAccess") return over.access ?? access();
@@ -538,6 +538,7 @@ describe("the invoice-issue gate", () => {
     expect(INVOICE_ISSUE_GATE).toEqual({ issue: "finance.invoice.issue" });
     expect(SHELL_GATED_CAPABILITY_IDS).toContain("finance.invoice.issue");
     expect(FINANCE_COMMAND_OPERATIONS).toContain("issueInvoice");
+    expect(FINANCE_COMMAND_OPERATIONS).toContain("prepareBillingPackage"); // FU-2: the rebill trigger rides the SAME key, so the same gate
   });
 });
 
@@ -603,6 +604,17 @@ describe("Billing Queue > Issue invoice", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).every((b) => b.disabled)).toBe(true));
     release();
     await screen.findByText(/Invoice INV-2026-000001 issued/);
+  });
+
+  test("FU-2: Issue is shown only on the rows the server says are issuable; a financed sale is named, never offered", async () => {
+    const financedRow = { ...ROW, id: "obl-f", sourceRecordId: "bpk-f", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-f", name: "Financed Foods" },
+      issuable: { eligible: false, reason: "UNSUPPORTED_FINANCIAL_OBLIGOR" } };
+    const noVerdict = { ...ROW, id: "obl-n", sourceRecordId: "bpk-n", counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-n", name: "Old Server Diner" }, issuable: undefined };
+    const callApi = server({ items: [ROW, financedRow, noVerdict] });
+    mountQueue({ hasCapability: holder, callApi });
+    await screen.findByText("Financed Foods");
+    expect(screen.getAllByRole("button", { name: "Issue invoice" }).length).toBe(1);
+    expect(screen.getByText(/Financed sale — not invoiced here/)).toBeTruthy();
   });
 
   test("no company offered by the server means no control", async () => {

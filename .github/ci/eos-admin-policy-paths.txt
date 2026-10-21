@@ -1038,3 +1038,6 @@ functions/test/commercialCompanyAuthority.test.mjs
 functions/test/commercialCompanyAuthorityPostgres.test.mjs
 functions/test/commercialCompanyAuthorityBreadthPostgres.test.mjs
 functions/test/support/commercialCompanyReachFixture.mjs
+# FU-2 rebill trigger and Issue eligibility (2026-10-20): the suites; functions/src/eosFinance/** and the Finance client files are covered above.
+functions/test/fu2PrepareBillingPackage.test.mjs
+functions/test/fu2PrepareBillingPackagePostgres.test.mjs
