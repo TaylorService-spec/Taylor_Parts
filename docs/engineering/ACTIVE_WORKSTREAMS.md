@@ -27,6 +27,32 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+### Controller reconciliation — 2026-10-21 (Owner directive "EOS Operational Completion + Total Firebase Exit")
+The true state of this program window's lanes. Detailed entries below may still carry an older stage line; this block wins.
+
+| Lane / PR | State | Note |
+|---|---|---|
+| HAR #2201 (persona harness allowlist) | MERGED `96530fe3`; nonprod release pin `96530fe3` (web + API) | Codex UAT authentication gate |
+| CLC #2199 (Set Operating Company + Agreement inheritance) | REVIEW PASSED, CI green `913a0c94`; merge HELD | Codex release-pin freeze |
+| DWO #2200 (Work Order company boundary, DWO-1/DWO-2) | REVIEW PASSED, CI green `02ffc38e`; merge HELD; needs one up-to-date sync | Codex release-pin freeze |
+| UAT phase 2 #2204 (Owner UAT decisions, route fix, Codex baseline docs) | REVIEW-ready, CI green; merge HELD | Codex release-pin freeze |
+| FBX #2205 (EOS build ships no Firebase SDK; P0 Firebase-exit) | REVIEW PASSED, CI green `90b979db`; merge HELD | merging moves the web pin; Codex re-verifies the cleaned bundle on the next pin |
+| VFX #2203 (Ventana fixture tooling) | MERGED `203fcc0e`; runs only after the human-authorized `ventana` key change | `docs/uat/10-ventana-key-change-procedure.md` |
+| UAT phase 1 #2202, FU-1 #2192, FU-2 #2195, FU-3 #2197/#2198, R1 doc #2196, SAE #2190/#2193, Q-1a #2194, S1c #2189/#2191 | MERGED | DECISIONS holds the record |
+
+### CIP — EOS CI performance optimization (P1 delivery-enabling; Owner-approved 2026-10-21)
+- Capability:          Faster CI with identical evidence. Phase 1: split the "Admin policy engine -- authorization, workflow, tenancy, schema, seed" PostgreSQL step into 4–6 parallel jobs, each with its OWN isolated database; a deterministic partition map; every test exactly once; a manifest guard that fails on any missing, duplicated or unexpectedly skipped test; zero-trace, authorization and migration/rollback suites preserved; the EXISTING required-check name kept through a final aggregation job (any failed or missing partition fails it); old and new workflows compared on the same commit; wall-clock, runner-minute and cost evidence recorded before activation. Phases 2 (migrated-template reuse) and 3 (affected-area PR selection, fail closed when impact is unknown, full runs on main and on schedule) are DESIGN ONLY until a further Owner decision. Also design-only here: the Firebase-exit CI strategy (build output, configuration, dependency and runtime-evidence checks; protected legacy production code is exempt during migration; zero-Firebase enforcement after the authorized cutover). It builds on FBX #2205's `verify:eos-only` bundle guard.
+- Agent/session:       controller-assigned implementation lane CIP (one lane) · Role: builder; then one independent review
+- Branch / worktree:   `cip/parallel-postgres-ci` (to be created) · isolated worktree
+- Base commit:         main at the time the lane starts
+- Owned paths:         `.github/workflows/eos-admin-policy-tests.yml`, a new partition map + manifest guard under `.github/ci/` and `functions/scripts/`, `docs/engineering/ci-performance.md`, `docs/engineering/eos-operational-readiness-ci.md`
+- Shared paths req'd:  `functions/test/adminPolicySuites.json`, `.github/ci/eos-admin-policy-paths.txt` (append-only; coordinate with open PRs), this registry
+- Dependencies:        #2201 MERGED. #2199, #2200 and #2204 merge first: CIP must not invalidate their required checks. A PR that edits a workflow gets no pull_request CI, so it is validated by `workflow_dispatch` side-by-side runs on one commit.
+- Expected outcome:    one focused PR. Its PR body publishes Before/After for median required-check duration, PostgreSQL duration, total tests, unexpected skips (target 0), runner minutes, estimated cost (only if measured), security/authorization coverage and reliability.
+- Baseline (measured 2026-10-21, last 30 completed runs of "EOS Admin Policy & Workflow Tests"): the engine job runs 17–26 minutes when it succeeds (median ≈ 26); 8 of 30 runs were cancelled by superseding pushes.
+- Protected boundaries:no change to branch protection or to which checks are required; no production, Firebase or business-authority change
+- Lifecycle stage:     SANDBOX BUILD may start now (implementation lanes are free). MERGE waits until #2199, #2200 and #2204 have landed and the Codex authentication baseline is recorded.
+
 - Capability:          Lane HAR (2026-10-21) — persona harness target allowlist: `scripts/eosPersonaSession.mjs` (password + MFA login AND nonprod persona issuer) sends a secret ONLY to an exact, normalised, registered nonproduction EOS API / application origin from `config/environments.json`, same environment, validated before anything is sent, no redirect followed; results carry `proof: "login-mfa" | "issuer-api"` (Owner review "CODEX UAT SECURITY PREREQUISITE")
 - Agent/session:       Claude Code Lane HAR · Role: builder; controller merges
 - Branch / worktree:   `har/persona-harness-target-allowlist` · `.claude/worktrees/agent-a159114919f1cc303`
