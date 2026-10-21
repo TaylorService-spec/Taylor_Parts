@@ -60,6 +60,10 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
   const T = "t1";
 
   await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [T]);
+  // DWO-company: the installing technician reaches the Work Order only through the company it works for, which needs the company and its key binding.
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [T]);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+           VALUES ($1,'taylor','taylor','ACTIVE','NATIVE','fixture','fixture','fixture')`, [T]);
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-1',$1,'Cust','ACTIVE','f','f')`, [T]);
   // The Work Order's site is a governed CRM site of its customer (an install verifies it -- Controller OD-1, 2026-10-01).
   await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('crmloc-1',$1,'acct-1','Site','f','f')`, [T]);

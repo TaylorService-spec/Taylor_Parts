@@ -19,10 +19,9 @@ company you work for**.
   estimate, installing equipment, completing, closing, cancelling and sending a customer a scheduling
   link are all refused as "not found" for a work order in a company you do not work for. Nothing is
   saved, numbered or logged for the attempt.
-- **Technicians are held to the same rule.** A technician sees the work assigned to them in the
-  companies they work for. Work is only ever assigned to a technician of the work order's own company,
-  so for day-to-day work nothing changes; a job left over from a company the technician no longer
-  works for is no longer listed or actionable for them.
+- **Technicians keep every job assigned to them.** A technician sees and works every work order it is
+  assigned to, and every work order of the companies it works for. Nothing a technician legitimately
+  does changes. A technician cannot see another company's work orders that are not assigned to it.
 - **Coordinated visits show only your companies' work orders.** A work order of another company is
   dropped from the list completely, together with the sales order it belongs to.
 - **Everything in your own company works as before.** Your role and your assignments still apply

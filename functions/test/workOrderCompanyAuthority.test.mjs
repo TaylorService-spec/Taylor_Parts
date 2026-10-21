@@ -20,22 +20,25 @@ const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm,
 const source = (rel) => strip(readFileSync(join(SRC, rel), "utf8"));
 
 test("the reach: own keys, the unrestricted Administrator form, and a predicate that is one bound array", () => {
-  const own = authority.workOrderCompanyReachOf({ unrestricted: false, hasAuthority: true, companyKeys: ["taylor"] });
+  const own = authority.workOrderCompanyReachOf({ unrestricted: false, hasAuthority: true, companyKeys: ["taylor"], employeeIds: ["e-1"] });
   assert.equal(own.admits("taylor"), true);
   assert.equal(own.admits("ventana"), false, "a foreign company is not admitted");
   assert.equal(own.admits(null), false);
   assert.equal(own.admits(undefined), false);
-  assert.deepEqual(own.sqlParams(), [["taylor"]]);
-  assert.equal(own.sql("w.operating_company_key", 3), "(FALSE OR w.operating_company_key = ANY($3::text[]))");
+  assert.deepEqual(own.sqlParams(), [["taylor"], ["e-1"]]);
+  const assigned = " OR EXISTS (SELECT 1 FROM eos_ops.work_order_assignments wra WHERE wra.tenant_id = w.tenant_id AND wra.work_order_id = w.id AND wra.effective_to IS NULL"
+    + " AND wra.assignee_employee_id = ANY($4::text[])))";
+  assert.equal(own.sql("w.operating_company_key", 3), "(FALSE OR w.operating_company_key = ANY($3::text[])" + assigned, "the company, or the OPEN assignment of the caller's Employee");
+  assert.match(own.sql("operating_company_key", 1), /wra\.tenant_id = work_orders\.tenant_id AND wra\.work_order_id = work_orders\.id/, "an unaliased eos_ops.work_orders is addressed as work_orders");
   const admin = authority.workOrderCompanyReachOf({ unrestricted: true, hasAuthority: true, companyKeys: [] });
   assert.equal(admin.admits("ventana"), true, "the protected Administrator keeps every company, as before");
   assert.equal(admin.admits("a-key-no-company-is-bound-to"), true, "including a historical key");
-  assert.equal(admin.sql("operating_company_key", 1), "(TRUE OR operating_company_key = ANY($1::text[]))");
+  assert.match(admin.sql("operating_company_key", 1), /^\(TRUE OR operating_company_key = ANY\(\$1::text\[\]\)/);
   assert.deepEqual(authority.NO_WORK_ORDER_COMPANY_REACH.companyKeys, []);
   assert.equal(authority.NO_WORK_ORDER_COMPANY_REACH.admits("taylor"), false);
   assert.equal(authority.NO_WORK_ORDER_COMPANY_REACH.hasAuthority, false);
   // The predicate names a code-supplied column and a positive parameter; anything else is refused, never interpolated.
-  for (const bad of ["w.operating_company_key; DROP TABLE x", "w.a.b", "1x", "", "w.operating_company_key OR TRUE"]) {
+  for (const bad of ["w.operating_company_key; DROP TABLE x", "w.a.b", "1x", "", "w.operating_company_key OR TRUE", "w.status", "operating_company_key OR TRUE"]) {
     assert.throws(() => own.sql(bad, 1), /bad column/, bad);
   }
   assert.throws(() => own.sql("w.operating_company_key", 0), /bad column or parameter/);
@@ -135,9 +138,9 @@ test("coordinated operations: the governed entry point supplies the Work Order r
   const own = authority.workOrderCompanyReachOf({ unrestricted: false, hasAuthority: true, companyKeys: ["taylor"] });
   await coordinated.readActiveCoordinatedWorkOrdersFromPostgres(db, "t1", undefined, undefined, own);
   const first = captured[0];
-  assert.match(first.sql, /AND \(FALSE OR w\.operating_company_key = ANY\(\$4::text\[\]\)\)/);
+  assert.match(first.sql, /AND \(FALSE OR w\.operating_company_key = ANY\(\$4::text\[\]\) OR EXISTS/);
   assert.match(first.sql, /LIMIT \$3/, "the predicate precedes the page cut");
-  assert.deepEqual(first.params.slice(3), [["taylor"]]);
+  assert.deepEqual(first.params.slice(3), [["taylor"], []]);
   captured.length = 0;
   const admin = authority.workOrderCompanyReachOf({ unrestricted: true, hasAuthority: true, companyKeys: [] });
   await coordinated.readActiveCoordinatedWorkOrdersFromPostgres(db, "t1", undefined, undefined, admin);

@@ -105,6 +105,9 @@ test("Work Order operational aggregates", { skip: SKIP, concurrency: 1 }, async 
     await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [tenant]);
     await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
              VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [tenant]);
+    // DWO-company: the Work Order aggregates are bounded by the caller's company reach, which needs the company's key binding.
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+             VALUES ($1,'taylor','taylor','ACTIVE','NATIVE','fixture','fixture','fixture')`, [tenant]);
     await principal(tenant, "prn-dispatcher");
   }
   for (const p of ["prn-tech-a", "prn-tech-b", "prn-unlinked", "prn-nobody"]) await principal(T, p);
@@ -115,6 +118,7 @@ test("Work Order operational aggregates", { skip: SKIP, concurrency: 1 }, async 
   await employee(T2, "emp-other");
   await link("prn-tech-a", "emp-a");
   await link("prn-tech-b", "emp-b");
+  await employee(T, "emp-dispatcher"); await link("prn-dispatcher", "emp-dispatcher"); // DWO-company: the office reader is a Taylor Employee, as the Work Order company rule requires
 
   let seq = 0;
   /** A Work Order with its lifecycle moments and (optionally) an OPEN assignment -- inserted, not driven. */

@@ -19,7 +19,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
-import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
+import { grantSyntheticCompanyAuthority, ROUND_THE_CLOCK } from "./support/syntheticAvailability.mjs";
+import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCertified.mjs";
 import { seedProtectedOwnerRows } from "./support/protectedOwnerFixture.mjs";
 import { WORK_ORDER_ROUTE_ENTRY_POINTS } from "./support/workOrderCompanyEntryPoints.mjs";
 
@@ -284,20 +285,24 @@ test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL"
     }
   });
 
-  await t.test("(2b) a technician ASSIGNED to a Work Order of a company it no longer reaches (a legacy state) is refused as a missing Work Order, with no trace; its own company's work still works", async () => {
+  await t.test("(2b) a technician ASSIGNED to a Work Order keeps seeing and working it even where the company is not one it otherwise reaches (a legacy / migrated assignment): no legitimate technician access is lost", async () => {
     const tech = technician(techT);
     for (const [op, state, input, over] of TECH_OPS) {
-      const foreign = await wo("ventana", state, over);
-      await assign(foreign, "emp-techt");             // forced by SQL: assignment itself requires the Work Order's company
-      const before = await stateHash();
-      const a = await call(op, tech, input(foreign));
-      assert.deepEqual([a.ok, a.code, a.category], [false, "WORK_ORDER_NOT_FOUND", "NOT_FOUND"], `${op}: the company layer refuses after the relation`);
-      assert.equal(await stateHash(), before, `${op}: no trace`);
+      const assignedElsewhere = await wo("ventana", state, over);
+      await assign(assignedElsewhere, "emp-techt");             // forced by SQL: a new assignment requires the Work Order's company; a legacy one may not
+      const a = await call(op, tech, input(assignedElsewhere));
+      assert.ok(a.ok || (a.code !== "WORK_ORDER_NOT_FOUND" && a.code !== "COMPANY_AUTHORITY_REQUIRED"), `${op}: the assigned technician is not stopped by company, got ${a.code}`);
       const own = await wo("taylor", state, over);
       await assign(own, "emp-techt");
       const control = await call(op, tech, input(own));
       assert.ok(control.ok || (control.code !== "WORK_ORDER_NOT_FOUND" && control.code !== "COMPANY_AUTHORITY_REQUIRED"), `${op}: the technician's own company is not stopped, got ${control.code}`);
     }
+    // ...but the assignment reaches ONLY the Work Order it is on: another company's unassigned Work Order stays nonexistent to the same technician.
+    const other = await wo("ventana", "WORK_IN_PROGRESS");
+    const before = await stateHash();
+    const refused = await call("readWorkOrder", tech, { workOrderId: other });
+    assert.equal(refused.ok, false);
+    assert.equal(await stateHash(), before);
   });
 
   // ════════════════════ (3) OBSERVATION-ONLY ENTRY POINTS (an id with no session reads as an empty answer) ════════════════════
@@ -373,8 +378,8 @@ test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL"
     // the technician's own work (My Work / field list): the Ventana assignment is not listed
     const assigned = (await call("listMyAssignedWorkOrders", technician(techT), {})).result.items;
     assert.ok(assigned.some((i) => i.workOrderId === tA), "the Taylor assignment is listed");
-    assert.ok(!assigned.some((i) => i.workOrderId === vA), "the Ventana assignment is not");
-    assert.ok(assigned.every((i) => i.operatingCompanyKey === "taylor"), "nothing of another company");
+    assert.ok(assigned.some((i) => i.workOrderId === vA), "a Work Order the technician is ASSIGNED to stays visible to it (no legitimate technician access is lost)");
+    assert.ok(!assigned.some((i) => i.workOrderId === vB), "...but not another company's unassigned Work Order");
     // assigned work on the Employee record (Workforce)
     const workforce = async (who) => assignedWork.listAssignedWorkForEmployee({ pool }, { ...callerOf(who, ["employee.record.read", "workOrder.record.read"]).operational },
       { employeeId: "emp-techt", family: "WORK_ORDER", limit: 200 });
@@ -491,5 +496,106 @@ test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL"
     }
     const found = (await myWork.searchEos({ pool, postgresState: "ACTIVE" }, dsp, { query: "dwo-move" })).results.filter((r) => r.kind === "workOrder");
     assert.deepEqual(found, [], "search follows");
+  });
+
+  // ════════════════════ REGRESSION PROOF: every legitimate capability still works, end to end ════════════════════
+  const ok = (o, what) => { assert.equal(o.ok, true, `${what}: ${JSON.stringify(o).slice(0, 400)}`); return o.result; };
+  const catalogPart = (id, { control = "STANDARD", whole = false } = {}) => q(
+    `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type, stocking_class,
+       expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+     VALUES ($1, $2, 'seed', $3, 'proof part', 'ACTIVE', 'EACH', $4, 'STOCKED', false, false, false, $5, 1, 'seed')`, [id, T, `IPN-${id}`, control, whole]);
+  const techJ = await principal("prn-techj", { id: "emp-techj", technician: true });
+  const hours = async () => ok(await call("setTechnicianWorkingHours", office(dspT),
+    { employeeId: "emp-techj", timeZone: "UTC", weeklyHours: ROUND_THE_CLOCK, reason: "dwo journey" }), "working hours");
+  /** create -> ready -> plan -> schedule -> dispatch, by the Taylor dispatcher; returns the id. */
+  const dispatched = async (extra = {}, type = "SERVICE_CALL") => {
+    const dsp = office(dspT);
+    const id = ok(await call("createWorkOrder", dsp, { operatingCompanyId: "taylor", customerId: "acct-1", locationId: "loc-1", workOrderType: type, priority: 2, ...extra }), "create").workOrderId;
+    ok(await call("markWorkOrderReady", dsp, { workOrderId: id }), "ready");
+    ok(await call("setWorkOrderPartsPlan", dsp, { workOrderId: id, plan: [] }), "plan");
+    ok(await call("scheduleWorkOrder", dsp, { workOrderId: id, employeeId: "emp-techj", ...future(12) }), "schedule");
+    ok(await call("dispatchWorkOrder", dsp, { workOrderId: id }), "dispatch");
+    return id;
+  };
+
+  await t.test("(R1,R3,R4,R5,R7,R9) the same-company lifecycle is unchanged: create, plan, schedule, dispatch, accept, travel, arrive, work, parts, labor, complete, close; history and search", async () => {
+    await catalogPart("part-j");
+    await hours();
+    const tag = `journey-${randomUUID().slice(0, 8)}`;
+    const dsp = office(dspT), tech = technician(techJ);
+    const created = ok(await call("createWorkOrder", dsp, { operatingCompanyId: "taylor", customerId: "acct-1", locationId: "loc-1", workOrderType: "SERVICE_CALL", priority: 2, complaint: tag }), "create");
+    const id = created.workOrderId;
+    ok(await call("markWorkOrderReady", dsp, { workOrderId: id }), "ready");
+    ok(await call("setWorkOrderPartsPlan", dsp, { workOrderId: id, plan: [{ partId: "part-j", qtyPlanned: 2 }] }), "plan");
+    const s = future(8);
+    ok(await call("scheduleWorkOrder", dsp, { workOrderId: id, employeeId: "emp-techj", ...s }), "schedule");
+    ok(await call("setWorkOrderEstimatedDuration", dsp, { workOrderId: id, estimatedDurationMinutes: 90 }), "estimate");
+    ok(await call("rescheduleWorkOrder", dsp, { workOrderId: id, expectedScheduledStart: new Date(s.scheduledStart).toISOString(), ...future(9), reason: "customer asked" }), "reschedule");
+    ok(await call("dispatchWorkOrder", dsp, { workOrderId: id }), "dispatch");
+    // technician assignment and visibility: the assigned technician sees it, the other company's technician does not
+    assert.ok((await call("listMyAssignedWorkOrders", tech, {})).result.items.some((i) => i.workOrderId === id), "the assigned technician sees it on My Work");
+    assert.equal((await call("readWorkOrder", tech, { workOrderId: id })).ok, true, "and can read it");
+    assert.equal((await call("readWorkOrder", technician(techV), { workOrderId: id })).ok, false, "the other company's technician cannot");
+    for (const op of ["acceptWorkOrder", "startWorkOrderTravel", "arriveAtWorkOrder", "startWorkOrderWork"]) ok(await call(op, tech, { workOrderId: id }), op);
+    const used = ok(await call("recordWorkOrderExecution", tech, { workOrderId: id, idempotencyKey: `jk-${id}`, partUsage: [{ partId: "part-j", qtyDelta: 1 }], note: "replaced the filter" }), "execution");
+    assert.equal(used.usage[0].appliedDelta, 1);
+    ok(await call("recordWorkOrderLabor", tech, { workOrderId: id, idempotencyKey: `jl-${id}`, laborType: "ONSITE", entryKind: "DURATION", durationMinutes: 45, workDate: "2026-10-21" }), "labor");
+    assert.equal(ok(await call("readWorkOrderLabor", dsp, { workOrderId: id }), "read labor").totals.totalMinutes, 45);
+    const done = ok(await call("completeWorkOrder", tech, { workOrderId: id }), "complete");
+    assert.equal(done.transition.toStatus, "COMPLETED");
+    ok(await call("closeWorkOrder", dsp, { workOrderId: id }), "close");
+    // history and search
+    const detail = ok(await call("readWorkOrder", dsp, { workOrderId: id }), "detail");
+    assert.deepEqual(detail.transitions.map((x) => x.toStatus), ["CREATED", "READY_TO_DISPATCH", "SCHEDULED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS", "COMPLETED", "CLOSED"]);
+    assert.deepEqual(detail.execution.parts, [{ partId: "part-j", qtyPlanned: 2, qtyUsed: 1 }]);
+    assert.equal(detail.status, "CLOSED");
+    const hit = async (who) => (await myWork.searchEos({ pool, postgresState: "ACTIVE" }, office(who), { query: tag })).results.filter((r) => r.kind === "workOrder").map((r) => r.id);
+    assert.deepEqual(await hit(dspT), [id], "search finds it for its own company");
+    assert.deepEqual(await hit(dspV), [], "and not for the other");
+    assert.equal((await call("readWorkOrder", office(dspV), { workOrderId: id })).ok, false);
+  });
+
+  await t.test("(R6) inventory custody: the assigned technician installs a company-held whole unit on its INSTALL Work Order; the ledger and custody move once; a replay installs nothing", async () => {
+    await certifyInventoryBaselineFixture(q, T);
+    await catalogPart("part-unit", { control: "SERIALIZED", whole: true });
+    await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+             VALUES ('wh-j',$1,'taylor','wh-j','Site','ACTIVE','NATIVE','fixture','fixture')`, [T]);
+    await q(`INSERT INTO eos_ops.serialized_custody (id, tenant_id, part_id, serial_number, operating_company_key, status, location_type, location_id, updated_by)
+             VALUES ('cust-j',$1,'part-unit','SN-J1','taylor','AVAILABLE','WAREHOUSE','wh-j','seed')`, [T]);
+    await q(`INSERT INTO eos_ops.inventory_movements (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+               movement_type, quantity_delta, serial_number, source_kind, source_id, created_by)
+             VALUES ('mov-j',$1,'taylor','part-unit','SERIAL','WAREHOUSE','wh-j','RECEIVED',1,'SN-J1','FIXTURE','seed','seed')`, [T]);
+    const id = await wo("taylor", "WORK_IN_PROGRESS", { type: "INSTALL" });
+    await assign(id, "emp-techt");
+    const tech = technician(techT);
+    const input = { workOrderId: id, partId: "part-unit", serialNumber: "SN-J1", idempotencyKey: "ik-j1", equipmentName: "Journey unit" };
+    const listed = ok(await call("listInstallableEquipmentForWorkOrder", tech, { workOrderId: id }), "list");
+    assert.ok(listed.units.some((u) => u.serialNumber === "SN-J1"), "the company-held unit is offered");
+    const installed = ok(await call("recordWorkOrderEquipmentInstall", tech, input), "install");
+    assert.equal(installed.outcome, "installed");
+    assert.equal(Number((await one(`SELECT count(*) n FROM eos_ops.inventory_movements WHERE source_id = $1 AND quantity_delta = -1`, [id])).n), 1, "one ledger movement out of stock");
+    assert.equal(ok(await call("recordWorkOrderEquipmentInstall", tech, input), "replay").outcome, "replayed");
+    assert.equal(Number((await one(`SELECT count(*) n FROM eos_ops.inventory_movements WHERE source_id = $1 AND quantity_delta = -1`, [id])).n), 1, "a replay installs nothing");
+  });
+
+  await t.test("(R2,R8) authorized cross-company servicing: Taylor performs a Ventana sale's service under the seller's authorization; the fulfillment is recorded against the seller's order", async () => {
+    await hours();
+    await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, state, sales_channel,
+               currency, credited_salesperson_employee_id, accountable_employee_id, location_id, created_by, updated_by)
+             VALUES ('so-ventana-2',$1,'SO-2026-V00002','acct-1','e-seller','ventana','IN_FULFILLMENT','RETAIL','USD','e-seller','e-seller','loc-1','f','f')`, [T]);
+    await q(`INSERT INTO eos_commercial.sales_order_lines (tenant_id, sales_order_id, line_number, kind, ref, business_unit, ordered_qty, unit_price_minor)
+             VALUES ($1,'so-ventana-2',1,'SERVICE','SVC-INSTALL','INSTALLATION',1,90000)`, [T]);
+    await q(`INSERT INTO eos_commercial.sales_order_service_providers (tenant_id, sales_order_id, service_operating_company_key, scopes, status, reason, authorized_by)
+             VALUES ($1,'so-ventana-2','taylor',ARRAY['SERVICE'],'ACTIVE','Taylor Service performs the service','f')`, [T]);
+    const id = await dispatched({ salesOrderId: "so-ventana-2", salesOrderLines: [1] });
+    const tech = technician(techJ);
+    assert.ok((await call("listMyAssignedWorkOrders", tech, {})).result.items.some((i) => i.workOrderId === id), "the provider's technician sees the job");
+    for (const op of ["acceptWorkOrder", "startWorkOrderTravel", "arriveAtWorkOrder", "startWorkOrderWork"]) ok(await call(op, tech, { workOrderId: id }), op);
+    const done = ok(await call("completeWorkOrder", tech, { workOrderId: id }), "complete");
+    assert.equal(done.fulfillment.status, "RECORDED", "the Sales Order fulfillment is recorded by the completion");
+    const f = await one(`SELECT operating_company_key, service_operating_company_key FROM eos_commercial.sales_order_fulfillments WHERE source_work_order_id = $1`, [id]);
+    assert.deepEqual([f.operating_company_key, f.service_operating_company_key], ["ventana", "taylor"], "seller = Ventana; service provider = Taylor");
+    assert.equal((await one(`SELECT operating_company_key k FROM eos_commercial.sales_orders WHERE id = 'so-ventana-2'`)).k, "ventana", "the seller is never rewritten");
+    assert.equal((await call("readWorkOrder", office(dspV), { workOrderId: id })).ok, false, "the Work Order stays the provider's");
   });
 });
