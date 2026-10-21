@@ -130,7 +130,8 @@
     "test/fu2PrepareBillingPackage.test.mjs",
     "test/salesOrderAllocationOffline.test.mjs",
     "test/saeProtectedOwnerExemption.test.mjs",
-    "test/commercialCompanyAuthority.test.mjs"
+    "test/commercialCompanyAuthority.test.mjs",
+    "test/adminPolicyPartitions.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",

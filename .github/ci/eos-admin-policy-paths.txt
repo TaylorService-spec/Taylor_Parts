@@ -1041,3 +1041,9 @@ functions/test/support/commercialCompanyReachFixture.mjs
 # FU-2 rebill trigger and Issue eligibility (2026-10-20): the suites; functions/src/eosFinance/** and the Finance client files are covered above.
 functions/test/fu2PrepareBillingPackage.test.mjs
 functions/test/fu2PrepareBillingPackagePostgres.test.mjs
+# CI PERFORMANCE, Phase 1 (lane CIP, 2026-10-21): the postgres group runs as parallel partitions. The committed partition map, its manifest guard
+# (checks the map against the registry, and each run against the map), its reporter, and the guard suite. An edit to any of them must fire this lane.
+.github/ci/eos-admin-policy-postgres-partitions.json
+functions/scripts/adminPolicyPartitions.mjs
+functions/scripts/adminPolicyManifestReporter.mjs
+functions/test/adminPolicyPartitions.test.mjs
