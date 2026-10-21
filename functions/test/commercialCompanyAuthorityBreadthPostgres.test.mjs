@@ -141,6 +141,25 @@ test("Q-1a breadth: search, My Work, record ownership, coordinated visits, CRM a
     assert.equal((await make(adminP.principalId, { opportunityId: "opp-v" })).success, true, "the protected Administrator is unchanged");
   });
 
+  await t.test("L-1b ITEM 4: an activity list shows a link to an Opportunity or Sales Order only where the viewer reaches it; otherwise no id at all", async () => {
+    const mk = (who, over) => crmActivity.createAccountActivity({ pool }, { tenantId: T, principalId: who.principalId, capabilities: new Set(["crm.activity.create", "customer.record.read"]) },
+      { accountId: "acct-1", type: "CALL", idempotencyKey: `k-${randomUUID()}`, ...over });
+    await mk(adminP, { body: "link: ventana", opportunityId: "opp-v", salesOrderId: "so-v" });
+    await mk(adminP, { body: "link: taylor", opportunityId: "opp-t", salesOrderId: "so-t" });
+    await mk(adminP, { body: "link: company-less", opportunityId: "opp-n" });
+    const list = async (who) => (await crmActivity.listAccountActivities({ pool }, { tenantId: T, principalId: who.principalId, capabilities: new Set(["crm.activity.read", "customer.record.read"]) }, { accountId: "acct-1" })).activities;
+    const links = (acts, body) => { const a = acts.find((x) => x.body === body); return [a.opportunityId, a.salesOrderId]; };
+    const asTay = await list(tay);
+    assert.deepEqual([links(asTay, "link: ventana"), links(asTay, "link: taylor"), links(asTay, "link: company-less")], [[null, null], ["opp-t", "so-t"], ["opp-n", null]],
+      "Taylor: Ventana's link is gone, its own stays, and the company-less Opportunity it owns stays");
+    const asVen = await list(ven);
+    assert.deepEqual([links(asVen, "link: ventana"), links(asVen, "link: taylor"), links(asVen, "link: company-less")], [["opp-v", "so-v"], [null, null], [null, null]]);
+    const asAdmin = await list(adminP);
+    assert.deepEqual([links(asAdmin, "link: ventana"), links(asAdmin, "link: taylor"), links(asAdmin, "link: company-less")], [["opp-v", "so-v"], ["opp-t", "so-t"], ["opp-n", null]], "the protected Administrator is unchanged");
+    assert.deepEqual(links(await list(none), "link: taylor"), [null, null], "no Employee link: no company, no link shown");
+    assert.ok(!JSON.stringify(asTay).includes("opp-v") && !JSON.stringify(asTay).includes("so-v"));
+  });
+
   await t.test("M-3 an Agreement carries its source Opportunity's operating company: an explicit, different one is refused, with nothing written", async () => {
     // A fresh Taylor Opportunity with no Agreement (the one-Agreement-per-Opportunity rule would answer first on opp-t), owned by nobody who reads here.
     await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, accountable_employee_id, operating_company_key, sales_channel, stage, need, created_by, updated_by)

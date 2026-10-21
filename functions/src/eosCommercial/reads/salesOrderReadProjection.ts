@@ -10,7 +10,7 @@ import { SALES_ORDER_STATES } from "../../salesOrder/salesOrderLifecycle";
 import { fail } from "../commands/commercialCommandKernel";
 import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
 import {
-  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
+  COMMERCIAL_READ_CAPABILITIES, maskUnreachedLinks, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
   type CommercialReadDeps, type Queryable,
 } from "./commercialReadKernel";
@@ -141,6 +141,7 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       const r = rows[0] as Row;
+      await maskUnreachedLinks(db, tenantId, reach.company, [r], { opportunity: "opportunity_id", agreement: "sales_agreement_id" }); // Q-1a
       // Decided on the Sales Order's OWN stored channel, before anything else about the row is disclosed.
       if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Order");
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Order was not created through a governed command and carries no lifecycle");
@@ -197,6 +198,7 @@ export async function readSalesOrderPage(db: Queryable, tenantId: string, o: Sal
     [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null, ...o.company.sqlParams()],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
+  await maskUnreachedLinks(db, tenantId, o.company, kept, { opportunity: "opportunity_id", agreement: "sales_agreement_id" });
   const lines = await linesByOrder(db, tenantId, kept.map((r) => r.id));
   return pageOf("salesOrder", rows as Row[], o.limit, (r) => r.sales_order_number, (r) => summaryOf(r, lines.get(r.id)!));
 }

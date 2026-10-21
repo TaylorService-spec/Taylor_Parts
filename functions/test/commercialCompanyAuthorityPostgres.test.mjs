@@ -399,4 +399,131 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
     const open = await refusal(() => alloc.allocateSalesOrderLine({ pool }, A, { ...req, partId: "part-b", quantity: 1 }));
     assert.notEqual(open.code, "SALES_ORDER_NOT_FOUND");
   });
+
+  // ════════════════════ OWNER REVIEW ITEMS 7, 8, 9, 12 ════════════════════
+  const crmActivity = require("../lib/eosCrm/crmActivityAuthority.js");
+  const commercialHttp = require("../lib/eosCommercial/commercialHttp.js");
+  const STATE_TABLES = ["eos_commercial.opportunities", "eos_commercial.opportunity_lines", "eos_commercial.sales_agreements", "eos_commercial.sales_agreement_lines",
+    "eos_commercial.sales_agreement_trade_ins", "eos_commercial.sales_orders", "eos_commercial.sales_order_lines", "eos_commercial.sales_order_service_providers",
+    "eos_commercial.command_receipts", "eos_commercial.number_counters", "eos_commercial.ownership_handoffs", "eos_commercial.accountability_handoffs",
+    "eos_policy.audit_events", "eos_crm.activities", "eos_ops.inventory_commitments"];
+  // A hash of EVERY row of every table a Commercial command or read could touch (whole-row text, so any column or timestamp change moves it).
+  const stateHash = async () => {
+    const parts = [];
+    for (const table of STATE_TABLES) {
+      parts.push(`${table}=${(await q(`SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), '-') AS h, count(*)::int AS n FROM ${table} t`)).rows.map((r) => `${r.n}:${r.h}`)[0]}`);
+    }
+    return parts.join(";");
+  };
+
+  await t.test("(m) ITEM 7: every Commercial entry point that takes a record id refuses a FOREIGN id and a NONEXISTENT id with the SAME code, category, message and error shape", async () => {
+    const taylor = actor(tay);
+    const ownerOfTaylor = actor(own, OWNER_CAPS);
+    const fulfil = { tenantId: T, principalId: tay, capabilities: new Set(["salesOrder.fulfill", "salesOrder.read", "crm.activity.create", "customer.record.read"]) };
+    const alloc1 = { lineNumber: 1, operatingCompanyId: "taylor", warehouseId: "wh-none" };
+    const crm = (extra) => crmActivity.createAccountActivity({ pool }, fulfil, { accountId: "acct-ven", type: "CALL", body: "probe", idempotencyKey: key(), ...extra });
+    // operation name -> [run(id), foreign id, missing id]. The Commercial transport's own operations are keyed by their transport name.
+    const TABLE = {
+      getOpportunityDetail: [(id) => oppRead.getOpportunityDetail(rdeps, taylor, { opportunityId: id }), oV.opportunityId, "opp-missing"],
+      getSalesAgreementDetail: [(id) => saRead.getSalesAgreementDetail(rdeps, taylor, { salesAgreementId: id }), aV.salesAgreementId, "sag-missing"],
+      getSalesOrderDetail: [(id) => soRead.getSalesOrderDetail(rdeps, taylor, { salesOrderId: id }), sV.salesOrderId, "sor-missing"],
+      updateOpportunity: [(id) => opp.updateOpportunity(wdeps, taylor, { idempotencyKey: key(), opportunityId: id, expectedEditVersion: 1, need: "x" }), oV.opportunityId, "opp-missing"],
+      transitionOpportunity: [(id) => opp.transitionOpportunity(wdeps, taylor, { idempotencyKey: key(), opportunityId: id, toStage: "QUALIFYING" }), oV.opportunityId, "opp-missing"],
+      closeOpportunityAsWon: [(id) => opp.closeOpportunityAsWon(wdeps, taylor, { idempotencyKey: key(), opportunityId: id, salesChannel: "RETAIL" }), oV.opportunityId, "opp-missing"],
+      createSalesAgreement: [(id) => sa.createSalesAgreement(wdeps, taylor, { idempotencyKey: key(), opportunityId: id, ownerEmployeeId: "e-tay" }), oV.opportunityId, "opp-missing"],
+      updateSalesAgreementDraft: [(id) => sa.updateSalesAgreementDraft(wdeps, taylor, { idempotencyKey: key(), salesAgreementId: id, specialInstructions: "x" }), aV.salesAgreementId, "sag-missing"],
+      acceptSalesAgreement: [(id) => sa.acceptSalesAgreement(wdeps, taylor, { idempotencyKey: key(), salesAgreementId: id }), aV.salesAgreementId, "sag-missing"],
+      approveSalesAgreementTradeIn: [(id) => sa.approveSalesAgreementTradeIn(wdeps, ownerOfTaylor, { idempotencyKey: key(), salesAgreementId: id, itemNumber: 1, approvedCreditMinor: 5000 }), aV.salesAgreementId, "sag-missing"],
+      declineSalesAgreementTradeIn: [(id) => sa.declineSalesAgreementTradeIn(wdeps, ownerOfTaylor, { idempotencyKey: key(), salesAgreementId: id, itemNumber: 1, reason: "no" }), aV.salesAgreementId, "sag-missing"],
+      createSalesOrder: [(id) => so.createSalesOrder(wdeps, taylor, { idempotencyKey: key(), accountId: "acct-ven", ownerEmployeeId: "e-tay", operatingCompanyId: "taylor", salesChannel: "RETAIL",
+        sourceOpportunityId: id, lines: [{ kind: "PART", ref: "part-b", orderedQty: 3, unitPrice: 2500 }] }), oV.opportunityId, "opp-missing"],
+      createSalesOrderFromOpportunity: [(id) => so.createSalesOrderFromOpportunity(wdeps, taylor, { idempotencyKey: key(), opportunityId: id }), oV.opportunityId, "opp-missing"],
+      transitionSalesOrder: [(id) => so.transitionSalesOrder(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, transition: "ADVANCE" }), sV.salesOrderId, "sor-missing"],
+      authorizeSalesOrderServiceProvider: [(id) => so.authorizeSalesOrderServiceProvider(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "r" }), sV.salesOrderId, "sor-missing"],
+      revokeSalesOrderServiceProvider: [(id) => so.revokeSalesOrderServiceProvider(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, serviceOperatingCompanyId: "taylor", reason: "r" }), sV.salesOrderId, "sor-missing"],
+      // Not on the Commercial transport, but they accept a Commercial id:
+      allocateSalesOrderLine: [(id) => alloc.allocateSalesOrderLine({ pool }, fulfil, { ...alloc1, salesOrderId: id, partId: "part-b", quantity: 1, idempotencyKey: key() }), sV.salesOrderId, "sor-missing"],
+      releaseSalesOrderAllocation: [(id) => alloc.releaseSalesOrderAllocation({ pool }, fulfil, { ...alloc1, salesOrderId: id, reason: "r", idempotencyKey: key() }), sV.salesOrderId, "sor-missing"],
+      readSalesOrderAllocations: [(id) => alloc.readSalesOrderAllocations({ pool }, fulfil, { salesOrderId: id }), sV.salesOrderId, "sor-missing"],
+      "createAccountActivity(opportunityId)": [(id) => crm({ opportunityId: id }), oV.opportunityId, "opp-missing"],
+      "createAccountActivity(salesOrderId)": [(id) => crm({ salesOrderId: id }), sV.salesOrderId, "sor-missing"],
+    };
+    // COMPLETENESS: every operation the Commercial transport serves is either in the table or on the explicit list of operations that take NO Commercial record id.
+    const TAKES_NO_RECORD_ID = ["listOpportunities", "listSalesAgreements", "listSalesOrders", "readMyCommercialCapabilities", "listCoordinatedOperations",
+      "createOpportunity",           // names an Account (a shared customer record), creates a new record
+      "getAccountCommercialProjection"]; // names an Account; only reachable records appear in its sections (test (a))
+    const served = [...commercialHttp.COMMERCIAL_READ_OPERATIONS, ...commercialHttp.COMMERCIAL_MUTATION_OPERATIONS];
+    assert.deepEqual(served.filter((op) => !(op in TABLE) && !TAKES_NO_RECORD_ID.includes(op)), [], "a Commercial operation that takes a record id is missing from this table");
+    assert.deepEqual(TAKES_NO_RECORD_ID.filter((op) => !served.includes(op)), [], "the exemption list names an operation that does not exist");
+
+    // ITEM 8: the whole of what each could have touched hashes the same before and after, for the foreign AND the nonexistent id.
+    const before = await stateHash();
+    for (const [name, [run, foreignId, missingId]] of Object.entries(TABLE)) {
+      const f = await refusal(() => run(foreignId));
+      const m = await refusal(() => run(missingId));
+      assert.deepEqual(words(f), words(m), `${name}: the same code, category and message`);
+      assert.deepEqual([f.name, Object.keys(f).sort()], [m.name, Object.keys(m).sort()], `${name}: the same error shape`);
+      assert.ok(!JSON.stringify([f.message, f.code]).includes(foreignId), `${name}: the refusal does not echo the foreign id`);
+      assert.equal(f.code === "FORBIDDEN" || /forbid|not authori[sz]ed|outside/i.test(f.message), false, `${name}: never "forbidden"`);
+    }
+    assert.equal(await stateHash(), before, "ITEM 8: no refused read or command changed a single row of any table it could touch");
+  });
+
+  await t.test("(n) ITEM 9: a company-less record the viewer owns still shows NO detail of a Ventana record it is linked to", async () => {
+    // A Ventana chain, and a company-less Taylor-owned Opportunity that (a historical link) points at it.
+    const oVL = await oppIn(actor(ven), { accountId: "acct-ven", operatingCompanyId: "ventana", need: "Ventana linked deal" });
+    const aVL = await agreementIn(actor(ven), oVL.opportunityId, { ownerEmployeeId: "e-ven" });
+    const sVL = await orderIn(actor(ven), { accountId: "acct-ven", ownerEmployeeId: "e-ven", operatingCompanyId: "ventana" });
+    const oNL = await oppIn(actor(tay), { accountId: "acct-null", operatingCompanyId: undefined, need: "Company-less, owned by Taylor" });
+    await q(`UPDATE eos_commercial.sales_agreements SET opportunity_id = $2 WHERE id = $1`, [aVL.salesAgreementId, oNL.opportunityId]);
+    await q(`UPDATE eos_commercial.sales_orders SET opportunity_id = $2, sales_agreement_id = $3 WHERE id = $1`, [sVL.salesOrderId, oNL.opportunityId, aVL.salesAgreementId]);
+    const viewer = actor(tay);
+    assert.equal((await oppRead.getOpportunityDetail(rdeps, viewer, { opportunityId: oNL.opportunityId })).id, oNL.opportunityId, "the owner sees its own company-less Opportunity");
+    const d = await oppRead.getOpportunityDetail(rdeps, viewer, { opportunityId: oNL.opportunityId });
+    assert.deepEqual([d.salesAgreement, d.salesOrder], [null, null], "its lineage to Ventana records is hidden");
+    const linked = await getAccountCommercialProjection(rdeps, viewer, { accountId: "acct-ven" });
+    for (const hidden of [aVL.salesAgreementId, aVL.salesAgreementNumber, sVL.salesOrderId, sVL.salesOrderNumber, oVL.opportunityId, oVL.opportunityNumber]) {
+      assert.ok(!JSON.stringify([d, linked]).includes(hidden), `a Ventana value leaked: ${hidden}`);
+    }
+    for (const read of [() => saRead.getSalesAgreementDetail(rdeps, viewer, { salesAgreementId: aVL.salesAgreementId }), () => soRead.getSalesOrderDetail(rdeps, viewer, { salesOrderId: sVL.salesOrderId })]) {
+      assert.equal((await refusal(read)).code, "RECORD_NOT_FOUND", "and the linked records themselves stay nonexistent to the viewer");
+    }
+    // The other direction: a company-less Agreement the viewer owns, whose Opportunity and Order are Ventana's.
+    await q(`UPDATE eos_commercial.sales_agreements SET opportunity_id = $2, operating_company_key = NULL, owner_employee_id = 'e-tay' WHERE id = $1`, [aVL.salesAgreementId, oVL.opportunityId]);
+    await q(`UPDATE eos_commercial.sales_orders SET opportunity_id = $2 WHERE id = $1`, [sVL.salesOrderId, oVL.opportunityId]);
+    const ag = await saRead.getSalesAgreementDetail(rdeps, viewer, { salesAgreementId: aVL.salesAgreementId });
+    assert.deepEqual([ag.opportunityId, ag.sourceOpportunity, ag.salesOrder], [null, null, null], "the Agreement shows no Ventana Opportunity or Order");
+    const pageItem = (await saRead.listSalesAgreements(rdeps, viewer, {})).items.find((i) => i.id === aVL.salesAgreementId);
+    assert.equal(pageItem.opportunityId, null, "nor does the list");
+    assert.ok(!JSON.stringify([ag, pageItem]).includes(oVL.opportunityNumber) && !JSON.stringify([ag, pageItem]).includes(sVL.salesOrderNumber));
+    // The Ventana owner of the Order sees its own links; the protected Administrator sees everything (unchanged).
+    assert.equal((await saRead.getSalesAgreementDetail(rdeps, actor(admin), { salesAgreementId: aVL.salesAgreementId })).opportunityId, oVL.opportunityId);
+    assert.equal((await soRead.getSalesOrderDetail(rdeps, actor(ven), { salesOrderId: sVL.salesOrderId })).opportunityId, oVL.opportunityId);
+  });
+
+  await t.test("(o) ITEM 12: National Accounts ownership and channel restrictions are preserved INSIDE company authority", async () => {
+    const holding = (cap, channel) => ({ capabilityKey: cap, scopeType: "salesChannel", scopeValue: channel, sourceRole: "r", assignmentId: null, condition: null });
+    const only = (principalId, channel) => actor(principalId, new Set(), [holding("opportunity.read", channel), holding("opportunity.write", channel)]);
+    const oVN = await oppIn(actor(ven), { accountId: "acct-ven", operatingCompanyId: "ventana", salesChannel: "NATIONAL_ACCOUNTS", need: "Ventana national" });
+    const oNN = await oppIn(actor(creator), { accountId: "acct-null", operatingCompanyId: undefined, salesChannel: "NATIONAL_ACCOUNTS", need: "Company-less national" });
+    const ids = async (a) => (await oppRead.listOpportunities(rdeps, a, {})).items.map((i) => i.id);
+    const saw = async (a, id) => ids(a).then((l) => l.includes(id));
+    // Channel: a National-scoped Taylor seller sees Taylor's National record, not Taylor's Retail one, and never Ventana's National one (company comes first).
+    const natTay = await ids(only(tay, "NATIONAL_ACCOUNTS"));
+    assert.ok(natTay.includes(oTN.opportunityId) && !natTay.includes(oT.opportunityId) && !natTay.includes(oVN.opportunityId));
+    assert.deepEqual((await ids(only(ven, "NATIONAL_ACCOUNTS"))).includes(oVN.opportunityId), true);
+    assert.equal(await saw(only(ven, "NATIONAL_ACCOUNTS"), oTN.opportunityId), false, "a Ventana National seller never sees Taylor's National record");
+    assert.equal(await saw(only(tay, "RETAIL"), oTN.opportunityId), false, "a Retail-scoped seller never sees the National one");
+    // Ownership (company-less): the OWNER holding the National channel sees it; a Retail-scoped owner does not (channel); a Taylor colleague who neither owns nor created it does not.
+    assert.equal(await saw(only(tay, "NATIONAL_ACCOUNTS"), oNN.opportunityId), true, "the owner, in the channel");
+    assert.equal(await saw(only(tay, "RETAIL"), oNN.opportunityId), false, "the owner, outside the channel");
+    assert.equal(await saw(only(creator, "NATIONAL_ACCOUNTS"), oNN.opportunityId), true, "the creator, in the channel");
+    assert.equal(await saw(only(other, "NATIONAL_ACCOUNTS"), oNN.opportunityId), false, "a colleague with the channel but no ownership");
+    // Writes: company, then channel. A National-scoped Taylor seller edits Taylor's National record; Ventana's is nonexistent; a Retail-scoped one is refused by channel.
+    const edit = (a, id) => opp.updateOpportunity(wdeps, a, { idempotencyKey: key(), opportunityId: id, expectedEditVersion: 1, need: "edited" });
+    assert.equal((await edit(only(tay, "NATIONAL_ACCOUNTS"), oTN.opportunityId)).editVersion, 2);
+    assert.equal((await refusal(() => edit(only(tay, "NATIONAL_ACCOUNTS"), oVN.opportunityId))).code, "RECORD_NOT_FOUND");
+    assert.equal((await refusal(() => edit(only(tay, "RETAIL"), oTN.opportunityId))).code, "OUTSIDE_SALES_CHANNEL_SCOPE");
+    assert.equal((await refusal(() => edit(only(other, "NATIONAL_ACCOUNTS"), oNN.opportunityId))).code, "RECORD_NOT_FOUND", "ownership still decides a company-less National record");
+  });
 });

@@ -293,3 +293,33 @@ export const personOf = (employeeId: string | null, resolved: boolean | null): C
 
 export const isoOf = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 export const minorOf = (v: string | number | null): number | null => (v === null ? null : Number(v));
+
+// ════════════════════ linked-record disclosure (Q-1a, Owner review item 9) ════════════════════
+
+/**
+ * A summary names the records it is linked to (an Agreement's source Opportunity, an Order's Opportunity and Agreement). A record the caller can see because it
+ * OWNS or CREATED it -- a company-less one -- may be linked to a record of a company the caller does not reach: that link is shown only when the caller reaches
+ * the linked record itself, else it is null (no id, number, state or account detail). Mutates the fetched rows in place; one query per linked family.
+ */
+export async function maskUnreachedLinks(
+  db: Queryable, tenantId: string, company: CommercialCompanyReach, rows: Array<Record<string, any>>,
+  links: { readonly opportunity?: string; readonly agreement?: string },
+): Promise<void> {
+  if (company.basis === "PROTECTED_ADMINISTRATOR" || rows.length === 0) return;
+  if (links.opportunity) {
+    const field = links.opportunity;
+    const ids = [...new Set(rows.map((r) => r[field]).filter((v): v is string => typeof v === "string"))];
+    const ok = ids.length === 0 ? new Set<string>() : new Set((await db.query(
+      `SELECT lo.id FROM eos_commercial.opportunities lo WHERE lo.tenant_id = $1 AND lo.id = ANY($2::text[]) AND ${company.sql("lo", 3)}`,
+      [tenantId, ids, ...company.sqlParams()])).rows.map((r) => String(r.id)));
+    for (const r of rows) if (typeof r[field] === "string" && !ok.has(r[field])) r[field] = null;
+  }
+  if (links.agreement) {
+    const field = links.agreement;
+    const ids = [...new Set(rows.map((r) => r[field]).filter((v): v is string => typeof v === "string"))];
+    const ok = ids.length === 0 ? new Set<string>() : new Set((await db.query(
+      `SELECT la.id FROM eos_commercial.sales_agreements la WHERE la.tenant_id = $1 AND la.id = ANY($2::text[]) AND ${company.sql("la", 3)}`,
+      [tenantId, ids, ...company.sqlParams()])).rows.map((r) => String(r.id)));
+    for (const r of rows) if (typeof r[field] === "string" && !ok.has(r[field])) r[field] = null;
+  }
+}

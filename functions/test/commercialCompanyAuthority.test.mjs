@@ -234,7 +234,11 @@ test("STRUCTURE: the Commercial surfaces outside the transport's record reads al
   // M-1 coordinated visits: the anchoring Sales Order's number and line refs pass the Sales Order reach.
   has("eosOps/coordinatedVisitPostgresRead.ts", ["reach.sql(\"s\", 3)", "visibleOrders", "resolveCommercialCompanyReach"]);
   // L-1 CRM activity: the Opportunity and Sales Order link probes.
-  has("eosCrm/crmActivityAuthority.ts", ['companyReach!.sql("t", 4)', "resolveCommercialCompanyReach"]);
+  has("eosCrm/crmActivityAuthority.ts", ['companyReach!.sql("t", 4)', "resolveCommercialCompanyReach", 'company.sql("t", 3)']); // the probe AND the activity list projection
+  // Owner review item 9: the summary link fields of details, lists and the Account projection are masked to the reachable.
+  has("eosCommercial/reads/commercialReadKernel.ts", ["export async function maskUnreachedLinks", 'company.sql("lo", 3)', 'company.sql("la", 3)']);
+  has("eosCommercial/reads/salesAgreementReadProjection.ts", ["maskUnreachedLinks(db, tenantId, reach.company", "maskUnreachedLinks(db, tenantId, o.company"]);
+  has("eosCommercial/reads/salesOrderReadProjection.ts", ["maskUnreachedLinks(db, tenantId, reach.company", "maskUnreachedLinks(db, tenantId, o.company"]);
   // M-3 lineage: an Agreement's explicit company must agree with its parent Opportunity's.
   has("eosCommercial/commands/salesAgreementCommandService.ts", ["OPERATING_COMPANY_MISMATCH", "rawFields.operatingCompanyId"]);
   // None of the new seams is composed by the deployed server.

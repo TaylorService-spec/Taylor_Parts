@@ -11,7 +11,7 @@ import { computeAgreementTotals } from "../../salesAgreement/salesAgreementComma
 import { fail } from "../commands/commercialCommandKernel";
 import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
 import {
-  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
+  COMMERCIAL_READ_CAPABILITIES, maskUnreachedLinks, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
   type CommercialReadDeps, type Queryable,
 } from "./commercialReadKernel";
@@ -205,6 +205,7 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Agreement does not exist in this tenant");
       const r = rows[0] as Row;
+      await maskUnreachedLinks(db, tenantId, reach.company, [r], { opportunity: "opportunity_id" }); // Q-1a: a link to an unreached record is shown as none
       // An Agreement carries no channel of its own: its channel IS its source Opportunity's, joined in this statement.
       // No source Opportunity (or one with no channel) admits no scoped holder.
       if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Agreement");
@@ -272,6 +273,7 @@ export async function readSalesAgreementPage(db: Queryable, tenantId: string, o:
     [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null, ...o.company.sqlParams()],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
+  await maskUnreachedLinks(db, tenantId, o.company, kept, { opportunity: "opportunity_id" });
   const lines = await linesByAgreement(db, tenantId, kept.map((r) => r.id));
   return pageOf("salesAgreement", rows as Row[], o.limit, (r) => r.sales_agreement_number, (r) => summaryOf(r, lines.get(r.id)!));
 }

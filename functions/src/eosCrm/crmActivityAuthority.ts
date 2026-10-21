@@ -86,6 +86,24 @@ export function listAccountActivities(deps: CrmDeps, actor: CrmActorContext, inp
         `SELECT * FROM eos_crm.activities WHERE tenant_id = $1 AND account_id = $2 ORDER BY occurred_at DESC, id LIMIT $3`,
         [tenantId, accountId, limit + 1]);
       if (rows.length > limit) return Object.freeze({ status: "unavailable" as const, activities: Object.freeze([]) });
+      // Q-1a (Owner review item 4): an activity names the Opportunity / Sales Order it was recorded against. That link is shown only where the viewer reaches the
+      // linked record (its operating-company authority); otherwise it is null -- no id, number, state or account detail of a record the viewer cannot see.
+      const linked = rows.some((r) => r.opportunity_id != null || r.sales_order_id != null);
+      if (linked) {
+        const company = await (deps.companyReach ?? resolveCommercialCompanyReach)(db, tenantId, actor.principalId);
+        const oppIds = [...new Set(rows.map((r) => r.opportunity_id).filter((v): v is string => typeof v === "string"))];
+        const soIds = [...new Set(rows.map((r) => r.sales_order_id).filter((v): v is string => typeof v === "string"))];
+        const okOpp = new Set(oppIds.length === 0 ? [] : (await db.query(
+          `SELECT t.id FROM eos_commercial.opportunities t WHERE t.tenant_id = $1 AND t.id = ANY($2::text[]) AND ${company.sql("t", 3)}`,
+          [tenantId, oppIds, ...company.sqlParams()])).rows.map((r) => String(r.id)));
+        const okSo = new Set(soIds.length === 0 ? [] : (await db.query(
+          `SELECT t.id FROM eos_commercial.sales_orders t WHERE t.tenant_id = $1 AND t.id = ANY($2::text[]) AND ${company.sql("t", 3)}`,
+          [tenantId, soIds, ...company.sqlParams()])).rows.map((r) => String(r.id)));
+        for (const r of rows) {
+          if (typeof r.opportunity_id === "string" && !okOpp.has(r.opportunity_id)) r.opportunity_id = null;
+          if (typeof r.sales_order_id === "string" && !okSo.has(r.sales_order_id)) r.sales_order_id = null;
+        }
+      }
       return Object.freeze({ status: "ready" as const, activities: Object.freeze(rows.map(project)) });
     });
 }
