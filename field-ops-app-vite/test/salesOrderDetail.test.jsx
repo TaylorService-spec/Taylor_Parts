@@ -458,3 +458,48 @@ describe("SalesOrderDetail -- owner and accountable stay distinct", () => {
     expect(fact(second.container, "Accountable").querySelector(".ns-identity__fact-value").textContent).not.toBe("Not set");
   });
 });
+
+// S1c follow-up: the fulfilment tracker's Allocated step takes its figures from the SERVER'S allocation read (readSalesOrderAllocations) -- the
+// same read the Allocation section shows -- and never claims "not recorded" once that read has answered.
+describe("SalesOrderDetail -- fulfilment tracker follows the server allocation read", () => {
+  const trackerOrder = () => readySalesOrder({ salesOrder: { lines: [{ lineId: "line-1", kind: "PART", ref: "PRT-9", orderedQty: 6 }] } });
+  const allocationRead = (allocatedTotal) => ({
+    salesOrderId: "SO-42", operatingCompanyId: "co-a", state: "CONFIRMED", canAllocate: false, canRelease: false, warehouses: [],
+    lines: [{ lineNumber: 1, kind: "PART", partId: "PRT-9", orderedQty: 6, allocatedTotal, byWarehouse: [], heldOutsideYourScope: 0 }],
+  });
+  const allocationClient = (read) => ({ readSalesOrderAllocations: vi.fn(async () => (read.errorStatus ? read : { result: read })) });
+
+  it("shows the allocated-vs-ordered figures from the read and drops 'not recorded' from the Allocated step", async () => {
+    useSalesOrder.mockReturnValue(trackerOrder());
+    const { container } = renderAt("SO-42", { actionDeps: { allocationClient: allocationClient(allocationRead(2)) } });
+    expect(await screen.findByText("2 of 6 allocated")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/Inventory Allocated\s*—\s*not recorded/);
+    expect(container.textContent).not.toMatch(/Allocation quantities are not recorded/);
+  });
+
+  it("when the read is refused the tracker says it has not read the figures, and claims no allocation", async () => {
+    useSalesOrder.mockReturnValue(trackerOrder());
+    const { container } = renderAt("SO-42", { actionDeps: { allocationClient: allocationClient({ errorStatus: "permission-denied" }) } });
+    await screen.findByText(/not authorized to see the stock allocated/i);
+    expect(screen.getByText(/Not read yet\. See the Allocation section\./)).toBeTruthy();
+    expect(container.textContent).not.toMatch(/\d+ of \d+ allocated/);
+  });
+});
+
+// The bare address used to fall through to /dashboard; it now lands on the one canonical Sales Order route.
+describe("SalesOrderBareRedirect", () => {
+  it("sends /opportunities/sales-order/:id to /customers/opportunities/sales-order/:id", async () => {
+    const { default: SalesOrderBareRedirect } = await import("../src/modules/sales/SalesOrderBareRedirect.jsx");
+    render(
+      <MemoryRouter initialEntries={["/opportunities/sales-order/SO-42"]}>
+        <Routes>
+          <Route path="/opportunities/sales-order/:salesOrderId" element={<SalesOrderBareRedirect />} />
+          <Route path="/customers/opportunities/sales-order/:salesOrderId" element={<p>canonical page</p>} />
+          <Route path="*" element={<p>dashboard</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("canonical page")).toBeTruthy();
+    expect(screen.queryByText("dashboard")).toBeNull();
+  });
+});

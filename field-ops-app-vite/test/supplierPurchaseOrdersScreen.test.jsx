@@ -13,11 +13,12 @@ import { MemoryRouter } from "react-router-dom";
 
 const requestsState = { data: [], loading: false, error: null };
 const purchaseOrdersState = { purchaseOrdersById: {}, loading: false, error: null };
+const directoryState = { loading: false };
 vi.mock("../src/hooks/useReorderRequests", () => ({ useReorderRequestsByStatuses: () => requestsState }));
 vi.mock("../src/hooks/usePurchaseOrdersByIds", () => ({ usePurchaseOrdersByIds: () => purchaseOrdersState }));
 vi.mock("../src/hooks/useGovernedEmployeeDirectory.js", async () => {
   const actual = await vi.importActual("../src/domain/actorDisplayName");
-  return { useGovernedEmployeeDirectory: () => ({ byUserId: new Map([["p-buyer", { id: "p-buyer", displayName: "Bea Buyer" }]]) }), resolveActorDisplayName: actual.resolveActorDisplayName };
+  return { useGovernedEmployeeDirectory: () => ({ byUserId: new Map([["p-buyer", { id: "p-buyer", displayName: "Bea Buyer" }]]), loading: directoryState.loading }), resolveActorDisplayName: actual.resolveActorDisplayName };
 });
 
 const { default: PurchaseOrdersWorkspace } = await import("../src/modules/purchasing/PurchaseOrdersWorkspace.jsx");
@@ -57,7 +58,7 @@ const fakeClient = (over = {}) => ({
 });
 const renderScreen = (hasCapability, client) => render(<MemoryRouter><SupplierPurchaseOrders hasCapability={hasCapability} client={client} /></MemoryRouter>);
 
-beforeEach(() => { requestsState.data = []; purchaseOrdersState.purchaseOrdersById = {}; });
+beforeEach(() => { directoryState.loading = false; requestsState.data = []; purchaseOrdersState.purchaseOrdersById = {}; });
 
 describe("the pure helpers", () => {
   it("prices are whole minor units: dollars and cents in, never a rounded surprise; unknown is said, never zero", () => {
@@ -322,6 +323,19 @@ describe("names, not keys", () => {
     expect(region.textContent).not.toContain("p-former");
     expect(region.textContent).not.toContain("Unknown user");
     cleanup();
+    const named = await open(fakeClient());
+    expect(within(named).getByText("Raised by").closest("div").textContent).toContain("Bea Buyer");
+  });
+
+  it("Raised by: while the directory is still loading the name reads Loading name, not the settled Name unavailable; a named actor is unaffected", async () => {
+    directoryState.loading = true;
+    const region = await open(fakeClient({ readOrder: vi.fn(async () => ({ ok: true, order: detail({ createdBy: "p-former" }) })) }));
+    const raised = within(region).getByText("Raised by").closest("div").textContent;
+    expect(raised).toContain("Loading name");
+    expect(raised).not.toContain("Name unavailable");
+    expect(region.textContent).not.toContain("p-former");
+    cleanup();
+    directoryState.loading = false;
     const named = await open(fakeClient());
     expect(within(named).getByText("Raised by").closest("div").textContent).toContain("Bea Buyer");
   });
