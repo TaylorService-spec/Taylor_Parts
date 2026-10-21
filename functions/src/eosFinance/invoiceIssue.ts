@@ -63,6 +63,40 @@ const addDays = (day: string, days: number): string => {
 };
 const big = (v: unknown): bigint => (v === null || v === undefined ? 0n : BigInt(v as string | number));
 
+export interface IssueBlocker { readonly code: string; readonly category: FinanceFoundationCategory; readonly message: string }
+/** The package columns the issue predicate reads (a billing_packages row, or the same columns joined onto a receivable row). */
+export interface IssuePackageFacts {
+  readonly source_kind: string | null; readonly tax_evidence_status: string | null; readonly tax_minor: unknown; readonly status: string | null;
+  readonly readiness_exceptions?: readonly string[] | null; readonly obligor_basis: string | null; readonly counterparty_id: string | null;
+  readonly operating_company_id: string | null; readonly currency: string | null;
+}
+/**
+ * WHY a billing package and its receivable cannot be invoiced, or null. ONE function, two callers: `issueFinancialInvoice` (which refuses with exactly this code,
+ * in exactly this order) and the receivable read (which offers Issue only where this is null -- F-1a low finding: the screen offered Issue on a financed sale the
+ * server then refused). `p` is null when the receivable has no Sales Order package; `o` is the package's RECEIVABLE obligation, or null. What this cannot see
+ * (a line without a price, the due date) depends on the request and is still decided by the command.
+ */
+export function issueBlocker(
+  p: IssuePackageFacts | null, o: { readonly status: string; readonly operating_company_id: string; readonly currency: string } | null, invoiceNumber: string | null,
+): IssueBlocker | null {
+  const b = (code: string, category: FinanceFoundationCategory, message: string): IssueBlocker => ({ code, category, message });
+  if (p === null || p.source_kind !== "SALES_ORDER") return b("UNSUPPORTED_BILLING_SOURCE", "PRECONDITION_FAILED", "only a Sales Order billing package is invoiced here");
+  // UNKNOWN TAX IS NEVER ZERO (OD-F1-7): checked before readiness so the refusal names the real cause.
+  if (p.tax_evidence_status !== "DETERMINED" || p.tax_minor === null || p.tax_minor === undefined) {
+    return b("TAX_NOT_DETERMINED", "PRECONDITION_FAILED", "the billing package's tax is not determined; it cannot be invoiced");
+  }
+  if (p.status !== "READY") {
+    const ex = p.readiness_exceptions ?? [];
+    return b("BILLING_PACKAGE_NOT_READY", "PRECONDITION_FAILED", `the billing package is ${p.status}${ex.length > 0 ? ` (${ex.join(", ")})` : ""}; only a READY package is invoiced`);
+  }
+  if (p.obligor_basis !== "DIRECT_SALE_CUSTOMER" || p.counterparty_id === null) return b("UNSUPPORTED_FINANCIAL_OBLIGOR", "PRECONDITION_FAILED", "only a direct sale to the customer is invoiced");
+  if (o === null) return b("RECEIVABLE_NOT_ESTABLISHED", "PRECONDITION_FAILED", "the billing package has no receivable to invoice");
+  if (o.status === "VOID") return b("RECEIVABLE_VOID", "PRECONDITION_FAILED", "the package's receivable is void");
+  if (o.operating_company_id !== p.operating_company_id || o.currency !== p.currency) return b("RECEIVABLE_PACKAGE_MISMATCH", "CONFLICT", "the receivable does not belong to the package's company and currency");
+  if (invoiceNumber !== null) return b("INVOICE_ALREADY_ISSUED", "CONFLICT", `this receivable already has invoice ${invoiceNumber}`);
+  return null;
+}
+
 async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
   try {
@@ -160,24 +194,16 @@ export async function issueFinancialInvoice(pool: Pool, actor: FinanceActor, inp
       return Object.freeze({ outcome: "replayed" as const, invoice: await readIssuedInvoiceOn(c, actor.tenantId, String(prior[0].id)) });
     }
 
-    // ── what may be invoiced ──
-    if (p.source_kind !== "SALES_ORDER") refuse("UNSUPPORTED_BILLING_SOURCE", "PRECONDITION_FAILED", "only a Sales Order billing package is invoiced here");
-    // UNKNOWN TAX IS NEVER ZERO (OD-F1-7): checked before readiness so the refusal names the real cause.
-    if (p.tax_evidence_status !== "DETERMINED" || p.tax_minor === null) refuse("TAX_NOT_DETERMINED", "PRECONDITION_FAILED", "the billing package's tax is not determined; it cannot be invoiced");
-    if (p.status !== "READY") {
-      refuse("BILLING_PACKAGE_NOT_READY", "PRECONDITION_FAILED",
-        `the billing package is ${p.status}${(p.readiness_exceptions ?? []).length > 0 ? ` (${(p.readiness_exceptions as string[]).join(", ")})` : ""}; only a READY package is invoiced`);
-    }
-    if (p.obligor_basis !== "DIRECT_SALE_CUSTOMER" || p.counterparty_id === null) refuse("UNSUPPORTED_FINANCIAL_OBLIGOR", "PRECONDITION_FAILED", "only a direct sale to the customer is invoiced");
+    // ── what may be invoiced: ONE predicate (issueBlocker), the same one the receivable read uses to offer or withhold Issue ──
     const { rows: ob } = await c.query(
       `SELECT o.id, o.operating_company_id, o.currency, o.status, b.originated_minor
          FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
         WHERE o.tenant_id = $1 AND o.source_domain = 'BILLING_PACKAGE' AND o.source_record_id = $2 AND o.kind = 'RECEIVABLE' FOR UPDATE OF o`, [actor.tenantId, packageId]);
-    const o = ob[0] ?? refuse("RECEIVABLE_NOT_ESTABLISHED", "PRECONDITION_FAILED", "the billing package has no receivable to invoice");
-    if (o.status === "VOID") refuse("RECEIVABLE_VOID", "PRECONDITION_FAILED", "the package's receivable is void");
-    if (o.operating_company_id !== p.operating_company_id || o.currency !== p.currency) refuse("RECEIVABLE_PACKAGE_MISMATCH", "CONFLICT", "the receivable does not belong to the package's company and currency");
-    const { rows: had } = await c.query(`SELECT invoice_number FROM eos_finance.invoices WHERE tenant_id = $1 AND obligation_id = $2`, [actor.tenantId, o.id]);
-    if (had[0]) refuse("INVOICE_ALREADY_ISSUED", "CONFLICT", `this receivable already has invoice ${had[0].invoice_number}`);
+    const o = ob[0] ?? null;
+    const { rows: had } = o ? await c.query(`SELECT invoice_number FROM eos_finance.invoices WHERE tenant_id = $1 AND obligation_id = $2`, [actor.tenantId, o.id]) : { rows: [] as { invoice_number: string }[] };
+    const blocker = issueBlocker(p, o, had[0]?.invoice_number ?? null);
+    if (blocker) refuse(blocker.code, blocker.category, blocker.message);
+    if (o === null) return refuse("RECEIVABLE_NOT_ESTABLISHED", "PRECONDITION_FAILED", "the billing package has no receivable to invoice"); // unreachable: issueBlocker names it
 
     // ── the lines and the money, exactly as the package froze them ──
     const { rows: lines } = await c.query(`SELECT * FROM eos_finance.billing_package_lines WHERE tenant_id = $1 AND package_id = $2 ORDER BY line_number`, [actor.tenantId, packageId]);

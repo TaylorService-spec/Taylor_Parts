@@ -15,9 +15,17 @@
 ## Issue one
 1. Open **Financials > Receivables**.
 2. Find the Sales Order receivable. Its **Invoice** column says **Not invoiced**. Use the **Company** filter if you work for more than one company.
-3. Choose **Issue invoice** in the **Action** column of its row. The button appears only on receivables that have no invoice yet, for companies you may issue for.
+3. Choose **Issue invoice** in the **Action** column of its row. The button appears only where the system itself says the receivable can be invoiced right now, for companies you may issue for. (See "Why there is no Issue button on a row" below.)
 4. The **due date follows the customer's payment terms** for that company. Leave the date alone and choose **Issue invoice now**.
 5. The page says "Invoice INV-… issued." and the row's **Invoice** column now shows the number and issue date. They also show on the receivable's record.
+
+## Why there is no Issue button on a row
+The system decides this, not the page: the row gets an Issue button only if issuing it would be accepted. You will not see one on:
+- **A financed sale.** When a lender pays for part of the sale, the customer's share can show up as a receivable, but the sale is not invoiced to the customer as a direct sale. The row says **Financed sale — not invoiced here**. Nothing is wrong; invoicing a financed sale is not built yet.
+- A receivable that **already has an invoice**, one that is **void**, or one whose billing package is **on hold or replaced** (for example, tax not yet determined).
+- A receivable at a company you are not assigned to issue for.
+
+If a row you expect to bill has no button, the reason is one of these. Open the sale to see which.
 
 ## When you need a different due date
 - You may pick a **later** date than the customer's terms, and you must say **why** in "Reason for that date". An earlier date is refused.
@@ -38,4 +46,4 @@
 If you press the button twice, or the connection drops and you try again, you get the same invoice back, not a second one. A refused attempt never uses a number, so numbers have no gaps from refusals.
 
 ## What this does not do yet
-Credits, write-offs, refunds, voiding an issued invoice, and invoicing part of an order are not part of this. Those need a second person's approval and arrive later. Invoices from before EOS are not copied in, and the EOS numbering starts at 000001 for each company and year.
+Invoicing a financed sale and invoicing part of an order are not part of this. Credits, write-offs, refunds and voids are in [Correct an invoice](correct-an-invoice.md); to bill a sale again after a void, see **Rebill after a void** there. Invoices from before EOS are not copied in, and the EOS numbering starts at 000001 for each company and year.

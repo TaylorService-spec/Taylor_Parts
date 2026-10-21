@@ -53,6 +53,16 @@ test("a receivable record keeps the register's figures, supplies no invoice numb
   for (const md of Object.values(NOT_SUPPLIED)) assert.match(md.words, /^Not supplied \(model decision MD-B1-\d/);
 });
 
+test("FU-2: the record carries the server's Issue and rebill verdicts as given, and none it was not sent -- nothing is derived here", () => {
+  const none = receivableRecord(row());
+  assert.deepEqual([none.issuable, none.rebill, none.invoiceVoided], [null, null, false], "an older server sends no verdict: the screen then offers nothing");
+  const sent = receivableRecord(row({ issuable: { eligible: false, reason: "UNSUPPORTED_FINANCIAL_OBLIGOR" }, rebill: { eligible: true, reason: null },
+    invoice: { id: "inv-1", invoiceNumber: "INV-2026-000001", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null, voidedAt: "2026-10-21T15:00:00.000Z" } }));
+  assert.deepEqual([sent.issuable, sent.rebill, sent.invoiceVoided], [{ eligible: false, reason: "UNSUPPORTED_FINANCIAL_OBLIGOR" }, { eligible: true, reason: null }, true]);
+  assert.equal(receivableRecord(row({ issuable: { eligible: "yes" } })).issuable, null, "anything but an explicit boolean is no verdict");
+  assert.equal(receivableRecord(row({ kind: "FUNDING_RECEIVABLE", status: "OPEN" })).issuable, null, "the record's own fields never stand in for the verdict");
+});
+
 test("the envelope carries the SERVER's totals and aging, per currency, and adds nothing up", () => {
   const env = receivablesEnvelope({ overview: overview(), pages: [{ items: [row()], truncated: false }] });
   assert.equal(env.status, "ready");

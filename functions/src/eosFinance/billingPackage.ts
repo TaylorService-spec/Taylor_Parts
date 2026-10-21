@@ -52,7 +52,7 @@ const big = (v: unknown): bigint | null => (v === null || v === undefined ? null
 const str = (v: bigint | null): string | null => (v === null ? null : v.toString());
 
 /** Prepare (or replay / supersede) the Operational Billing Package of ONE Sales Order, inside the caller's transaction. */
-export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor, input: { readonly salesOrderId: string }): Promise<BillingPackageOutcome> {
+export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor, input: { readonly salesOrderId: string; readonly idempotencyKey?: string }): Promise<BillingPackageOutcome> {
   const { rows: so } = await c.query(
     `SELECT so.id, so.state::text AS state, so.operating_company_key, so.account_id, so.currency, so.sales_agreement_id,
             a.is_lease, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.tax_evidence_status, a.down_payment_minor, a.trade_in_minor,
@@ -228,7 +228,9 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
      VALUES ($1, $2, 'finance.billingPackage.prepare', $3, 'billing_package', $4, $5::jsonb, $6::jsonb, now(), $7)`,
     [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, packageId,
       current[0] ? JSON.stringify({ supersededPackageId: current[0].id, version: current[0].version }) : null,
-      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId })),
+      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId,
+      // FU-2: the governed on-demand command records its key here, so a replay of the same key is found without a new table.
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}) })),
       "operational billing package prepared from governed Commercial eligibility"]);
   // THE OWNER-RULED CONSEQUENCE (DECISIONS #197): a READY direct-sale package establishes the EOS operational receivable --
   // in THIS transaction, so a READY package can never be observed without it.
@@ -407,6 +409,106 @@ export async function prepareBillingPackage(pool: Pool, actor: FinanceActor, inp
     const out = await prepareBillingPackageOn(c, actor, input);
     await c.query("COMMIT");
     return out;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    c.release();
+  }
+}
+
+/** The governed on-demand command's answer (FU-2). `outcome` is what the command did. On a key replay the package is the LIVE row (its status now, which may have moved on). */
+export interface PrepareBillingPackageResult {
+  readonly outcome: "recorded" | "replayed" | "superseded"; readonly packageId: string; readonly version: number; readonly status: string;
+  readonly readinessExceptions: readonly string[]; readonly totalMinor: string | null;
+}
+
+/** The facts the rebill predicate reads: ONE source for the command and the receivable read (financeOperations.ts rebillOf). */
+export interface RebillFacts {
+  /** The order's billing eligibility is ELIGIBLE in full (every line, at least one, none cancelled). */
+  readonly orderFullyEligible: boolean;
+  /** The order has a current (HELD or READY) package. */
+  readonly hasCurrentPackage: boolean;
+  /** The order's LATEST invoice (by issue time) exists and is VOIDED. */
+  readonly latestInvoiceVoided: boolean;
+}
+export interface RebillBlocker { readonly code: string; readonly category: "PRECONDITION_FAILED" | "CONFLICT"; readonly reason: string }
+/**
+ * Why a Sales Order cannot be REBILLED (prepared again for billing), or null. REBILL ONLY (Owner: "prepare rebill after an eligible void", not on-demand
+ * re-versioning): the order must be ELIGIBLE in full, hold no current package, and its latest invoice must be a voided one. ONE function, two callers:
+ * the command (which refuses with exactly this code) and the receivable read, which shows Prepare rebill only where this is null.
+ */
+export function rebillBlocker(f: RebillFacts): RebillBlocker | null {
+  if (!f.orderFullyEligible) return { code: "SALES_ORDER_NOT_ELIGIBLE", category: "PRECONDITION_FAILED", reason: "the Sales Order is not ELIGIBLE in full; only such an order is prepared for billing" };
+  if (f.hasCurrentPackage) return { code: "BILLING_PACKAGE_ALREADY_PREPARED", category: "CONFLICT", reason: "the Sales Order already has a current billing package; a package is prepared again only after a void retires it" };
+  if (!f.latestInvoiceVoided) return { code: "NOT_LATEST_VOIDED_INVOICE", category: "PRECONDITION_FAILED", reason: "a rebill follows a voided invoice: this Sales Order's latest invoice is not a voided one" };
+  return null;
+}
+
+/**
+ * FU-2 (DECISIONS #F-1b addendum): PREPARE THE BILLING PACKAGE OF ONE SALES ORDER ON DEMAND -- the rebill trigger after an Owner-approved VOID (the void retires the
+ * package; before this only a Work Order completion or the unrouted recovery could prepare a new one). A governed wrapper over the SAME `prepareBillingPackageOn`
+ * (no second preparation path): it is idempotent and versions after every retired package, so a voided sale gets a NEW package, a NEW receivable and, when issued,
+ * a NEW invoice number; the voided number is kept.
+ *
+ * REBILL ONLY (Owner: "prepare rebill after an eligible void", not on-demand re-versioning): the order must be ELIGIBLE in full, hold NO current HELD / READY package
+ * (BILLING_PACKAGE_ALREADY_PREPARED otherwise -- a live package is never re-versioned here, whatever its evidence), and its latest invoice must be VOIDED. The rule is
+ * `rebillBlocker`, shared with the receivable read that offers the control.
+ *
+ * AUTHORITY (capability and company) is decided by the transport before this runs. HERE, in ONE transaction: the Sales Order row is locked FIRST, so two concurrent
+ * prepares of one order take turns and yield ONE package version (the loser is refused ALREADY_PREPARED); a missing order, a rebill blocker, and a reused key refuse
+ * and roll back with ZERO trace. REPLAY: the key is recorded in the applied command's audit row (the existing `finance.billingPackage.prepare` row -- ONE per
+ * applied command, nothing else written); the same key answers the LIVE package row that audit row names, and the same key for a different order is
+ * IDEMPOTENCY_KEY_REUSED. A per-(actor, key) advisory lock is taken before the lookup.
+ */
+export async function prepareBillingPackageCommand(pool: Pool, actor: FinanceActor, input: { readonly salesOrderId: unknown; readonly idempotencyKey: unknown }): Promise<PrepareBillingPackageResult> {
+  const extra = Object.keys(input ?? {}).filter((k) => k !== "salesOrderId" && k !== "idempotencyKey");
+  if (extra.length > 0) throw new FinanceFoundationError("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+  const need = (v: unknown, code: string, what: string): string => {
+    if (typeof v !== "string" || v.trim() === "" || v.length > 200) throw new FinanceFoundationError(code, "INVALID_INPUT", `${what} is required`);
+    return v.trim();
+  };
+  const salesOrderId = need(input.salesOrderId, "SALES_ORDER_ID_REQUIRED", "salesOrderId");
+  const key = need(input.idempotencyKey, "IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey");
+  const c = await pool.connect();
+  try {
+    await c.query("BEGIN");
+    const { rows: so } = await c.query(`SELECT id FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE`, [actor.tenantId, salesOrderId]);
+    if (!so[0]) throw new FinanceFoundationError("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no Sales Order with that id");
+    // One (actor, key) at a time: two concurrent commands under the SAME key on DIFFERENT orders cannot both pass the lookup below.
+    await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`${actor.tenantId}|${actor.principalId}|${key}`]);
+    // `@>` (not `->>` equality) so the lookup uses the audit table's GIN index on `after`.
+    const { rows: prior } = await c.query(
+      `SELECT target_id, after FROM eos_policy.audit_events
+        WHERE tenant_id = $1 AND action = 'finance.billingPackage.prepare' AND actor_uid = $2 AND after @> jsonb_build_object('idempotencyKey', $3::text)
+        ORDER BY occurred_at, id LIMIT 1`,
+      [actor.tenantId, actor.principalId, key]);
+    if (prior[0]) {
+      if (prior[0].after?.salesOrderId !== salesOrderId) throw new FinanceFoundationError("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that idempotency key prepared a package for a different Sales Order");
+      // REPLAY answers the LIVE package row the audit row names (its status now), not the snapshot taken when the command applied.
+      const { rows: live } = await c.query(
+        `SELECT id, version, status, readiness_exceptions, total_minor FROM eos_finance.billing_packages WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, prior[0].target_id]);
+      const p = live[0] ?? (() => { throw new FinanceFoundationError("BILLING_PACKAGE_NOT_FOUND", "NOT_FOUND", "the package this key prepared no longer exists"); })();
+      await c.query("COMMIT");
+      return Object.freeze({ outcome: "replayed" as const, packageId: String(p.id), version: Number(p.version), status: String(p.status),
+        readinessExceptions: Object.freeze([...(p.readiness_exceptions ?? [])] as string[]), totalMinor: p.total_minor ?? null });
+    }
+    // REBILL ONLY: decided by the SAME predicate the receivable read shows the Prepare rebill control with (rebillBlocker), before anything is written.
+    const { rows: facts } = await c.query(
+      `SELECT (SELECT count(*) > 0 AND count(*) = count(*) FILTER (WHERE e.eligibility = 'ELIGIBLE')
+                 FROM eos_commercial.sales_order_line_billing_eligibility e WHERE e.tenant_id = $1 AND e.sales_order_id = $2) AS fully_eligible,
+              EXISTS (SELECT 1 FROM eos_finance.billing_packages cp WHERE cp.tenant_id = $1 AND cp.source_kind = 'SALES_ORDER' AND cp.sales_order_id = $2
+                 AND cp.status IN ('HELD', 'READY')) AS has_current,
+              (SELECT i.voided_at IS NOT NULL FROM eos_finance.invoices i WHERE i.tenant_id = $1 AND i.sales_order_id = $2 ORDER BY i.issued_at DESC, i.id DESC LIMIT 1) AS latest_voided`,
+      [actor.tenantId, salesOrderId]);
+    const blocked = rebillBlocker({ orderFullyEligible: facts[0]?.fully_eligible === true, hasCurrentPackage: facts[0]?.has_current === true, latestInvoiceVoided: facts[0]?.latest_voided === true });
+    if (blocked) throw new FinanceFoundationError(blocked.code, blocked.category, blocked.reason);
+    const out = await prepareBillingPackageOn(c, actor, { salesOrderId, idempotencyKey: key });
+    if (out.outcome === "NOT_ELIGIBLE") {
+      throw new FinanceFoundationError("SALES_ORDER_NOT_ELIGIBLE", "PRECONDITION_FAILED", `the Sales Order is ${out.eligibility}; only an order ELIGIBLE in full is prepared for billing`);
+    }
+    await c.query("COMMIT");
+    return Object.freeze({ outcome: out.outcome, packageId: out.packageId, version: out.version, status: out.status, readinessExceptions: out.readinessExceptions, totalMinor: out.totalMinor });
   } catch (err) {
     await c.query("ROLLBACK").catch(() => undefined);
     throw err;

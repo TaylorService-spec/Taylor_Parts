@@ -25,7 +25,7 @@ import { NOT_SUPPLIED } from "../../domain/financialsEos.js";
 import { Button } from "../../shared/ui/primitives";
 import { INVOICE_ISSUE_GATE } from "../../access/shellCapabilityGates.js";
 import { callFinanceApi } from "../../services/financeApiClient.js";
-import { IssuePanel, useIssuableCompanies } from "./InvoiceIssueQueue.jsx";
+import { IssuePanel, RebillPanel, useIssuableCompanies } from "./InvoiceIssueQueue.jsx";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, invoiceRow, agingSlots, unagedNote, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
@@ -46,8 +46,10 @@ const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateStr
 /** The EOS record reference: the register's own id, shortened. Not an invoice number (MD-B1-1). */
 export const recordRef = (id) => String(id).replace(/^obl_/, "").slice(0, 8).toUpperCase();
 
-/** An un-invoiced Sales Order package receivable that is not void: the only kind issueInvoice acts on. */
-const issuable = (r) => r.raw.kind === "RECEIVABLE" && r.raw.sourceDomain === "BILLING_PACKAGE" && !r.raw.invoiceNumber && r.raw.arPosition !== "VOID" && r.raw.state !== "VOID";
+/** Issue is offered only where the SERVER says so (FU-2: the issueInvoice command's own predicate, invoiceIssue.ts issueBlocker); this screen decides nothing, and a read with no verdict offers nothing. */
+const issuable = (r) => r.raw.issuable?.eligible === true;
+/** Prepare rebill is offered only where the SERVER says the voided invoice's Sales Order can be prepared again for billing. */
+const rebillable = (r) => r.raw.rebill?.eligible === true && typeof r.raw.salesOrderId === "string" && r.raw.salesOrderId !== "";
 
 /**
  * @param {{ mode?: "invoices" | "ar", hasCapability?: (id: string) => boolean, callApi?: typeof callFinanceApi }} props
@@ -59,6 +61,7 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
   const issueAccess = useIssuableCompanies(callApi, canIssue);
   const issueCompanies = new Set(issueAccess.companies.map((c) => c.operatingCompanyId));
   const [issuing, setIssuing] = useState(null); // the row whose issue panel is open
+  const [rebilling, setRebilling] = useState(null); // the row whose Prepare rebill panel is open
   const [issuedNotice, setIssuedNotice] = useState(null);
   const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false); // an issue is in flight: no other row may start one
@@ -197,8 +200,10 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
                     {canIssue ? (
                       <td>
                         {issuable(row) && issueCompanies.has(row.companyId)
-                          ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setIssuedNotice(null); openRow.current = row.invoiceId; setIssuing(row); }}>Issue invoice</Button>
-                          : null}
+                          ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setIssuedNotice(null); setRebilling(null); openRow.current = row.invoiceId; setIssuing(row); }}>Issue invoice</Button>
+                          : rebillable(row) && issueCompanies.has(row.companyId)
+                            ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setIssuedNotice(null); setIssuing(null); openRow.current = row.invoiceId; setRebilling(row); }}>Prepare rebill</Button>
+                            : row.raw.issuable?.reason === "UNSUPPORTED_FINANCIAL_OBLIGOR" ? <span className="fo-muted">Financed sale — not invoiced here</span> : null}
                       </td>
                     ) : null}
                   </tr>
@@ -208,6 +213,20 @@ export default function FinancialsReceivablesEos({ mode = "invoices", hasCapabil
           </table>
         </div>
         {issuedNotice ? <p className="fin-section-note" role="status">{issuedNotice}</p> : null}
+        {rebilling ? (
+          <RebillPanel key={rebilling.invoiceId} callApi={callApi} salesOrderId={rebilling.raw.salesOrderId} subject={rebilling.raw.salesOrderNumber ?? "this sale"}
+            onBusyChange={setBusy} onCancel={() => { openRow.current = null; setRebilling(null); }}
+            onPrepared={(prepared) => {
+              setReload((n) => n + 1); // it was prepared either way: re-read
+              if (openRow.current !== rebilling.invoiceId) return; // a superseded panel never closes the one now open
+              openRow.current = null;
+              const sale = rebilling.raw.salesOrderNumber ?? "this sale";
+              setIssuedNotice(prepared.status === "HELD"
+                ? `A new billing package was prepared for ${sale} but is on hold (${(prepared.readinessExceptions ?? []).join(", ") || "see Finance"}); it cannot be invoiced yet.`
+                : `A new billing package was prepared for ${sale}. Its new receivable can now be invoiced under a new invoice number.`);
+              setRebilling(null);
+            }} />
+        ) : null}
         {issuing ? (
           <IssuePanel key={issuing.invoiceId} callApi={callApi} billingPackageId={issuing.raw.sourceRecordId} subject={issuing.raw.salesOrderNumber ?? "this receivable"}
             amountText={issuing.total} onBusyChange={setBusy} onCancel={() => { openRow.current = null; setIssuing(null); }}

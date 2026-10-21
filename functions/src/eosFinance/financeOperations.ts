@@ -7,7 +7,8 @@
 //   apply       finance.settlement.apply
 //   correct     finance.settlement.correct          (reverse an application, void a settlement)
 //   reconcile   finance.reconciliation.record
-//   invoice     finance.invoice.issue               (F-1a: issueInvoice -- the invoice document over a READY package's receivable; invoiceIssue.ts)
+//   invoice     finance.invoice.issue               (F-1a: issueInvoice -- the invoice document over a READY package's receivable; invoiceIssue.ts);
+//               FU-2: prepareBillingPackage -- the SAME key (preparing the package is the first half of issuing): the rebill trigger after an approved void (billingPackage.ts)
 //   correction  F-1b: requestInvoiceCorrection -- finance.adjustment.record (credit, write-off, debit, void) or finance.refund.record (refund); decideInvoiceCorrection --
 //               finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve by kind (WITHDRAW: the requester, with the request key). A SEPARATE
 //               Employee approves, at a $0 threshold (invoiceCorrection.ts). Reads: listInvoiceCorrections, readInvoiceCorrection (finance.payment.read, FULL reach).
@@ -39,7 +40,8 @@ import { FinanceFoundationError, readObligationBalance } from "./financeFoundati
 import {
   applyFinancialSettlement, readSettlement, reconcileFinancialSettlement, recordFinancialSettlement, reverseSettlementApplication, voidFinancialSettlement,
 } from "./settlement";
-import { INVOICE_ISSUE_CAPABILITY, issueFinancialInvoice } from "./invoiceIssue";
+import { INVOICE_ISSUE_CAPABILITY, issueBlocker, issueFinancialInvoice } from "./invoiceIssue";
+import { prepareBillingPackageCommand, rebillBlocker } from "./billingPackage";
 import {
   CORRECTION_APPROVAL_CAPABILITIES, CORRECTION_APPROVE_CAPABILITY, CORRECTION_REQUEST_CAPABILITIES, CORRECTION_REQUEST_CAPABILITY, INVOICE_CORRECTION_KINDS,
   correctionScope, decideInvoiceCorrection, invoiceCompany, listInvoiceCorrections, readInvoiceCorrectionOn, requestInvoiceCorrection, type InvoiceCorrectionKind,
@@ -213,6 +215,30 @@ const dateText = (v: unknown): string | null => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/**
+ * FU-2: the Issue offer for one receivable row -- the package/receivable predicate the issueInvoice command itself uses; `reason` is the refusal code the command gives.
+ * ONE corner differs: a package of a DIFFERENT operating company than its receivable cannot be joined here (see obligationRows), so the read reports it as
+ * UNSUPPORTED_BILLING_SOURCE where the command would say RECEIVABLE_PACKAGE_MISMATCH. Both are "not issuable"; the control is withheld either way.
+ */
+function issuableOf(r: Record<string, any>): { readonly eligible: boolean; readonly reason: string | null } {
+  const pkg = r.bp_id ? { source_kind: r.bp_source_kind, tax_evidence_status: r.bp_tax_evidence_status, tax_minor: r.bp_tax_minor, status: r.bp_status,
+    readiness_exceptions: r.bp_readiness_exceptions, obligor_basis: r.bp_obligor_basis, counterparty_id: r.bp_counterparty_id,
+    operating_company_id: r.bp_operating_company_id, currency: r.bp_currency } : null;
+  const receivable = r.kind === "RECEIVABLE" ? { status: String(r.status), operating_company_id: String(r.operating_company_id), currency: String(r.currency) } : null;
+  const blocker = issueBlocker(pkg, receivable, r.invoice_number ?? null);
+  return Object.freeze({ eligible: blocker === null, reason: blocker?.code ?? null });
+}
+/**
+ * FU-2: the rebill offer for a VOIDED invoice's row, decided by the SAME predicate prepareBillingPackage refuses with (billingPackage.ts rebillBlocker): the Sales Order is
+ * ELIGIBLE in full, has no current (HELD / READY) package, and this voided invoice is the order's latest invoice. A row with no Sales Order has nothing to rebill.
+ */
+function rebillOf(r: Record<string, any>): { readonly eligible: boolean; readonly reason: string | null } {
+  if (!r.source_sales_order_id) return Object.freeze({ eligible: false, reason: "NO_SALES_ORDER" });
+  const blocker = rebillBlocker({ orderFullyEligible: r.order_fully_eligible === true, hasCurrentPackage: r.order_has_current_package === true,
+    latestInvoiceVoided: Boolean(r.invoice_voided_at) && r.is_latest_invoice === true });
+  return Object.freeze({ eligible: blocker === null, reason: blocker?.code ?? null });
+}
+
 /** An open obligation past its due date on the company's own business calendar (alias `o`). */
 const OVERDUE_SQL = `o.due_on IS NOT NULL AND o.status IN ('OPEN','PARTIAL') AND o.due_on < eos_policy.operating_company_business_date(o.tenant_id, o.operating_company_id, now())`;
 
@@ -229,7 +255,19 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     `SELECT o.id, o.operating_company_id, o.kind, o.currency, o.status, o.source_domain, o.source_record_id, o.due_on, o.created_at,
             b.originated_minor, b.settled_minor, b.outstanding_minor, cp.kind AS counterparty_kind, cp.crm_account_id, cp.operating_company_id AS counterparty_company,
             a.name AS counterparty_name,
-            (${OVERDUE_SQL}) AS overdue${withSource ? ", bp.sales_order_id AS source_sales_order_id, so.sales_order_number AS source_sales_order_number, inv.id AS invoice_id, inv.invoice_number, inv.issued_at AS invoice_issued_at, inv.accounting_reference AS invoice_accounting_reference" : ""}
+            (${OVERDUE_SQL}) AS overdue${withSource ? `, bp.sales_order_id AS source_sales_order_id, so.sales_order_number AS source_sales_order_number, inv.id AS invoice_id, inv.invoice_number, inv.issued_at AS invoice_issued_at, inv.accounting_reference AS invoice_accounting_reference, inv.voided_at AS invoice_voided_at,
+            bp.id AS bp_id, bp.source_kind AS bp_source_kind, bp.tax_evidence_status AS bp_tax_evidence_status, bp.tax_minor AS bp_tax_minor, bp.status AS bp_status,
+            bp.readiness_exceptions AS bp_readiness_exceptions, bp.obligor_basis AS bp_obligor_basis, bp.counterparty_id AS bp_counterparty_id,
+            bp.operating_company_id AS bp_operating_company_id, bp.currency AS bp_currency,
+            CASE WHEN inv.voided_at IS NOT NULL AND bp.sales_order_id IS NOT NULL THEN
+              (SELECT count(*) > 0 AND count(*) = count(*) FILTER (WHERE e.eligibility = 'ELIGIBLE') FROM eos_commercial.sales_order_line_billing_eligibility e
+                WHERE e.tenant_id = o.tenant_id AND e.sales_order_id = bp.sales_order_id) END AS order_fully_eligible,
+            CASE WHEN inv.voided_at IS NOT NULL AND bp.sales_order_id IS NOT NULL THEN
+              EXISTS (SELECT 1 FROM eos_finance.billing_packages cp WHERE cp.tenant_id = o.tenant_id AND cp.source_kind = 'SALES_ORDER' AND cp.sales_order_id = bp.sales_order_id
+                AND cp.status IN ('HELD', 'READY')) END AS order_has_current_package,
+            CASE WHEN inv.voided_at IS NOT NULL THEN
+              NOT EXISTS (SELECT 1 FROM eos_finance.invoices later WHERE later.tenant_id = inv.tenant_id AND later.sales_order_id = inv.sales_order_id
+                AND (later.issued_at, later.id) > (inv.issued_at, inv.id)) END AS is_latest_invoice` : ""}
        FROM eos_finance.obligations o JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
        JOIN eos_finance.financial_counterparties cp ON cp.tenant_id = o.tenant_id AND cp.id = o.counterparty_id
        LEFT JOIN eos_crm.accounts a ON a.tenant_id = cp.tenant_id AND a.id = cp.crm_account_id${withSource ? `
@@ -253,7 +291,13 @@ async function obligationRows(pool: Pool, tenantId: string, vis: FinanceVisibili
     // F-1a: the invoice issued against this receivable (1:1), or null while none has been. Its number and issue date are the invoice's own; what is
     // outstanding is, and stays, this row's balance. Asked for only by listObligations (same join set as the Sales Order source).
     ...(withSource ? { invoice: r.invoice_id ? Object.freeze({ id: String(r.invoice_id), invoiceNumber: String(r.invoice_number), issuedAt: new Date(r.invoice_issued_at).toISOString(),
-      accountingReference: r.invoice_accounting_reference ?? null }) : null } : {}),
+      accountingReference: r.invoice_accounting_reference ?? null,
+      voidedAt: r.invoice_voided_at ? new Date(r.invoice_voided_at).toISOString() : null }) : null } : {}),
+    // FU-2 (F-1a low finding): whether Issue may be offered, decided by the SAME predicate issueInvoice refuses with (invoiceIssue.ts issueBlocker) -- the screen
+    // offers Issue only where this is true and never on a financed sale. `reason` is the refusal code the command gives (one corner reads differently: see issuableOf). The command still re-decides.
+    ...(withSource ? { issuable: issuableOf(r) } : {}),
+    // FU-2: for a VOIDED invoice, whether its Sales Order can be prepared again for billing (the rebill), decided here; null for an invoice that is not void.
+    ...(withSource ? { rebill: r.invoice_voided_at ? rebillOf(r) : null } : {}),
   }));
 }
 
@@ -735,6 +779,22 @@ export const EOS_FINANCE_OPERATIONS: Readonly<Record<string, Op>> = Object.freez
       }
     }
     return issueFinancialInvoice(deps.pool, actorOf(caller), input as never);
+  },
+  // FU-2: PREPARE the billing package of ONE Sales Order on demand -- the rebill trigger after an approved void. REUSES finance.invoice.issue (preparing the package is the
+  // first half of issuing; no new key). Order: capability, then the ORDER's company against the caller's Finance company assignment at FULL reach (a foreign, unresolvable or
+  // missing order answers exactly like a missing one), then the command (REBILL ONLY: rebillBlocker, then the existing idempotent preparation), all before any write.
+  prepareBillingPackage: async (deps, caller, input) => {
+    requireCapability(caller, INVOICE_ISSUE_CAPABILITY);
+    if (typeof input.salesOrderId === "string" && input.salesOrderId.trim() !== "") {
+      const { rows } = await deps.pool.query(
+        `SELECT k.operating_company_id FROM eos_commercial.sales_orders so
+           LEFT JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = so.tenant_id AND k.operating_company_key = so.operating_company_key AND k.status = 'ACTIVE'
+          WHERE so.tenant_id = $1 AND so.id = $2`, [caller.actor.tenantId, input.salesOrderId.trim()]);
+      if (rows.length === 0 || rows[0].operating_company_id === null || !(await fullReachedCompanies(deps, caller, INVOICE_ISSUE_CAPABILITY)).includes(String(rows[0].operating_company_id))) {
+        refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no Sales Order with that id");
+      }
+    }
+    return prepareBillingPackageCommand(deps.pool, actorOf(caller), input as never);
   },
   // F-1b: REQUEST a credit, write-off, debit, refund or void of an ISSUED invoice. The kind decides the key (existing record keys); the INVOICE's company is then decided
   // against the caller's Finance company assignment at FULL reach, both before any write; an invoice outside the caller's companies answers exactly like a missing one.
