@@ -277,3 +277,47 @@ test("pinned parser edges: trailing-dot host, IPv4/IPv6 literals, percent-encode
     assert.equal(s.calls.length, 0, origin);
   }
 });
+
+test("an INJECTED registry may register a loopback http server; the same URL is refused against the real registry however it arrives", async () => {
+  for (const host of ["127.0.0.1", "localhost", "[::1]"]) {
+    const local = `http://${host}:8787`;
+    const registry = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: local }, surfaces: [{ url: "http://localhost:5173", eosApplication: true }] }] };
+    const a = stub();
+    assert.equal((await issue({ baseUrl: local, registry, fetch: a.fetch })).proof, "issuer-api");
+    assert.equal(a.calls[0].url, `${local}/auth/nonprod/persona-session`);
+    clearEosPersonaSessionCache();
+    const b = stub();
+    assert.equal((await login({ registry, fetch: b.fetch })).proof, "login-mfa");
+    assert.equal(b.calls[0].init.headers.origin, "http://localhost:5173");
+    clearEosPersonaSessionCache();
+
+    // Real registry: loopback http is refused as baseUrl, as EOS_API_BASE_URL, and as an origin -- zero calls, no secret.
+    for (const [name, call] of Object.entries(BOTH)) {
+      for (const opts of [{ baseUrl: local }, { env: { EOS_API_BASE_URL: local } }, { baseUrl: API, origin: "http://localhost:5173" }]) {
+        const s = stub();
+        await assert.rejects(call({ fetch: s.fetch, ...opts }), (e) => e.name === "EosPersonaSessionError", `${name} ${JSON.stringify(opts)}`);
+        assert.equal(s.calls.length, 0);
+        assert.equal(transmitted(s.calls), false);
+      }
+    }
+  }
+  // The injection is an option only: nothing in the environment can supply a registry.
+  const s = stub();
+  await assert.rejects(issue({ env: { EOS_API_BASE_URL: "http://127.0.0.1:8787", EOS_PERSONA_REGISTRY: "{}" }, fetch: s.fetch }), (e) => e.name === "EosPersonaSessionError");
+  assert.equal(s.calls.length, 0);
+});
+
+test("an injected registry entry that is http but NOT loopback is refused, as are loopback lookalikes", async () => {
+  for (const url of ["http://api.example", "http://127.0.0.1.evil.example", "http://localhost.evil.example:8787", "http://10.0.0.5:8787", "http://[::2]:8787", "http://0.0.0.0:8787", "http://127.0.0.2:8787"]) {
+    const registry = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: url }, surfaces: [] }] };
+    for (const [name, call] of Object.entries(BOTH)) {
+      const s = stub();
+      await assert.rejects(call({ baseUrl: url, registry, fetch: s.fetch }), refusal("INVALID_TARGET_URL"), `${name} ${url}`);
+      assert.equal(s.calls.length, 0);
+    }
+  }
+  // An injected registry still fails closed on roles and still refuses production overlap.
+  const prod = { environments: [{ id: "platform-sandbox", role: "sandbox", eosApi: { baseUrl: "http://127.0.0.1:1" }, surfaces: [] },
+    { id: "p", role: "production", eosApi: { baseUrl: "http://127.0.0.1:1" }, surfaces: [] }] };
+  assert.throws(() => resolveEosTargetFrom(prod, { baseUrl: "http://127.0.0.1:1" }), refusal("PRODUCTION_REFUSED"));
+});

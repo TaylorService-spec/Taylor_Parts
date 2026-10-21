@@ -43,14 +43,18 @@ function describeUrl(raw) {
 }
 
 /** Normalise to a bare origin (lower-case host, default port dropped). https only; no userinfo, path, query or fragment. */
-function normalizeOrigin(raw, what) {
+function normalizeOrigin(raw, what, allowLoopbackHttp = false) {
   // The RAW text must already be plain: the URL parser would quietly decode "%2d" or turn "\" into "/", and strip tabs/newlines.
-  if (!/^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(String(raw))) {
+  // http is accepted ONLY for a loopback host and ONLY when the caller injected the registry (allowLoopbackHttp); the
+  // committed registry, env vars and a bare baseUrl never get it.
+  const plain = /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(String(raw))
+    || (allowLoopbackHttp && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/i.test(String(raw)));
+  if (!plain) {
     throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} is not a plain https origin: ${describeUrl(raw)}`);
   }
   let u;
   try { u = new URL(String(raw)); } catch { throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} is not a URL: ${describeUrl(raw)}`); }
-  if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || u.pathname !== "/") {
+  if ((u.protocol !== "https:" && u.protocol !== "http:") || u.username || u.password || u.search || u.hash || u.pathname !== "/") {
     throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} must be a bare https origin: ${describeUrl(raw)}`);
   }
   return u.origin;
@@ -60,7 +64,8 @@ function normalizeOrigin(raw, what) {
  * THE one validator for BOTH the password+MFA login and the persona issuer. Returns { environmentId, base, origin }
  * (`origin` null when no browser origin is needed and none was supplied). Throws EosPersonaSessionError, code + URL only.
  */
-export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId, env = process.env, needOrigin = false } = {}) {
+function resolveWith(registry, allowLoopbackHttp, { baseUrl, origin, environmentId, env = process.env, needOrigin = false } = {}) {
+  const norm = (raw, what) => normalizeOrigin(raw, what, allowLoopbackHttp);
   const envs = registry.environments ?? [];
   // Explicit roles, fail closed: one entry whose role is neither listed nor exactly "production" voids the WHOLE
   // resolution, so a typo ("Production", "prod", "production ", a missing role) can never make a production entry look nonprod.
@@ -71,8 +76,8 @@ export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId,
   }
   const nonprod = envs.filter((e) => NONPROD_ROLES.has(e.role));
   const production = envs.filter((e) => e.role === "production");
-  const surfaceOrigins = (e) => (e.surfaces ?? []).filter((x) => x.eosApplication === true).map((x) => normalizeOrigin(x.url, "registered surface"));
-  const apiOwner = (o) => nonprod.find((e) => e.eosApi?.baseUrl && normalizeOrigin(e.eosApi.baseUrl, "registered eosApi") === o);
+  const surfaceOrigins = (e) => (e.surfaces ?? []).filter((x) => x.eosApplication === true).map((x) => norm(x.url, "registered surface"));
+  const apiOwner = (o) => nonprod.find((e) => e.eosApi?.baseUrl && norm(e.eosApi.baseUrl, "registered eosApi") === o);
   const originOwner = (o) => nonprod.find((e) => surfaceOrigins(e).includes(o));
   // A production entry owning the URL refuses it OUTRIGHT, even if a nonprod entry also lists it (overlap).
   const registeredOrigin = (raw) => {
@@ -90,7 +95,7 @@ export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId,
     if (!entry.eosApi?.baseUrl) throw new EosPersonaSessionError("NO_EOS_API", `'${id}' declares no eosApi.baseUrl`);
     apiInput = entry.eosApi.baseUrl;
   }
-  const base = normalizeOrigin(apiInput, "the EOS API base URL");
+  const base = norm(apiInput, "the EOS API base URL");
   if (isProduction(base)) throw new EosPersonaSessionError("PRODUCTION_REFUSED", `the EOS API ${base} is a production URL`);
   const owner = apiOwner(base);
   if (!owner) throw new EosPersonaSessionError("API_NOT_REGISTERED", `the EOS API ${base} is not a registered nonproduction EOS API`);
@@ -100,7 +105,7 @@ export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId,
 
   let resolvedOrigin = null;
   if (origin !== undefined && origin !== null) {
-    resolvedOrigin = normalizeOrigin(origin, "the browser origin");
+    resolvedOrigin = norm(origin, "the browser origin");
     if (isProduction(resolvedOrigin)) throw new EosPersonaSessionError("PRODUCTION_REFUSED", `the browser origin ${resolvedOrigin} is a production URL`);
     const o = originOwner(resolvedOrigin);
     if (!o) {
@@ -116,9 +121,19 @@ export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId,
   return Object.freeze({ environmentId: owner.id, base, origin: resolvedOrigin });
 }
 
-/** Validate against the committed registry (the ONLY registry production callers use). */
-export function resolveEosTarget(options = {}) {
-  return resolveEosTargetFrom(JSON.parse(readFileSync(REGISTRY_PATH, "utf8")), options);
+/**
+ * Validate against an EXPLICITLY INJECTED registry (a test seam: a suite that runs a local EOS API passes a synthetic
+ * registry whose nonprod entry is that loopback server). Only here may a registered entry be http, and only on loopback.
+ */
+export function resolveEosTargetFrom(registry, options = {}) {
+  return resolveWith(registry, true, options);
+}
+
+/** Validate against the committed registry, or an injected `options.registry`. Never loopback/http for the committed one. */
+export function resolveEosTarget({ registry, ...options } = {}) {
+  return registry
+    ? resolveEosTargetFrom(registry, options)
+    : resolveWith(JSON.parse(readFileSync(REGISTRY_PATH, "utf8")), false, options);
 }
 
 /** Resolve the EOS API base URL; only a registered nonproduction EOS API is returned (see resolveEosTarget). */
