@@ -77,7 +77,7 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
   };
   const shared = { reader: repo, pool, verifyToken, allowedOrigins };
   const commercialShared = { ...shared, companyReach: ALL_COMPANIES }; // Q-1a: these suites are not about company authority (see the fixture)
-  const crm = crmActive ? { ...shared, writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) } : shared;
+  const crm = crmActive ? { ...shared, companyReach: ALL_COMPANIES, writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) } : { ...shared, companyReach: ALL_COMPANIES };
   // The Reorder operations (PR #2000) are committed INACTIVE and refuse 412 PRECONDITION_FAILED before principal resolution; measured
   // ACTIVE through the Operations transport's declared test seam, so authority -- not the activation gate -- answers.
   const ops = crmActive ? { ...shared, reorderPostgresActive: true } : shared;
@@ -125,8 +125,8 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
         operations: [...workforceHttp.WORKFORCE_READ_OPERATIONS, ...workforceHttp.WORKFORCE_COMMAND_OPERATIONS],
         mutations: new Set(workforceHttp.WORKFORCE_COMMAND_OPERATIONS),
         route: () => workforceHttp.WORKFORCE_ROUTE,
-        handle: (req) => workforceHttp.handleWorkforceRequest(shared, req),
-        node: workforceHttp.createWorkforceHttpHandler(shared),
+        handle: (req) => workforceHttp.handleWorkforceRequest({ ...shared, companyReach: ALL_COMPANIES }, req),
+        node: workforceHttp.createWorkforceHttpHandler({ ...shared, companyReach: ALL_COMPANIES }),
       },
     },
   };

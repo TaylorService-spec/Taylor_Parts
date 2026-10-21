@@ -69,7 +69,7 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
   const q = (text, values = []) => pool.query(text, values);
   const catalog = { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } };
   const deps = { pool, catalog, companyReach: ALL_COMPANIES };
-  const crmDeps = { pool };
+  const crmDeps = { pool, companyReach: ALL_COMPANIES };
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);

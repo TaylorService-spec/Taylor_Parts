@@ -154,7 +154,7 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
       const expected = opportunity!.lines.map(lineKey);
       const actual = built.lines.map((l) => lineKey({ kind: l.kind, ref: l.ref, qty: l.orderedQty }));
       if (!sameMultiset(expected, actual)) fail("SOURCE_LINES_MISMATCH", "PRECONDITION_FAILED", "the Order lines do not match the source Opportunity");
-      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity!.id)) {
+      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity!.id, scope)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the source Opportunity already has a Sales Order");
       }
       opportunityId = opportunity!.id;
@@ -192,10 +192,10 @@ export function createSalesOrderFromOpportunity(deps: CommercialCommandDeps, act
       if (!opportunity) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
       scope.admitChannel(opportunity.salesChannel);
       if (opportunity.outcome !== "WON") fail("OPPORTUNITY_NOT_WON", "PRECONDITION_FAILED", "the Opportunity is not WON");
-      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id)) {
+      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id, scope)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Order");
       }
-      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id), opportunity);
+      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id, scope), opportunity);
       const created = await stageSalesOrderFromAgreement(db, actor, now, scope, opportunity, agreement, input as { salesChannel: unknown });
       return {
         result: { ...created, opportunityId: opportunity.id }, target: { family: "salesOrder" as const, id: created.salesOrderId },

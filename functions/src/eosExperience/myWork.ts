@@ -27,6 +27,7 @@ import { admittedScopeValues } from "../adminPolicy/assignmentScopeRuntime";
 import { readAnalysisCatalog, readAnalysisWorkspace, type AnalysisArea } from "../eosAnalysis/analysis";
 import { readRentalWorkspace, RENTAL_READ } from "../eosRental/rental";
 import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
+import { resolveCommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -137,8 +138,10 @@ const COMMERCIAL = [
   { kind: "salesOrder", table: "eos_commercial.sales_orders", number: "sales_order_number", state: "state::text", capability: "salesOrder.read", channel: "o.sales_channel::text" },
 ] as const;
 
-async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, employeeId: string, column: "owner_employee_id" | "accountable_employee_id", key: SectionKey): Promise<Section> {
+async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, employeeId: string, column: "owner_employee_id" | "accountable_employee_id", key: SectionKey, companyReach?: CommercialCompanyResolver): Promise<Section> {
   const items: Item[] = [];
+  // Q-1a (Owner ruling Q1-11): the caller's operating-company authority bounds every family, before the channel (the SAME reach the Commercial reads use).
+  const company = await (companyReach ?? resolveCommercialCompanyReach)(db, caller.actor.tenantId, caller.actor.principalId);
   const refusedFamilies: string[] = [];
   for (const f of COMMERCIAL) {
     const flat = caller.actor.capabilities.has(f.capability);
@@ -150,8 +153,8 @@ async function commercialRecordsFor(db: Queryable, caller: WorkOrderCaller, empl
          FROM ${f.table} o LEFT JOIN eos_crm.accounts a ON a.tenant_id = o.tenant_id AND a.id = o.account_id
          LEFT JOIN eos_workforce.employees ow ON ow.tenant_id = o.tenant_id AND ow.id = o.owner_employee_id
          LEFT JOIN eos_workforce.employees ac ON ac.tenant_id = o.tenant_id AND ac.id = o.accountable_employee_id
-        WHERE o.tenant_id = $1 AND o.${column} = $2 AND ($3::text[] IS NULL OR ${f.channel} = ANY($3::text[]))
-        ORDER BY o.updated_at DESC LIMIT ${PREVIEW_ROWS + 1}`, [caller.actor.tenantId, employeeId, channels]);
+        WHERE o.tenant_id = $1 AND o.${column} = $2 AND ${company.sql("o", 4)} AND ($3::text[] IS NULL OR ${f.channel} = ANY($3::text[]))
+        ORDER BY o.updated_at DESC LIMIT ${PREVIEW_ROWS + 1}`, [caller.actor.tenantId, employeeId, channels, ...company.sqlParams()]);
     for (const r of rows) {
       items.push({ id: String(r.id), kind: f.kind, label: String(r.number ?? r.id), detail: r.account_name ?? null, status: r.state ?? null, path: pathFor(f.kind, String(r.id)),
         action: { responsibility: { owner: r.owner_name ?? r.owner_employee_id ?? null, accountable: r.accountable_name ?? r.accountable_employee_id ?? null } } });
@@ -257,7 +260,7 @@ export async function readMyWork(deps: WorkOrderOperationDeps, caller: WorkOrder
         case "ownedRecords":
         case "accountableRecords": {
           if (!me.employeeId) return notAuthorized(key, "no Employee is linked to this sign-in, so no record can be yours");
-          return commercialRecordsFor(pool, caller, me.employeeId, key === "ownedRecords" ? "owner_employee_id" : "accountable_employee_id", key);
+          return commercialRecordsFor(pool, caller, me.employeeId, key === "ownedRecords" ? "owner_employee_id" : "accountable_employee_id", key, deps.companyReach);
         }
         case "analysisCatalog": {
           const c = readAnalysisCatalog(analysisActor);
@@ -294,7 +297,9 @@ interface SearchKind {
   readonly kind: string; readonly label: string; readonly capabilities: readonly string[]; readonly channelScopedBy?: string; readonly reach?: "REORDER_QUEUE";
   /** Admit a holder of this capability WITHIN operatingCompany scopes, narrowed to those companies ($3), like listEmployees. */
   readonly companyScopedBy?: string;
-  readonly sql: string;   // $1 tenant, $2 pattern, $3 channels (text[] | null), $4 reach keys (text[] | null)
+  /** Q-1a: a Commercial kind -- `{{COMPANY_x}}` in `sql` becomes the caller's company predicate over alias x, bound at $5..$7. */
+  readonly commercial?: true;
+  readonly sql: string;   // $1 tenant, $2 pattern, $3 channels (text[] | null), $4 reach keys (text[] | null), $5..$7 company reach (commercial kinds)
 }
 
 const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
@@ -302,21 +307,21 @@ const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
     sql: `SELECT w.id, w.work_order_number AS label, concat_ws(' · ', a.name, w.status::text) AS detail FROM eos_ops.work_orders w
             LEFT JOIN eos_crm.accounts a ON a.tenant_id = w.tenant_id AND a.id = w.customer_id
            WHERE w.tenant_id = $1 AND (w.work_order_number ILIKE $2 OR a.name ILIKE $2 OR w.complaint ILIKE $2) ORDER BY w.updated_at DESC LIMIT 8` },
-  { kind: "opportunity", label: "Opportunity", capabilities: ["opportunity.read"], channelScopedBy: "opportunity.read",
+  { kind: "opportunity", label: "Opportunity", capabilities: ["opportunity.read"], channelScopedBy: "opportunity.read", commercial: true,
     sql: `SELECT o.id, o.opportunity_number AS label, concat_ws(' · ', a.name, o.sales_channel::text, o.stage::text) AS detail FROM eos_commercial.opportunities o
             LEFT JOIN eos_crm.accounts a ON a.tenant_id = o.tenant_id AND a.id = o.account_id
-           WHERE o.tenant_id = $1 AND (o.opportunity_number ILIKE $2 OR a.name ILIKE $2 OR o.need ILIKE $2) AND ($3::text[] IS NULL OR o.sales_channel::text = ANY($3))
+           WHERE o.tenant_id = $1 AND {{COMPANY_o}} AND (o.opportunity_number ILIKE $2 OR a.name ILIKE $2 OR o.need ILIKE $2) AND ($3::text[] IS NULL OR o.sales_channel::text = ANY($3))
            ORDER BY o.updated_at DESC LIMIT 8` },
-  { kind: "salesOrder", label: "Sales Order", capabilities: ["salesOrder.read"], channelScopedBy: "salesOrder.read",
+  { kind: "salesOrder", label: "Sales Order", capabilities: ["salesOrder.read"], channelScopedBy: "salesOrder.read", commercial: true,
     sql: `SELECT o.id, o.sales_order_number AS label, concat_ws(' · ', a.name, o.sales_channel::text, o.state::text) AS detail FROM eos_commercial.sales_orders o
             LEFT JOIN eos_crm.accounts a ON a.tenant_id = o.tenant_id AND a.id = o.account_id
-           WHERE o.tenant_id = $1 AND (o.sales_order_number ILIKE $2 OR a.name ILIKE $2) AND ($3::text[] IS NULL OR o.sales_channel::text = ANY($3))
+           WHERE o.tenant_id = $1 AND {{COMPANY_o}} AND (o.sales_order_number ILIKE $2 OR a.name ILIKE $2) AND ($3::text[] IS NULL OR o.sales_channel::text = ANY($3))
            ORDER BY o.updated_at DESC LIMIT 8` },
-  { kind: "salesAgreement", label: "Sales Agreement", capabilities: ["salesAgreement.read"], channelScopedBy: "salesAgreement.read",
+  { kind: "salesAgreement", label: "Sales Agreement", capabilities: ["salesAgreement.read"], channelScopedBy: "salesAgreement.read", commercial: true,
     sql: `SELECT g.id, g.sales_agreement_number AS label, concat_ws(' · ', a.name, g.state::text) AS detail FROM eos_commercial.sales_agreements g
             LEFT JOIN eos_crm.accounts a ON a.tenant_id = g.tenant_id AND a.id = g.account_id
             LEFT JOIN eos_commercial.opportunities op ON op.tenant_id = g.tenant_id AND op.id = g.opportunity_id
-           WHERE g.tenant_id = $1 AND (g.sales_agreement_number ILIKE $2 OR a.name ILIKE $2) AND ($3::text[] IS NULL OR op.sales_channel::text = ANY($3))
+           WHERE g.tenant_id = $1 AND {{COMPANY_g}} AND (g.sales_agreement_number ILIKE $2 OR a.name ILIKE $2) AND ($3::text[] IS NULL OR op.sales_channel::text = ANY($3))
            ORDER BY g.updated_at DESC LIMIT 8` },
   { kind: "account", label: "Customer", capabilities: ["customer.record.read"],
     sql: `SELECT a.id, a.name AS label, concat_ws(' · ', a.customer_number, a.status::text) AS detail FROM eos_crm.accounts a
@@ -360,6 +365,7 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
   const results: Array<{ kind: string; kindLabel: string; id: string; label: string; detail: string | null; path: string | null }> = [];
   const notSearched: string[] = [];
   let reachKeys: readonly string[] | null = null;
+  let companyReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
   for (const k of SEARCH_KINDS) {
     const flat = k.capabilities.some((c) => actor.capabilities.has(c));
     const channels = k.channelScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.channelScopedBy, "salesChannel")
@@ -372,8 +378,17 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
       if (keys.length === 0) { notSearched.push(k.kind); continue; }
       reach = keys;
     }
-    const used = Math.max(...[...k.sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
-    const { rows } = await deps.pool.query(k.sql, [actor.tenantId, pattern, channels, reach].slice(0, used));
+    // Q-1a: a Commercial kind is ALSO bounded by the caller's operating-company authority: a foreign record, or another person's company-less one, is never
+    // found, and its text (an Opportunity's need included) is never matched against the query.
+    let sql = k.sql;
+    let params: unknown[] = [actor.tenantId, pattern, channels, reach];
+    if (k.commercial) {
+      const company = companyReach ?? (companyReach = await (deps.companyReach ?? resolveCommercialCompanyReach)(deps.pool, actor.tenantId, actor.principalId));
+      sql = sql.replace(/\{\{COMPANY_([a-z])\}\}/g, (_m, alias: string) => company.sql(alias, 5));
+      params = [...params, ...company.sqlParams()];
+    }
+    const used = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+    const { rows } = await deps.pool.query(sql, params.slice(0, used));
     for (const r of rows) results.push({ kind: k.kind, kindLabel: k.label, id: String(r.id), label: String(r.label ?? r.id), detail: r.detail ?? null, path: pathFor(k.kind, String(r.id)) });
   }
   const notSearchedLabels = notSearched.map((kind) => SEARCH_KINDS.find((k) => k.kind === kind)?.label ?? kind);

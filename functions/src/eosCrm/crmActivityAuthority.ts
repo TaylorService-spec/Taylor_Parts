@@ -25,6 +25,7 @@ import {
   runCrmCommand, runCrmRead, type CrmActorContext, type CrmDeps,
 } from "./crmAuthorityKernel";
 import { withActorAuthority } from "../eosOps/administrationReach";
+import { resolveCommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
 
 export const CRM_ACTIVITY_READ = "crm.activity.read";
 export const CRM_ACTIVITY_CREATE = "crm.activity.create";
@@ -90,6 +91,8 @@ export function listAccountActivities(deps: CrmDeps, actor: CrmActorContext, inp
 }
 
 /** Each stated reference must be in this tenant AND on this Account; anything else answers like an unknown record. */
+// Q-1a (Owner ruling Q1-11): the Commercial links are Commercial records, so they are probed through the caller's operating-company reach (alias `t`): a record of
+// an unreached company (or a company-less one the caller neither owns nor created) answers exactly like an unknown id.
 const LINKS = Object.freeze([
   ["contactId", "eos_crm.contacts", "CONTACT_NOT_FOUND", "no such Contact on this Account"],
   ["opportunityId", "eos_commercial.opportunities", "OPPORTUNITY_NOT_FOUND", "no such Opportunity on this Account"],
@@ -131,10 +134,15 @@ export function createAccountActivity(deps: CrmDeps, actor: CrmActorContext, inp
     },
     async (client, a, p) => {
       await requireTenantAccount(client, a.tenantId, p.accountId);
+      let companyReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
       for (const [field, table, code, message] of LINKS) {
         const id = p[field];
         if (id === null) continue;
-        const found = await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND account_id = $3`, [a.tenantId, id, p.accountId]);
+        const commercial = table.startsWith("eos_commercial.");
+        if (commercial) companyReach = companyReach ?? await (deps.companyReach ?? resolveCommercialCompanyReach)(client, a.tenantId, a.principalId);
+        const found = commercial
+          ? await client.query(`SELECT 1 FROM ${table} t WHERE t.tenant_id = $1 AND t.id = $2 AND t.account_id = $3 AND ${companyReach!.sql("t", 4)}`, [a.tenantId, id, p.accountId, ...companyReach!.sqlParams()])
+          : await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND account_id = $3`, [a.tenantId, id, p.accountId]);
         if (found.rows.length === 0) fail(code, "NOT_FOUND", message);
       }
       // One key per actor = one activity, exactly as the Firestore audit-id derivation (actor + key) decided it.

@@ -123,6 +123,8 @@ export const WORKFORCE_ROUTE = "/workforce/employees";
 export interface WorkforceApiDeps {
   readonly reader: PolicyReader;
   readonly pool: Pool;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in Commercial company resolver for the record-ownership reads. The deployed server supplies none. */
+  readonly companyReach?: import("../eosCommercial/commercialCompanyAuthority").CommercialCompanyResolver;
   /**
    * WHERE PER-GRANT CONDITIONS COME FROM. Server composition, never a request field.
    *
@@ -141,8 +143,8 @@ export interface WorkforceApiDeps {
 
 type Input = Record<string, unknown>;
 type Runner = (deps: WorkforceApiDeps, actor: EmployeeReadActor, input: Input) => Promise<unknown>;
-const read = (fn: (d: { pool: Pool }, a: EmployeeReadActor, i: Input) => Promise<unknown>): Runner =>
-  (deps, actor, input) => fn({ pool: deps.pool }, actor, input);
+const read = (fn: (d: { pool: Pool; companyReach?: import("../eosCommercial/commercialCompanyAuthority").CommercialCompanyResolver }, a: EmployeeReadActor, i: Input) => Promise<unknown>): Runner =>
+  (deps, actor, input) => fn({ pool: deps.pool, companyReach: deps.companyReach }, actor, input);
 /** The same pool-only adapter, named for what it composes: a governed command owns its transaction, never the transport. */
 const command = read;
 

@@ -1032,4 +1032,5 @@ functions/test/support/protectedOwnerFixture.mjs
 functions/src/eosCommercial/commercialCompanyAuthority.ts
 functions/test/commercialCompanyAuthority.test.mjs
 functions/test/commercialCompanyAuthorityPostgres.test.mjs
+functions/test/commercialCompanyAuthorityBreadthPostgres.test.mjs
 functions/test/support/commercialCompanyReachFixture.mjs

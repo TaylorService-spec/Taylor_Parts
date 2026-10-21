@@ -20,6 +20,8 @@ all, then **whether the record is in a company you work for**, and only then you
   not exist.
 - **National Accounts is a sales channel, not a company.** Holding the National Accounts channel
   never lets you see another company's record.
+- **The same rule applies everywhere a record can appear:** the site-wide search (a record of another company is not found, and neither is any text inside it), "Records I own" and "Records I am accountable for" on My Work, an employee's owned-records and accountability lists, the sales order reference shown on a coordinated visit, and the opportunity or sales order you link a customer note to.
+- **An agreement always carries its opportunity's company.** You cannot give an agreement a different company from the opportunity it comes from.
 - **Everything in your own company works as before.** Your role and channel limits still apply
   inside it.
 

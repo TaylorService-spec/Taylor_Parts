@@ -6,6 +6,7 @@
 // migration mirrors exactly the current holders; the Owner-gated copy CLI end to end.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { hash, randomUUID } from "node:crypto";
@@ -63,7 +64,7 @@ test("CRM activity, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =>
   const accountOnly = { tenantId: T, principalId: "p-reader", capabilities: caps("customer.record.read") };
   // crmActivityContributor ALONE: the two activity keys, no customer.record.read (the explicit parity restriction, #243).
   const contributorOnly = { tenantId: T, principalId: "p-reader", capabilities: caps("crm.activity.read", "crm.activity.create") };
-  const deps = { pool };
+  const deps = { pool, companyReach: ALL_COMPANIES };
   const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return [e.code, e.category]; } };
   const counts = async () => (await q(`SELECT (SELECT count(*) FROM eos_crm.activities)::int AS a,
       (SELECT count(*) FROM eos_policy.audit_events WHERE target_kind = 'crm_activity')::int AS au`)).rows[0];

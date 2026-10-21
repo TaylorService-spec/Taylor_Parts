@@ -235,7 +235,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       if (opportunity.stage === null) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Opportunity carries no governed lifecycle");
       scope.admitChannel(opportunity.salesChannel); // DQ-020: its source Opportunity's channel
       if (opportunity.outcome === "LOST") fail("OPPORTUNITY_LOST", "PRECONDITION_FAILED", "a LOST Opportunity cannot receive a Sales Agreement");
-      if (await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id)) {
+      if (await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id, scope)) {
         fail("AGREEMENT_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Agreement");
       }
       const { idempotencyKey: _k, opportunityId: _o, accountableEmployeeId, taxEvidence: rawTax, customerDiscount: rawDiscount, tradeIns: rawTradeIns, ...rawFields } = input;
@@ -244,6 +244,11 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       const tradeIns = parseTradeIns(rawTradeIns);
       refuseBareTradeInCredit(rawFields);
       const fields = withTaxEvidence(rawFields, taxEvidence);
+      // Q-1a (M-3): the lineage must agree on the company. An Agreement carries its source Opportunity's operating company; an explicit, different one is refused
+      // (the same words whether or not the other company exists), so a company can never be chosen by stating it on the child.
+      if (rawFields.operatingCompanyId !== undefined && rawFields.operatingCompanyId !== (opportunity.operatingCompanyId ?? undefined)) {
+        fail("OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED", "a Sales Agreement carries its source Opportunity's operating company");
+      }
       const built = buildCreateSalesAgreement({
         ...(fields as Record<string, unknown>),
         accountId: opportunity.accountId,

@@ -92,6 +92,8 @@ export interface EmployeeReadOptions {
 
 export interface EmployeeReadDeps {
   readonly pool: Pool;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in Commercial company resolver for the responsibility reads. The deployed server supplies none. */
+  readonly companyReach?: import("../../eosCommercial/commercialCompanyAuthority").CommercialCompanyResolver;
 }
 
 function requireActorContext(actor: EmployeeReadActor): void {

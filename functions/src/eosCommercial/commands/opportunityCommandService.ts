@@ -241,7 +241,7 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
       const opportunity = await requireOpportunity(db, actor.tenantId, input.opportunityId, scope);
       scope.admitChannel(opportunity.salesChannel);
       if (opportunity.outcome === "LOST") fail("OPPORTUNITY_LOST", "PRECONDITION_FAILED", "a LOST Opportunity cannot be closed as WON");
-      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id)) {
+      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id, scope)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Order");
       }
       const alreadyWon = opportunity.outcome === "WON";
@@ -250,7 +250,7 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
         { kind: "OUTCOME", outcome: "WON" },
         { actorUid: actor.principalId, nowMillis: now.getTime() },
       );
-      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id), opportunity);
+      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id, scope), opportunity);
       const order = await stageSalesOrderFromAgreement(db, actor, now, scope, opportunity, agreement, input as { salesChannel: unknown });
       if (patch) await applyOpportunityTransition(db, actor, opportunity.id, opportunity.editVersion, patch.stage, patch.outcome, now);
       return {

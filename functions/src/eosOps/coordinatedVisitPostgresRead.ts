@@ -45,6 +45,7 @@
 // alone. Nothing in this file writes, and PostgreSQL itself refuses a write in the transaction.
 import { notQuarantined } from "./workOrderQuarantine";
 import type { Pool, PoolClient } from "pg";
+import { resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -189,6 +190,8 @@ export interface CoordinatedVisitReadActor {
 
 export interface CoordinatedVisitReadDeps {
   readonly pool: Pool;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in Commercial company resolver. The deployed server supplies none, so the governed one decides. */
+  readonly companyReach?: CommercialCompanyResolver;
 }
 
 function requireActor(actor: CoordinatedVisitReadActor): void {
@@ -248,6 +251,12 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
   db: Queryable,
   tenantId: string,
   limit: number = DEFAULT_LIMIT,
+  /**
+   * Q-1a (Owner ruling Q1-11): the caller's Commercial company reach. The Sales Order each Work Order anchors to is a Commercial record, so its number and its
+   * line refs are disclosed only where the caller reaches that order; otherwise they are ABSENT (the surface renders its truthful fallback). The Work Orders
+   * themselves are Dispatch\'s to scope and are not narrowed here (named follow-up, DECISIONS #Q-1a-company). Absent = no narrowing (the parity seam / census).
+   */
+  reach?: CommercialCompanyReach,
 ): Promise<CoordinatedOperationsPostgresResult> {
   if (!Number.isSafeInteger(limit) || limit <= 0 || limit > DEFAULT_LIMIT) {
     fail("PAGE_SIZE_INVALID", "INVALID_INPUT", `limit must be a positive integer no greater than ${DEFAULT_LIMIT}`);
@@ -273,7 +282,16 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
     else skipped += 1;
   }
 
-  const lineRefs = await readLineRefs(db, tenantId, coordinated.map((r) => String(r.id)));
+  let visibleOrders: ReadonlySet<string> | null = null;
+  if (reach) {
+    const anchors = [...new Set(coordinated.map((r) => String(r.sales_order_id)))];
+    const { rows: seen } = anchors.length === 0 ? { rows: [] as Record<string, unknown>[] } : await db.query(
+      `SELECT s.id FROM eos_commercial.sales_orders s WHERE s.tenant_id = $1 AND s.id = ANY($2::text[]) AND ${reach.sql("s", 3)}`,
+      [tenantId, anchors, ...reach.sqlParams()]);
+    visibleOrders = new Set(seen.map((r) => String(r.id)));
+  }
+  const reachable = (r: Record<string, unknown>): boolean => visibleOrders === null || visibleOrders.has(String(r.sales_order_id));
+  const lineRefs = await readLineRefs(db, tenantId, coordinated.filter(reachable).map((r) => String(r.id)));
   const workOrders: CoordinatedWorkOrderPostgresProjection[] = coordinated.map((r) => Object.freeze({
     id: String(r.id),
     woNumber: stated(r.work_order_number),
@@ -287,7 +305,7 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
   return Object.freeze({
     status: "ready" as const,
     workOrders: Object.freeze(workOrders),
-    salesOrderReferences: await resolveSalesOrderReferencesFromPostgres(db, tenantId, workOrders.map((w) => w.salesOrderId)),
+    salesOrderReferences: await resolveSalesOrderReferencesFromPostgres(db, tenantId, workOrders.map((w) => w.salesOrderId).filter((id) => visibleOrders === null || visibleOrders.has(id))),
     skipped,
     truncated,
   });
@@ -399,7 +417,8 @@ export async function readCoordinatedOperations(
       fail("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
     }
     await assertCanonicalCapability(client);
-    const result = await readActiveCoordinatedWorkOrdersFromPostgres(client, actor.tenantId);
+    const reach = await (deps.companyReach ?? resolveCommercialCompanyReach)(client, actor.tenantId, actor.principalId);
+    const result = await readActiveCoordinatedWorkOrdersFromPostgres(client, actor.tenantId, undefined, reach);
     await client.query("COMMIT");
     return result;
   } catch (err) {

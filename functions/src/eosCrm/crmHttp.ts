@@ -22,7 +22,7 @@ import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } f
 import { postgresGrantConditionProvider } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
-import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type CrmErrorCategory, type CrmRowFinding } from "./crmAuthorityKernel";
+import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type CrmDeps, type CrmErrorCategory, type CrmRowFinding } from "./crmAuthorityKernel";
 import { createAccount, getAccount, listAccountOwnershipHistory, listAccounts, updateAccount } from "./accountAuthority";
 import { createContact, getContact, importAccountContacts, listAccountContacts, updateContact } from "./contactAuthority";
 import { createAccountLocation, getAccountLocation, listAccountLocations, updateAccountLocation } from "./accountLocationAuthority";
@@ -42,10 +42,12 @@ export interface CrmApiDeps {
   readonly pool: Pool;
   /** TEST SEAM ONLY. Production composition never sets it, so the committed CRM_WRITER_AUTHORITY decides. */
   readonly writerAuthority?: CrmWriterAuthority;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in Commercial company resolver. The deployed server supplies none (a test asserts it). */
+  readonly companyReach?: import("../eosCommercial/commercialCompanyAuthority").CommercialCompanyResolver;
 }
 
 type Input = Record<string, unknown>;
-type Runner = (deps: { pool: Pool }, actor: CrmActorContext, input: Input) => Promise<unknown>;
+type Runner = (deps: CrmDeps, actor: CrmActorContext, input: Input) => Promise<unknown>;
 
 // listAccountActivities / createAccountActivity: CRM activity / notes (Firebase exit F7b, DECISIONS #243) -- crm.activity.read
 // + the Account's own read; crm.activity.create.
@@ -102,7 +104,7 @@ export async function executeCrmOperation(
       capabilities,
     });
     const run = RUNNERS[operation] as Runner;
-    return { ok: true, operation, result: await run({ pool: deps.pool }, actor, request.input) };
+    return { ok: true, operation, result: await run({ pool: deps.pool, companyReach: deps.companyReach }, actor, request.input) };
   } catch (err) {
     if (err instanceof PostgresCrmWriterInactiveError) {
       return { ok: false, operation, code: err.code, message: "the PostgreSQL CRM authority is not active yet; the CRM cutover has not completed", status: 503 };

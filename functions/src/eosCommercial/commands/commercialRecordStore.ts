@@ -168,8 +168,9 @@ export async function lockAgreement(db: Queryable, tenantId: string, id: string,
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
-export async function lockAgreementForOpportunity(db: Queryable, tenantId: string, opportunityId: string): Promise<AgreementRow | null> {
-  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.opportunity_id = $2 FOR UPDATE OF a`, [tenantId, opportunityId]);
+export async function lockAgreementForOpportunity(db: Queryable, tenantId: string, opportunityId: string, scope: CommercialWriteScope): Promise<AgreementRow | null> {
+  const company = scope.companyFilter("a", 3); // Q-1a: the same reach as every other lock -- an Agreement of an unreached company is not found, and not locked
+  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.opportunity_id = $2 AND ${company.sql} FOR UPDATE OF a`, [tenantId, opportunityId, ...company.params]);
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
@@ -188,8 +189,9 @@ export async function replaceAgreementLines(db: Queryable, tenantId: string, id:
 
 export interface OrderLineRow { kind: string; ref: string; businessUnitId: string; orderedQty: number; unitPrice: number | null }
 
-export async function lockOrderForOpportunity(db: Queryable, tenantId: string, opportunityId: string): Promise<{ id: string } | null> {
-  const { rows } = await db.query(`SELECT id FROM ${S}.sales_orders WHERE tenant_id = $1 AND opportunity_id = $2 FOR UPDATE`, [tenantId, opportunityId]);
+export async function lockOrderForOpportunity(db: Queryable, tenantId: string, opportunityId: string, scope: CommercialWriteScope): Promise<{ id: string } | null> {
+  const company = scope.companyFilter("s", 3); // Q-1a: as above
+  const { rows } = await db.query(`SELECT s.id FROM ${S}.sales_orders s WHERE s.tenant_id = $1 AND s.opportunity_id = $2 AND ${company.sql} FOR UPDATE OF s`, [tenantId, opportunityId, ...company.params]);
   return rows[0] ?? null;
 }
 

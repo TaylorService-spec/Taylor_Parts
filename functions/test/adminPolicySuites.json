@@ -318,6 +318,7 @@
     "test/f1bInvoiceCorrectionDownPostgres.test.mjs",
     "test/salesOrderAllocationPostgres.test.mjs",
     "test/saeProtectedOwnerExemptionPostgres.test.mjs",
-    "test/commercialCompanyAuthorityPostgres.test.mjs"
+    "test/commercialCompanyAuthorityPostgres.test.mjs",
+    "test/commercialCompanyAuthorityBreadthPostgres.test.mjs"
   ]
 }

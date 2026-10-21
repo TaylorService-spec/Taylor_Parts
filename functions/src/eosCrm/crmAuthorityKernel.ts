@@ -45,6 +45,8 @@ export interface CrmActorContext {
 
 export interface CrmDeps {
   readonly pool: Pool;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in Commercial company resolver for the activity link probes. The deployed server supplies none. */
+  readonly companyReach?: import("../eosCommercial/commercialCompanyAuthority").CommercialCompanyResolver;
 }
 
 export type CrmErrorCategory =

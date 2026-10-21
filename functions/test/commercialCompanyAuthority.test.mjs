@@ -150,10 +150,10 @@ test("STRUCTURE: every Commercial lock carries the company predicate and every c
     assert.match(body, /\$\{company\.sql\}/, `${fn}: the predicate is inside the locking SELECT`);
     assert.match(body, /FOR UPDATE/, fn);
   }
-  // The only unfiltered locks are the by-Opportunity lookups of a record DERIVED from an Opportunity the caller was already admitted to.
+  // EVERY lock carries the predicate -- the by-Opportunity lookups of a derived record included (security review M-3).
   const unfiltered = store.split("export async function ").slice(1)
     .filter((seg) => /FOR UPDATE/.test(seg) && !seg.includes("companyFilter(")).map((seg) => seg.slice(0, seg.indexOf("(")));
-  assert.deepEqual(unfiltered.sort(), ["lockAgreementForOpportunity", "lockOrderForOpportunity"]);
+  assert.deepEqual(unfiltered, [], "a locking SELECT without the company predicate");
   for (const file of ["opportunityCommandService", "salesAgreementCommandService", "salesOrderCommandService"]) {
     const src = code(`eosCommercial/commands/${file}.ts`);
     for (const m of src.matchAll(/\b(?:lockOpportunity|lockAgreement|lockOrderState)\(/g)) {
@@ -219,4 +219,24 @@ test("callerMaySeeSalesOrder decides on company first, then channel, and fails c
   assert.equal(await authority.callerMaySeeSalesOrder(db([{ sales_channel: "RETAIL" }]), actor([], scoped), "so-1", ["salesOrder.read"], resolver), true);
   assert.equal(await authority.callerMaySeeSalesOrder(db([{ sales_channel: "NATIONAL_ACCOUNTS" }]), actor([], scoped), "so-1", ["salesOrder.read"], resolver), false, "channel narrowing applies inside company");
   assert.equal(await authority.callerMaySeeSalesOrder(db([{ sales_channel: "RETAIL" }]), actor([]), "so-1", ["salesOrder.read"], resolver), false, "no capability at all");
+});
+
+test("STRUCTURE: the Commercial surfaces outside the transport's record reads also decide company authority in SQL (security review H-1, H-2, M-1, M-3, L-1, L-2)", () => {
+  const has = (file, needles) => { const src = code(file); for (const n of needles) assert.ok(src.includes(n), `${file} is missing ${n}`); return src; };
+  // H-1 site-wide search: the three Commercial kinds carry the predicate in their WHERE, bound after the channel and reach-key slots.
+  const search = has("eosExperience/myWork.ts", ["{{COMPANY_o}} AND (o.opportunity_number ILIKE", "{{COMPANY_o}} AND (o.sales_order_number ILIKE", "{{COMPANY_g}} AND (g.sales_agreement_number ILIKE",
+    "resolveCommercialCompanyReach", "company.sql(alias, 5)"]);
+  assert.equal([...search.matchAll(/commercial: true/g)].length, 3, "exactly the three Commercial kinds");
+  // L-2 My Work: every family of 'records I own / am accountable for'.
+  has("eosExperience/myWork.ts", ['company.sql("o", 4)']);
+  // H-2 record ownership / accountability: the Commercial families only (CRM families are customer records).
+  has("eosWorkforce/reads/employeeResponsibilityReads.ts", ['f.table.startsWith("eos_commercial.")', 'reach.sql("r", 6)']);
+  // M-1 coordinated visits: the anchoring Sales Order's number and line refs pass the Sales Order reach.
+  has("eosOps/coordinatedVisitPostgresRead.ts", ["reach.sql(\"s\", 3)", "visibleOrders", "resolveCommercialCompanyReach"]);
+  // L-1 CRM activity: the Opportunity and Sales Order link probes.
+  has("eosCrm/crmActivityAuthority.ts", ['companyReach!.sql("t", 4)', "resolveCommercialCompanyReach"]);
+  // M-3 lineage: an Agreement's explicit company must agree with its parent Opportunity's.
+  has("eosCommercial/commands/salesAgreementCommandService.ts", ["OPERATING_COMPANY_MISMATCH", "rawFields.operatingCompanyId"]);
+  // None of the new seams is composed by the deployed server.
+  assert.doesNotMatch(code("eosApi/server.ts"), /companyReach/);
 });
