@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSalesOrder } from "../../hooks/useSalesOrder.js";
 import { salesOrderView, SALES_ORDER_VIEW_STATE } from "../../domain/salesOrderView.js";
@@ -82,6 +82,7 @@ import {
 export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   const { salesOrderId } = useParams();
   const { loading, errorStatus, result, refetch } = useSalesOrder(salesOrderId);
+  const [allocations, setAllocations] = useState(null); // the server's own allocation read, shared with the fulfilment tracker
   const view = salesOrderView({ loading, errorStatus, result });
   const ready = view.kind === SALES_ORDER_VIEW_STATE.READY;
 
@@ -347,13 +348,13 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
           {/* STOCK ALLOCATION (S1c). A hard reservation of a PART line's quantity at a warehouse the caller chooses. Everything it offers comes
               from one server read; it is absent for an order with no PART line. `actionDeps.allocationClient` is the test seam. */}
           {view.lines.some((l) => l.kind === "PART") ? (
-            <SalesOrderAllocation salesOrderId={view.id} client={actionDeps?.allocationClient} onChanged={refetch} />
+            <SalesOrderAllocation salesOrderId={view.id} client={actionDeps?.allocationClient} onChanged={refetch} onRead={setAllocations} />
           ) : null}
 
           {/* Fulfillment & Installation — a READ-ONLY projection over records that already exist.
               `workOrders` stays null until a governed linked-Work-Order read is wired, and null
               means UNKNOWN rather than none; the section is explicit about that distinction. */}
-          <SalesOrderFulfillmentSection salesOrder={view} workOrders={null} />
+          <SalesOrderFulfillmentSection salesOrder={view} workOrders={null} allocations={allocations?.salesOrderId === view.id ? allocations : null} />
 
           {view.notes ? (
             <RuledSection title="Notes">

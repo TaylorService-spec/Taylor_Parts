@@ -47,6 +47,7 @@ const OpportunityList = lazy(() => import("./modules/sales/OpportunityList.jsx")
 // The Opportunity RECORD page (North Star family 4). Until it existed an Opportunity had no URL at
 // all -- it was reachable only as the selected row of a pipeline someone had already loaded.
 const OpportunityDetail = lazy(() => import("./modules/sales/OpportunityDetail"));
+const SalesOrderBareRedirect = lazy(() => import("./modules/sales/SalesOrderBareRedirect.jsx"));
 const SalesOrderDetail = lazy(() => import("./modules/sales/SalesOrderDetail.jsx"));
 // The Sales Agreement RECORD page (North Star family 5). Owner ruling DECISIONS #134: a first-class
 // routed record page. The route nests under opportunities/ following the Sales Order precedent
@@ -1025,6 +1026,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
     <Suspense fallback={<p className="fo-muted" role="status">Loading…</p>}>
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/opportunities/sales-order/:salesOrderId" element={<SalesOrderBareRedirect />} />
 
       {/* INV-CONVERGENCE-E Stage A -- dedicated operator-only shadow-parity diagnostics
           route. NOT a navigation entry (no Inventory/nav exposure); reached only by

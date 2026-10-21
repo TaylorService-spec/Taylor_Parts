@@ -30,16 +30,16 @@ No Firestore trigger, scheduler, auth trigger or event function is deployed. All
 
 ## 2. Commits and tags
 
-Both commits are present in `main`'s history (`git cat-file -t` returns `commit`; `4f30ab3a` is an ancestor of `origin/main`). Short forms `4f30ab3ad7c4` and `6cac04232c81` resolve to the full SHAs above. No `production-release/*` tag exists yet.
+Both commits are present in `main`'s history (`git cat-file -t` returns `commit`; `4f30ab3a` is an ancestor of `origin/main`). Short forms `4f30ab3ad7c4` and `6cac04232c81` resolve to the full SHAs above. Four annotated `production-release/*` tags now exist on `origin` (hosting, functions, pages and rules; see below).
 
-The controller creates the tags after review (this lane did not):
+The controller created the tags after review (this lane did not). The three commit-based tags were created with:
 
 ```bash
 git tag -a production-release/hosting-4f30ab3ad7c4 4f30ab3ad7c434da0dd8ff043ecd65d0bdef8a72 \
   -m "Production Hosting (taylor-parts.web.app) as served 2026-10-19; npm run build:firebase"
 git tag -a production-release/pages-6cac04232c81 6cac04232c813af7695187ee7a4ced74ecd72760 \
   -m "Production GitHub Pages as served 2026-10-19; last automatic push publish (PR #1955)"
-# Proposed third tag, same commit as Hosting (the controller decides whether to add it):
+# Functions tag, same commit as Hosting (ratified and pushed):
 git tag -a production-release/functions-4f30ab3ad7c4 4f30ab3ad7c434da0dd8ff043ecd65d0bdef8a72 \
   -m "Production Functions: 84 callables; export set matches exactly (docs/operations/production-recovery-release-r1.md)"
 git push origin production-release/hosting-4f30ab3ad7c4 production-release/pages-6cac04232c81
@@ -162,7 +162,7 @@ Verified on `main` `2f8be86f`:
 
 ## 8. Not done / follow-ups
 
-- No tags were created or pushed; no workflow, deploy, cloud call or credential was used.
+- This lane created and pushed no tags (the controller did, after review; there are four: hosting, functions, pages, and `production-release/rules-0526140d49ea`, which records the live Rules as served and is not derived from either commit); no workflow, deploy, cloud call or credential was used.
 - `scripts/_prodRelease.run.sh` was not read (agent deny list, DECISIONS #128); the Hosting recipe in 5.1 is derived from `package.json`, `vite.config.js`, `firebase.json` and `docs/Deployment.md` at the tagged commit instead.
 - Optional certainty step for Functions: operator compares `firebase-functions-hash` `64cbe8d4eb65923ce4e48981fa29e2389159f39f` or downloads one stored source archive and diffs it against `functions/` at `4f30ab3a`.
 - Pages recovery needs a controller decision on the recovery-branch approach in 5.2.

@@ -57,6 +57,12 @@ If the request fails for any other reason (network, a server problem) you see a 
 completed, try again" line. Trying again is safe: the page reuses the same request, so a retry can't
 reserve the stock twice.
 
+## The progress tracker follows the Allocation section
+
+The **Inventory Allocated** step in **Fulfillment & Installation** uses the same figures the
+Allocation section shows ("2 of 6 allocated"). If the Allocation section can't be read (for example
+you aren't allowed to see it), the tracker says **Not read yet** instead of guessing.
+
 ## Release stock
 
 To give stock back, type the quantity (or leave it **blank to release everything the line holds at
