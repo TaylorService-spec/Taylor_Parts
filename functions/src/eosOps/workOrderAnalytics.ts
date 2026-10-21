@@ -41,6 +41,7 @@
 //
 // Nothing here writes, and nothing here reads Firestore.
 import { notQuarantined } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import type { Pool } from "pg";
 import { WorkOrderLifecycleError } from "./workOrderLifecycle";
 import { WORK_ORDER_RECORD_READ, authorizeWorkOrderRecordRead } from "./workOrderRecordRead";
@@ -160,6 +161,8 @@ export const readTechnicianExecutionStats: WorkOrderOp = async (deps, caller, in
     [tenantId, employeeId]);
   if (emp.rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
 
+  // DWO-company: only Work Orders of the caller's operating companies are in the population (a figure is a read of those Work Orders).
+  const reach = await requireWorkOrderCompanyReach(deps.pool, tenantId, principalId, refuse);
   const { rows } = await deps.pool.query(
     `SELECT w.id, w.status::text AS status, w.work_started_at, w.completed_at,
             COALESCE((SELECT SUM(u.qty_used) FROM (${ACTUALS_BY_WORK_ORDER_PART}) u
@@ -167,9 +170,9 @@ export const readTechnicianExecutionStats: WorkOrderOp = async (deps, caller, in
        FROM ${SCHEMA}.work_orders w
        JOIN ${SCHEMA}.work_order_assignments a
          ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
-      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND ${activeWorkOrderPredicate("w")}
+      WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 3)}
       ORDER BY w.id`,
-    [tenantId, employeeId]);
+    [tenantId, employeeId, ...reach.sqlParams()]);
 
   // A non-office caller counts only what the entitled per-record decision lets them read -- never widened.
   const population: typeof rows = [];
@@ -230,14 +233,16 @@ export interface PartConsumption {
 export const readWorkOrderConsumptionSnapshot: WorkOrderOp = async (deps, caller, input) => {
   requireOfficeRead(caller.actor.capabilities, "the consumption snapshot");
   only(input, []);
+  // DWO-company: the snapshot is over the Work Orders of the caller's operating companies only.
+  const reach = await requireWorkOrderCompanyReach(deps.pool, caller.actor.tenantId, caller.actor.principalId, refuse);
   const { rows } = await deps.pool.query(
     `SELECT u.part_id, SUM(u.qty_used)::bigint AS total, COUNT(*)::int AS frequency
        FROM (${ACTUALS_BY_WORK_ORDER_PART}) u
        JOIN ${SCHEMA}.work_orders w ON w.tenant_id = u.tenant_id AND w.id = u.work_order_id
-      WHERE u.tenant_id = $1 AND ${activeWorkOrderPredicate("w")}
+      WHERE u.tenant_id = $1 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 2)}
       GROUP BY u.part_id
       ORDER BY SUM(u.qty_used) DESC, u.part_id`,
-    [caller.actor.tenantId]);
+    [caller.actor.tenantId, ...reach.sqlParams()]);
   const parts: PartConsumption[] = rows.map((r) => Object.freeze({
     partId: String(r.part_id), totalQuantityUsed: Number(r.total), frequency: Number(r.frequency),
   }));
@@ -265,6 +270,8 @@ export interface TechnicianWorkOrderVolume {
 export const readTechnicianVolumeBreakdown: WorkOrderOp = async (deps, caller, input) => {
   requireOfficeRead(caller.actor.capabilities, "the technician volume breakdown");
   only(input, []);
+  // DWO-company: the breakdown counts the Work Orders of the caller's operating companies only.
+  const reach = await requireWorkOrderCompanyReach(deps.pool, caller.actor.tenantId, caller.actor.principalId, refuse);
   const { rows } = await deps.pool.query(
     `SELECT a.assignee_employee_id AS employee_id, e.preferred_name, e.display_name, e.first_name, e.last_name,
             COUNT(*) FILTER (WHERE w.completed_at IS NULL)::int AS active_count,
@@ -273,10 +280,10 @@ export const readTechnicianVolumeBreakdown: WorkOrderOp = async (deps, caller, i
        JOIN ${SCHEMA}.work_order_assignments a
          ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
        LEFT JOIN eos_workforce.employees e ON e.tenant_id = a.tenant_id AND e.id = a.assignee_employee_id
-      WHERE w.tenant_id = $1 AND ${activeWorkOrderPredicate("w")}
+      WHERE w.tenant_id = $1 AND ${activeWorkOrderPredicate("w")} AND ${reach.sql("w.operating_company_key", 2)}
       GROUP BY a.assignee_employee_id, e.preferred_name, e.display_name, e.first_name, e.last_name
       ORDER BY completed_count DESC, a.assignee_employee_id`,
-    [caller.actor.tenantId]);
+    [caller.actor.tenantId, ...reach.sqlParams()]);
   return Object.freeze({
     items: Object.freeze(rows.map((r): TechnicianWorkOrderVolume => Object.freeze({
       employeeId: String(r.employee_id), displayName: personName(r),

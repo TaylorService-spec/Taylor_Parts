@@ -46,6 +46,7 @@
 // NOTHING HERE READS FIRESTORE, AND NOTHING HERE MOVES STOCK.
 import type { Pool, PoolClient } from "pg";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeObjectAction, type ContextualReader } from "./contextualAuthorization";
 import {
@@ -311,9 +312,11 @@ async function recordOwnLabor(deps: Deps, actor: LifecycleActor, input: Record<s
   const now = (deps.now ?? (() => new Date()))();
 
   return inTransaction(deps.pool, async (client) => {
+    // DWO-company: capability and own assignment first (above), then the caller's operating companies, inside the locking SELECT.
+    const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse);
     const wo = await client.query(
-      `SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-      [actor.tenantId, request.workOrderId]);
+      `SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+      [actor.tenantId, request.workOrderId, ...reach.sqlParams()]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
     if (await isQuarantined(client, actor.tenantId, request.workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     // IDEMPOTENCY, read first: a phone on a bad connection retries; hours must not double.
@@ -362,8 +365,10 @@ async function correctLabor(deps: Deps, actor: LifecycleActor, input: Record<str
   const request = validateLaborRequest(input);
   const now = (deps.now ?? (() => new Date()))();
   return inTransaction(deps.pool, async (client) => {
+    const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse);
     const wo = await client.query(
-      `SELECT 1 FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [actor.tenantId, request.workOrderId]);
+      `SELECT 1 FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+      [actor.tenantId, request.workOrderId, ...reach.sqlParams()]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
     if (await isQuarantined(client, actor.tenantId, request.workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     const original = (await client.query(
@@ -433,7 +438,10 @@ export const readWorkOrderLabor: WorkOrderOp = async (deps, caller, input) => {
   const decision = await authorizeWorkOrderRecordRead(deps.reader, caller.operational, workOrderId);
   if (!decision.allowed) refuse(String(decision.outcome), "FORBIDDEN", "this Work Order may not be read by this caller");
   const tenantId = caller.operational.tenantId;
-  const wo = await deps.pool.query(`SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2`, [tenantId, workOrderId]);
+  // DWO-company: the entitled record read first (above), then the caller's operating companies, inside the SELECT.
+  const reach = await requireWorkOrderCompanyReach(deps.pool, tenantId, caller.actor.principalId, refuse);
+  const wo = await deps.pool.query(`SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)}`,
+    [tenantId, workOrderId, ...reach.sqlParams()]);
   if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
   if (await isQuarantined(deps.pool, tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
 

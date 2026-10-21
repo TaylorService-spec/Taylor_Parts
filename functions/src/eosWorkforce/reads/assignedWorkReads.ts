@@ -13,6 +13,7 @@
 // A refused family is refused on its own; it never hides another. Read-only. Assignment history stays history: only CURRENT
 // assignments are listed, and a reassignment never rewrites ownership or accountability.
 import { queueReachKeys } from "../../eosOps/reorderLifecycleCommands";
+import { resolveWorkOrderCompanyReach } from "../../eosOps/workOrderCompanyAuthority";
 import { acceptOnly, isoOf, refuse, requireEmployeeId, requirePageSize, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps } from "./employeeReadKernel";
 
 export const ASSIGNED_WORK_FAMILIES = Object.freeze(["WORK_ORDER", "REORDER_REQUEST"] as const);
@@ -40,14 +41,16 @@ export function listAssignedWorkForEmployee(deps: EmployeeReadDeps, actor: Emplo
       if (exists.rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
       let rows: Record<string, any>[];
       if (p.family === "WORK_ORDER") {
+        // DWO-company: only Work Orders of the caller's operating companies are listed (a caller reaching none gets an empty page, not a refusal).
+        const woReach = await resolveWorkOrderCompanyReach(db, tenantId, principalId);
         ({ rows } = await db.query(
           `SELECT w.id, w.work_order_number AS number, concat_ws(' · ', a2.name, w.work_order_type::text) AS name, w.status::text AS state,
                   a.effective_from, w.scheduled_start, w.operating_company_key AS operating_company_id
              FROM eos_ops.work_order_assignments a
              JOIN eos_ops.work_orders w ON w.tenant_id = a.tenant_id AND w.id = a.work_order_id
              LEFT JOIN eos_crm.accounts a2 ON a2.tenant_id = w.tenant_id AND a2.id = w.customer_id
-            WHERE a.tenant_id = $1 AND a.assignee_employee_id = $2 AND a.effective_to IS NULL
-            ORDER BY w.scheduled_start NULLS LAST, w.work_order_number LIMIT $3`, [tenantId, p.employeeId, p.limit + 1]));
+            WHERE a.tenant_id = $1 AND a.assignee_employee_id = $2 AND a.effective_to IS NULL AND ${woReach.sql("w.operating_company_key", 4)}
+            ORDER BY w.scheduled_start NULLS LAST, w.work_order_number LIMIT $3`, [tenantId, p.employeeId, p.limit + 1, ...woReach.sqlParams()]));
       } else {
         const reach = await queueReachKeys(db, { tenantId, principalId } as never);
         if (reach.length === 0) refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "reading Reorder Requests requires the REORDER_QUEUE Operational Scope");

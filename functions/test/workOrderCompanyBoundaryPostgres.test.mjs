@@ -1,0 +1,495 @@
+// DWO-company (DECISIONS #DWO-company) against a real postgres:16 -- the OPERATING-COMPANY BOUNDARY on Work Orders: Dispatch, the Service Office, the technician's
+// field views, search, coordinated operations and every command.
+//
+//   capability  ->  record relation (own assignment, where conditioned)  ->  COMPANY AUTHORITY.
+//
+// A Work Order of a company the caller does not reach is NONEXISTENT to it: the SAME code, category and words as a missing id, at every id-taking entry point,
+// and a refusal leaves no trace anywhere in the database (a hash of every row of every Work Order table, the Commercial, Finance and Rental tables and the audit log).
+// Lists, the board, search, assigned work and coordinated operations contain only the reachable companies. The governed service-provider authorization is unchanged.
+// The protected Administrator's reach is UNCHANGED (company-blind where it was tenant-wide, bounded by its own authority where it already was); the protected Owner follows
+// its own governed company reach.
+//
+// Real PostgreSQL. Set POLICY_TEST_DATABASE_URL; without it this SKIPS (the offline half is workOrderCompanyAuthority.test.mjs).
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+import { endPoolAndDrain } from "./support/poolTeardown.mjs";
+import { grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
+import { seedProtectedOwnerRows } from "./support/protectedOwnerFixture.mjs";
+import { WORK_ORDER_ROUTE_ENTRY_POINTS } from "./support/workOrderCompanyEntryPoints.mjs";
+
+const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const ops = require("../lib/eosOps/workOrderOperations.js");
+const equipmentOps = require("../lib/eosOps/equipmentOperations.js");
+const inboundOps = require("../lib/eosOps/inboundWorkOperations.js");
+const coordinated = require("../lib/eosOps/coordinatedVisitPostgresRead.js");
+const myWork = require("../lib/eosExperience/myWork.js");
+const assignedWork = require("../lib/eosWorkforce/reads/assignedWorkReads.js");
+const ctx = require("../lib/eosOps/contextualAuthorization.js");
+const model = require("../lib/eosOps/conditionalEntitlement.js");
+
+const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
+const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
+const T = "t-wodwo";
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
+async function withClient(url, fn) {
+  const c = new pg.Client({ connectionString: url });
+  await c.connect();
+  try { return await fn(c); } finally { await c.end(); }
+}
+
+const OFFICE = ["workOrder.record.read", "workOrder.lifecycle.ready", "workOrder.lifecycle.schedule", "workOrder.lifecycle.dispatch", "workOrder.lifecycle.cancel",
+  "workOrder.lifecycle.close", "workOrder.parts.plan", "workOrder.create", "workOrder.labor.correctEntry", "workOrder.selfScheduling.issue", "equipment.record.read",
+  "employee.record.read", "inboundWork.request.attach", "inboundWork.request.read", "fulfillment.coordinatedVisit.read"];
+const TECH = ["workOrder.record.read", "workOrder.transition", "workOrder.lifecycle.complete", "workOrder.execution.record", "equipment.install"];
+
+test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const name = `wodwo_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  let pool;
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  t.after(async () => {
+    await endPoolAndDrain(pool);
+    await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
+  });
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations", "--no-check-order"],
+    { maxBuffer: 256 * 1024 * 1024, cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
+  const q = (sql, v = []) => pool.query(sql, v);
+  const one = async (sql, v = []) => (await q(sql, v)).rows[0];
+
+  // ── the world: Taylor and Ventana, people, one customer and site ──
+  await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [T]);
+  for (const company of ["taylor", "ventana"]) {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,$2,'ACTIVE','fixture','fixture','fixture')`, [T, company]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+             VALUES ($1,$2,$2,'ACTIVE','NATIVE','fixture','fixture','fixture')`, [T, company]);
+  }
+  const principal = async (pid, employee = null) => {
+    await q(`INSERT INTO eos_policy.principals (id,external_subject,identity_provider,status) VALUES ($1,$2,'eos','active')`, [pid, `sub-${pid}`]);
+    await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status) VALUES ($1,$2,$3,'active')`, [`mem-${pid}`, T, pid]);
+    if (employee) {
+      await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number,display_name) VALUES ($1,$2,'ACTIVE',$3,$1,$4)`,
+        [employee.id, T, employee.company ?? "taylor", employee.name ?? employee.id]);
+      await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+               VALUES ($1,$2,$3,$4,$5,'OPERATOR_ASSERTED','active','fixture','dwo fixture')`, [`lnk-${pid}`, T, pid, employee.id, employee.company ?? "taylor"]);
+      if (employee.technician) {
+        await q(`INSERT INTO eos_workforce.employee_work_eligibility (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by,reason)
+                 VALUES ($1,$2,$3,'SERVICE_TECHNICIAN',now(),'fixture','dwo fixture')`, [`elig-${employee.id}`, T, employee.id]);
+      }
+    }
+    return pid;
+  };
+  const dspT = await principal("prn-dspt", { id: "emp-dspt" });
+  const dspV = await principal("prn-dspv", { id: "emp-dspv", company: "ventana" });
+  const both = await principal("prn-both");                                         // Taylor home + explicit Ventana reach (below)
+  const techT = await principal("prn-techt", { id: "emp-techt", technician: true });
+  const techV = await principal("prn-techv", { id: "emp-techv", company: "ventana", technician: true });
+  const admin = await principal("prn-admin", { id: "emp-admin" });                  // the protected Administrator, with a usable Taylor Employee link
+  const owner = await principal("prn-owner");                                       // the protected Owner, a Taylor Employee (seeded below)
+  const nobody = await principal("prn-nobody");                                     // a member with no Employee link: no company authority at all
+  await grantSyntheticCompanyAuthority(pool, T, both, ["taylor", "ventana"]);
+  await q(`INSERT INTO eos_policy.roles (id,tenant_id,key,name,origin,protected,created_by,updated_by) VALUES ('role-admin',$1,'admin','Administrator','SYSTEM',true,'fixture','fixture')`, [T]);
+  await q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+           VALUES ('a-admin',$1,$2,'role-admin','global',NULL,'active','fixture',0,'fixture','fixture')`, [T, admin]);
+  await seedProtectedOwnerRows(q, { tenantId: T, principalId: owner, employeeId: "emp-owner", company: "taylor" });
+  await q(`INSERT INTO eos_crm.accounts (id,tenant_id,name,status,created_by,updated_by) VALUES ('acct-1',$1,'Harbor Diner','ACTIVE','f','f')`, [T]);
+  await q(`INSERT INTO eos_crm.account_locations (id,tenant_id,account_id,name,address_street,address_city,created_by,updated_by) VALUES ('loc-1',$1,'acct-1','Harbor Diner Main','1 Pier Rd','Portsmouth','f','f')`, [T]);
+
+  // ── callers: explicit capability sets (nothing here depends on a seeded Role grant) ──
+  const entitle = (caps, conditions) => model.entitlementsFrom([...caps].map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "persona" }, capabilityKey })), conditions);
+  const DQ016 = model.grantConditionCatalog([{ grantor: { kind: "ROLE", roleKey: "persona" }, capabilityKey: "workOrder.record.read",
+    condition: { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" } }]);
+  const callerOf = (principalId, caps, conditions = model.SHIPPED_GRANT_CONDITIONS) => {
+    const ent = entitle(caps, conditions);
+    const unconditioned = new Set(ent.filter((e) => e.condition === null).map((e) => e.capabilityKey));
+    return Object.freeze({
+      principalId,
+      actor: { tenantId: T, principalId, capabilities: unconditioned },
+      operational: { tenantId: T, principalId, capabilities: unconditioned,
+        conditionallyHeld: new Set(ent.filter((e) => e.condition !== null).map((e) => e.capabilityKey)), entitlements: () => ent },
+    });
+  };
+  const office = (principalId) => callerOf(principalId, OFFICE);
+  const technician = (principalId) => callerOf(principalId, TECH, DQ016);
+  const deps = { pool, reader: ctx.postgresContextualReader(pool), postgresState: "ACTIVE", equipmentPostgresState: "ACTIVE" };
+  /** Run one operation of a closed table; the outcome is either a result or the governed refusal's words. */
+  const run = async (table, op, who, input) => {
+    try { return { ok: true, result: await table[op](deps, who, input) }; } catch (e) {
+      if (typeof e?.code !== "string" || typeof e?.category !== "string") throw e;
+      return { ok: false, code: e.code, category: e.category, message: e.message };
+    }
+  };
+  const call = (op, who, input) => run(ops.EOS_WORK_ORDER_OPERATIONS, op, who, input);
+
+  // ── Work Orders by SQL (the states the commands are checked from) ──
+  let seq = 0;
+  const wo = async (company, status = "CREATED", over = {}) => {
+    const id = over.id ?? `wo-${company}-${++seq}`;
+    const start = status === "SCHEDULED" ? new Date(Date.now() + 3 * DAY) : null;
+    await q(`INSERT INTO eos_ops.work_orders
+               (id, tenant_id, operating_company_key, work_order_number, status, work_order_type, priority, customer_id, location_id, sales_order_id, complaint,
+                scheduled_start, scheduled_end, completed_at, closed_at, provenance, created_by_principal_id, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5::eos_ops.ops_work_order_status,$6::eos_ops.ops_work_order_type,2,'acct-1','loc-1',$7,$8,$9,$10,
+                     CASE WHEN $12::text IN ('COMPLETED','CLOSED') THEN now() END, CASE WHEN $12::text = 'CLOSED' THEN now() END,'NATIVE',$11,now(),now())`,
+      [id, T, company, `WO-2031-${String(++seq).padStart(6, "0")}`, status, over.type ?? "SERVICE_CALL", over.salesOrderId ?? null, over.complaint ?? null,
+        start, start ? new Date(start.getTime() + 2 * HOUR) : null, dspT, status]);
+    return id;
+  };
+  const assign = (workOrderId, employeeId) => q(
+    `INSERT INTO eos_ops.work_order_assignments (id,tenant_id,work_order_id,assignee_employee_id,source,effective_from,assigned_by_principal_id,provenance)
+     VALUES ($1,$2,$3,$4,'SCHEDULE',now(),$5,'NATIVE')`, [`woa-${randomUUID()}`, T, workOrderId, employeeId, dspT]);
+
+  // ── the zero-trace state hash: every row of every Work Order, Commercial, Finance, Rental and audit table ──
+  const tables = (await q(`SELECT table_schema AS s, table_name AS n FROM information_schema.tables
+                            WHERE table_type = 'BASE TABLE' AND table_schema IN ('eos_ops','eos_commercial','eos_finance','eos_rental') ORDER BY 1, 2`)).rows
+    .map((r) => `${r.s}.${r.n}`).concat(["eos_policy.audit_events"]);
+  const stateHash = async () => {
+    const parts = [];
+    for (const table of tables) parts.push(`${table}=${(await one(`SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM ${table} x`)).h}`);
+    return createHash("sha256").update(parts.join(";")).digest("hex");
+  };
+
+  // ── normalisation: two refusals are "the same" when only the ids and company words they echo differ ──
+  const norm = (o, ...ids) => {
+    let s = JSON.stringify(o);
+    for (const id of ids) s = s.split(id).join("<id>");
+    return s.replace(/"(wot|woa|wosh)_[0-9a-f-]+"/g, '"<gen>"').replace(/\d{4}-\d{2}-\d{2}T[0-9:.]+Z/g, "<ts>").replace(/WO-2031-\d{6}/g, "<no>")
+      .replace(/"(taylor|ventana)"/g, '"<co>"').replace(/"(token|linkPath|sessionId)":"[^"]*"/g, '"$1":"<x>"');
+  };
+  const words = (o, ...ids) => norm({ code: o.code, category: o.category, message: o.message }, ...ids);
+
+  await t.test("the world is what the proofs assume: companies, people, the protected identities", async () => {
+    const authority = require("../lib/eosOps/workOrderCompanyAuthority.js");
+    const keys = async (p, options) => (await authority.resolveWorkOrderCompanyReach(pool, T, p, options));
+    assert.deepEqual([...(await keys(dspT)).companyKeys], ["taylor"]);
+    assert.deepEqual([...(await keys(dspV)).companyKeys], ["ventana"]);
+    assert.deepEqual([...(await keys(both)).companyKeys].sort(), ["taylor", "ventana"], "an explicit company-access reach is reach");
+    assert.deepEqual([...(await keys(owner)).companyKeys], ["taylor"], "the protected Owner follows its OWN governed company reach");
+    const a = await keys(admin);
+    assert.deepEqual([a.unrestricted, a.hasAuthority], [true, true], "the protected Administrator keeps every company where it was tenant-wide");
+    const aOwn = await keys(admin, { administrator: "OWN" });
+    assert.deepEqual([aOwn.unrestricted, [...aOwn.companyKeys]], [false, ["taylor"]], "...and its own authority where it was already bounded");
+    const n = await keys(nobody);
+    assert.deepEqual([n.hasAuthority, n.unrestricted], [false, false]);
+  });
+
+  // ════════════════════ (1) EVERY ID-TAKING ENTRY POINT: foreign == missing, with zero trace ════════════════════
+  const future = (days) => ({ scheduledStart: Date.now() + days * DAY, scheduledEnd: Date.now() + days * DAY + HOUR });
+  // [operation, the state the Work Order is in, the input]. INSTALL / own-assignment operations are in the relation table (2).
+  const ID_OPS = [
+    ["readWorkOrder", "CREATED", (id) => ({ workOrderId: id })],
+    ["readWorkOrderFieldContext", "CREATED", (id) => ({ workOrderId: id })],
+    ["readWorkOrderReadiness", "CREATED", (id) => ({ workOrderId: id })],
+    ["readWorkOrderLabor", "CREATED", (id) => ({ workOrderId: id })],
+    ["markWorkOrderReady", "CREATED", (id) => ({ workOrderId: id })],
+    ["cancelWorkOrder", "CREATED", (id) => ({ workOrderId: id, expectedStatus: "CREATED" })],
+    ["closeWorkOrder", "COMPLETED", (id) => ({ workOrderId: id })],
+    ["unscheduleWorkOrder", "SCHEDULED", (id) => ({ workOrderId: id, reason: "dwo" })],
+    ["setWorkOrderPartsPlan", "CREATED", (id) => ({ workOrderId: id, plan: [] })],
+    ["setWorkOrderEstimatedDuration", "CREATED", (id) => ({ workOrderId: id, estimatedDurationMinutes: 30 })],
+    ["recordWorkOrderLabor", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id, correctsLaborEntryId: "le-none", idempotencyKey: `k-${id}`, laborType: "ONSITE",
+      entryKind: "DURATION", durationMinutes: 30, workDate: "2026-10-01" })],
+    ["issueSelfSchedulingLink", "READY_TO_DISPATCH", (id) => ({ workOrderId: id })],
+    // already bounded by the caller's own company authority before this lane (D-248-1, G-9): unchanged
+    ["scheduleWorkOrder", "READY_TO_DISPATCH", (id) => ({ workOrderId: id, employeeId: "emp-techt", ...future(5) })],
+    ["rescheduleWorkOrder", "SCHEDULED", (id) => ({ workOrderId: id, expectedScheduledStart: new Date(Date.now() + 3 * DAY).toISOString(), ...future(6), reason: "dwo" })],
+    ["dispatchWorkOrder", "SCHEDULED", (id) => ({ workOrderId: id })],
+    ["suggestWorkOrderPlacement", "READY_TO_DISPATCH", (id) => ({ workOrderId: id })],
+    ["listWorkOrderTechnicians", "READY_TO_DISPATCH", (id) => ({ workOrderId: id })],
+  ];
+  const OWN_MODE = new Set(["scheduleWorkOrder", "rescheduleWorkOrder", "dispatchWorkOrder", "suggestWorkOrderPlacement", "listWorkOrderTechnicians"]);
+
+  await t.test("(1) a foreign Work Order is refused exactly like a missing one at every id-taking entry point, and a refusal leaves no trace; the same-company control is not refused by company", async () => {
+    const covered = new Set(ID_OPS.map(([op]) => op));
+    // The relation-gated and observation-only operations are proven in (2) and (3); the rest of the ID kinds are in this table.
+    const elsewhere = new Set(["acceptWorkOrder", "startWorkOrderTravel", "arriveAtWorkOrder", "startWorkOrderWork", "recordWorkOrderExecution", "completeWorkOrder",
+      "listInstallableEquipmentForWorkOrder", "recordWorkOrderEquipmentInstall", "revokeSelfSchedulingLink", "readSelfSchedulingSessions"]);
+    for (const [op, kind] of Object.entries(WORK_ORDER_ROUTE_ENTRY_POINTS)) {
+      if (kind === "ID" || kind === "ID_OWN" || kind === "ID_RELATION") assert.ok(covered.has(op) || elsewhere.has(op), `${op}: an id-taking entry point must be in the table`);
+    }
+    const dsp = office(dspT);
+    for (const [op, state, input] of ID_OPS) {
+      const foreign = await wo("ventana", state);
+      const twin = await wo("taylor", state);
+      const missing = "wo-missing-" + op;
+      const before = await stateHash();
+      const outsideOutcome = await call(op, dsp, input(foreign));
+      const missingOutcome = await call(op, dsp, input(missing));
+      assert.equal(outsideOutcome.ok, false, `${op}: a foreign Work Order is refused`);
+      assert.equal(await stateHash(), before, `${op}: the refusals left NO trace anywhere`);
+      assert.deepEqual(words(outsideOutcome, foreign), words(missingOutcome, missing), `${op}: foreign == missing (code, category, message)`);
+      assert.match(outsideOutcome.code, /^WORK_ORDER_NOT_FOUND$/, `${op}: the plain miss, never "forbidden"`);
+      assert.equal(outsideOutcome.category, "NOT_FOUND", op);
+      // The control: the same call on a same-company Work Order is NOT stopped by the company boundary (it succeeds, or stops for its own business reason).
+      const control = await call(op, dsp, input(twin));
+      assert.ok(control.ok || (control.code !== "WORK_ORDER_NOT_FOUND" && control.code !== "COMPANY_AUTHORITY_REQUIRED" && control.code !== "CAPABILITY_MISSING"),
+        `${op}: the same-company control must reach its own logic, got ${control.code}`);
+      // An explicit cross-company reach DOES reach the foreign Work Order (the boundary is authority, not a wall).
+      const reaching = await call(op, office(both), input(foreign));
+      assert.ok(reaching.ok || (reaching.code !== "WORK_ORDER_NOT_FOUND" && reaching.code !== "COMPANY_AUTHORITY_REQUIRED"), `${op}: a caller that reaches both companies reaches it, got ${reaching.code}`);
+    }
+  });
+
+  await t.test("(1b) capability FIRST: a caller without the capability is told so, whatever company the id is in; no authority at all is COMPANY_AUTHORITY_REQUIRED, uniformly", async () => {
+    const foreign = await wo("ventana", "CREATED");
+    const keyless = callerOf(dspT, []);
+    for (const [op, , input] of ID_OPS) {
+      const a = await call(op, keyless, input(foreign));
+      const b = await call(op, keyless, input("wo-missing-x"));
+      assert.equal(a.code, b.code, `${op}: without the capability the answer is the same for a foreign and a missing id`);
+    }
+    const none = office(nobody);
+    for (const [op, , input] of ID_OPS) {
+      const a = await call(op, none, input(foreign));
+      const b = await call(op, none, input("wo-missing-x"));
+      assert.deepEqual([a.code, a.category], ["COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN"], `${op}: no company authority`);
+      assert.deepEqual([a.code, a.category, a.message], [b.code, b.category, b.message], `${op}: uniform for every id`);
+    }
+  });
+
+  // ════════════════════ (2) THE RELATION-GATED OPERATIONS: capability, relation, company ════════════════════
+  const TECH_OPS = [
+    ["acceptWorkOrder", "DISPATCHED", (id) => ({ workOrderId: id })],
+    ["startWorkOrderTravel", "ACCEPTED", (id) => ({ workOrderId: id })],
+    ["arriveAtWorkOrder", "EN_ROUTE", (id) => ({ workOrderId: id })],
+    ["startWorkOrderWork", "ARRIVED", (id) => ({ workOrderId: id })],
+    ["completeWorkOrder", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id })],
+    ["recordWorkOrderExecution", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id, idempotencyKey: `k-${id}`, note: "dwo" })],
+    ["recordWorkOrderLabor", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id, idempotencyKey: `kl-${id}`, laborType: "ONSITE", entryKind: "DURATION", durationMinutes: 30, workDate: "2026-10-01" })],
+    ["listInstallableEquipmentForWorkOrder", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id }), { type: "INSTALL" }],
+    ["recordWorkOrderEquipmentInstall", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id, partId: "part-x", serialNumber: "SN-1", idempotencyKey: `ki-${id}`, equipmentName: "Unit" }), { type: "INSTALL" }],
+    ["readWorkOrder", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id })],
+    ["readWorkOrderFieldContext", "WORK_IN_PROGRESS", (id) => ({ workOrderId: id })],
+  ];
+
+  await t.test("(2a) a technician NOT assigned to a foreign Work Order gets the relation's refusal, identical to a missing id (the company layer is never reached, so nothing is learned)", async () => {
+    const tech = technician(techT);
+    for (const [op, state, input, over] of TECH_OPS) {
+      const foreign = await wo("ventana", state, over);
+      await assign(foreign, "emp-techv");              // assigned to the Ventana technician, not to this one
+      const before = await stateHash();
+      const a = await call(op, tech, input(foreign));
+      const b = await call(op, tech, input("wo-missing-t"));
+      assert.equal(a.ok, false, op);
+      assert.deepEqual(words(a, foreign), words(b, "wo-missing-t"), `${op}: unassigned foreign == missing`);
+      assert.equal(await stateHash(), before, `${op}: no trace`);
+    }
+  });
+
+  await t.test("(2b) a technician ASSIGNED to a Work Order of a company it no longer reaches (a legacy state) is refused as a missing Work Order, with no trace; its own company's work still works", async () => {
+    const tech = technician(techT);
+    for (const [op, state, input, over] of TECH_OPS) {
+      const foreign = await wo("ventana", state, over);
+      await assign(foreign, "emp-techt");             // forced by SQL: assignment itself requires the Work Order's company
+      const before = await stateHash();
+      const a = await call(op, tech, input(foreign));
+      assert.deepEqual([a.ok, a.code, a.category], [false, "WORK_ORDER_NOT_FOUND", "NOT_FOUND"], `${op}: the company layer refuses after the relation`);
+      assert.equal(await stateHash(), before, `${op}: no trace`);
+      const own = await wo("taylor", state, over);
+      await assign(own, "emp-techt");
+      const control = await call(op, tech, input(own));
+      assert.ok(control.ok || (control.code !== "WORK_ORDER_NOT_FOUND" && control.code !== "COMPANY_AUTHORITY_REQUIRED"), `${op}: the technician's own company is not stopped, got ${control.code}`);
+    }
+  });
+
+  // ════════════════════ (3) OBSERVATION-ONLY ENTRY POINTS (an id with no session reads as an empty answer) ════════════════════
+  await t.test("(3) self-scheduling sessions of a foreign Work Order are not listed and not revoked; an id with no session reads the same", async () => {
+    await q(`INSERT INTO eos_ops.self_scheduling_policies (tenant_id,id,earliest_offset_minutes,horizon_days,session_ttl_minutes,time_zone,updated_by_principal_id)
+             VALUES ($1,'pol-1',60,14,1440,'UTC',$2)`, [T, dspT]);
+    const foreign = await wo("ventana", "READY_TO_DISPATCH");
+    const own = await wo("taylor", "READY_TO_DISPATCH");
+    for (const id of [foreign, own]) {
+      await q(`INSERT INTO eos_ops.self_scheduling_sessions (tenant_id,id,token_sha256,work_order_id,issued_by_principal_id,issued_at,expires_at,policy_id,policy_version)
+               VALUES ($1,$2,$3,$4,$5,now(),now() + interval '1 day','pol-1',1)`, [T, `ssn-${id}`, createHash("sha256").update(id).digest("hex"), id, dspT]);
+    }
+    const dsp = office(dspT);
+    const before = await stateHash();
+    const seenForeign = await call("readSelfSchedulingSessions", dsp, { workOrderId: foreign });
+    const seenMissing = await call("readSelfSchedulingSessions", dsp, { workOrderId: "wo-no-sessions" });
+    assert.deepEqual(norm(seenForeign.result, foreign), norm(seenMissing.result, "wo-no-sessions"), "a foreign Work Order's session history reads as empty, like an id with none");
+    assert.deepEqual(seenForeign.result.sessions, []);
+    assert.equal((await call("readSelfSchedulingSessions", dsp, { workOrderId: own })).result.sessions.length, 1, "the same-company control lists its session");
+    assert.equal((await call("readSelfSchedulingSessions", office(dspV), { workOrderId: foreign })).result.sessions.length, 1, "and the Ventana dispatcher lists its own");
+    const revokedForeign = await call("revokeSelfSchedulingLink", dsp, { workOrderId: foreign, reason: "dwo" });
+    const revokedMissing = await call("revokeSelfSchedulingLink", dsp, { workOrderId: "wo-no-sessions", reason: "dwo" });
+    assert.deepEqual(norm(revokedForeign.result, foreign), norm(revokedMissing.result, "wo-no-sessions"));
+    assert.deepEqual(revokedForeign.result.revoked, []);
+    assert.equal((await one(`SELECT status FROM eos_ops.self_scheduling_sessions WHERE id = $1`, [`ssn-${foreign}`])).status, "ACTIVE", "the foreign session was NOT revoked");
+    assert.equal(await stateHash(), before, "...and the read and the refused revoke wrote nothing at all");
+    assert.equal((await call("revokeSelfSchedulingLink", dsp, { workOrderId: own, reason: "dwo" })).result.revoked.length, 1, "the control revokes its own");
+  });
+
+  await t.test("(3b) the Equipment of a Work Order (equipment route) and attaching an inbound request (inbound route) answer a foreign Work Order as a missing one", async () => {
+    const foreign = await wo("ventana", "CREATED");
+    const own = await wo("taylor", "CREATED");
+    const dsp = office(dspT);
+    const eqForeign = await run(equipmentOps.EOS_EQUIPMENT_OPERATIONS, "readWorkOrderEquipment", dsp, { workOrderId: foreign });
+    const eqMissing = await run(equipmentOps.EOS_EQUIPMENT_OPERATIONS, "readWorkOrderEquipment", dsp, { workOrderId: "wo-missing-eq" });
+    assert.deepEqual([eqForeign.ok, eqForeign.code, eqForeign.category], [false, "WORK_ORDER_NOT_FOUND", "NOT_FOUND"]);
+    assert.deepEqual(words(eqForeign, foreign), words(eqMissing, "wo-missing-eq"));
+    assert.equal((await run(equipmentOps.EOS_EQUIPMENT_OPERATIONS, "readWorkOrderEquipment", dsp, { workOrderId: own })).ok, true, "the control reads its own");
+    // An inbound intake awaiting a decision: attaching it to a foreign Work Order is the plain miss, and the request stays undecided.
+    await q(`INSERT INTO eos_ops.inbound_work_requests (tenant_id,id,source_provider,source_mailbox_id,source_message_id,content_key,original_body_content_type,status,ingested_by_principal_id)
+             VALUES ($1,'inb-1','GOOGLE_WORKSPACE','mb-1','m-1','ck-1','text/plain','NEEDS_REVIEW',$2)`, [T, dspT]);
+    const attachBefore = await stateHash();
+    const aForeign = await run(inboundOps.EOS_INBOUND_WORK_OPERATIONS, "attachInboundWork", dsp, { requestId: "inb-1", workOrderId: foreign });
+    const aMissing = await run(inboundOps.EOS_INBOUND_WORK_OPERATIONS, "attachInboundWork", dsp, { requestId: "inb-1", workOrderId: "wo-missing-in" });
+    assert.deepEqual([aForeign.ok, aForeign.code, aForeign.category], [false, "WORK_ORDER_NOT_FOUND", "NOT_FOUND"]);
+    assert.deepEqual(words(aForeign, foreign), words(aMissing, "wo-missing-in"));
+    assert.equal(await stateHash(), attachBefore, "a refused attach leaves no trace");
+    assert.equal((await run(inboundOps.EOS_INBOUND_WORK_OPERATIONS, "attachInboundWork", dsp, { requestId: "inb-1", workOrderId: own })).ok, true, "the control attaches to its own");
+    assert.equal(await one(`SELECT status FROM eos_ops.inbound_work_requests WHERE id = 'inb-1'`).then((r) => r.status), "ATTACHED");
+  });
+
+  // ════════════════════ (4) LISTS, THE BOARD, SEARCH, ASSIGNED WORK AND COORDINATED OPERATIONS ════════════════════
+  await t.test("(4) lists, the board, search, assigned work, coordinated operations and the aggregates contain only the reachable companies", async () => {
+    const tag = `dwo-find-${randomUUID().slice(0, 8)}`;
+    const tA = await wo("taylor", "READY_TO_DISPATCH", { complaint: tag, salesOrderId: "so-anchor-t" });
+    const tB = await wo("taylor", "SCHEDULED", { complaint: tag, salesOrderId: "so-anchor-t" });
+    const vA = await wo("ventana", "READY_TO_DISPATCH", { complaint: tag, salesOrderId: "so-anchor-v" });
+    const vB = await wo("ventana", "SCHEDULED", { complaint: tag, salesOrderId: "so-anchor-v" });
+    await assign(tA, "emp-techt"); await assign(vA, "emp-techt");   // the technician is assigned to one of each (the Ventana one forced by SQL)
+    const mine = new Set([tA, tB]), theirs = new Set([vA, vB]);
+    const ids = (items) => new Set(items.map((i) => i.workOrderId ?? i.id));
+    const only = (got, want, label) => { for (const id of want) assert.ok(got.has(id), `${label}: lacks ${id}`); for (const id of (want === mine ? theirs : mine)) assert.ok(!got.has(id), `${label}: must not contain ${id}`); };
+    // the office list -- the board's Work Order source (the governed-query form is proven by workOrderListQuerySuite)
+    for (const [who, label, want] of [[dspT, "Taylor dispatcher", mine], [dspV, "Ventana dispatcher", theirs]]) {
+      const listed = await call("listWorkOrders", office(who), { limit: 200 });
+      only(ids(listed.result.items), want, `${label} list`);
+    }
+    const bothList = ids((await call("listWorkOrders", office(both), { limit: 200 })).result.items);
+    for (const id of [...mine, ...theirs]) assert.ok(bothList.has(id), "the caller that reaches both lists both");
+    // search (the site-wide search, Work Order kind): the foreign complaint text is never matched
+    const searched = async (who) => new Set((await myWork.searchEos({ pool, postgresState: "ACTIVE" }, office(who), { query: tag })).results.filter((r) => r.kind === "workOrder").map((r) => r.id));
+    only(await searched(dspT), mine, "Taylor search"); only(await searched(dspV), theirs, "Ventana search");
+    // the technician's own work (My Work / field list): the Ventana assignment is not listed
+    const assigned = (await call("listMyAssignedWorkOrders", technician(techT), {})).result.items;
+    assert.ok(assigned.some((i) => i.workOrderId === tA), "the Taylor assignment is listed");
+    assert.ok(!assigned.some((i) => i.workOrderId === vA), "the Ventana assignment is not");
+    assert.ok(assigned.every((i) => i.operatingCompanyKey === "taylor"), "nothing of another company");
+    // assigned work on the Employee record (Workforce)
+    const workforce = async (who) => assignedWork.listAssignedWorkForEmployee({ pool }, { ...callerOf(who, ["employee.record.read", "workOrder.record.read"]).operational },
+      { employeeId: "emp-techt", family: "WORK_ORDER", limit: 200 });
+    const wT = (await workforce(dspT)).items, wA = (await workforce(admin)).items;
+    assert.ok(wT.some((i) => i.recordId === tA) && !wT.some((i) => i.recordId === vA) && wT.every((i) => i.operatingCompanyId === "taylor"));
+    assert.ok(wA.some((i) => i.recordId === tA) && wA.some((i) => i.recordId === vA), "the protected Administrator keeps every company here");
+    // coordinated operations: a foreign Work Order is dropped ENTIRELY (and never counted in `skipped` / `truncated`)
+    const coordinatedFor = async (who) => coordinated.readCoordinatedOperations({ pool }, { tenantId: T, principalId: who, capabilities: new Set(["fulfillment.coordinatedVisit.read"]) });
+    const cT = await coordinatedFor(dspT), cV = await coordinatedFor(dspV), cB = await coordinatedFor(both), cA = await coordinatedFor(admin);
+    only(ids(cT.workOrders), mine, "coordinated Taylor"); only(ids(cV.workOrders), theirs, "coordinated Ventana");
+    for (const id of [...mine, ...theirs]) assert.ok(ids(cB.workOrders).has(id) && ids(cA.workOrders).has(id), "reaching both / the Administrator: all");
+    assert.equal(JSON.stringify(cT).includes(vA), false, "nothing of a foreign Work Order appears in the page");
+    assert.equal(JSON.stringify(cT).includes("so-anchor-v"), false, "...nor its anchoring Sales Order id");
+    // aggregates: the figures count only the reachable Work Orders (the expected values are computed from the rows)
+    const byCompany = (await q(`SELECT w.operating_company_key AS k, w.status::text AS status, (w.completed_at IS NOT NULL) AS done
+        FROM eos_ops.work_orders w JOIN eos_ops.work_order_assignments a ON a.tenant_id = w.tenant_id AND a.work_order_id = w.id AND a.effective_to IS NULL
+       WHERE a.assignee_employee_id = 'emp-techt'`)).rows;
+    const expected = (keys) => ({ activeCount: byCompany.filter((r) => keys.includes(r.k) && !r.done).length, completedCount: byCompany.filter((r) => keys.includes(r.k) && r.done).length });
+    const volume = async (who) => (await call("readTechnicianVolumeBreakdown", office(who), {})).result.items.find((i) => i.employeeId === "emp-techt");
+    for (const [who, keys, label] of [[dspT, ["taylor"], "Taylor"], [dspV, ["ventana"], "Ventana"], [both, ["taylor", "ventana"], "both"], [admin, ["taylor", "ventana"], "the Administrator"]]) {
+      const v = await volume(who);
+      assert.deepEqual({ activeCount: v.activeCount, completedCount: v.completedCount }, expected(keys), `${label}: the volume counts only the reachable Work Orders`);
+    }
+    assert.notEqual(expected(["taylor"]).activeCount, expected(["taylor", "ventana"]).activeCount, "the world makes the two answers differ");
+    const statusMap = (keys) => byCompany.filter((r) => keys.includes(r.k)).reduce((m, r) => ({ ...m, [r.status]: (m[r.status] ?? 0) + 1 }), {});
+    const stats = await call("readTechnicianExecutionStats", office(dspT), { employeeId: "emp-techt" });
+    assert.deepEqual(stats.result.workOrderVolumeByStatus, statusMap(["taylor"]), "the stats population is the reachable Work Orders only");
+  });
+
+  // ════════════════════ (5) THE PROTECTED ADMINISTRATOR AND THE PROTECTED OWNER ════════════════════
+  const IDENTICAL_FOR_ADMIN = ID_OPS.filter(([op]) => !OWN_MODE.has(op));
+  await t.test("(5a) the protected Administrator's reach is UNCHANGED: a Ventana Work Order behaves exactly like a Taylor twin (it was company-blind before), at every entry point it was tenant-wide", async () => {
+    const adm = office(admin);
+    for (const [op, state, input] of IDENTICAL_FOR_ADMIN) {
+      const taylorTwin = await wo("taylor", state);
+      const ventanaTwin = await wo("ventana", state);
+      const a = await call(op, adm, input(taylorTwin));
+      const b = await call(op, adm, input(ventanaTwin));
+      assert.equal(a.ok, b.ok, `${op}: ${JSON.stringify(a).slice(0, 160)} vs ${JSON.stringify(b).slice(0, 160)}`);
+      assert.equal(norm(a.ok ? a.result : words(a, taylorTwin), taylorTwin), norm(b.ok ? b.result : words(b, ventanaTwin), ventanaTwin), `${op}: byte-identical modulo ids and company words`);
+      assert.ok(a.ok || a.code !== "WORK_ORDER_NOT_FOUND", `${op}: never the plain miss for the Administrator`);
+    }
+    // The transitions it applies leave exactly one governed record each (the Work Order transition), for either company.
+    for (const company of ["taylor", "ventana"]) {
+      const id = await wo(company, "CREATED");
+      const n0 = Number((await one(`SELECT count(*) n FROM eos_ops.work_order_transitions WHERE work_order_id = $1`, [id])).n);
+      assert.equal((await call("markWorkOrderReady", adm, { workOrderId: id })).ok, true);
+      assert.equal(Number((await one(`SELECT count(*) n FROM eos_ops.work_order_transitions WHERE work_order_id = $1`, [id])).n), n0 + 1);
+    }
+    // Where it was ALREADY bounded by its own authority (Schedule / Reschedule / Dispatch, the office list), it stays bounded: Taylor only.
+    for (const [op, state, input] of ID_OPS.filter(([name]) => OWN_MODE.has(name))) {
+      const foreign = await wo("ventana", state);
+      const a = await call(op, adm, input(foreign));
+      assert.deepEqual([a.ok, a.code], [false, "WORK_ORDER_NOT_FOUND"], `${op}: unchanged -- the Administrator is bounded by its own company authority here`);
+    }
+    const adminList = (await call("listWorkOrders", adm, { limit: 200 })).result.items;
+    assert.ok(adminList.length > 0 && adminList.every((i) => i.operatingCompanyKey === "taylor"), "the office list is unchanged: the Administrator's own companies");
+  });
+
+  await t.test("(5b) the protected Owner follows its OWN governed company reach, like everyone else; an explicit company-access reach opens the second company", async () => {
+    const own = office(owner);
+    const ventana = await wo("ventana", "CREATED");
+    const taylor = await wo("taylor", "CREATED");
+    assert.equal((await call("readWorkOrder", own, { workOrderId: taylor })).ok, true);
+    const refused = await call("readWorkOrder", own, { workOrderId: ventana });
+    const missing = await call("readWorkOrder", own, { workOrderId: "wo-missing-o" });
+    assert.deepEqual([refused.code, refused.category], ["WORK_ORDER_NOT_FOUND", "NOT_FOUND"]);
+    assert.deepEqual(words(refused, ventana), words(missing, "wo-missing-o"));
+    await grantSyntheticCompanyAuthority(pool, T, owner, ["taylor", "ventana"]);
+    assert.equal((await call("readWorkOrder", own, { workOrderId: ventana })).ok, true, "governed company access is how the Owner holds the second company");
+  });
+
+  // ════════════════════ (6) THE SERVICE-PROVIDER AUTHORIZATION IS UNCHANGED ════════════════════
+  await t.test("(6) a provider company serves another company's Sales Order only under the seller's ACTIVE authorization (positive and negative), and the authorization widens no Work Order read", async () => {
+    await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1,'RETAIL','ACTIVE','fixture','fixture','fixture') ON CONFLICT DO NOTHING`, [T]);
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number,display_name) VALUES ('e-seller',$1,'ACTIVE','ventana','e-seller','Seller')`, [T]);
+    await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, state, sales_channel,
+               currency, credited_salesperson_employee_id, accountable_employee_id, location_id, created_by, updated_by)
+             VALUES ('so-ventana',$1,'SO-2026-V00001','acct-1','e-seller','ventana','IN_FULFILLMENT','RETAIL','USD','e-seller','e-seller','loc-1','f','f')`, [T]);
+    await q(`INSERT INTO eos_commercial.sales_order_lines (tenant_id, sales_order_id, line_number, kind, ref, business_unit, ordered_qty, unit_price_minor)
+             VALUES ($1,'so-ventana',1,'SERVICE','SVC-INSTALL','INSTALLATION',1,90000)`, [T]);
+    const create = (type) => call("createWorkOrder", office(dspT), { operatingCompanyId: "taylor", customerId: "acct-1", locationId: "loc-1", workOrderType: type, priority: 2,
+      salesOrderId: "so-ventana", salesOrderLines: [1] });
+    const refusedWords = (o) => [o.ok, o.code, o.category];
+    const missingOrder = await call("createWorkOrder", office(dspT), { operatingCompanyId: "taylor", customerId: "acct-1", locationId: "loc-1", workOrderType: "SERVICE_CALL", priority: 2,
+      salesOrderId: "so-missing", salesOrderLines: [1] });
+    const noAuth = await create("SERVICE_CALL");
+    assert.deepEqual(refusedWords(noAuth), [false, "SALES_ORDER_NOT_FOUND", "NOT_FOUND"], "no arbitrary cross-company Work Order: the Ventana order is nonexistent to a Taylor-only dispatcher");
+    assert.deepEqual(words(noAuth, "so-ventana"), words(missingOrder, "so-missing"));
+    await q(`INSERT INTO eos_commercial.sales_order_service_providers (tenant_id, sales_order_id, service_operating_company_key, scopes, status, reason, authorized_by)
+             VALUES ($1,'so-ventana','taylor',ARRAY['SERVICE'],'ACTIVE','Taylor Service performs Ventana''s service','f')`, [T]);
+    assert.deepEqual(refusedWords(await create("INSTALL")), [false, "SALES_ORDER_NOT_FOUND", "NOT_FOUND"], "the authorization covers SERVICE only");
+    const made = await create("SERVICE_CALL");
+    assert.equal(made.ok, true, JSON.stringify(made));
+    assert.equal((await one(`SELECT operating_company_key k FROM eos_ops.work_orders WHERE id = $1`, [made.result.workOrderId])).k, "taylor", "the Work Order is the service-performing company's");
+    // The authorization is a Sales Order <-> Work Order link rule: it opens no Work Order read to the seller's company.
+    assert.equal((await call("readWorkOrder", office(dspT), { workOrderId: made.result.workOrderId })).ok, true);
+    const sellerRead = await call("readWorkOrder", office(dspV), { workOrderId: made.result.workOrderId });
+    assert.deepEqual([sellerRead.ok, sellerRead.code], [false, "WORK_ORDER_NOT_FOUND"], "the seller's company does not reach the provider's Work Order");
+    await q(`UPDATE eos_commercial.sales_order_service_providers SET status = 'REVOKED', revoked_by = 'f', revoked_at = now(), revoke_reason = 'done' WHERE tenant_id = $1 AND sales_order_id = 'so-ventana'`, [T]);
+    assert.deepEqual(refusedWords(await create("SERVICE_CALL")), [false, "SALES_ORDER_NOT_FOUND", "NOT_FOUND"], "revoked");
+  });
+
+  await t.test("(7) the boundary is the SAME predicate everywhere: a Work Order moved to another company changes every answer at once", async () => {
+    const id = await wo("taylor", "CREATED", { complaint: "dwo-move" });
+    const dsp = office(dspT);
+    for (const op of ["readWorkOrder", "readWorkOrderFieldContext", "readWorkOrderLabor", "setWorkOrderPartsPlan"]) {
+      assert.equal((await call(op, dsp, op === "setWorkOrderPartsPlan" ? { workOrderId: id, plan: [] } : { workOrderId: id })).ok, true, `${op}: before`);
+    }
+    await q(`UPDATE eos_ops.work_orders SET operating_company_key = 'ventana' WHERE id = $1`, [id]);
+    for (const op of ["readWorkOrder", "readWorkOrderFieldContext", "readWorkOrderLabor", "setWorkOrderPartsPlan"]) {
+      const o = await call(op, dsp, op === "setWorkOrderPartsPlan" ? { workOrderId: id, plan: [] } : { workOrderId: id });
+      assert.deepEqual([o.ok, o.code], [false, "WORK_ORDER_NOT_FOUND"], `${op}: after`);
+    }
+    const found = (await myWork.searchEos({ pool, postgresState: "ACTIVE" }, dsp, { query: "dwo-move" })).results.filter((r) => r.kind === "workOrder");
+    assert.deepEqual(found, [], "search follows");
+  });
+});

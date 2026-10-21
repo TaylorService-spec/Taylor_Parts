@@ -45,6 +45,7 @@ import {
   type ContextualReader,
 } from "./contextualAuthorization";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 
 const SCHEMA = "eos_ops";
 
@@ -467,10 +468,13 @@ export async function applyTransitionWithinTransaction(
     refuse("TRANSITION_NOT_ALLOWED", "PRECONDITION_FAILED",
       `${input.expectedStatus} -> ${input.toStatus} is not a transition this business performs`);
   }
+  // DWO-company: the caller's operating companies decide INSIDE the locking SELECT, so a Work Order of another company is never found and never locked; it
+  // reads exactly as a missing one. (Capability and relation were decided by the caller before this transaction.)
+  const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse, { message: "no operating-company authority" });
   const current = await client.query(
     `SELECT status::text AS status FROM ${SCHEMA}.work_orders
-      WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-    [actor.tenantId, input.workOrderId]);
+      WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+    [actor.tenantId, input.workOrderId, ...reach.sqlParams()]);
   if (current.rows.length === 0) {
     refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${input.workOrderId} in this tenant`);
   }

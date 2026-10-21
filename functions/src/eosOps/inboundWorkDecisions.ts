@@ -33,6 +33,7 @@ import type { Pool } from "pg";
 import type { LifecycleActor } from "./workOrderLifecycle";
 import { createWorkOrder, WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach, resolveWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import {
   DECIDABLE,
   INBOUND_INTAKE_MANAGE,
@@ -182,12 +183,14 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
   requireCapability(actor, INBOUND_WORK_READ);
   only(input, ["requestId"]);
   if (!isId(input.requestId)) refuse("REQUEST_ID_REQUIRED", "INVALID_INPUT", "requestId is required");
+  // DWO-company: the linked Work Order's NUMBER is shown only where the caller's operating companies reach that Work Order.
+  const reach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
   const { rows } = await deps.pool.query(
     `SELECT r.*, w.work_order_number, l.link_kind, ${CLAIMANT_COLUMNS}
        FROM eos_ops.inbound_work_requests r
-       LEFT JOIN eos_ops.work_orders w ON w.tenant_id = r.tenant_id AND w.id = r.work_order_id
+       LEFT JOIN eos_ops.work_orders w ON w.tenant_id = r.tenant_id AND w.id = r.work_order_id AND ${reach.sql("w.operating_company_key", 3)}
        LEFT JOIN eos_ops.inbound_work_order_links l ON l.tenant_id = r.tenant_id AND l.request_id = r.id
-      WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, input.requestId]);
+      WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, input.requestId, ...reach.sqlParams()]);
   if (rows.length === 0) refuse("INBOUND_REQUEST_NOT_FOUND", "NOT_FOUND", "that inbound request does not exist");
   const r = rows[0];
   const replies = await deps.pool.query(
@@ -525,10 +528,14 @@ export async function attachInboundWork(deps: Deps, actor: LifecycleActor, input
     const { rows } = await c.query(`SELECT status, work_order_id FROM eos_ops.inbound_work_requests WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [actor.tenantId, input.requestId]);
     if (rows.length === 0) refuse("INBOUND_REQUEST_NOT_FOUND", "NOT_FOUND", "that inbound request does not exist");
+    // DWO-company: the Work Order the intake is filed against must be one of the caller's operating companies, decided inside the SELECT; any other id is the plain
+    // miss (and a replay of an attach to a Work Order the caller does not reach is not offered: it falls through to the decided-request refusal a missing id gets).
+    const reach = await requireWorkOrderCompanyReach(c, actor.tenantId, actor.principalId, refuse);
     const wo = await c.query(
-      `SELECT id, work_order_number, status, customer_id, location_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 FOR SHARE`,
-      [actor.tenantId, input.workOrderId]);
-    if (rows[0].status === "ATTACHED" && rows[0].work_order_id === input.workOrderId) {
+      `SELECT id, work_order_number, status, customer_id, location_id FROM eos_ops.work_orders
+        WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR SHARE`,
+      [actor.tenantId, input.workOrderId, ...reach.sqlParams()]);
+    if (rows[0].status === "ATTACHED" && rows[0].work_order_id === input.workOrderId && wo.rows.length > 0) {
       return { requestId: input.requestId, workOrderId: input.workOrderId, workItemId: input.workOrderId,
         workOrderNumber: wo.rows[0]?.work_order_number ?? null, replayed: true };
     }

@@ -46,6 +46,7 @@
 import { notQuarantined } from "./workOrderQuarantine";
 import type { Pool, PoolClient } from "pg";
 import { resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
+import { resolveWorkOrderCompanyReach, type WorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -255,9 +256,15 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
   /**
    * Q-1a (Owner ruling Q1-11): the caller's Commercial company reach. The Sales Order each Work Order anchors to is a Commercial record, so its number and its
    * line refs are disclosed only where the caller reaches that order; otherwise they are ABSENT (the surface renders its truthful fallback). The Work Orders
-   * themselves are Dispatch\'s to scope and are not narrowed here (named follow-up, DECISIONS #Q-1a-company). Absent = no narrowing (the parity seam / census).
+   * themselves are Dispatch's: DWO-company (DECISIONS #DWO-company) scopes them by operating company through `workOrderReach` below. Absent = no narrowing (the parity seam / census).
    */
   reach?: CommercialCompanyReach,
+  /**
+   * DWO-company (closes the #Q-1a-company named follow-up): the caller's Work Order company reach. A Work Order of a company the caller does not reach is DROPPED
+   * ENTIRELY -- inside the SELECT, before the page is cut, so it is never listed, never counted in `skipped` or `truncated`, and nothing about it (id, number, status,
+   * customer, location, anchor) is read. The governed entry point (readCoordinatedOperations) always supplies it. Absent = no narrowing (the parity seam / census only).
+   */
+  workOrderReach?: WorkOrderCompanyReach,
 ): Promise<CoordinatedOperationsPostgresResult> {
   if (!Number.isSafeInteger(limit) || limit <= 0 || limit > DEFAULT_LIMIT) {
     fail("PAGE_SIZE_INVALID", "INVALID_INPUT", `limit must be a positive integer no greater than ${DEFAULT_LIMIT}`);
@@ -268,9 +275,10 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
        FROM eos_ops.work_orders w
       WHERE w.tenant_id = $1 AND ${notQuarantined("w")}
         AND w.status::text = ANY($2::text[])
+        ${workOrderReach ? `AND ${workOrderReach.sql("w.operating_company_key", 4)}` : ""}
       ORDER BY w.id COLLATE "C" ASC
       LIMIT $3`,
-    [tenantId, ACTIVE_COORDINATION_STATUSES as string[], limit + 1],
+    [tenantId, ACTIVE_COORDINATION_STATUSES as string[], limit + 1, ...(workOrderReach ? workOrderReach.sqlParams() : [])],
   );
   const truncated = rows.length > limit;
   const page = rows.slice(0, limit) as Record<string, unknown>[];
@@ -419,7 +427,8 @@ export async function readCoordinatedOperations(
     }
     await assertCanonicalCapability(client);
     const reach = await (deps.companyReach ?? resolveCommercialCompanyReach)(client, actor.tenantId, actor.principalId);
-    const result = await readActiveCoordinatedWorkOrdersFromPostgres(client, actor.tenantId, undefined, reach);
+    const workOrderReach = await resolveWorkOrderCompanyReach(client, actor.tenantId, actor.principalId);
+    const result = await readActiveCoordinatedWorkOrdersFromPostgres(client, actor.tenantId, undefined, reach, workOrderReach);
     await client.query("COMMIT");
     return result;
   } catch (err) {
