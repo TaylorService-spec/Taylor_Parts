@@ -9,7 +9,7 @@
 //        company = the command also decides the record's operating company (companyAuthority.ts), so a persona with the capability still gets
 //        an identical-not-found for a record of a company it does not reach.
 const P = (route, op, cap, object, kind, flags = {}) => Object.freeze({ route, op, cap, object, kind, ...flags });
-const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance", ADM = "/admin/policy", WF = "/workforce", COM = "/commercial", CRM = "/crm";
+const INV = "/operations/inventory", WO = "/operations/work-orders", FIN = "/operations/finance", ADM = "/admin/policy", WF = "/workforce/employees", COM = "/commercial/sales", CRM = "/crm/customer";
 
 export const PROBES = Object.freeze([
   // ---- Reorder / purchasing / receiving / inventory
@@ -98,7 +98,7 @@ export const PROBES = Object.freeze([
   P(FIN, "approveFinancialPolicy", "finance.policy.approve", "financialPolicy", "mutate", { finance: true }),
   P(FIN, "activateFinancialPolicy", "finance.policy.activate", "financialPolicy", "mutate", { finance: true }),
   P(FIN, "readFinancialPolicy", "finance.policy.read", "financialPolicy", "read", { finance: true }),
-  P(FIN, "configureAccountingDestination", "finance.configuration.manage", "financeConfiguration", "mutate"),
+  P(ADM, "configureAccountingDestination", "finance.configuration.manage", "financeConfiguration", "mutate"),
   // ---- Rental
   P("/operations/rental", "listRentalAgreements", "rental.agreement.read", "rentalAgreement", "read", { company: true }),
   P("/operations/rental", "createRentalAgreement", "rental.agreement.manage", "rentalAgreement", "mutate", { company: true }),

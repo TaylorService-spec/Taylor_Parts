@@ -8,7 +8,7 @@ dataImport,Data Import,true,Administration,0,0,1,0,0,0,0,1,3,true,true,administr
 employee,Users,true,Administration,22,22,8,3,3,1,2,3,33,true,true,administration/users; /my-profile; /administration/users/:employeeId; /administration/users/functional-roles
 equipment,Equipment / Installed Base,true,Service,13,13,3,1,1,0,0,10,9,true,true,equipment/equipment; reporting/builder; /equipment/:equipmentId
 equipmentModel,Equipment Model,true,,15,15,2,2,2,0,0,6,3,true,true,equipment/equipment; inventory/partMaster
-financeConfiguration,Finance Configuration,true,Finance,0,0,1,0,0,0,0,6,10,true,true,financials/governance
+financeConfiguration,Finance Configuration,true,Finance,0,0,1,0,0,0,0,6,5,true,true,financials/governance
 financialPolicy,Financial Policy,true,Finance,0,0,4,0,0,0,0,4,9,true,true,financials/governance; administration/financialPolicy
 inboundMailbox,Inbound Mailbox,true,Service,0,0,1,0,0,0,0,2,13,true,true,administration/emailCommunications
 inboundWorkRequest,Inbound Work Request,true,Service,0,0,5,0,0,0,0,5,8,true,true,service/inboundWork
@@ -48,7 +48,7 @@ truck,Truck,true,,13,13,0,1,1,0,0,0,9,true,true,inventory/truckInventory
 warehouse,Warehouse,true,,4,4,4,4,4,0,0,10,16,true,true,inventory/warehouses; administration/warehouseRacking
 workflowDefinition,Workflow,true,Administration,0,0,6,0,0,0,0,2,12,true,true,administration/workflows
 workflowInstance,Workflow Instance,true,Administration,0,0,0,0,0,0,0,0,7,true,true,administration/workflows
-workOrder,Work Orders,true,Service,10,10,15,13,11,11,12,13,44,true,true,serviceOperations/serviceOperations; service/workOrders; service/jobAssignments; service/dispatch; service/coordinatedVisits; service/coordinatedMission; service/technicianWorkspace; service/scan; service/dispatcherBoard; service/scheduling; service/dispatchScheduling; /service/work-orders/new; /service/work-orders/:workOrderId
+workOrder,Work Orders,true,Service,10,10,15,13,11,11,12,13,39,true,true,serviceOperations/serviceOperations; service/workOrders; service/jobAssignments; service/dispatch; service/coordinatedVisits; service/coordinatedMission; service/technicianWorkspace; service/scan; service/dispatcherBoard; service/scheduling; service/dispatchScheduling; /service/work-orders/new; /service/work-orders/:workOrderId
 crmActivity,CRM Activity,false,Customers,,0,2,0,0,0,0,3,0,false,false,
 inventoryReturn,Inventory Return,false,Inventory,,0,1,0,0,0,0,1,0,false,false,
 performanceGoal,Performance Goal,false,Administration,,0,5,0,0,0,0,12,0,true,false,analysis/goals

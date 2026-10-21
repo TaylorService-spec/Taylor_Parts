@@ -1,8 +1,9 @@
 // UAT census -- the computed model. Pure functions over (a) the controller's read-only nonprod census JSON and (b) the repository.
 // No database, no network, no credential. Every derived number in docs/uat is produced here.
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { REPO_ROOT, extractOperations, extractSurfaces, extractScopeEvaluable, extractNavigation, readRepoJson } from "./uatExtract.mjs";
+import { REPO_ROOT, extractOperations, extractSurfaces, extractScopeEvaluable, extractNavigation, readRepoJson, servedRoutes, eosApiDomainForPort } from "./uatExtract.mjs";
 import { OP_RULES, PAGE_OBJECTS, EXTRA_ROUTES, PLATFORM } from "./uatMaps.mjs";
 import { PROBES } from "./uatProbes.mjs";
 
@@ -169,6 +170,18 @@ export async function buildModel(censusPath) {
   });
   const personaByKey = new Map(personas.map((p) => [p.key, p]));
 
+  // PURE ADMINISTRATOR evidence (Owner direction, Phase 2 item 2; OQ-11): the expectations of the `admin` Role ALONE -- stored grants plus the derived
+  // protected-Administrator standing -- computed as if the `administrator` persona held no other Role. It is tagged separately (group "pure-admin")
+  // and never merged into the 12-Role composite persona. The Employee (and so company reach) is the persona's own; Finance assignments, which are separate
+  // FINANCE_ONLY Role assignments, are NOT part of the pure Administrator.
+  const composite = personaByKey.get("administrator");
+  const pureF = flatCapsOf(["admin"]);
+  const pure = {
+    ...composite, key: "administratorPure", group: "pure-admin", globalRoles: ["admin"], scoped: [], disabled: [],
+    flatCaps: pureF.caps, capSource: pureF.src, standing: pureF.standing, derived: pureF.derived, scopedCaps: new Map(), financeReach: [], channels: [],
+  };
+  const personasAll = [...personas, pure];
+
   // principals without any active role / roles without assignee
   const principalsNoRole = C.principals.filter((p) => !C.role_assignments.some((a) => a.principal_id === p.id && a.status === "active")).map((p) => ({ id: p.id, label: principalLabel(p.id), status: p.status, membership: p.membership }));
   const personasNoRole = personas.filter((p) => p.globalRoles.length === 0 && p.scoped.length === 0).map((p) => p.key);
@@ -205,7 +218,7 @@ export async function buildModel(censusPath) {
     return { ...r, status: r.hasComponentBranch ? "BUILT" : "PLACEHOLDER", objects: po ? po[0] : [], objectConfidence: po ? po[1] : "?",
       eosGate: r.containerScope ? "container (derived from reachable children)" : r.surfaceAccess.length ? `surface: ${r.surfaceAccess.join(" | ")}` : "NO governed surface => invisible to every principal under the EOS navigation source" };
   });
-  for (const p of personas) {
+  for (const p of personasAll) {
     const memo = new Map();
     p.surfaces = surfaces.filter((s) => surfaceGranted(p, s, memo).granted).map((s) => s.key);
     p.surfaceWhyNot = surfaces.filter((s) => !surfaceGranted(p, s, memo).granted).map((s) => ({ key: s.key, why: memo.get(s.key).why }));
@@ -280,13 +293,13 @@ export async function buildModel(censusPath) {
     const vc = verbCaps(o.key, v);
     if (SEMANTIC_REPLACEMENTS.has(`${o.key}.${v}`)) continue;
     if (vc.length === 0) { if (cred) credOnly.push({ role: r.key, object: o.key, verb: v }); continue; }
-    const held = vc.some((k) => grantsByRole.get(r.key).has(k));
+    const held = vc.some((k) => grantsByRole.get(r.key).has(k) || (r.key === "admin" && impliedKeys.has(k))); // the Administrator also holds what protected standing implies (DECISIONS #223)
     if (held !== cred) divergence.push({ role: r.key, object: o.key, verb: v, cred, capabilityHeld: held, capabilities: vc.join("|") });
   }
 
   // Persona level: capability matrix, CRED matrix, undetermined
   const personaCapRows = [];
-  for (const p of personas) {
+  for (const p of personasAll) {
     for (const c of C.capabilities) {
       const flat = p.flatCaps.has(c.key);
       const sc = p.scopedCaps.get(c.key);
@@ -299,26 +312,26 @@ export async function buildModel(censusPath) {
     }
   }
   const personaCredRows = [];
-  for (const p of personas) {
+  for (const p of personasAll) {
     for (const o of C.objects) for (const v of VERBS) {
       const glob = p.globalRoles.some((r) => credBy.get(r + "|" + o.key)?.[VCOL[v]] === true);
       const scp = !glob && p.scoped.some((s) => credBy.get(s.role + "|" + o.key)?.[VCOL[v]] === true);
       const cred = glob ? "ALLOW" : scp ? "SCOPED" : "DENY";
-      let expected = cred, basis = "CRED union over held Security Roles", undetermined = "";
+      let expected = cred, basis = "CRED union over held Security Roles", undetermined = "", integrity = "";
       if (v === "D") { expected = "DENY"; basis = "no delete verb exists for any Object (supportsDelete=false everywhere; can_delete true in 0 rows)"; if (cred !== "DENY") undetermined = "CRED_DELETE_TRUE"; }
       else if (SEMANTIC_REPLACEMENTS.has(`${o.key}.${v}`)) { basis = "generic verb is replaced by a named business act; the act is tested in the capability rows (credEquivalence.ts SEMANTIC_REPLACEMENTS)"; expected = "NOT_APPLICABLE"; }
       else {
         const vc = verbCaps(o.key, v);
-        if (vc.length === 0) { if (cred !== "DENY") { expected = "UNDETERMINED"; undetermined = "CRED_ONLY_NO_ENFORCING_CAPABILITY"; } basis = "no EOS capability governs this verb"; }
+        if (vc.length === 0) { basis = "no EOS capability governs this verb; the Administration grid shows the stored CRED value; runtime follows the command's own capability (Owner OQ-01)"; if (cred !== "DENY") integrity = "CRED_ONLY"; }
         else {
           const capHeld = vc.some((k) => p.flatCaps.has(k));
           const capScoped = !capHeld && vc.some((k) => p.scopedCaps.has(k));
           const capV = capHeld ? "ALLOW" : capScoped ? "SCOPED" : "DENY";
           if (capV === cred) { expected = cred; basis = `CRED and capability agree (${vc.join("|")})`; }
-          else { expected = "UNDETERMINED"; undetermined = "CRED_DISAGREES_WITH_CAPABILITY"; basis = `CRED=${cred} but capability(${vc.join("|")})=${capV}`; }
+          else { integrity = "CRED_DIVERGES"; basis = `grid shows stored CRED=${cred}; runtime capability(${vc.join("|")})=${capV} and wins (Owner OQ-01): a configuration-integrity finding, not a failure`; }
         }
       }
-      personaCredRows.push({ persona: p.key, object: o.key, verb: v, expected, basis, undetermined });
+      personaCredRows.push({ persona: p.key, object: o.key, verb: v, expected, basis, undetermined, integrity });
     }
   }
 
@@ -329,12 +342,12 @@ export async function buildModel(censusPath) {
   const bindingCounts = Object.fromEntries(wfSeeds.map((w) => [w.key, w.actions.reduce((n, a) => n + a.roleKeys.length, 0)]));
   const censusBindings = Object.fromEntries(C.workflows.map((w) => [w.key, +w.bindings]));
   const personaWfRows = [];
-  for (const p of personas) for (const a of wfActions) {
+  for (const p of personasAll) for (const a of wfActions) {
     const bound = a.roleKeys.some((r) => p.globalRoles.includes(r));
     const boundScoped = !bound && a.roleKeys.some((r) => p.scoped.some((s) => s.role === r));
     const cap = a.capabilityId ? (p.flatCaps.has(a.capabilityId) ? "ALLOW" : p.scopedCaps.has(a.capabilityId) ? "SCOPED" : "DENY") : "NO_CAPABILITY";
     let expected, basis;
-    if (!a.capabilityId) { expected = "UNDETERMINED"; basis = "action names no capability (cannot be published/executed)"; }
+    if (!a.capabilityId) { expected = "NOT_APPLICABLE"; basis = "DEFERRED to Q-1 (Owner OQ-03): the decline action names no capability yet, so it cannot be published or executed; the seed is canonical"; }
     else if (!bound && !boundScoped) { expected = "DENY"; basis = "no held Security Role is bound to the action"; }
     else if (cap === "DENY") { expected = "DENY"; basis = "bound role but capability not held (a binding never grants)"; }
     else { expected = a.ownAssignment ? "CONDITIONAL" : (cap === "SCOPED" || boundScoped ? "SCOPED" : "ALLOW"); basis = (a.ownAssignment ? "own assignment required; " : "") + `bound role + ${a.capabilityId}`; }
@@ -345,7 +358,22 @@ export async function buildModel(censusPath) {
   const probeRows = [];
   const probeProblems = [];
   for (const pr of PROBES) { if (!capByKey.has(pr.cap)) probeProblems.push(`probe ${pr.op}: capability ${pr.cap} is not in the census`); if (!operations.some((o) => o.op === pr.op && o.route === pr.route)) probeProblems.push(`probe ${pr.route}:${pr.op} is not in any registry`); }
-  for (const p of personas) for (const pr of PROBES) {
+  // ROUTE CHECK (Phase 2, item A): every path this plan will send a request to must be a route the server dispatches, and the server's own
+  // domain function (a port of eosApiDomainFor) must send it to the intended transport, not to the Administration default.
+  const served = servedRoutes();
+  const fixtureSpec = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "ventana-uat-fixture.spec.json"), "utf8"));
+  const routeUses = new Map(); // route -> who uses it
+  const use = (r, who) => { if (!routeUses.has(r)) routeUses.set(r, new Set()); routeUses.get(r).add(who); };
+  for (const o of operations) use(o.route, "operation registry");
+  for (const pr of PROBES) use(pr.route, "probe table");
+  for (const s of fixtureSpec.steps) use(s.route, "Ventana fixture spec");
+  const routeProblems = [];
+  for (const [r, who] of routeUses) {
+    if (!served.has(r)) routeProblems.push(`${r} (used by ${[...who].join(", ")}) is not a route the server dispatches`);
+    else if (r !== "/admin/policy" && eosApiDomainForPort(r) === "administration") routeProblems.push(`${r} would be answered by the Administration transport (eosApiDomainFor default)`);
+  }
+  const routeCheck = { servedRoutes: Object.fromEntries(served), checked: Object.fromEntries([...routeUses].map(([r, who]) => [r, [...who].sort()])), domains: Object.fromEntries([...routeUses.keys()].map((r) => [r, eosApiDomainForPort(r)])), problems: routeProblems };
+  for (const p of personasAll) for (const pr of PROBES) {
     const flat = p.flatCaps.has(pr.cap); const sc = p.scopedCaps.get(pr.cap);
     const expected = flat ? "ALLOW" : sc ? "SCOPED" : "DENY";
     let reach = "";
@@ -373,10 +401,10 @@ export async function buildModel(censusPath) {
   };
 
   return {
-    census: C, snap: SNAP, roles, personas, personaByKey, objects, destinations, operations, surfaces, scopeEval, nav,
+    census: C, snap: SNAP, roles, personas, pure, personasAll, personaByKey, objects, destinations, operations, surfaces, scopeEval, nav,
     principalsNoRole, personasNoRole, personasZeroCaps, rolesNoAssignee,
     roleCapRows, divergence, credOnly, editWithoutRead, personaCapRows, personaCredRows, wfSeeds, wfActions, bindingCounts, censusBindings, personaWfRows,
-    probeRows, probeProblems, reconciliation, impliedKeys, opErrors: opx.errors,
+    probeRows, probeProblems, routeCheck, reconciliation, impliedKeys, opErrors: opx.errors,
     maps: { roleByKey, capByKey, objByKey, grantsByRole, jobRoleLabel },
   };
 }

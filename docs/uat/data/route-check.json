@@ -1,0 +1,135 @@
+{
+ "servedRoutes": {
+  "/operations/catalog": "CATALOG_ROUTE in catalogMaster/catalogHttp.ts",
+  "/operations/analysis": "ANALYSIS_ROUTE in eosAnalysis/analysisOperations.ts",
+  "/auth/diagnostics/client-ip": "CLIENT_IP_DIAGNOSTIC_ROUTE in eosAuth/clientIpDiagnostic.ts",
+  "/auth/nonprod/persona-session": "PERSONA_SESSION_ROUTE in eosAuth/eosAuthHttp.ts",
+  "/commercial/sales": "COMMERCIAL_ROUTE in eosCommercial/commercialHttp.ts",
+  "/crm/customer": "CRM_ROUTE in eosCrm/crmHttp.ts",
+  "/operations/workspace": "WORKSPACE_ROUTE in eosExperience/workspaceOperations.ts",
+  "/operations/finance": "FINANCE_ROUTE in eosFinance/financeOperations.ts",
+  "/operations/cycle-count": "CYCLE_COUNT_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/relocation": "RELOCATION_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/transfer": "TRANSFER_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/placement": "PLACEMENT_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/serialized-asset": "SERIALIZED_ASSET_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/work-orders": "WORK_ORDER_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/equipment": "EQUIPMENT_ROUTE in eosOps/eosOpsHttp.ts",
+  "/operations/inbound-work": "INBOUND_WORK_ROUTE in eosOps/inboundWorkOperations.ts",
+  "/public/self-scheduling": "SELF_SCHEDULING_ROUTE in eosOps/selfScheduling.ts",
+  "/operations/workflow": "WORKFLOW_RUNTIME_ROUTE in eosOps/workflowRuntimeOperations.ts",
+  "/operations/rental": "RENTAL_ROUTE in eosRental/rentalOperations.ts",
+  "/workforce/employees": "WORKFORCE_ROUTE in eosWorkforce/workforceHttp.ts",
+  "/operations/inventory": "OPERATIONS_ROUTE_BY_OPERATION in eosOps/eosOpsHttp.ts",
+  "/operations/experience": "OPERATIONS_ROUTE_BY_OPERATION in eosOps/eosOpsHttp.ts",
+  "/admin/policy": "path === \"/admin/policy\" in adminPolicy/adminPolicyHttp.ts"
+ },
+ "checked": {
+  "/operations/inventory": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/experience": [
+   "operation registry"
+  ],
+  "/operations/cycle-count": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/relocation": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/transfer": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/placement": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/serialized-asset": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/work-orders": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/inbound-work": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/equipment": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/finance": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ],
+  "/admin/policy": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/rental": [
+   "operation registry",
+   "probe table"
+  ],
+  "/operations/analysis": [
+   "operation registry"
+  ],
+  "/operations/workspace": [
+   "operation registry"
+  ],
+  "/operations/workflow": [
+   "operation registry"
+  ],
+  "/operations/catalog": [
+   "operation registry",
+   "probe table"
+  ],
+  "/commercial/sales": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ],
+  "/crm/customer": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ],
+  "/workforce/employees": [
+   "Ventana fixture spec",
+   "operation registry",
+   "probe table"
+  ]
+ },
+ "domains": {
+  "/operations/inventory": "operations",
+  "/operations/experience": "operations",
+  "/operations/cycle-count": "operations",
+  "/operations/relocation": "operations",
+  "/operations/transfer": "operations",
+  "/operations/placement": "operations",
+  "/operations/serialized-asset": "operations",
+  "/operations/work-orders": "operations",
+  "/operations/inbound-work": "operations",
+  "/operations/equipment": "operations",
+  "/operations/finance": "operations",
+  "/admin/policy": "administration",
+  "/operations/rental": "operations",
+  "/operations/analysis": "operations",
+  "/operations/workspace": "operations",
+  "/operations/workflow": "operations",
+  "/operations/catalog": "catalog",
+  "/commercial/sales": "commercial",
+  "/crm/customer": "crm",
+  "/workforce/employees": "workforce"
+ },
+ "problems": []
+}

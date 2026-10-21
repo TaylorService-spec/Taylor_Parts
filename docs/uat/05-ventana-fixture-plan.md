@@ -2,6 +2,8 @@
 
 > **Requires #2201 merged** before the script is run. The **controller runs this on nonprod before Codex's cross-company pass**; Claude lanes and Codex never run it. Read-only lane: nothing here was executed, no nonprod write was made, no credential was read.
 
+> **Phase 2 (Owner decisions, 2026-10-21).** The key value is `ventana` and is applied through the human-authorized procedure in `10-ventana-key-change-procedure.md` (this lane edits nothing). Governed Ventana access goes to existing personas, minimally, with Taylor-only negative controls; no Ventana personas with their own logins (OQ-08, OQ-14). Lane VFX owns the exact grant list, the dry run and the fixtures; **the three existing Ventana intercompany receivables are PROTECTED** (never mutated). Until the key is bound **every Ventana case is BLOCKED** (never PASS, never FAIL), and Codex's first run is a Taylor-only baseline. The script's API routes were corrected to the server's real routes (`/workforce/employees`, `/crm/customer`, `/commercial/sales`); `tools/uatRouteCheck.mjs` verifies them.
+
 ## 1. What exists today (from the 2026-10-21 census)
 
 | Fact | Value |

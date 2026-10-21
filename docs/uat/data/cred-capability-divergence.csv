@@ -1,9 +1,10 @@
 kind,role,object,verb,cred,capabilityHeld,capabilities
 CRED_VS_CAPABILITY,accountingManager,account,E,true,false,customer.record.update|customer.governedField.write
 CRED_VS_CAPABILITY,accountingManager,rentalAgreement,R,false,true,rental.agreement.read
+CRED_VS_CAPABILITY,admin,financialPolicy,R,false,true,finance.policy.read
+CRED_VS_CAPABILITY,admin,inboundWorkRequest,R,false,true,inboundWork.request.read
+CRED_VS_CAPABILITY,admin,rentalAgreement,R,false,true,rental.agreement.read
 CRED_VS_CAPABILITY,admin,reorderRequest,R,true,false,reorder.request.read.queue
-CRED_VS_CAPABILITY,admin,supplier,R,true,false,supplier.record.read
-CRED_VS_CAPABILITY,admin,supplierCatalogItem,R,true,false,inventory.supplierTerms.read
 CRED_VS_CAPABILITY,commercialSharedContext,account,C,false,true,customer.record.create
 CRED_VS_CAPABILITY,commercialSharedContext,account,R,false,true,customer.record.read
 CRED_VS_CAPABILITY,commercialSharedContext,account,E,false,true,customer.record.update|customer.governedField.write

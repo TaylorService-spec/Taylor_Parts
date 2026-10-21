@@ -1,37 +1,41 @@
 {
  "pin": "835e5982ba64b29020815e5dc749ea17568c1c1e",
  "totals": {
-  "RUN_NOW": 9955,
-  "NEEDS_RECORDS_UNVERIFIED": 1456,
-  "NEEDS_VENTANA_FIXTURES": 316,
-  "BLOCKED_UNMERGED_PR": 188,
-  "BLOCKED_OWNER_QUESTION": 121,
-  "NOT_APPLICABLE": 256,
-  "TOTAL": 12292
+  "RUN_NOW": 10692,
+  "NEEDS_FIXTURES": 890,
+  "CONTROLLER_WALK": 6,
+  "BLOCKED_VENTANA_KEY_NOT_BOUND": 365,
+  "BLOCKED_UNMERGED_PR": 112,
+  "BLOCKED_OWNER_QUESTION": 0,
+  "NOT_APPLICABLE": 275,
+  "TOTAL": 12340
  },
  "matrix": {
   "capability": {
    "RUN_NOW": 3360,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
    "TOTAL": 3360
   },
   "cred": {
-   "RUN_NOW": 2879,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "RUN_NOW": 2960,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
-   "BLOCKED_OWNER_QUESTION": 81,
+   "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 240,
    "TOTAL": 3200
   },
   "navigation": {
    "RUN_NOW": 1216,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
@@ -39,35 +43,39 @@
   },
   "workflow": {
    "RUN_NOW": 0,
-   "NEEDS_RECORDS_UNVERIFIED": 752,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 752,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
-   "BLOCKED_OWNER_QUESTION": 16,
-   "NOT_APPLICABLE": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 16,
    "TOTAL": 768
   },
   "api-probe": {
    "RUN_NOW": 2032,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
    "TOTAL": 2032
   },
   "record-reach": {
-   "RUN_NOW": 0,
-   "NEEDS_RECORDS_UNVERIFIED": 432,
-   "NEEDS_VENTANA_FIXTURES": 316,
-   "BLOCKED_UNMERGED_PR": 172,
-   "BLOCKED_OWNER_QUESTION": 24,
-   "NOT_APPLICABLE": 16,
+   "RUN_NOW": 432,
+   "NEEDS_FIXTURES": 48,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 365,
+   "BLOCKED_UNMERGED_PR": 96,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 19,
    "TOTAL": 960
   },
   "search": {
    "RUN_NOW": 160,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
@@ -75,8 +83,9 @@
   },
   "dashboard": {
    "RUN_NOW": 68,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
@@ -84,17 +93,19 @@
   },
   "analysis": {
    "RUN_NOW": 160,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
    "TOTAL": 160
   },
   "direct-route": {
-   "RUN_NOW": 64,
-   "NEEDS_RECORDS_UNVERIFIED": 176,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "RUN_NOW": 240,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
@@ -102,8 +113,9 @@
   },
   "sae-self-approval": {
    "RUN_NOW": 0,
-   "NEEDS_RECORDS_UNVERIFIED": 96,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 90,
+   "CONTROLLER_WALK": 6,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
@@ -111,8 +123,9 @@
   },
   "sae-grant": {
    "RUN_NOW": 16,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 0,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
@@ -120,25 +133,202 @@
   },
   "clc": {
    "RUN_NOW": 0,
-   "NEEDS_RECORDS_UNVERIFIED": 0,
-   "NEEDS_VENTANA_FIXTURES": 0,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
    "BLOCKED_UNMERGED_PR": 16,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 0,
    "TOTAL": 16
+  },
+  "channel-boundary": {
+   "RUN_NOW": 48,
+   "NEEDS_FIXTURES": 0,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+   "BLOCKED_UNMERGED_PR": 0,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 0,
+   "TOTAL": 48
   }
  },
  "expectedCounts": {
-  "ALLOW": 1964,
-  "DENY": 8536,
-  "SCOPED": 123,
+  "ALLOW": 2016,
+  "DENY": 8596,
+  "SCOPED": 161,
   "VISIBLE": 292,
   "HIDDEN": 924,
   "PRESENT": 68,
   "CONDITIONAL": 7,
-  "UNDETERMINED": 121,
-  "NOT_APPLICABLE": 256,
+  "UNDETERMINED": 0,
+  "NOT_APPLICABLE": 275,
   "ALLOW_PREVIEW_ONLY": 1
+ },
+ "pureAdministrator": {
+  "matrix": {
+   "capability": {
+    "RUN_NOW": 210,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 210
+   },
+   "cred": {
+    "RUN_NOW": 185,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 15,
+    "TOTAL": 200
+   },
+   "navigation": {
+    "RUN_NOW": 76,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 76
+   },
+   "workflow": {
+    "RUN_NOW": 0,
+    "NEEDS_FIXTURES": 47,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 1,
+    "TOTAL": 48
+   },
+   "api-probe": {
+    "RUN_NOW": 127,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 127
+   },
+   "record-reach": {
+    "RUN_NOW": 27,
+    "NEEDS_FIXTURES": 3,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 23,
+    "BLOCKED_UNMERGED_PR": 6,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 1,
+    "TOTAL": 60
+   },
+   "search": {
+    "RUN_NOW": 10,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 10
+   },
+   "dashboard": {
+    "RUN_NOW": 3,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 3
+   },
+   "analysis": {
+    "RUN_NOW": 10,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 10
+   },
+   "direct-route": {
+    "RUN_NOW": 15,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 15
+   },
+   "sae-self-approval": {
+    "RUN_NOW": 0,
+    "NEEDS_FIXTURES": 6,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 6
+   },
+   "sae-grant": {
+    "RUN_NOW": 1,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 1
+   },
+   "clc": {
+    "RUN_NOW": 0,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 1,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 1
+   },
+   "channel-boundary": {
+    "RUN_NOW": 0,
+    "NEEDS_FIXTURES": 0,
+    "CONTROLLER_WALK": 0,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 0,
+    "BLOCKED_UNMERGED_PR": 0,
+    "BLOCKED_OWNER_QUESTION": 0,
+    "NOT_APPLICABLE": 0,
+    "TOTAL": 0
+   }
+  },
+  "totals": {
+   "RUN_NOW": 664,
+   "NEEDS_FIXTURES": 56,
+   "CONTROLLER_WALK": 0,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 23,
+   "BLOCKED_UNMERGED_PR": 7,
+   "BLOCKED_OWNER_QUESTION": 0,
+   "NOT_APPLICABLE": 17,
+   "TOTAL": 767
+  },
+  "expectedCounts": {
+   "ALLOW": 433,
+   "DENY": 237,
+   "SCOPED": 0,
+   "VISIBLE": 45,
+   "HIDDEN": 31,
+   "PRESENT": 3,
+   "CONDITIONAL": 1,
+   "UNDETERMINED": 0,
+   "NOT_APPLICABLE": 17,
+   "ALLOW_PREVIEW_ONLY": 0
+  }
  },
  "roleLevel": {
   "roleCapabilityCells": 11550,
@@ -146,24 +336,24 @@
   "roleReadbackCalls": 55
  },
  "fieldStats": {
-  "visiblePositive": 1599,
-  "editPositive": 515,
-  "doorwayNegatives": 343,
+  "visiblePositive": 2265,
+  "editPositive": 612,
+  "doorwayNegatives": 306,
   "perPersona": {
    "ownerExecutive": {
-    "visible": 211,
+    "visible": 280,
     "edit": 95,
-    "doorwayNegatives": 14
+    "doorwayNegatives": 11
    },
    "administrator": {
-    "visible": 246,
+    "visible": 394,
     "edit": 95,
-    "doorwayNegatives": 12
+    "doorwayNegatives": 1
    },
    "generalManager": {
-    "visible": 174,
+    "visible": 206,
     "edit": 95,
-    "doorwayNegatives": 17
+    "doorwayNegatives": 15
    },
    "officeManager": {
     "visible": 21,
@@ -171,29 +361,29 @@
     "doorwayNegatives": 27
    },
    "serviceManager": {
-    "visible": 95,
-    "edit": 27,
-    "doorwayNegatives": 22
-   },
-   "dispatcher": {
-    "visible": 174,
-    "edit": 34,
-    "doorwayNegatives": 16
-   },
-   "serviceTechnician": {
-    "visible": 10,
-    "edit": 0,
-    "doorwayNegatives": 27
-   },
-   "partsAssociate": {
-    "visible": 113,
-    "edit": 0,
-    "doorwayNegatives": 21
-   },
-   "partsManager": {
-    "visible": 118,
+    "visible": 127,
     "edit": 27,
     "doorwayNegatives": 20
+   },
+   "dispatcher": {
+    "visible": 211,
+    "edit": 68,
+    "doorwayNegatives": 15
+   },
+   "serviceTechnician": {
+    "visible": 47,
+    "edit": 0,
+    "doorwayNegatives": 26
+   },
+   "partsAssociate": {
+    "visible": 145,
+    "edit": 0,
+    "doorwayNegatives": 19
+   },
+   "partsManager": {
+    "visible": 187,
+    "edit": 27,
+    "doorwayNegatives": 17
    },
    "warehouseAssociate": {
     "visible": 87,
@@ -206,19 +396,19 @@
     "doorwayNegatives": 21
    },
    "retailSales": {
-    "visible": 62,
-    "edit": 47,
-    "doorwayNegatives": 24
+    "visible": 151,
+    "edit": 68,
+    "doorwayNegatives": 19
    },
    "nationalAccountsSales": {
-    "visible": 62,
-    "edit": 47,
-    "doorwayNegatives": 24
+    "visible": 151,
+    "edit": 68,
+    "doorwayNegatives": 19
    },
    "financeAccounting": {
-    "visible": 118,
-    "edit": 0,
-    "doorwayNegatives": 20
+    "visible": 150,
+    "edit": 21,
+    "doorwayNegatives": 18
    },
    "reportingAnalyst": {
     "visible": 0,
@@ -241,7 +431,7 @@
   "builtDestinations": 76,
   "destinations": 92,
   "extraRoutes": 15,
-  "operations": 452,
+  "operations": 442,
   "probes": 127,
   "workflowActions": 48,
   "recordKinds": 20

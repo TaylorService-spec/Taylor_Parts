@@ -2,6 +2,8 @@
 
 > **Requires #2201 merged** before the Codex handoff is used. Read-only reconciliation of `docs/engineering/ACTIVE_WORKSTREAMS.md` against `git log origin/main --since=2026-10-19` (35 commits, head `835e5982`) and the open lanes (DWO #2200, CLC #2199, HAR #2201). Evidence files are the controller's, under `D:/eos-lanes/evidence/`.
 
+> **Phase 2 note.** #2202 (this lane's phase 1) merged as `b433d396`. The classification below is unchanged; the Ventana row now reads "blocked: the key is bound only by the human-authorized procedure in `10-ventana-key-change-procedure.md`". PRs #2199 (CLC), #2200 (DWO) and #2201 (harness) were still pending when this phase was written.
+
 ## 1. Classification vocabulary
 
 - **implemented**: the code is on `main`.

@@ -3,21 +3,33 @@
 > **REQUIRES #2201 MERGED.** The persona harness target allowlist (PR #2201: registered nonprod endpoints only; caller config cannot widen the allowlist; the loopback test exception is test-only infrastructure; one guarded transport for every credential and token; browser login separate from issuer proof) is a **prerequisite**. Until the controller confirms it is merged and the version pin below includes it, **do not start any run that sends a credential, a password, an MFA code or a token anywhere.** This README is written against that final design.
 >
 > Rows that depend on other unmerged PRs are marked `after #NNNN` in the manifest and are BLOCKED until the pin includes the merge: **#2200** (DWO: Work Order company boundary) and **#2199** (CLC: company-less record correction).
+>
+> **Codex's FIRST run is a Taylor-only BASELINE** (section 0). It starts as soon as #2201 is nonprod-verified. **Every Ventana case is BLOCKED** in the coverage report, with the reason "Ventana key not yet bound" (`../10-ventana-key-change-procedure.md`): never PASS, never FAIL.
 
-Issued: 2026-10-21 (America/Phoenix) · Repository pin at issue: `835e5982` (`origin/main`) · Authority: the Owner direction "Codex UAT" (2026-10-21). Claude stays the implementation controller and fixes **only** the defects Codex independently proves. Codex is the independent tester: it reports, it does not fix, it does not broaden any permission, and it does not trust the controller's own evidence.
+Issued: 2026-10-21 (America/Phoenix) · Phase 2 update: 2026-10-21 (Owner decisions applied) · Repository pin at issue: `b433d396` (`origin/main`) · Authority: the Owner direction "Codex UAT" (2026-10-21). Claude stays the implementation controller and fixes **only** the defects Codex independently proves. Codex is the independent tester: it reports, it does not fix, it does not broaden any permission, and it does not trust the controller's own evidence.
+
+## 0. The first run is a baseline
+
+The first run covers, for each of the 16 personas: the **real UI**, **real MFA**, **business functionality** (the journeys each role exists for, on the existing Taylor records), **permissions** (every runnable manifest tier), and **active Firebase runtime dependencies** (a per-screen census of network requests to any Firebase or Google identity, Firestore, Cloud Functions or Hosting host; method, host, path without query, and status only; never headers, bodies or tokens). It produces ONE consolidated operational backlog. Classify every finding as exactly one of: **P0 security/data**, **P0 Firebase-exit**, **P0 workflow**, **P1 admin/config**, **P1 CI**, **P2**, **DEFERRED** (known and already tracked, such as Q-1 decline, DWO after #2200, CLC after #2199, or a row already in `../09-configuration-integrity-register.md`; record it, do not re-report it as new). The result template has the sections: a Firebase-runtime census and a missing-functionality section per role.
+
+Scope of the baseline: Taylor only. The Taylor nonprod data exists (30 Opportunities, 17 Agreements, 13 Sales Orders, 77 Work Orders, 2 Invoices). The Ventana half, which needs the Ventana key bound and synthetic Ventana records, stays **BLOCKED (Ventana key not yet bound)**. The three existing Ventana intercompany receivables are protected and read-only. Accounts are shared customer records: readable across Taylor and Ventana with the existing Account authorization, never exposing the other company's Commercial or Finance records.
 
 ## 1. What is in this package
 
 | File | Use |
 |---|---|
-| `expected-access-manifest.json` | Read-only, machine-readable EXPECTED access: ~12k rows `persona -> role(s) -> company -> object -> action/field -> allow / deny / UNDETERMINED`, each with its governing source (capability key, role-object permission, or Owner ruling) in the top-level `sources` table. Derived from governed authority, never from role names. |
+| `expected-access-manifest.json` | Read-only, machine-readable EXPECTED access: ~13k rows `persona -> role(s) -> company -> object -> action/field -> allow / deny` (there are no UNDETERMINED rows after the Owner decisions), each with its governing source (capability key, role-object permission, or Owner ruling) in the top-level `sources` table, a `runStatus` and, where blocked, a `blockedBy` reason. Includes the separately tagged **pure-Administrator evidence** persona `administratorPure` (group `pure-admin`: the `admin` Role alone, OQ-11) and the `channel-boundary` tier (Retail vs National Accounts). Derived from governed authority, never from role names. |
 | `role-inventory.md` | Deliverable A: all 55 Security Roles, the 16 personas, roles with no assignee, personas with no role. |
 | `object-inventory.md` | Deliverable B: all Business Objects, fields, CRED, capabilities, pages, API operations, and the registered-vs-deployed reconciliation. |
 | `effective-access-matrix.md` | Deliverable C: how EXPECTED is derived, headline views, configuration divergences, the decisions that change expectations after unmerged PRs. |
 | `test-plan.md` | Deliverables D/E: per persona, positive and negative cases (Service, Sales Retail vs National Accounts, Inventory/Warehouse, Finance, Administration, Goals), search, related records, dashboards, reports, paired direct-API negatives, Taylor vs Ventana cases. |
 | `codex-result-template.md` | What you must return, and the classification you must use. |
 | `../05-ventana-fixture-plan.md`, `../tools/ventana-uat-fixture.mjs` | The synthetic Ventana fixtures. **The controller runs these before your cross-company pass.** You never run them. |
-| `../06-coverage-denominators.md`, `../07-owner-questions.md`, `../data/*.csv` | Exact test counts; the UNDETERMINED items (do not assert them); flat data. |
+| `../06-coverage-denominators.md`, `../07-owner-questions.md`, `../data/*.csv` | Exact test counts; the Owner's 2026-10-21 decisions and how each was applied; flat data. |
+| `../09-configuration-integrity-register.md` | Known grid-vs-capability divergences and other configuration findings (P1 admin/config; recorded, not failures; no automatic grants). |
+| `../11-classification-tables.md` | Hidden built pages and unassigned Roles: purpose, users, ready or placeholder, proposal. Nothing is exposed or retired by it; hidden pages stay HIDDEN. |
+| `../10-ventana-key-change-procedure.md` | The human-authorized procedure that binds the Ventana key. Until it is applied every Ventana case is BLOCKED. |
+| `../tools/uatRouteCheck.mjs` | Offline check that every API path in the plan is a route the server dispatches (`/workforce/employees`, `/crm/customer`, `/commercial/sales`, `/operations/*`, `/admin/policy`). |
 
 Regenerate nothing yourself. If a manifest row looks wrong, report it as a **manifest defect** with the evidence; do not edit the manifest.
 
@@ -132,12 +144,14 @@ Registered nonprod endpoints only (exact, normalized comparison); caller config 
 
 ## 7. Run order
 
-1. Pin check (2.1) and #2201 confirmation. 2. Credential preflight (4.6) -> BLOCKED list. 3. **Login proof**, per persona in an isolated context: password -> `MFA_REQUIRED` -> TOTP -> shell; identity check (rule 11). 4. The persona's browser matrix (test plan section 2). 5. The paired direct-API negatives (test plan section 3), by `loginEosPersona()` token or issuer token, each labelled by proof type. 6. After the controller confirms the Ventana fixtures: the cross-company pass (test plan section 4). 7. Report (`codex-result-template.md`).
+1. Pin check (2.1) and #2201 confirmation. 2. Credential preflight (4.6) -> BLOCKED list. 3. **Login proof**, per persona in an isolated context: password -> `MFA_REQUIRED` -> TOTP -> shell; identity check (rule 11). 4. The persona's browser matrix (test plan section 2). 5. The paired direct-API negatives (test plan section 3), by `loginEosPersona()` token or issuer token, each labelled by proof type. 6. Firebase-runtime census and missing-functionality notes, recorded as you walk (test plan sections 7 and 8). 7. Report (`codex-result-template.md`). The Ventana half is NOT part of the baseline: it stays BLOCKED (Ventana key not yet bound); a later pass runs it only after the controller reports the key bound and the fixtures in place.
+
+**API paths.** Direct-API calls go to the server's real routes only: `POST /workforce/employees`, `POST /crm/customer`, `POST /commercial/sales`, `POST /admin/policy`, and `POST /operations/<domain>` (`inventory`, `experience`, `cycle-count`, `relocation`, `transfer`, `placement`, `serialized-asset`, `work-orders`, `inbound-work`, `equipment`, `finance`, `rental`, `analysis`, `workspace`, `workflow`, `catalog`), each with body `{ "operation": "<name>", "input": { ... } }`. The bare prefixes `/workforce`, `/crm` and `/commercial` are NOT routes (phase 1 listed them by mistake; `tools/uatRouteCheck.mjs` now refuses them). A `UNKNOWN_OPERATION` from a path outside this list is a harness mistake, not a finding.
 
 Persona order for mutating cases: run one persona at a time; finish and close its context before the next. Do not run two personas against the same record at once.
 
 ## 8. Classification and severity
 
-Every test is exactly one of: **PASS** (observed equals expected), **FAIL** (observed differs from a determined expectation), **NOT CONFIGURED** (the record, fixture or enrollment the test needs does not exist), **BLOCKED** (cannot run: pin, credentials, MFA enrollment, unmerged PR, UNDETERMINED expectation, identity mismatch), **NOT APPLICABLE** (no such act exists). Never count BLOCKED or NOT CONFIGURED as PASS.
+Every test is exactly one of: **PASS** (observed equals expected), **FAIL** (observed differs from a determined expectation), **NOT CONFIGURED** (the record, fixture or enrollment the test needs does not exist), **BLOCKED** (cannot run: pin, credentials, MFA enrollment, unmerged PR, **Ventana key not yet bound** (every Ventana case; never PASS, never FAIL), identity mismatch), **NOT APPLICABLE** (no such act exists). Never count BLOCKED or NOT CONFIGURED as PASS.
 
 Severity for FAIL and findings: **Critical** (MFA bypass; a refusal that leaks or writes; cross-company read or write; privilege escalation; a secret exposed), **High** (an unauthorized read of company, channel, or assignment-scoped data; an unauthorized mutation attempt that is accepted), **Medium** (missing legitimate access: a persona cannot do or see what the manifest says it must; UI offers a control the API refuses), **Low** (copy, ordering, cosmetic), **Info** (static findings confirmed, drift observed).

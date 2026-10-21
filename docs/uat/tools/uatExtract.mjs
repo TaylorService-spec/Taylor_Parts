@@ -55,7 +55,7 @@ const REGISTRIES = [
   ["equipment", "/operations/equipment", "eosOps/equipmentOperations.ts", "EOS_EQUIPMENT_OPERATIONS", "object"],
   ["finance", "/operations/finance", "eosFinance/financeOperations.ts", "EOS_FINANCE_OPERATIONS", "object"],
   ["financialPolicy", "/operations/finance", "eosFinance/financialPolicy.ts", "EOS_FINANCIAL_POLICY_OPERATIONS", "object"],
-  ["financeConfig", "/operations/finance", "eosFinance/financeConfigurationAdministration.ts", "FINANCE_CONFIGURATION_OPERATIONS", "array"],
+  ["financeConfig", "/admin/policy", "eosFinance/financeConfigurationAdministration.ts", "FINANCE_CONFIGURATION_OPERATIONS", "array"],
   ["rental", "/operations/rental", "eosRental/rentalOperations.ts", "EOS_RENTAL_OPERATIONS", "object"],
   ["analysis", "/operations/analysis", "eosAnalysis/analysisOperations.ts", "EOS_ANALYSIS_OPERATIONS", "object"],
   ["workspace", "/operations/workspace", "eosExperience/workspaceOperations.ts", "EOS_WORKSPACE_OPERATIONS", "object"],
@@ -63,11 +63,11 @@ const REGISTRIES = [
   ["salesOrderAllocation", "/operations/inventory", "eosOps/salesOrderAllocation.ts", "EOS_SALES_ORDER_ALLOCATION_OPERATIONS", "object"],
   ["catalog.read", "/operations/catalog", "catalogMaster/catalogHttp.ts", "CATALOG_READ_OPERATIONS", "array"],
   ["catalog.mutation", "/operations/catalog", "catalogMaster/catalogHttp.ts", "CATALOG_MUTATION_OPERATIONS", "array"],
-  ["commercial.read", "/commercial", "eosCommercial/commercialHttp.ts", "READ_RUNNERS", "object"],
-  ["commercial.mutation", "/commercial", "eosCommercial/commercialHttp.ts", "MUTATION_RUNNERS", "object"],
-  ["crm", "/crm", "eosCrm/crmHttp.ts", "RUNNERS", "object"],
-  ["workforce.read", "/workforce", "eosWorkforce/workforceHttp.ts", "READ_RUNNERS", "object"],
-  ["workforce.command", "/workforce", "eosWorkforce/workforceHttp.ts", "COMMAND_RUNNERS", "object"],
+  ["commercial.read", "/commercial/sales", "eosCommercial/commercialHttp.ts", "READ_RUNNERS", "object"],
+  ["commercial.mutation", "/commercial/sales", "eosCommercial/commercialHttp.ts", "MUTATION_RUNNERS", "object"],
+  ["crm", "/crm/customer", "eosCrm/crmHttp.ts", "RUNNERS", "object"],
+  ["workforce.read", "/workforce/employees", "eosWorkforce/workforceHttp.ts", "READ_RUNNERS", "object"],
+  ["workforce.command", "/workforce/employees", "eosWorkforce/workforceHttp.ts", "COMMAND_RUNNERS", "object"],
   ["admin.read", "/admin/policy", "adminPolicy/adminPolicyApi.ts", "ADMIN_READ_OPERATIONS", "array"],
   ["admin.mutation", "/admin/policy", "adminPolicy/adminPolicyApi.ts", "ADMIN_MUTATION_OPERATIONS", "array"],
   ["admin.preview", "/admin/policy", "adminPolicy/adminPolicyApi.ts", "ADMIN_PREVIEW_OPERATIONS", "array"],
@@ -79,13 +79,21 @@ const REGISTRIES = [
   ["warehouseAdmin", "/admin/policy", "eosOps/warehouseBinAdministration.ts", "WAREHOUSE_ADMIN_OPERATIONS", "array"],
   ["salesDiscount", "/admin/policy", "salesAuthority/salesDiscountAuthority.ts", "SALES_DISCOUNT_AUTHORITY_OPERATIONS", "array"],
   ["loginAdmin", "/admin/policy", "eosAuth/eosLoginService.ts", "LOGIN_ADMINISTRATION_OPERATIONS", "object"],
-  ["selfScheduling", "/public/self-scheduling", "eosOps/selfScheduling.ts", "SELF_SCHEDULING_WORK_ORDER_OPERATIONS", "object"],
 ];
+
+/** operation -> route for the inventory / experience read and mutation lists (eosOpsHttp.ts OPERATIONS_ROUTE_BY_OPERATION). */
+function inventoryRouteMap() {
+  const b = constBlock(read("eosOps/eosOpsHttp.ts"), "OPERATIONS_ROUTE_BY_OPERATION");
+  const m = new Map();
+  for (const x of b.matchAll(/([A-Za-z0-9_]+):\s*"(\/[^"]+)"/g)) m.set(x[1], x[2]);
+  return m;
+}
 
 /** Every closed operation registry, de-duplicated on (route, operation). The same operation name can be listed by two registries. */
 export function extractOperations() {
   const seen = new Map();
   const errors = [];
+  const invMap = inventoryRouteMap();
   for (const [id, route, file, name, kind] of REGISTRIES) {
     let src;
     try { src = read(file); } catch { errors.push({ id, file, error: "file not found" }); continue; }
@@ -93,8 +101,9 @@ export function extractOperations() {
     if (!b) { errors.push({ id, file, error: "constant not found" }); continue; }
     const ops = kind === "array" ? arrayStrings(b) : objectKeys(b);
     for (const op of ops) {
-      const key = route + "|" + op;
-      if (!seen.has(key)) seen.set(key, { route, op, registries: [] });
+      const r = id.startsWith("ops.") && invMap.has(op) ? invMap.get(op) : route;
+      const key = r + "|" + op;
+      if (!seen.has(key)) seen.set(key, { route: r, op, registries: [] });
       seen.get(key).registries.push(id);
     }
   }
@@ -174,3 +183,31 @@ export async function extractNavigation() {
 }
 
 export function readRepoJson(rel) { return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8")); }
+
+/** The routes the server actually dispatches: every *_ROUTE constant under functions/src, the inventory/experience map values, and the Administration route. */
+export function servedRoutes() {
+  const routes = new Map(); // route -> where it is declared
+  const srcRoot = path.join(REPO_ROOT, "functions", "src");
+  const scan = (p) => {
+    const src = strip(fs.readFileSync(p, "utf8"));
+    for (const m of src.matchAll(/export const ([A-Z_]*ROUTE)\s*=\s*"(\/[^"]+)"/g)) routes.set(m[2], `${m[1]} in ${path.relative(srcRoot, p).split(path.sep).join("/")}`);
+  };
+  const walk = (dir) => { for (const f of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, f.name); if (f.isDirectory()) walk(p); else if (p.endsWith(".ts")) scan(p); } };
+  walk(srcRoot);
+  for (const r of inventoryRouteMap().values()) if (!routes.has(r)) routes.set(r, "OPERATIONS_ROUTE_BY_OPERATION in eosOps/eosOpsHttp.ts");
+  routes.set("/admin/policy", 'path === "/admin/policy" in adminPolicy/adminPolicyHttp.ts');
+  return routes;
+}
+
+/** A port of eosApiDomainFor (functions/src/eosApi/server.ts): which transport answers a path. Pure. */
+export function eosApiDomainForPort(url) {
+  const p = (url ?? "").split("?")[0];
+  if (p === "/public/self-scheduling" || p === "/public/self-scheduling/") return "selfScheduling";
+  if (p.startsWith("/auth/")) return "auth";
+  if (p.startsWith("/crm/")) return "crm";
+  if (p.startsWith("/commercial/")) return "commercial";
+  if (p.startsWith("/workforce/")) return "workforce";
+  if (p === "/operations/catalog" || p.startsWith("/operations/catalog/")) return "catalog";
+  if (p.startsWith("/operations/")) return "operations";
+  return "administration";
+}

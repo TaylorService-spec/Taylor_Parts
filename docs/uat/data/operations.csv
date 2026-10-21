@@ -1,6 +1,6 @@
 route,operation,registries,object,confidence
 /operations/inventory,resolveMyCapabilities,ops.read,"(platform, no Object)",N
-/operations/inventory,resolveMyExperienceContext,ops.read,"(platform, no Object)",N
+/operations/experience,resolveMyExperienceContext,ops.read,"(platform, no Object)",N
 /operations/inventory,readReorderQueue,ops.read,reorderRequest,N
 /operations/inventory,readMyAssignedReorders,ops.read,reorderRequest,N
 /operations/inventory,readReorderRequest,ops.read,reorderRequest,N
@@ -197,11 +197,11 @@ route,operation,registries,object,confidence
 /operations/finance,activateFinancialPolicy,financialPolicy,financialPolicy,N
 /operations/finance,withdrawFinancialPolicy,financialPolicy,financialPolicy,N
 /operations/finance,cancelFinancialPolicy,financialPolicy,financialPolicy,N
-/operations/finance,listAccountingDestinations,financeConfig,financeConfiguration,N
-/operations/finance,configureAccountingDestination,financeConfig,financeConfiguration,N
-/operations/finance,setAccountingDestinationStatus,financeConfig,financeConfiguration,N
-/operations/finance,listCounterpartyPaymentTerms,financeConfig,financeConfiguration,N
-/operations/finance,setCounterpartyPaymentTerms,financeConfig,financeConfiguration,N
+/admin/policy,listAccountingDestinations,financeConfig|adminConfig,financeConfiguration,N
+/admin/policy,configureAccountingDestination,financeConfig|adminConfig,financeConfiguration,N
+/admin/policy,setAccountingDestinationStatus,financeConfig|adminConfig,financeConfiguration,N
+/admin/policy,listCounterpartyPaymentTerms,financeConfig|adminConfig,financeConfiguration,N
+/admin/policy,setCounterpartyPaymentTerms,financeConfig|adminConfig,financeConfiguration,N
 /operations/rental,readRentalWorkspace,rental,rentalAgreement,N
 /operations/rental,listRentalAgreements,rental,rentalAgreement,N
 /operations/rental,readRentalAgreement,rental,rentalAgreement,N
@@ -254,91 +254,91 @@ route,operation,registries,object,confidence
 /operations/catalog,changeManufacturerStatus,catalog.mutation,manufacturer,N
 /operations/catalog,createEquipmentModel,catalog.mutation,equipmentModel,N
 /operations/catalog,updateEquipmentModel,catalog.mutation,equipmentModel,N
-/commercial,getOpportunityDetail,commercial.read,opportunity,N
-/commercial,listOpportunities,commercial.read,opportunity,N
-/commercial,getSalesAgreementDetail,commercial.read,salesAgreement,N
-/commercial,listSalesAgreements,commercial.read,salesAgreement,N
-/commercial,getSalesOrderDetail,commercial.read,salesOrder,N
-/commercial,listSalesOrders,commercial.read,salesOrder,N
-/commercial,getAccountCommercialProjection,commercial.read,account,N
-/commercial,readMyCommercialCapabilities,commercial.read,"(platform, no Object)",N
-/commercial,listCoordinatedOperations,commercial.read,salesOrder,N
-/commercial,createOpportunity,commercial.mutation,opportunity,N
-/commercial,updateOpportunity,commercial.mutation,opportunity,N
-/commercial,transitionOpportunity,commercial.mutation,opportunity,N
-/commercial,closeOpportunityAsWon,commercial.mutation,opportunity,N
-/commercial,createSalesAgreement,commercial.mutation,salesAgreement,N
-/commercial,updateSalesAgreementDraft,commercial.mutation,salesAgreement,N
-/commercial,acceptSalesAgreement,commercial.mutation,salesAgreement,N
-/commercial,approveSalesAgreementTradeIn,commercial.mutation,salesAgreement,N
-/commercial,declineSalesAgreementTradeIn,commercial.mutation,salesAgreement,N
-/commercial,createSalesOrder,commercial.mutation,salesOrder,N
-/commercial,createSalesOrderFromOpportunity,commercial.mutation,salesOrder,N
-/commercial,transitionSalesOrder,commercial.mutation,salesOrder,N
-/commercial,authorizeSalesOrderServiceProvider,commercial.mutation,salesOrder,N
-/commercial,revokeSalesOrderServiceProvider,commercial.mutation,salesOrder,N
-/crm,createAccount,crm,account,N
-/crm,updateAccount,crm,account,N
-/crm,getAccount,crm,account,N
-/crm,listAccounts,crm,account,N
-/crm,listAccountOwnershipHistory,crm,account,N
-/crm,createContact,crm,contact,N
-/crm,importAccountContacts,crm,contact,N
-/crm,updateContact,crm,contact,N
-/crm,getContact,crm,contact,N
-/crm,listAccountContacts,crm,contact,N
-/crm,createAccountLocation,crm,location,N
-/crm,updateAccountLocation,crm,location,N
-/crm,getAccountLocation,crm,location,N
-/crm,listAccountLocations,crm,location,N
-/crm,listAccountActivities,crm,(unregistered: crmActivity),N
-/crm,createAccountActivity,crm,(unregistered: crmActivity),N
-/workforce,readMyEmployeeProfile,workforce.read,employee,N
-/workforce,readMyWorkforceCapabilities,workforce.read,"(platform, no Object)",N
-/workforce,readEmployee,workforce.read,employee,N
-/workforce,listEmployees,workforce.read,employee,N
-/workforce,readEmployeePrincipalLink,workforce.read,employee,N
-/workforce,listManagedEmployees,workforce.read,employee,N
-/workforce,listRecordsOwnedByEmployee,workforce.read,employee,N
-/workforce,listAccountabilitiesForEmployee,workforce.read,employee,A
-/workforce,listJobRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listEmployeeJobRoleHistory,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listEmployeesWithoutJobRole,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listEmployeeChangeHistory,workforce.read,employee,N
-/workforce,listEmployeeWorkEligibility,workforce.read,employee,N
-/workforce,listEmployeeWorkEligibilityHistory,workforce.read,employee,N
-/workforce,listEmployeeOperationalScopes,workforce.read,employee,N
-/workforce,listEmployeeOperationalScopeHistory,workforce.read,employee,N
-/workforce,listOperationalScopeTargets,workforce.read,employee,N
-/workforce,listAssignableEmployees,workforce.read,employee,N
-/workforce,listFunctionalRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listFunctionalRoleHolders,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listEmployeeFunctionalRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listFunctionalRoleHistory,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,listWorkforceRoster,workforce.read,employee,N
-/workforce,listAssignedWorkForEmployee,workforce.read,employee,N
-/workforce,updateEmployeeProfile,workforce.command,employee,N
-/workforce,establishReportingRelationship,workforce.command,employee,N
-/workforce,endReportingRelationship,workforce.command,employee,N
-/workforce,saveEmployeeEdit,workforce.command,employee,N
-/workforce,changeEmploymentStatus,workforce.command,employee,N
-/workforce,changeOperatingCompany,workforce.command,employee,N
-/workforce,createJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,updateJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,assignEmployeeJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,assignEmployeeWorkEligibility,workforce.command,employee,N
-/workforce,endEmployeeWorkEligibility,workforce.command,employee,N
-/workforce,assignEmployeeOperationalScope,workforce.command,employee,N
-/workforce,endEmployeeOperationalScope,workforce.command,employee,N
-/workforce,createEmployee,workforce.command,employee,N
-/workforce,linkEmployeePrincipal,workforce.command,employee,N
-/workforce,unlinkEmployeePrincipal,workforce.command,employee,N
-/workforce,relinkEmployeePrincipal,workforce.command,employee,N
-/workforce,createFunctionalRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,updateFunctionalRoleMetadata,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,setFunctionalRoleStatus,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,assignEmployeeFunctionalRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
-/workforce,endEmployeeFunctionalRoleAssignment,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/commercial/sales,getOpportunityDetail,commercial.read,opportunity,N
+/commercial/sales,listOpportunities,commercial.read,opportunity,N
+/commercial/sales,getSalesAgreementDetail,commercial.read,salesAgreement,N
+/commercial/sales,listSalesAgreements,commercial.read,salesAgreement,N
+/commercial/sales,getSalesOrderDetail,commercial.read,salesOrder,N
+/commercial/sales,listSalesOrders,commercial.read,salesOrder,N
+/commercial/sales,getAccountCommercialProjection,commercial.read,account,N
+/commercial/sales,readMyCommercialCapabilities,commercial.read,"(platform, no Object)",N
+/commercial/sales,listCoordinatedOperations,commercial.read,salesOrder,N
+/commercial/sales,createOpportunity,commercial.mutation,opportunity,N
+/commercial/sales,updateOpportunity,commercial.mutation,opportunity,N
+/commercial/sales,transitionOpportunity,commercial.mutation,opportunity,N
+/commercial/sales,closeOpportunityAsWon,commercial.mutation,opportunity,N
+/commercial/sales,createSalesAgreement,commercial.mutation,salesAgreement,N
+/commercial/sales,updateSalesAgreementDraft,commercial.mutation,salesAgreement,N
+/commercial/sales,acceptSalesAgreement,commercial.mutation,salesAgreement,N
+/commercial/sales,approveSalesAgreementTradeIn,commercial.mutation,salesAgreement,N
+/commercial/sales,declineSalesAgreementTradeIn,commercial.mutation,salesAgreement,N
+/commercial/sales,createSalesOrder,commercial.mutation,salesOrder,N
+/commercial/sales,createSalesOrderFromOpportunity,commercial.mutation,salesOrder,N
+/commercial/sales,transitionSalesOrder,commercial.mutation,salesOrder,N
+/commercial/sales,authorizeSalesOrderServiceProvider,commercial.mutation,salesOrder,N
+/commercial/sales,revokeSalesOrderServiceProvider,commercial.mutation,salesOrder,N
+/crm/customer,createAccount,crm,account,N
+/crm/customer,updateAccount,crm,account,N
+/crm/customer,getAccount,crm,account,N
+/crm/customer,listAccounts,crm,account,N
+/crm/customer,listAccountOwnershipHistory,crm,account,N
+/crm/customer,createContact,crm,contact,N
+/crm/customer,importAccountContacts,crm,contact,N
+/crm/customer,updateContact,crm,contact,N
+/crm/customer,getContact,crm,contact,N
+/crm/customer,listAccountContacts,crm,contact,N
+/crm/customer,createAccountLocation,crm,location,N
+/crm/customer,updateAccountLocation,crm,location,N
+/crm/customer,getAccountLocation,crm,location,N
+/crm/customer,listAccountLocations,crm,location,N
+/crm/customer,listAccountActivities,crm,(unregistered: crmActivity),N
+/crm/customer,createAccountActivity,crm,(unregistered: crmActivity),N
+/workforce/employees,readMyEmployeeProfile,workforce.read,employee,N
+/workforce/employees,readMyWorkforceCapabilities,workforce.read,"(platform, no Object)",N
+/workforce/employees,readEmployee,workforce.read,employee,N
+/workforce/employees,listEmployees,workforce.read,employee,N
+/workforce/employees,readEmployeePrincipalLink,workforce.read,employee,N
+/workforce/employees,listManagedEmployees,workforce.read,employee,N
+/workforce/employees,listRecordsOwnedByEmployee,workforce.read,employee,N
+/workforce/employees,listAccountabilitiesForEmployee,workforce.read,employee,A
+/workforce/employees,listJobRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listEmployeeJobRoleHistory,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listEmployeesWithoutJobRole,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listEmployeeChangeHistory,workforce.read,employee,N
+/workforce/employees,listEmployeeWorkEligibility,workforce.read,employee,N
+/workforce/employees,listEmployeeWorkEligibilityHistory,workforce.read,employee,N
+/workforce/employees,listEmployeeOperationalScopes,workforce.read,employee,N
+/workforce/employees,listEmployeeOperationalScopeHistory,workforce.read,employee,N
+/workforce/employees,listOperationalScopeTargets,workforce.read,employee,N
+/workforce/employees,listAssignableEmployees,workforce.read,employee,N
+/workforce/employees,listFunctionalRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listFunctionalRoleHolders,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listEmployeeFunctionalRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listFunctionalRoleHistory,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,listWorkforceRoster,workforce.read,employee,N
+/workforce/employees,listAssignedWorkForEmployee,workforce.read,employee,N
+/workforce/employees,updateEmployeeProfile,workforce.command,employee,N
+/workforce/employees,establishReportingRelationship,workforce.command,employee,N
+/workforce/employees,endReportingRelationship,workforce.command,employee,N
+/workforce/employees,saveEmployeeEdit,workforce.command,employee,N
+/workforce/employees,changeEmploymentStatus,workforce.command,employee,N
+/workforce/employees,changeOperatingCompany,workforce.command,employee,N
+/workforce/employees,createJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,updateJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,assignEmployeeJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,assignEmployeeWorkEligibility,workforce.command,employee,N
+/workforce/employees,endEmployeeWorkEligibility,workforce.command,employee,N
+/workforce/employees,assignEmployeeOperationalScope,workforce.command,employee,N
+/workforce/employees,endEmployeeOperationalScope,workforce.command,employee,N
+/workforce/employees,createEmployee,workforce.command,employee,N
+/workforce/employees,linkEmployeePrincipal,workforce.command,employee,N
+/workforce/employees,unlinkEmployeePrincipal,workforce.command,employee,N
+/workforce/employees,relinkEmployeePrincipal,workforce.command,employee,N
+/workforce/employees,createFunctionalRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,updateFunctionalRoleMetadata,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,setFunctionalRoleStatus,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,assignEmployeeFunctionalRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce/employees,endEmployeeFunctionalRoleAssignment,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
 /admin/policy,listTenantPrincipals,admin.read,principal,N
 /admin/policy,listObjects,admin.read,rolesPermissions,N
 /admin/policy,readObjectWithFields,admin.read,rolesPermissions,N
@@ -423,11 +423,6 @@ route,operation,registries,object,confidence
 /admin/policy,relinkTruck,adminConfig|truckRegistryAdmin,truck,N
 /admin/policy,unlinkTruck,adminConfig|truckRegistryAdmin,truck,N
 /admin/policy,changeTruckStatus,adminConfig|truckRegistryAdmin,truck,N
-/admin/policy,listAccountingDestinations,adminConfig,financeConfiguration,N
-/admin/policy,configureAccountingDestination,adminConfig,financeConfiguration,N
-/admin/policy,setAccountingDestinationStatus,adminConfig,financeConfiguration,N
-/admin/policy,listCounterpartyPaymentTerms,adminConfig,financeConfiguration,N
-/admin/policy,setCounterpartyPaymentTerms,adminConfig,financeConfiguration,N
 /admin/policy,listSystemConfiguration,adminConfig|systemConfiguration,systemConfiguration,N
 /admin/policy,setSystemConfigurationSetting,adminConfig|systemConfiguration,systemConfiguration,N
 /admin/policy,listSalesDiscountAuthorities,adminConfig|salesDiscount,salesDiscountAuthority,N
@@ -446,8 +441,3 @@ route,operation,registries,object,confidence
 /admin/policy,planAuthenticationEventArchive,loginAdmin,principal,A
 /admin/policy,setAuthenticationEventRetention,loginAdmin,principal,A
 /admin/policy,readAuthVerifierDiagnostics,loginAdmin,"(platform, no Object)",N
-/public/self-scheduling,saveSelfSchedulingPolicy,selfScheduling,workOrder,A
-/public/self-scheduling,listSelfSchedulingPolicies,selfScheduling,workOrder,A
-/public/self-scheduling,issueSelfSchedulingLink,selfScheduling,workOrder,A
-/public/self-scheduling,revokeSelfSchedulingLink,selfScheduling,workOrder,A
-/public/self-scheduling,readSelfSchedulingSessions,selfScheduling,workOrder,A

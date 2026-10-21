@@ -522,11 +522,11 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Branch / worktree:   `uat/role-object-census` · `.claude/worktrees/agent-ae61b83a1614b03bb`
 - Base commit:         `835e5982`
 - Owned paths:         `docs/uat/**` (new directory; generator in `docs/uat/tools/`)
-- Shared paths req'd:  this registry (lifecycle lines of already-merged rows; one new row)
+- Shared paths req'd:  this registry (lifecycle lines of already-merged rows; one new row) · `docs/DECISIONS.md` (#UAT-OD-2026-10-21) · `docs/governance/precedence-sweep.json` (hash only)
 - Dependencies:        the controller's read-only nonprod census (`D:/eos-lanes/evidence/uat-nonprod-census-2026-10-21.json`); Codex handoff requires #2201 merged; rows marked `after #2200` / `after #2199` depend on DWO / CLC
 - Expected outcome:    Codex can run an independent persona-by-persona browser and authorization test against nonprod with exact expectations, and every UNDETERMINED expectation is an Owner question
-- Protected boundaries:none reached — no product code, grant, migration, deploy, credential, Postgres run or nonprod write; the Ventana script is run by the controller, not by this lane
-- Lifecycle stage:     INTEGRATION (docs PR open; not merged)
+- Protected boundaries:none reached — no product code, grant, migration, deploy, credential, Postgres run or nonprod write; the Ventana script is run by the controller, not by this lane; the Ventana key evidence file (`config/ownership/operating-company-keys.sandbox.json`) is edited by a human only (`docs/uat/10-ventana-key-change-procedure.md`)
+- Lifecycle stage:     phase 1 MERGED `b433d396` (#2202); phase 2 (Owner decisions #UAT-OD-2026-10-21, API route fix, Codex baseline, configuration-integrity register, classification tables, Ventana key procedure) INTEGRATION (docs PR open; not merged)
 
 ## Ready for assignment
 
