@@ -25,7 +25,7 @@ import {
   runCrmCommand, runCrmRead, type CrmActorContext, type CrmDeps,
 } from "./crmAuthorityKernel";
 import { withActorAuthority } from "../eosOps/administrationReach";
-import { resolveCommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
+import { reachableCommercialIds, resolveCommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
 
 export const CRM_ACTIVITY_READ = "crm.activity.read";
 export const CRM_ACTIVITY_CREATE = "crm.activity.create";
@@ -93,12 +93,7 @@ export function listAccountActivities(deps: CrmDeps, actor: CrmActorContext, inp
         const company = await (deps.companyReach ?? resolveCommercialCompanyReach)(db, tenantId, actor.principalId);
         const oppIds = [...new Set(rows.map((r) => r.opportunity_id).filter((v): v is string => typeof v === "string"))];
         const soIds = [...new Set(rows.map((r) => r.sales_order_id).filter((v): v is string => typeof v === "string"))];
-        const okOpp = new Set(oppIds.length === 0 ? [] : (await db.query(
-          `SELECT t.id FROM eos_commercial.opportunities t WHERE t.tenant_id = $1 AND t.id = ANY($2::text[]) AND ${company.sql("t", 3)}`,
-          [tenantId, oppIds, ...company.sqlParams()])).rows.map((r) => String(r.id)));
-        const okSo = new Set(soIds.length === 0 ? [] : (await db.query(
-          `SELECT t.id FROM eos_commercial.sales_orders t WHERE t.tenant_id = $1 AND t.id = ANY($2::text[]) AND ${company.sql("t", 3)}`,
-          [tenantId, soIds, ...company.sqlParams()])).rows.map((r) => String(r.id)));
+        const { opportunities: okOpp, salesOrders: okSo } = await reachableCommercialIds(db, tenantId, company, oppIds, soIds);
         for (const r of rows) {
           if (typeof r.opportunity_id === "string" && !okOpp.has(r.opportunity_id)) r.opportunity_id = null;
           if (typeof r.sales_order_id === "string" && !okSo.has(r.sales_order_id)) r.sales_order_id = null;

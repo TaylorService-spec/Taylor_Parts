@@ -152,3 +152,19 @@ export async function callerMaySeeSalesOrder(
   return typeof channel === "string" && channel !== ""
     && capabilityKeys.some((k) => admittedScopeValues(actor.scopedHeld, k, "salesChannel").includes(channel));
 }
+
+/**
+ * Which of these Opportunity and Sales Order ids does the caller reach? For a projection that NAMES a Commercial record it does not own (a CRM activity's
+ * link): the id is shown only if it is in the answer, else it is shown as none. One query per family; an empty list asks nothing.
+ */
+export async function reachableCommercialIds(
+  db: Db, tenantId: string, company: CommercialCompanyReach, opportunityIds: readonly string[], salesOrderIds: readonly string[],
+): Promise<{ readonly opportunities: ReadonlySet<string>; readonly salesOrders: ReadonlySet<string> }> {
+  const opportunities = opportunityIds.length === 0 ? [] : (await db.query<{ id: string }>(
+    `SELECT t.id FROM eos_commercial.opportunities t WHERE t.tenant_id = $1 AND t.id = ANY($2::text[]) AND ${company.sql("t", 3)}`,
+    [tenantId, [...opportunityIds], ...company.sqlParams()])).rows;
+  const salesOrders = salesOrderIds.length === 0 ? [] : (await db.query<{ id: string }>(
+    `SELECT t.id FROM eos_commercial.sales_orders t WHERE t.tenant_id = $1 AND t.id = ANY($2::text[]) AND ${company.sql("t", 3)}`,
+    [tenantId, [...salesOrderIds], ...company.sqlParams()])).rows;
+  return { opportunities: new Set(opportunities.map((r) => String(r.id))), salesOrders: new Set(salesOrders.map((r) => String(r.id))) };
+}
