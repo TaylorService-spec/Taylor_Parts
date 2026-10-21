@@ -257,9 +257,11 @@ jobs:
       # The ACTIVATION proofs run inside this command, not beside it: test:adminPolicyPostgres is the registered authority for
       # "everything that needs a real database". `--partition N` runs the files the map assigns to this partition (the runner
       # refuses to start if the map does not cover the registry exactly once), after the one-lane-one-database isolation
-      # pretest and a fresh build, serialized within the partition.
+      # pretest and a fresh build, serialized within the partition. `--isolate-databases` re-creates this job's database EMPTY
+      # before each file: the first run of this split showed that two files had been passing only on what an earlier file left in
+      # the one shared database, which a different predecessor (or none) does not provide.
       - name: Migration, schema, tenancy, bootstrap and activation -- real PostgreSQL (partition ${{ matrix.partition }})
-        run: npm run test:adminPolicyPostgres -- --partition ${{ matrix.partition }}
+        run: npm run test:adminPolicyPostgres -- --partition ${{ matrix.partition }} --isolate-databases
         working-directory: functions
         env:
           POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy

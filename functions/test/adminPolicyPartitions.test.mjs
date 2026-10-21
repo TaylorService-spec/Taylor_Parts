@@ -131,3 +131,21 @@ test("the manifest reporter counts the way node does: suites are not tests, skip
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("--isolate-databases refuses anything but a dedicated database on localhost, before it touches any server", () => {
+  const run = (url) => {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    if (url === null) delete env.POLICY_TEST_DATABASE_URL; else env.POLICY_TEST_DATABASE_URL = url;
+    return spawnSync(process.execPath, ["scripts/runAdminPolicySuites.mjs", "postgres", "--partition", "1", "--isolate-databases"],
+      { cwd: FUNCTIONS_DIR, encoding: "utf8", env });
+  };
+  for (const url of [null, "postgres://eos:eos@db.example.com:5432/eos_policy", "postgres://eos:eos@localhost:5432/postgres",
+    "postgres://eos:eos@localhost:5432/template1", "postgres://eos:eos@localhost:5432/"]) {
+    const r = run(url);
+    assert.equal(r.status, 2, `${url} must be refused (stderr: ${r.stderr})`);
+    assert.match(r.stderr, /needs POLICY_TEST_DATABASE_URL on localhost naming a dedicated, non-shared database/);
+  }
+  const offline = spawnSync(process.execPath, ["scripts/runAdminPolicySuites.mjs", "offline", "--isolate-databases"], { cwd: FUNCTIONS_DIR, encoding: "utf8" });
+  assert.equal(offline.status, 2);
+});
