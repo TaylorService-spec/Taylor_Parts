@@ -1,6 +1,6 @@
 # Codex UAT result template (the format Codex returns; this file is the blank form, not a result)
 
-> **Requires #2201 merged** before any run (see `README.md`). Return one document plus an evidence folder. **No password, TOTP secret or code, access token, MFA challenge, cookie, `storageState`, trace or HAR may appear in the document or the evidence folder.** Persona keys and principal ids only.
+> **#2201 is merged (`96530fe3`) and must be nonprod-verified** before any run (see `README.md`). Return one document plus an evidence folder. **No password, TOTP secret or code, access token, MFA challenge, cookie, `storageState`, trace or HAR may appear in the document or the evidence folder.** Persona keys and principal ids only.
 
 Classification for EVERY test: **PASS / FAIL / NOT CONFIGURED / BLOCKED / NOT APPLICABLE** (definitions in `README.md` section 8). Severity for FAIL and findings: Critical / High / Medium / Low / Info.
 

@@ -1,6 +1,6 @@
 # Ventana fixture plan (Owner PART 1 section 3)
 
-> **Requires #2201 merged** before the script is run. The **controller runs this on nonprod before Codex's cross-company pass**; Claude lanes and Codex never run it. Nothing in this plan or script was executed against nonprod: no nonprod write was made and no credential was read. Revised by lane VFX (2026-10-21) against `origin/main` `b433d396`; the S50-S55 inputs below were traced in command source, not run.
+> **#2201 is merged (`96530fe3`) and must be nonprod-verified** before the script is run. The **controller runs this on nonprod before Codex's cross-company pass**; Claude lanes and Codex never run it. Nothing in this plan or script was executed against nonprod: no nonprod write was made and no credential was read. Revised by lane VFX (2026-10-21) against `origin/main` `b433d396`; the S50-S55 inputs below were traced in command source, not run.
 
 ## 0. Rules that bind this fixture (Owner, 2026-10-21)
 
