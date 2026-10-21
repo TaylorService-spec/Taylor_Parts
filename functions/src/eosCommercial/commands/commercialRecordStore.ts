@@ -3,7 +3,7 @@
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "../../eosOps/operatingCompanyBinding";
-import { fail } from "./commercialCommandKernel";
+import { fail, type CommercialWriteScope } from "./commercialCommandKernel";
 
 type Queryable = Pick<PoolClient, "query">;
 const S = "eos_commercial";
@@ -43,6 +43,14 @@ export async function operatingCompanyKeyFor(db: Queryable, tenantId: string, op
   return resolveOperatingCompanyKeyForCompany(db, tenantId, operatingCompanyId);
 }
 
+/**
+ * Q-1a: a command that CREATES a record books it to `companyId`: that company must be one the caller reaches (a company-less record is the creator's own).
+ * A company the caller does not reach refuses exactly like one this tenant does not govern. The governed-company checks (operatingCompanyKeyFor) run first.
+ */
+export async function admitNewRecordCompany(db: Queryable, tenantId: string, scope: CommercialWriteScope, companyId: string | null): Promise<void> {
+  scope.admitNewCompany(await operatingCompanyKeyFor(db, tenantId, companyId), companyId);
+}
+
 /** SQL: the ACTIVE company bound to a record's stored key (`alias` is the record table's alias). */
 export const operatingCompanyIdOfKey = (alias: string): string =>
   `(SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
@@ -58,13 +66,14 @@ export interface OpportunityRow {
   creditedSalespersonId: string | null; accountableEmployeeId: string | null; editVersion: number; lines: OpportunityLineRow[];
 }
 
-export async function lockOpportunity(db: Queryable, tenantId: string, id: string): Promise<OpportunityRow | null> {
+export async function lockOpportunity(db: Queryable, tenantId: string, id: string, scope: CommercialWriteScope): Promise<OpportunityRow | null> {
+  const company = scope.companyFilter("o", 3); // Q-1a: a foreign-company record is not found, and never locked
   const { rows } = await db.query(
     `SELECT o.id, o.opportunity_number, o.account_id, o.owner_employee_id, ${operatingCompanyIdOfKey("o")} AS operating_company_id,
             o.sales_channel::text, o.stage::text, o.outcome::text, o.closed_at, o.need, o.expected_value::float8 AS expected_value,
             o.expected_close_at, o.next_action, o.credited_salesperson_employee_id, o.accountable_employee_id, o.edit_version
-       FROM ${S}.opportunities o WHERE o.tenant_id = $1 AND o.id = $2 FOR UPDATE OF o`,
-    [tenantId, id],
+       FROM ${S}.opportunities o WHERE o.tenant_id = $1 AND o.id = $2 AND ${company.sql} FOR UPDATE OF o`,
+    [tenantId, id, ...company.params],
   );
   if (rows.length === 0) return null;
   const r = rows[0];
@@ -153,8 +162,9 @@ async function agreementFrom(db: Queryable, tenantId: string, r: Record<string, 
   };
 }
 
-export async function lockAgreement(db: Queryable, tenantId: string, id: string): Promise<AgreementRow | null> {
-  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.id = $2 FOR UPDATE OF a`, [tenantId, id]);
+export async function lockAgreement(db: Queryable, tenantId: string, id: string, scope: CommercialWriteScope): Promise<AgreementRow | null> {
+  const company = scope.companyFilter("a", 3); // Q-1a: a foreign-company record is not found, and never locked
+  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.id = $2 AND ${company.sql} FOR UPDATE OF a`, [tenantId, id, ...company.params]);
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
@@ -183,8 +193,9 @@ export async function lockOrderForOpportunity(db: Queryable, tenantId: string, o
   return rows[0] ?? null;
 }
 
-export async function lockOrderState(db: Queryable, tenantId: string, id: string): Promise<{ id: string; state: string | null; salesChannel: string | null } | null> {
-  const { rows } = await db.query(`SELECT id, state::text, sales_channel::text FROM ${S}.sales_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, id]);
+export async function lockOrderState(db: Queryable, tenantId: string, id: string, scope: CommercialWriteScope): Promise<{ id: string; state: string | null; salesChannel: string | null } | null> {
+  const company = scope.companyFilter("s", 3); // Q-1a: a foreign-company order is not found, and never locked
+  const { rows } = await db.query(`SELECT s.id, s.state::text, s.sales_channel::text FROM ${S}.sales_orders s WHERE s.tenant_id = $1 AND s.id = $2 AND ${company.sql} FOR UPDATE OF s`, [tenantId, id, ...company.params]);
   return rows[0] ? { id: rows[0].id, state: rows[0].state, salesChannel: rows[0].sales_channel } : null;
 }
 

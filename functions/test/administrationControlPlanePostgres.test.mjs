@@ -23,6 +23,7 @@
 // Writes ONLY to a database it creates under POLICY_TEST_DATABASE_URL and drops at the end.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -156,7 +157,7 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
     capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld, entitlements: ctx.entitlements });
   const decide = async (p, capabilityKey, recordId) => composition.authorizeOperationalAction(
     evaluator.postgresContextualReader(pool), actorOf(await ctxFor(p)), { capabilityKey, recordId });
-  const commercial = (p, operation) => executeCommercialOperation({ reader: repo, pool },
+  const commercial = (p, operation) => executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES },
     { caller: { externalSubject: p.subject, identityProvider: "firebase", requestedTenantId: null }, operation, input: {} });
 
   await t.test("the fixture IS the governed baseline, and verifies with zero drift before any decision", async () => {

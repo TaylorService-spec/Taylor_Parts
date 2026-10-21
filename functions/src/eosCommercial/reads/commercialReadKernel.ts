@@ -33,6 +33,7 @@
 import type { Pool, PoolClient } from "pg";
 import { CommercialCommandError, fail } from "../commands/commercialCommandKernel";
 import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
+import { NO_COMMERCIAL_COMPANY_REACH, resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../commercialCompanyAuthority";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -60,13 +61,22 @@ export interface CommercialReadActor {
  * filter), otherwise the sales channels it is held in (a list filters to exactly these). `admits(key, channel)` decides
  * one record by its stored channel; a null channel is admitted only for a global holder.
  */
-export interface CommercialRecordReach {
+export interface CommercialChannelReach {
   readonly global: boolean;
   channelsFor(capabilityKey: string): readonly string[] | null;
   admits(capabilityKey: string, salesChannel: string | null): boolean;
 }
 
-const GLOBAL_REACH: CommercialRecordReach = Object.freeze({
+/**
+ * Q-1a (Owner ruling Q1-11): the sales-channel reach PLUS the OPERATING-COMPANY reach. Order: capability -> `company` -> channel. A projection puts
+ * `company.sql(alias, n)` inside its SELECT (a foreign-company record is then a plain miss, a list never contains it, a lineage reference to it is null)
+ * and never decides company in JavaScript after reading the row.
+ */
+export interface CommercialRecordReach extends CommercialChannelReach {
+  readonly company: CommercialCompanyReach;
+}
+
+const GLOBAL_REACH: CommercialChannelReach = Object.freeze({
   global: true,
   channelsFor: () => null,
   admits: () => true,
@@ -97,6 +107,8 @@ export function refuseOutsideReach(family: "Opportunity" | "Sales Agreement" | "
 
 export interface CommercialReadDeps {
   readonly pool: Pool;
+  /** TEST INJECTION ONLY (Q-1a). The deployed server supplies none (a test asserts it); absent = the governed resolver. */
+  readonly companyReach?: CommercialCompanyResolver;
 }
 
 /** Every error leaving a read is a CommercialCommandError. Nothing else crosses the boundary. */
@@ -105,7 +117,7 @@ export function translateCommercialReadError(err: unknown): CommercialCommandErr
   return new CommercialCommandError("READ_FAILED", "FAILED", "the read could not be completed");
 }
 
-function requireActor(actor: CommercialReadActor, requiredCapabilities: readonly string[], options: CommercialReadOptions): CommercialRecordReach {
+function requireActor(actor: CommercialReadActor, requiredCapabilities: readonly string[], options: CommercialReadOptions): CommercialChannelReach {
   if (!actor || typeof actor.tenantId !== "string" || actor.tenantId.trim() === "" || typeof actor.principalId !== "string" || actor.principalId.trim() === "") {
     fail("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
   }
@@ -152,7 +164,7 @@ export async function runCommercialRead<P, R>(
 ): Promise<R> {
   let client: PoolClient | undefined;
   try {
-    const reach = requireActor(actor, requiredCapabilities, options);
+    const channelReach = requireActor(actor, requiredCapabilities, options);
     const prepared = prepare();
     client = await deps.pool.connect();
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -162,7 +174,10 @@ export async function runCommercialRead<P, R>(
       [actor.tenantId, actor.principalId],
     );
     if (member.rows.length === 0) fail("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
-    const result = await body(client, actor.tenantId, prepared, reach);
+    // Q-1a: capability (above) -> COMPANY AUTHORITY -> channel. A read that names no Commercial capability touches no record and reaches none.
+    const company = requiredCapabilities.length === 0 ? NO_COMMERCIAL_COMPANY_REACH
+      : await (deps.companyReach ?? resolveCommercialCompanyReach)(client, actor.tenantId, actor.principalId);
+    const result = await body(client, actor.tenantId, prepared, Object.freeze({ ...channelReach, company }));
     await client.query("COMMIT");
     return result;
   } catch (err) {

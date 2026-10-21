@@ -11,6 +11,7 @@
 // Real PostgreSQL. Set POLICY_TEST_DATABASE_URL; without it the database half SKIPS.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -268,7 +269,7 @@ test("the Service activation authority delta, applied through Administration and
       ok(await wo(dispatcher.subject, "dispatchWorkOrder", { workOrderId: own }), "dispatch");
       refused(await wo(parts.subject, "acceptWorkOrder", { workOrderId: own }), 403, "EMPLOYEE_LINK_REQUIRED", "parts accept");
       // The dispatcher's commercial SELLING stays refused (D-A, O3): this packet grants nothing Commercial.
-      const sell = await executeCommercialOperation({ reader: repo, pool },
+      const sell = await executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES },
         { caller: { externalSubject: dispatcher.subject, identityProvider: "firebase", requestedTenantId: null }, operation: "createSalesAgreement",
           input: { idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-missing" } });
       assert.deepEqual([sell.ok, sell.status, sell.code], [false, 403, "CAPABILITY_REQUIRED"], `the dispatcher does not sell: ${JSON.stringify(sell)}`);

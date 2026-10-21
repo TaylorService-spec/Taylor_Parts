@@ -16,6 +16,7 @@
 //   NEG   wrong company / currency / counterparty / kind / over-application / future date / CONSOLIDATED refused.
 //   WS    the exception-first workspace, per company and as the CONSOLIDATED projection.
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -159,7 +160,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const seller = await person("uid-seller", [], { id: "e-seller", name: "Sam Seller" });
   const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) };
   await q(`INSERT INTO eos_commercial.sales_discount_authorities (tenant_id, principal_id, max_discount_basis_points, updated_by) VALUES ($1,$2,1000,'f')`, [TENANT, seller.principalId]);
-  const commercialDeps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  const commercialDeps = { pool, companyReach: ALL_COMPANIES, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   let gn = 0;
   const directPackage = async ({ account = "acct-cust", price = 40000, extra = {}, approveTradeIn = null, companyKey = "taylor" } = {}) => {
     const opp = `opp-fc-${++gn}`;

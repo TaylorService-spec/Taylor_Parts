@@ -11,6 +11,7 @@
 //   CASH        settlements stay the only cash record: a settlement applied to the invoiced receivable moves its outstanding; the invoice is unchanged.
 //   DATABASE    the database itself refuses an invoice that does not equal its receivable, and a changed receivable due date.
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
@@ -57,7 +58,7 @@ test("F-1a issue invoice over PostgreSQL", { skip: SKIP, concurrency: 1 }, async
   await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1,'RETAIL','ACTIVE','f','f','f') ON CONFLICT DO NOTHING`, [TENANT]);
   const seller = await person("uid-seller", [], { id: "e-seller", name: "Sam Seller" });
   const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) };
-  const deps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  const deps = { pool, companyReach: ALL_COMPANIES, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   let gn = 0;
   const directPackage = async ({ account = "acct-a", price = 40000, tax = 0, companyKey = "taylor", determined = true } = {}) => {
     const opp = `opp-f1a-${++gn}`;

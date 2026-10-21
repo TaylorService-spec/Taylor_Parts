@@ -8,6 +8,7 @@
 // (handleAdminRequest / handleOperationsRequest / handleCommercialRequest / handleCrmRequest / handleWorkforceRequest),
 // composed the way src/eosApi/server.ts composes them (same repository, same pool, same verifier).
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -75,6 +76,7 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
     explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
   };
   const shared = { reader: repo, pool, verifyToken, allowedOrigins };
+  const commercialShared = { ...shared, companyReach: ALL_COMPANIES }; // Q-1a: these suites are not about company authority (see the fixture)
   const crm = crmActive ? { ...shared, writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) } : shared;
   // The Reorder operations (PR #2000) are committed INACTIVE and refuse 412 PRECONDITION_FAILED before principal resolution; measured
   // ACTIVE through the Operations transport's declared test seam, so authority -- not the activation gate -- answers.
@@ -102,8 +104,8 @@ export function composeTransports(pool, verifyToken, { crmActive = true, allowed
         operations: [...commercialHttp.COMMERCIAL_READ_OPERATIONS, ...commercialHttp.COMMERCIAL_MUTATION_OPERATIONS],
         mutations: new Set(commercialHttp.COMMERCIAL_MUTATION_OPERATIONS),
         route: () => commercialHttp.COMMERCIAL_ROUTE,
-        handle: (req) => commercialHttp.handleCommercialRequest(shared, req),
-        node: commercialHttp.createCommercialHttpHandler(shared),
+        handle: (req) => commercialHttp.handleCommercialRequest(commercialShared, req),
+        node: commercialHttp.createCommercialHttpHandler(commercialShared),
       },
       crm: {
         operations: [...crmHttp.CRM_OPERATIONS],

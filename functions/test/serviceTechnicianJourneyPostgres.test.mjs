@@ -10,6 +10,7 @@
 // Real PostgreSQL. Set POLICY_TEST_DATABASE_URL; without it the database half SKIPS.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -251,7 +252,7 @@ test("the Service Office + Technician journey through the EOS API", { skip: SKIP
     }
     refused(await wo(sales, "createWorkOrder", CREATE), 403, "CAPABILITY_MISSING", "Sales persona Service write");
     refused(await wo(parts, "dispatchWorkOrder", { workOrderId: id }), 403, "CAPABILITY_MISSING", "Parts persona lifecycle write");
-    const sell = await executeCommercialOperation({ reader: repo, pool }, { caller: { externalSubject: dispatcher.subject, identityProvider: "firebase", requestedTenantId: null },
+    const sell = await executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES }, { caller: { externalSubject: dispatcher.subject, identityProvider: "firebase", requestedTenantId: null },
       operation: "createSalesAgreement", input: { idempotencyKey: `k-${randomUUID()}`, opportunityId: "opp-x" } });
     assert.deepEqual([sell.status, sell.code], [403, "CAPABILITY_REQUIRED"], "the Dispatcher's commercial selling stays refused");
     refused(await wo(office, "createWorkOrder", { ...CREATE, operatingCompanyId: "acme" }), 503, "OPERATING_COMPANY_KEY_NOT_BOUND", "a caller-supplied company that is not governed");

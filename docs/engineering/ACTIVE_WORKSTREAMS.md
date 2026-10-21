@@ -540,3 +540,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    the protected Owner can request and approve the same transaction in every EOS-native workflow with the basis recorded; every non-Owner keeps the two-person rule; Q-1 will reuse the seam
 - Protected boundaries:no capability, no grant, no Rules, deploy, Firebase, production or external-payment action; the Firestore-era self-approval sites are reported, not changed
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+
+- Capability:          Q-1a (2026-10-20) — operating-company authority on Commercial reads, writes, approvals, records and exports (Owner ruling Q1-11): capability -> company authority -> channel / ownership reach; a foreign-company record is NONEXISTENT with zero trace; a company-less Opportunity / Agreement is visible only to its owner or creator, the protected Administrator and the protected Owner; the protected Administrator's reach is unchanged (before/after diff); National Accounts stay a channel. ONE shared Sales Order visibility decision also gates Sales Order allocation
+- Agent/session:       Claude Code lane Q-1a · Role: builder; controller reviews and merges
+- Branch / worktree:   `q1a/commercial-company-authority` · `D:/Taylor_Parts/.claude/worktrees/agent-a16bfe09d1fc0c946`
+- Base commit:         `174ba281`
+- Owned paths:         `functions/src/eosCommercial/commercialCompanyAuthority.ts` · `functions/src/eosCommercial/commands/**` · `functions/src/eosCommercial/reads/**` · `functions/src/eosCommercial/commercialHttp.ts` · the company check of `functions/src/eosOps/salesOrderAllocation.ts` · `functions/test/commercialCompanyAuthority{,Postgres}.test.mjs` · `functions/test/support/commercialCompanyReachFixture.mjs`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` (#Q-1a-company) · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/governance/precedence-sweep.json` · `docs/user-guide/sales/which-sales-records-you-can-see.md` · `docs/user-guide/README.md` · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` · the deps line of about twenty existing Commercial Postgres suites (the test-only all-companies double)
+- Dependencies:        S1c (#2189) for the allocation file; SAE (#2190) untouched; F-1b / SAE PR-2 / FU-1 run in parallel and share no file
+- Expected outcome:    a seller sees and changes only the records of the companies it reaches; nothing about another company's record, count or timing leaks; the Administrator and National Accounts behaviour are unchanged
+- Protected boundaries:no migration, no capability, no grant, no Rules, deploy, Firebase or production action
+- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)

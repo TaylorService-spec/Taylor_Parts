@@ -7,6 +7,7 @@
 // Same skip contract as every other Postgres suite: set POLICY_TEST_DATABASE_URL to run.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { hash, randomUUID } from "node:crypto";
@@ -277,7 +278,7 @@ test("commercial C5, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =
   });
 
   await t.test("after the copy, the governed C2 create allocates the next number with no collision -- and the new row makes a rerun refuse", async () => {
-    const deps = { pool, now: () => new Date("2026-09-15T12:00:00Z") };
+    const deps = { pool, now: () => new Date("2026-09-15T12:00:00Z"), companyReach: ALL_COMPANIES };
     const actor = { tenantId: "t1", principalId: "p1", capabilities: new Set(["opportunity.write"]) };
     const created = await opportunityCommands.createOpportunity(deps, actor, { idempotencyKey: "c5-next", accountId: "acct-1", salesChannel: "RETAIL" });
     assert.equal(created.opportunityNumber, "OPP-2026-000010");

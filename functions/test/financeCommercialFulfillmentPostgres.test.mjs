@@ -6,6 +6,7 @@
 // fixtures (Commercial creation is proven in its own suites); everything else is the product path.
 // Real PostgreSQL; set POLICY_TEST_DATABASE_URL (without it the database half SKIPS).
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -229,7 +230,7 @@ test("Commercial fulfillment -> billing eligibility over the governed Work Order
     ok(await complete(w1), "complete 1");
     assert.deepEqual((await eligibility(so2)).rows.map((r) => [r.fulfilled_qty, r.remaining_qty, r.eligibility]), [[2, 1, "PARTIALLY_ELIGIBLE"]]);
     const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesOrder.write"]) };
-    const advance = (k) => soCommands.transitionSalesOrder({ pool }, sellerActor, { idempotencyKey: k, salesOrderId: so2, transition: "ADVANCE" });
+    const advance = (k) => soCommands.transitionSalesOrder({ pool, companyReach: ALL_COMPANIES }, sellerActor, { idempotencyKey: k, salesOrderId: so2, transition: "ADVANCE" });
     await assert.rejects(advance("adv-1"), (e) => e.code === "SALES_ORDER_NOT_FULLY_FULFILLED");
     const w2 = await workOrder({ type: "SERVICE_CALL", salesOrderId: so2, salesOrderLines: [1], plan: [{ partId: "PRT-HOSE", qtyPlanned: 1 }] });
     await use(w2, "hose-2", [{ partId: "PRT-HOSE", qtyDelta: 1 }]);

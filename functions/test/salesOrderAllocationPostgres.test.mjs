@@ -11,6 +11,7 @@
 // (POLICY_TEST_DATABASE_URL); without it the suite SKIPS. It creates its own throwaway database.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -379,7 +380,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
     await q(`CREATE OR REPLACE FUNCTION pg_temp_s1c_fail() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'forced release failure'; END $$ LANGUAGE plpgsql`);
     await q(`CREATE TRIGGER s1c_force_fail BEFORE INSERT ON eos_ops.inventory_commitments FOR EACH ROW WHEN (NEW.event_type = 'RELEASED') EXECUTE FUNCTION pg_temp_s1c_fail()`);
     try {
-      await assert.rejects(() => commercial.transitionSalesOrder({ pool }, csActor, { salesOrderId: "so-cxl-atomic", transition: "CANCEL", idempotencyKey: key() }));
+      await assert.rejects(() => commercial.transitionSalesOrder({ pool, companyReach: ALL_COMPANIES }, csActor, { salesOrderId: "so-cxl-atomic", transition: "CANCEL", idempotencyKey: key() }));
     } finally {
       await q(`DROP TRIGGER s1c_force_fail ON eos_ops.inventory_commitments`);
     }
@@ -391,7 +392,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
     const pooled = { cxl: await committed("P-CXL"), cxl2: await committed("P-CXL2") };
     assert.deepEqual(pooled, { cxl: 6, cxl2: 2 }, "both orders hold P-CXL (3 + 3)");
     const before = await counts();
-    const cancelled = await commercial.transitionSalesOrder({ pool }, csActor, { salesOrderId: "so-cxl", transition: "CANCEL", idempotencyKey: key() });
+    const cancelled = await commercial.transitionSalesOrder({ pool, companyReach: ALL_COMPANIES }, csActor, { salesOrderId: "so-cxl", transition: "CANCEL", idempotencyKey: key() });
     assert.equal(cancelled.state, "CANCELLED");
     assert.equal(await held("so-cxl", 1), 0);
     assert.equal(await held("so-cxl", 2), 0);
@@ -405,7 +406,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
     await refused(() => allocate(alice, { salesOrderId: "so-cxl", partId: "P-CXL", quantity: 1 }), "ORDER_NOT_ALLOCATABLE");
     // The order whose first cancel rolled back now cancels cleanly, releasing its one claim.
     const idle = await counts();
-    await commercial.transitionSalesOrder({ pool }, csActor, { salesOrderId: "so-cxl-atomic", transition: "CANCEL", idempotencyKey: key() });
+    await commercial.transitionSalesOrder({ pool, companyReach: ALL_COMPANIES }, csActor, { salesOrderId: "so-cxl-atomic", transition: "CANCEL", idempotencyKey: key() });
     assert.equal((await counts()).rows, idle.rows + 1, "the atomic order held 3 of one line: one RELEASED row");
   });
 
@@ -420,7 +421,7 @@ test("Sales Order allocation on PostgreSQL: bound to the line, scoped by company
     }
     for (let i = 1; i <= 6; i++) {
       const results = await Promise.allSettled(["a", "b"].map((s) =>
-        commercial.transitionSalesOrder({ pool }, csActor, { salesOrderId: `so-dl${i}${s}`, transition: "CANCEL", idempotencyKey: key() })));
+        commercial.transitionSalesOrder({ pool, companyReach: ALL_COMPANIES }, csActor, { salesOrderId: `so-dl${i}${s}`, transition: "CANCEL", idempotencyKey: key() })));
       for (const r of results) assert.equal(r.status, "fulfilled", `round ${i}: ${r.status === "rejected" ? `${r.reason?.code} ${r.reason?.message}` : ""}`);
       for (const s of ["a", "b"]) {
         assert.equal(await held(`so-dl${i}${s}`, 1) + await held(`so-dl${i}${s}`, 2), 0, `so-dl${i}${s} holds nothing`);

@@ -7,6 +7,7 @@
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -67,7 +68,7 @@ test("Q-1: one audit row per applied Commercial and CRM command, in PostgreSQL",
   });
   const q = (text, values = []) => pool.query(text, values);
   const catalog = { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } };
-  const deps = { pool, catalog };
+  const deps = { pool, catalog, companyReach: ALL_COMPANIES };
   const crmDeps = { pool };
 
   // ── the world ──

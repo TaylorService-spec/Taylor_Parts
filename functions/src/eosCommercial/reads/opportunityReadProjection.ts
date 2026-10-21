@@ -10,6 +10,7 @@
 // list excludes them.
 import { OPPORTUNITY_STAGES } from "../../opportunity/opportunityLifecycle";
 import { fail } from "../commands/commercialCommandKernel";
+import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
 import {
   COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, requireEnumFilter, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor, type CommercialReadDeps,
@@ -105,13 +106,14 @@ export function getOpportunityDetail(deps: CommercialReadDeps, actor: Commercial
       const { rows } = await db.query(
         `SELECT ${SUMMARY_COLUMNS}, (${OPPORTUNITY_IS_COMPLETE}) AS complete,
                 sa.id AS agreement_id, sa.sales_agreement_number AS agreement_number, sa.state::text AS agreement_state,
-                so.id AS order_id, so.sales_order_number AS order_number, so.state::text AS order_state, so.sales_channel::text AS order_channel
+                so.id AS order_id, so.sales_order_number AS order_number, so.state::text AS order_state, so.sales_channel::text AS order_channel,
+                ${reach.company.sql("sa", 3)} AS agreement_company_ok, ${reach.company.sql("so", 3)} AS order_company_ok
            FROM eos_commercial.opportunities o
            LEFT JOIN eos_crm.accounts acc ON acc.tenant_id = o.tenant_id AND acc.id = o.account_id
            LEFT JOIN eos_commercial.sales_agreements sa ON sa.tenant_id = o.tenant_id AND sa.opportunity_id = o.id
            LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = o.tenant_id AND so.opportunity_id = o.id
-          WHERE o.tenant_id = $1 AND o.id = $2`,
-        [tenantId, opportunityId],
+          WHERE o.tenant_id = $1 AND o.id = $2 AND ${reach.company.sql("o", 3)}`, // Q-1a: a foreign-company Opportunity is a plain miss
+        [tenantId, opportunityId, ...reach.company.sqlParams()],
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
       const r = rows[0] as Row;
@@ -123,9 +125,9 @@ export function getOpportunityDetail(deps: CommercialReadDeps, actor: Commercial
         ...summaryOf(r, lines.get(r.id)!),
         // Pass 10 P10-4: lineage only where the reader could read the linked record (the Agreement's channel is this
         // Opportunity's; the Order's is its own). A global holder is unchanged.
-        salesAgreement: r.agreement_id === null || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null) ? null
+        salesAgreement: r.agreement_id === null || r.agreement_company_ok !== true || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null) ? null
           : { id: r.agreement_id, number: r.agreement_number, state: r.agreement_state },
-        salesOrder: r.order_id === null || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.order_channel ?? null) ? null
+        salesOrder: r.order_id === null || r.order_company_ok !== true || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.order_channel ?? null) ? null
           : { id: r.order_id, number: r.order_number, state: r.order_state },
       };
     }, salesChannelScopedWithLineage([COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ]));
@@ -144,9 +146,11 @@ export interface OpportunityListOptions {
   readonly cursor: { number: string; id: string } | null;
   /** Lane GA: null/absent = every channel (a global holder); otherwise ONLY these stored channels. */
   readonly salesChannels?: readonly string[] | null;
+  /** Q-1a: the caller's operating-company reach; a list contains only reachable records. */
+  readonly company: CommercialCompanyReach;
 }
 
-export function prepareOpportunityList(input: Record<string, unknown> | undefined): OpportunityListOptions {
+export function prepareOpportunityList(input: Record<string, unknown> | undefined): Omit<OpportunityListOptions, "company"> {
   return {
     limit: requirePageSize(input?.limit),
     accountId: optionalAccountId(input?.accountId),
@@ -166,9 +170,10 @@ export async function readOpportunityPage(db: Queryable, tenantId: string, o: Op
         AND ($3::text[] IS NULL OR o.stage::text = ANY($3::text[]))
         AND ($4::text IS NULL OR (o.opportunity_number, o.id) < ($4::text, $5::text))
         AND ($7::text[] IS NULL OR o.sales_channel::text = ANY($7::text[]))
+        AND ${o.company.sql("o", 8)}
       ORDER BY o.opportunity_number DESC, o.id DESC
       LIMIT $6`,
-    [tenantId, o.accountId, o.stage, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null],
+    [tenantId, o.accountId, o.stage, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null, ...o.company.sqlParams()],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
   const lines = await linesByOpportunity(db, tenantId, kept.map((r) => r.id));
@@ -178,6 +183,6 @@ export async function readOpportunityPage(db: Queryable, tenantId: string, o: Op
 export function listOpportunities(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<CommercialPage<OpportunitySummaryProjection>> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ], () => prepareOpportunityList(input),
     (db, tenantId, options, reach) => readOpportunityPage(db, tenantId,
-      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ) }),
+      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ), company: reach.company }),
     SALES_CHANNEL_SCOPED);
 }

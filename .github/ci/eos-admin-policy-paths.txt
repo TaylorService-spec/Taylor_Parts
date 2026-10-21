@@ -1028,3 +1028,8 @@ functions/src/access/secondaryApprovalExemption.ts
 functions/test/saeProtectedOwnerExemption.test.mjs
 functions/test/saeProtectedOwnerExemptionPostgres.test.mjs
 functions/test/support/protectedOwnerFixture.mjs
+# Q-1a (2026-10-20): operating-company authority on Commercial (src/eosCommercial/commercialCompanyAuthority.ts; the other Commercial and allocation sources are already listed or under globs).
+functions/src/eosCommercial/commercialCompanyAuthority.ts
+functions/test/commercialCompanyAuthority.test.mjs
+functions/test/commercialCompanyAuthorityPostgres.test.mjs
+functions/test/support/commercialCompanyReachFixture.mjs

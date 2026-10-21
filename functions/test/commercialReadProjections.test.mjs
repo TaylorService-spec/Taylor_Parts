@@ -247,7 +247,10 @@ test("(49) SQL is parameterized: the only interpolations are module constants, a
   for (const file of readSources()) {
     const code = strip(readFileSync(file, "utf8"));
     for (const [, sql] of code.matchAll(/query(?:<[^>]*>)?\(\s*`([\s\S]*?)`/g)) {
-      for (const [, expr] of sql.matchAll(/\$\{([^}]*)\}/g)) assert.ok(ALLOWED.has(expr.trim()), `${rel(file)} interpolates ${expr} into SQL`);
+      // Q-1a: the ONE other interpolation is the governed company predicate over a LITERAL alias and a LITERAL parameter index
+      // (CommercialCompanyReach.sql validates both again); it adds only boolean SQL over bind parameters, never a value.
+      const COMPANY_PREDICATE = /^(?:reach\.company|o\.company)\.sql\("[a-z]{1,3}", \d{1,2}\)$/;
+      for (const [, expr] of sql.matchAll(/\$\{([^}]*)\}/g)) assert.ok(ALLOWED.has(expr.trim()) || COMPANY_PREDICATE.test(expr.trim()), `${rel(file)} interpolates ${expr} into SQL`);
       for (const [, ordering] of sql.matchAll(/ORDER BY ([^\n]*)/g)) assert.doesNotMatch(ordering, /\$/, `${rel(file)} parameterizes an ORDER BY: ${ordering}`);
     }
     for (const [, name, value] of code.matchAll(/const\s+([A-Z_]+)\s*=\s*`([\s\S]*?)`/g)) {

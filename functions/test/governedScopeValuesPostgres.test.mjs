@@ -21,6 +21,7 @@
 //      assignment scoped to a channel that is not ACTIVE
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -102,7 +103,7 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
   const context = (subject) => capabilityAuthority.resolveOperationalContext(repo, pool,
     { identityProvider: "firebase", externalSubject: subject, requestedTenantId: null }, composition.postgresGrantConditionProvider(pool));
   const sales = async (subject, operation, input) => {
-    const r = await commercial.executeCommercialOperation({ reader: repo, pool },
+    const r = await commercial.executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES },
       { caller: { externalSubject: subject, identityProvider: "firebase", requestedTenantId: null }, operation, input: input ?? {} });
     return r;
   };
@@ -130,7 +131,7 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
   }
   const WA = { tenantId: T.a, principalId: "p-writer-a", capabilities: WRITE_CAPS };
   const WB = { tenantId: T.b, principalId: "p-writer-b", capabilities: WRITE_CAPS };
-  const writeDeps = { pool, catalog };
+  const writeDeps = { pool, catalog, companyReach: ALL_COMPANIES };
   const newOpp = (actor, channel, accountId = "acct-1") => opp.createOpportunity(writeDeps, actor, {
     idempotencyKey: key(), accountId, salesChannel: channel, operatingCompanyId: "taylor", need: `${channel} need`,
     lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] });

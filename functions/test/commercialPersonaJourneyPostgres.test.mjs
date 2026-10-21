@@ -20,6 +20,7 @@
 // It writes only to a database it creates and drops. No nonprod, no Firebase, no fixture edit.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -184,7 +185,7 @@ test("Retail Sales persona journey over the Commercial transport", { skip: SKIP,
     if (!subject) throw new Error("invalid token");
     return { externalSubject: subject, identityProvider: "firebase" };
   };
-  const deps = { reader: repo, pool, verifyToken, allowedOrigins: [] };
+  const deps = { reader: repo, pool, verifyToken, allowedOrigins: [], companyReach: ALL_COMPANIES };
   const signIn = async (persona, tenantId = TENANT, channel = tenantId === TENANT ? SALES_CHANNEL_OF[persona] ?? null : null) => {
     const subject = `uid-${persona.replace(/[^a-z0-9]/gi, "-")}-${tenantId}`;
     const principalId = await repo.transact(actorFor(tenantId), async (tx) => {

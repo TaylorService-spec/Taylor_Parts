@@ -13,10 +13,10 @@ import { MAX_HANDOFF_REASON_LENGTH } from "../commercialOwnershipAuthority";
 import { discountAuthorityOf, discountWithinAuthority } from "../../salesAuthority/salesDiscountAuthority";
 import {
   COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireReservedHolder, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
-  type CommercialActorContext, type CommercialCommandDeps,
+  type CommercialActorContext, type CommercialCommandDeps, type CommercialWriteScope,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
-import { lockAgreement, lockAgreementForOpportunity, lockOpportunity, newRecordId, operatingCompanyKeyFor, replaceAgreementLines, type AgreementRow } from "./commercialRecordStore";
+import { admitNewRecordCompany, lockAgreement, lockAgreementForOpportunity, lockOpportunity, newRecordId, operatingCompanyKeyFor, replaceAgreementLines, type AgreementRow } from "./commercialRecordStore";
 
 type Queryable = Pick<PoolClient, "query">;
 const target = (id: string) => ({ family: "salesAgreement" as const, id });
@@ -217,9 +217,9 @@ async function requireDiscountAuthority(db: Queryable, actor: CommercialActorCon
 const discountColumns = (d: CustomerDiscount | null): [string | null, number | null, number | null] =>
   d === null ? [null, null, null] : d.kind === "PERCENT" ? ["PERCENT", d.percentBasisPoints, null] : ["FIXED_AMOUNT", null, d.amountMinor];
 
-async function requireAgreement(db: Queryable, tenantId: string, id: unknown): Promise<AgreementRow> {
+async function requireAgreement(db: Queryable, tenantId: string, id: unknown, scope: CommercialWriteScope): Promise<AgreementRow> {
   if (typeof id !== "string" || id.trim() === "") fail("AGREEMENT_REQUIRED", "INVALID_INPUT", "salesAgreementId is required");
-  const row = await lockAgreement(db, tenantId, id as string);
+  const row = await lockAgreement(db, tenantId, id as string, scope);
   if (!row) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Agreement does not exist in this tenant");
   if (row.state === null) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Agreement was not created through a governed command and carries no lifecycle");
   return row;
@@ -230,7 +230,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
     async (db, now, scope) => {
       refuseFields(input, CREATE_FORBIDDEN);
       if (typeof input.opportunityId !== "string" || input.opportunityId.trim() === "") fail("OPPORTUNITY_REQUIRED", "INVALID_INPUT", "opportunityId is required");
-      const opportunity = await lockOpportunity(db, actor.tenantId, input.opportunityId as string);
+      const opportunity = await lockOpportunity(db, actor.tenantId, input.opportunityId as string, scope);
       if (!opportunity) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
       if (opportunity.stage === null) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Opportunity carries no governed lifecycle");
       scope.admitChannel(opportunity.salesChannel); // DQ-020: its source Opportunity's channel
@@ -262,6 +262,7 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       const established = await resolveCreationAccountablePerson(db, actor.tenantId, "salesAgreement", accountableEmployeeId, built.ownerEmployeeId);
       const number = await allocateCommercialNumber(db, actor.tenantId, "SALES_AGREEMENT", now);
       const id = newRecordId("sag");
+      await admitNewRecordCompany(db, actor.tenantId, scope, built.operatingCompanyId); // Q-1a: the company it is booked to (inherited from the admitted Opportunity)
       await db.query(
         `INSERT INTO eos_commercial.sales_agreements (id, tenant_id, sales_agreement_number, account_id, opportunity_id, owner_employee_id,
            operating_company_key, state, currency, credited_salesperson_employee_id, location_id, customer_po, is_lease, fulfillment_intent,
@@ -312,7 +313,7 @@ const CHARGE_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
 export function updateSalesAgreementDraft(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesAgreement.updateDraft", [COMMERCIAL_CAPABILITIES.SALES_AGREEMENT_UPDATE_DRAFT],
     input?.idempotencyKey, async (db, now, scope) => {
-      const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
+      const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId, scope);
       scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
       const { idempotencyKey: _k, salesAgreementId: _a, taxEvidence: rawTax, customerDiscount: rawDiscount, tradeIns: rawTradeIns, ...rawFields } = input;
       const taxEvidence = parseTaxEvidence(rawTax);
@@ -422,7 +423,7 @@ export function acceptSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
   return runCommercialCommand(deps, actor, "salesAgreement.accept", [COMMERCIAL_CAPABILITIES.SALES_AGREEMENT_ACCEPT], input?.idempotencyKey,
     async (db, now, scope) => {
       refuseFields(input, ACCEPT_FORBIDDEN);
-      const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
+      const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId, scope);
       scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
       buildAcceptSalesAgreement(
         { state: current.state as never, lines: current.lines as never, operatingCompanyId: current.operatingCompanyId },
@@ -465,7 +466,7 @@ function decideTradeIn(deps: CommercialCommandDeps, actor: CommercialActorContex
       // RESERVED (Owner G7, DECISIONS #226): holding the capability is not enough -- it must be held through a reserved
       // Role (owner / generalManager), so a grant that predates the invariant, or any other path, decides nothing.
       await requireReservedHolder(db, actor.tenantId, actor.principalId, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY);
-      const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId);
+      const current = await requireAgreement(db, actor.tenantId, input.salesAgreementId, scope);
       scope.admitChannel(await sourceOpportunityChannel(db, actor.tenantId, current));
       if (current.state !== "DRAFT") fail("ILLEGAL_TRANSITION", "PRECONDITION_FAILED", "a trade-in value is decided only on a DRAFT Sales Agreement");
       if (!Number.isSafeInteger(input.itemNumber) || (input.itemNumber as number) < 1) fail("INVALID_INPUT", "INVALID_INPUT", "itemNumber is required");

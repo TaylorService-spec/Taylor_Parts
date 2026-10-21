@@ -8,6 +8,7 @@
 // exists only when EVERY line carries a committed price, because a partial sum is not the sale.
 import { SALES_ORDER_STATES } from "../../salesOrder/salesOrderLifecycle";
 import { fail } from "../commands/commercialCommandKernel";
+import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
 import {
   COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
@@ -127,15 +128,16 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
         `SELECT ${SUMMARY_COLUMNS}, (${SALES_ORDER_IS_COMPLETE}) AS complete,
                 s.location_id, loc.name AS location_name, s.customer_po, s.notes,
                 o.opportunity_number, o.stage::text AS opportunity_stage, o.sales_channel::text AS opportunity_channel,
-                a.sales_agreement_number AS agreement_number, a.state::text AS agreement_state, ao.sales_channel::text AS agreement_channel
+                a.sales_agreement_number AS agreement_number, a.state::text AS agreement_state, ao.sales_channel::text AS agreement_channel,
+                ${reach.company.sql("o", 3)} AS opportunity_company_ok, ${reach.company.sql("a", 3)} AS agreement_company_ok
            FROM eos_commercial.sales_orders s
            LEFT JOIN eos_crm.accounts acc ON acc.tenant_id = s.tenant_id AND acc.id = s.account_id
            LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = s.tenant_id AND loc.account_id = s.account_id AND loc.id = s.location_id
            LEFT JOIN eos_commercial.opportunities o ON o.tenant_id = s.tenant_id AND o.id = s.opportunity_id
            LEFT JOIN eos_commercial.sales_agreements a ON a.tenant_id = s.tenant_id AND a.id = s.sales_agreement_id
            LEFT JOIN eos_commercial.opportunities ao ON ao.tenant_id = a.tenant_id AND ao.id = a.opportunity_id
-          WHERE s.tenant_id = $1 AND s.id = $2`,
-        [tenantId, salesOrderId],
+          WHERE s.tenant_id = $1 AND s.id = $2 AND ${reach.company.sql("s", 3)}`, // Q-1a: a foreign-company order is a plain miss
+        [tenantId, salesOrderId, ...reach.company.sqlParams()],
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       const r = rows[0] as Row;
@@ -149,10 +151,10 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
         customerPO: r.customer_po, notes: r.notes,
         // Pass 10 P10-4: lineage is disclosed only where the reader could read the linked record itself (an
         // Agreement's channel is its source Opportunity's). A global holder is unchanged.
-        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null
+        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null || r.opportunity_company_ok !== true
           || !reach.admits(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, r.opportunity_channel ?? null) ? null
           : { id: r.opportunity_id, number: r.opportunity_number, state: r.opportunity_stage },
-        sourceAgreement: r.sales_agreement_id === null || r.agreement_number === null
+        sourceAgreement: r.sales_agreement_id === null || r.agreement_number === null || r.agreement_company_ok !== true
           || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.agreement_channel ?? null) ? null
           : { id: r.sales_agreement_id, number: r.agreement_number, state: r.agreement_state },
       };
@@ -166,9 +168,11 @@ export interface SalesOrderListOptions {
   readonly cursor: { number: string; id: string } | null;
   /** Lane GA: null/absent = every channel; otherwise ONLY these stored channels. */
   readonly salesChannels?: readonly string[] | null;
+  /** Q-1a: the caller's operating-company reach; a list contains only reachable orders. */
+  readonly company: CommercialCompanyReach;
 }
 
-export function prepareSalesOrderList(input: Record<string, unknown> | undefined): SalesOrderListOptions {
+export function prepareSalesOrderList(input: Record<string, unknown> | undefined): Omit<SalesOrderListOptions, "company"> {
   return {
     limit: requirePageSize(input?.limit),
     accountId: optionalAccountId(input?.accountId),
@@ -187,9 +191,10 @@ export async function readSalesOrderPage(db: Queryable, tenantId: string, o: Sal
         AND ($3::text[] IS NULL OR s.state::text = ANY($3::text[]))
         AND ($4::text IS NULL OR (s.sales_order_number, s.id) < ($4::text, $5::text))
         AND ($7::text[] IS NULL OR s.sales_channel::text = ANY($7::text[]))
+        AND ${o.company.sql("s", 8)}
       ORDER BY s.sales_order_number DESC, s.id DESC
       LIMIT $6`,
-    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null],
+    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null, ...o.company.sqlParams()],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
   const lines = await linesByOrder(db, tenantId, kept.map((r) => r.id));
@@ -199,6 +204,6 @@ export async function readSalesOrderPage(db: Queryable, tenantId: string, o: Sal
 export function listSalesOrders(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<CommercialPage<SalesOrderSummaryProjection>> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ], () => prepareSalesOrderList(input),
     (db, tenantId, options, reach) => readSalesOrderPage(db, tenantId,
-      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ) }),
+      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ), company: reach.company }),
     SALES_CHANNEL_SCOPED);
 }

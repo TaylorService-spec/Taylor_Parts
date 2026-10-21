@@ -49,6 +49,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Mark an opportunity won](./sales/mark-an-opportunity-won.md)
 - [Allocate stock to a Sales Order](./sales/allocate-stock-to-a-sales-order.md) — set aside a line's
   stock at a warehouse you choose, give it back, and what the system refuses.
+- [Which sales records you can see](./sales/which-sales-records-you-can-see.md) — records belong to one
+  operating company: what is hidden, why a missing deal is not an error, and records with no company yet.
 
 ## Administration
 

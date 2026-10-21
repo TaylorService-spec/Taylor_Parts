@@ -21,6 +21,7 @@
 //
 // Real PostgreSQL. Set POLICY_TEST_DATABASE_URL; without it the database half SKIPS.
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
@@ -66,7 +67,7 @@ test("National Accounts Sales over the Commercial transport", { skip: SKIP, conc
   const one = async (sql, v = []) => (await q(sql, v)).rows[0];
   // The Catalog is ACTIVE in nonprod (2026-09-30): the transport is composed with the governed PostgreSQL Catalog authority.
   const deps = { reader: repo, pool, verifyToken: async (token) => ({ externalSubject: token, identityProvider: "firebase" }), allowedOrigins: [],
-    catalog: createPostgresCatalogReferenceAuthority() };
+    catalog: createPostgresCatalogReferenceAuthority(), companyReach: ALL_COMPANIES };
   const com = async (who, operation, input) => {
     const res = await commercialHttp.handleCommercialRequest(deps, { method: "POST", url: "/commercial/sales",
       headers: { authorization: `Bearer ${who.subject}` }, body: JSON.stringify(input === undefined ? { operation } : { operation, input }) });

@@ -6,6 +6,7 @@
 // real C2 command services as `deps.catalog`, unmodified.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -238,7 +239,7 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
     await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ($1,$1,'proof','active')`, [p]);
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ($1,$2,$3)`, [`m-${p}`, tenant, p]);
   }
-  const deps = { pool, catalog: authority };
+  const deps = { pool, catalog: authority, companyReach: ALL_COMPANIES };
   const newOpportunity = (actor, accountId, lines) => opp.createOpportunity(deps, actor, {
     idempotencyKey: key(), accountId, salesChannel: "RETAIL", operatingCompanyId: "taylor", need: "Walk-in freezer", lines,
   });

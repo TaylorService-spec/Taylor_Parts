@@ -4,6 +4,7 @@
 // used-equipment value never a resale price, Finance unchanged) and #204 A–AK (configuration authority assigned through
 // Administration to Security Roles, System Configuration, per-user discount authority, trade-in proposal and approval).
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -344,7 +345,7 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
   for (const ch of ["RETAIL"]) await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1,$2,'ACTIVE','f','f','f') ON CONFLICT DO NOTHING`, [TENANT, ch]);
   const seller = await person("uid-seller", [], { id: "e-seller", name: "Riley Retail" });
   const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept"]) };
-  const commercialDeps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  const commercialDeps = { pool, companyReach: ALL_COMPANIES, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   let gn = 0;
   const opportunity = async () => {
     const id = `opp-gp-${++gn}`;
@@ -357,7 +358,7 @@ test("governed configuration + sales pricing over PostgreSQL", { skip: SKIP, con
     lines: [{ kind: "SERVICE", ref: "ICE-MACHINE-X", quantity: 1, unitPrice: 40000, businessUnitId: "SERVICE" }], ...extra }).then((r) => r.result ?? r)).salesAgreementId;
   const update = (id, patch) => sa.updateSalesAgreementDraft(commercialDeps, sellerActor, { idempotencyKey: `u-${++gn}-${Date.now()}`, salesAgreementId: id, ...patch });
   const reader = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.read"]) };
-  const detail = (id) => saRead.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+  const detail = (id) => saRead.getSalesAgreementDetail({ pool, companyReach: ALL_COMPANIES }, reader, { salesAgreementId: id });
 
   await t.test("#204 K / L / M / N / O / P / Q / R / S / T. per-user maximum customer discount: governed, audited, enforced on the server", async () => {
     // T: NOT CONFIGURED fails closed -- no discount at all, and said so (never read as unlimited).

@@ -36,6 +36,7 @@
 import type { Pool, PoolClient } from "pg";
 import { ID_SHAPE, ReceiveStockError, type ReceiveFailureCategory, type ReceivingPrincipalActor } from "./receiveReorderStockCommand.js";
 import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority.js";
+import { callerMaySeeSalesOrder, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority.js";
 import { authorizeObjectAction, postgresContextualReader } from "./contextualAuthorization.js";
 import { scopedWarehouseIds } from "./partsReads.js";
 import { FORBIDDEN_WAREHOUSE_IDS, SYNTHETIC_ACCEPTANCE_WAREHOUSE } from "./syntheticAcceptanceWarehouse.js";
@@ -156,7 +157,7 @@ interface Stated {
  * Steps 2 and 3 of the order (company, then the order, then the warehouse scope), shared by allocate and release. Locks the Sales Order row.
  * Returns the stated company key. The warehouse (and its scope) is decided by `requireWarehouseScope`, which needs the key.
  */
-async function requireStatedCompanyAndOrder(db: Db, actor: ReceivingPrincipalActor, r: AllocationRequest): Promise<Stated> {
+async function requireStatedCompanyAndOrder(db: Db, actor: ReceivingPrincipalActor, r: AllocationRequest, companyReach?: CommercialCompanyResolver): Promise<Stated> {
   const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
   if (authority.companyKeys.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "allocating stock to a Sales Order requires operating-company authority; this principal has none");
@@ -173,7 +174,10 @@ async function requireStatedCompanyAndOrder(db: Db, actor: ReceivingPrincipalAct
   // anything about it from how long the lock took (no lock-timing oracle on a foreign order).
   const { rows: peek } = await db.query<{ operating_company_key: string }>(
     `SELECT operating_company_key FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, r.salesOrderId]);
-  if (!peek[0] || !authority.companyKeys.includes(peek[0].operating_company_key)) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
+  // Q-1a: the INTERSECTION of the inventory company check above and the Commercial visibility decision (company authority + channel), the SAME one the
+  // Commercial Sales Order reads and commands apply. An order the Commercial side hides reads as nonexistent here too, before any lock (fail closed).
+  if (!peek[0] || !authority.companyKeys.includes(peek[0].operating_company_key)
+    || !(await callerMaySeeSalesOrder(db, actor, r.salesOrderId, [SALES_ORDER_FULFILL_CAPABILITY], companyReach))) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
   if (peek[0].operating_company_key !== companyKey) {
     refuse("COMPANY_MISMATCH", "PRECONDITION_FAILED", "the Sales Order belongs to a different operating company than the one you stated; company is stated, never derived, and the two must agree");
   }
@@ -232,7 +236,7 @@ const wasReplay = (results: readonly CommitmentWriteResult[]) => results.length 
 
 // ════════════════════ allocate ════════════════════
 
-export async function allocateSalesOrderLine(deps: { readonly pool: Pool }, actor: ReceivingPrincipalActor, input: unknown) {
+export async function allocateSalesOrderLine(deps: { readonly pool: Pool; readonly companyReach?: CommercialCompanyResolver }, actor: ReceivingPrincipalActor, input: unknown) {
   requireCapability(actor, [SALES_ORDER_FULFILL_CAPABILITY]);
   const i = acceptOnly(input, ["salesOrderId", "lineNumber", "operatingCompanyId", "warehouseId", "partId", "quantity", "idempotencyKey"]);
   const r = readRequest(i);
@@ -240,7 +244,7 @@ export async function allocateSalesOrderLine(deps: { readonly pool: Pool }, acto
   const quantity = positiveInt(i.quantity, "quantity");
 
   return inTransaction(deps.pool, async (db) => {
-    const stated = await requireStatedCompanyAndOrder(db, actor, r);
+    const stated = await requireStatedCompanyAndOrder(db, actor, r, deps.companyReach);
     await requireWarehouseScope(db, actor, stated, r.warehouseId);
 
     const base = `soAlloc:${r.idempotencyKey}`;
@@ -292,7 +296,7 @@ export async function allocateSalesOrderLine(deps: { readonly pool: Pool }, acto
 
 // ════════════════════ release ════════════════════
 
-export async function releaseSalesOrderAllocation(deps: { readonly pool: Pool }, actor: ReceivingPrincipalActor, input: unknown) {
+export async function releaseSalesOrderAllocation(deps: { readonly pool: Pool; readonly companyReach?: CommercialCompanyResolver }, actor: ReceivingPrincipalActor, input: unknown) {
   requireCapability(actor, [SALES_ORDER_FULFILL_CAPABILITY]);
   const i = acceptOnly(input, ["salesOrderId", "lineNumber", "operatingCompanyId", "warehouseId", "quantity", "reason", "idempotencyKey"]);
   const r = readRequest(i);
@@ -302,7 +306,7 @@ export async function releaseSalesOrderAllocation(deps: { readonly pool: Pool },
   }
 
   return inTransaction(deps.pool, async (db) => {
-    const stated = await requireStatedCompanyAndOrder(db, actor, r);
+    const stated = await requireStatedCompanyAndOrder(db, actor, r, deps.companyReach);
     await requireWarehouseScope(db, actor, stated, r.warehouseId);
     const line = await readLine(db, actor.tenantId, r.salesOrderId, r.lineNumber);
     let written: readonly CommitmentWriteResult[];
@@ -379,7 +383,7 @@ export async function releaseSalesOrderClaims(
  * CALLER'S scope, how much is held where; plus the warehouses the caller may allocate from and whether they may. The server decides every flag.
  * A claim at a warehouse outside the caller's scope is counted in the line's total and in `heldOutsideYourScope`, and named nowhere.
  */
-export async function readSalesOrderAllocations(deps: { readonly pool: Pool }, actor: ReceivingPrincipalActor, input: unknown) {
+export async function readSalesOrderAllocations(deps: { readonly pool: Pool; readonly companyReach?: CommercialCompanyResolver }, actor: ReceivingPrincipalActor, input: unknown) {
   requireCapability(actor, [SALES_ORDER_FULFILL_CAPABILITY, SALES_ORDER_READ_CAPABILITY]);
   const i = acceptOnly(input, ["salesOrderId"]);
   const salesOrderId = idField(i.salesOrderId, "salesOrderId");
@@ -395,7 +399,8 @@ export async function readSalesOrderAllocations(deps: { readonly pool: Pool }, a
          FROM eos_commercial.sales_orders so
          LEFT JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = so.tenant_id AND k.operating_company_key = so.operating_company_key AND k.status = 'ACTIVE'
         WHERE so.tenant_id = $1 AND so.id = $2`, [actor.tenantId, salesOrderId]);
-    if (!so[0] || !authority.companyKeys.includes(so[0].operating_company_key)) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
+    if (!so[0] || !authority.companyKeys.includes(so[0].operating_company_key)
+      || !(await callerMaySeeSalesOrder(c, actor, salesOrderId, [SALES_ORDER_FULFILL_CAPABILITY, SALES_ORDER_READ_CAPABILITY], deps.companyReach))) refuse("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no such Sales Order");
     const holdsFulfill = actor.capabilities.has(SALES_ORDER_FULFILL_CAPABILITY);
     const scope = holdsFulfill
       ? (await scopedWarehouseIds(c, actor, { administrationReach: false, companyKeys: [so[0].operating_company_key] })).filter((w) => !PRESENTATION_EXCLUDED.includes(w))
