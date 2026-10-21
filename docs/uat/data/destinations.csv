@@ -1,0 +1,93 @@
+destination,label,path,status,navHidden,eosGate,objects,confidence,personasVisible
+dashboard/my,My Dashboard,/dashboard,BUILT,false,container (derived from reachable children),(composed from reachable destinations),N,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager|warehouseAssociate|warehouseManager|retailSales|nationalAccountsSales|financeAccounting|reportingAnalyst
+dashboard/operationsDashboard,Inventory & Supply Overview,/dashboard/operations,BUILT,false,surface: inventory.balances | inventory.catalog,part; inventoryTransaction; inventoryAction,A,ownerExecutive|administrator|generalManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager|warehouseAssociate|warehouseManager|retailSales|nationalAccountsSales|financeAccounting
+dashboard/notifications,Notifications,/dashboard/notifications,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+customers/customers,Customers,/customers,BUILT,false,surface: crm.accounts,account,N,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|partsAssociate|partsManager|warehouseManager|retailSales|nationalAccountsSales|financeAccounting
+customers/opportunities,Opportunities,/customers/opportunities,BUILT,false,surface: commercial.opportunities,opportunity,N,ownerExecutive|administrator|generalManager|dispatcher|retailSales|nationalAccountsSales|financeAccounting
+customers/salesOrders,Sales Orders,/customers/sales-orders,BUILT,false,surface: commercial.salesOrders,salesOrder,N,ownerExecutive|administrator|generalManager|serviceManager|dispatcher|partsAssociate|partsManager|warehouseAssociate|warehouseManager|retailSales|nationalAccountsSales|financeAccounting
+customers/salesAgreements,Sales Agreements,/customers/sales-agreements,BUILT,false,surface: commercial.agreements,salesAgreement,N,ownerExecutive|administrator|generalManager|dispatcher|retailSales|nationalAccountsSales
+serviceOperations/serviceOperations,Service Operations,/service-operations,BUILT,false,surface: service.workOrders,workOrder,N,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager
+equipment/equipment,Equipment,/equipment,BUILT,false,surface: equipment.register,equipment; equipmentModel,N,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|partsAssociate|partsManager|warehouseManager
+rental/rental,Rental,/rental,BUILT,false,surface: rental.workspace,rentalAgreement; rentalEquipment,N,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|warehouseManager|financeAccounting
+analysis/analysis,Analysis,/analysis,BUILT,false,surface: analysis.workspace,"(measures over payment, opportunity, salesOrder, workOrder, purchaseOrder, reorderRequest, receivingOrder, inventoryTransaction, rentalAgreement)",A,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager|warehouseAssociate|warehouseManager|financeAccounting|reportingAnalyst
+analysis/goals,Goals,/analysis/goals,BUILT,false,surface: analysis.goals,performanceGoal,N,ownerExecutive|administrator|generalManager|serviceManager|partsManager|warehouseManager
+service/workOrders,Work Orders,/service,BUILT,false,surface: service.workOrders,workOrder,N,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager
+service/inboundWork,Inbound Work,/service/inbound-work,BUILT,false,surface: service.inboundWork,inboundWorkRequest,N,administrator|officeManager|serviceManager|dispatcher
+service/jobAssignments,Job Assignments,/service/job-assignments,BUILT,false,surface: service.workOrders,workOrder,A,ownerExecutive|administrator|generalManager|officeManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager
+service/dispatch,Jobs,/service/dispatch,BUILT,false,surface: service.dispatch,workOrder,A,administrator|serviceManager|dispatcher
+service/coordinatedVisits,Coordinated Visits,/service/coordinated-visits,BUILT,false,surface: service.coordinatedVisits,workOrder; salesOrder,A,ownerExecutive|administrator|serviceManager|dispatcher
+service/coordinatedMission,Coordinated Mission,/service/coordinated-mission,BUILT,false,surface: field.myWorkOrders,workOrder,A,serviceTechnician
+service/technicianWorkspace,Technician Workspace,/service/technician-workspace,BUILT,false,surface: field.myWorkOrders,workOrder; part; inventoryTransaction,A,serviceTechnician
+service/scan,Scan,/service/scan,BUILT,false,surface: receiving.checkIn | warehouse.picking | field.myWorkOrders,part; receivingOrder; workOrder,A,administrator|dispatcher|serviceTechnician|partsAssociate|warehouseAssociate
+service/dispatcherBoard,Dispatcher Board,/service/dispatcher-board,BUILT,false,surface: service.dispatch,workOrder,N,administrator|serviceManager|dispatcher
+service/scheduling,Scheduling,/service/scheduling,BUILT,true,NO governed surface => invisible to every principal under the EOS navigation source,workOrder,N,
+service/dispatchScheduling,Dispatch Board,/service/dispatch-scheduling,BUILT,true,NO governed surface => invisible to every principal under the EOS navigation source,workOrder,N,
+service/warranty,Warranty,/service/warranty,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+inventory/parts,Parts Catalog,/inventory,BUILT,false,surface: inventory.catalog,part; partAlias; manufacturer,N,ownerExecutive|administrator|generalManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager|warehouseAssociate|warehouseManager|retailSales|nationalAccountsSales|financeAccounting
+inventory/partMaster,Catalog Admin,/inventory/part-master,BUILT,false,surface: inventory.catalogAdmin,part; partAlias; manufacturer; equipmentModel,N,ownerExecutive|administrator|generalManager|serviceManager|partsManager|warehouseManager
+inventory/manufacturers,Manufacturers,/inventory/manufacturers,BUILT,true,surface: inventory.catalog,manufacturer,N,ownerExecutive|administrator|generalManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager|warehouseAssociate|warehouseManager|retailSales|nationalAccountsSales|financeAccounting
+inventory/warehouseWorkspace,Warehouse Workspace,/inventory/warehouse-workspace,BUILT,false,surface: warehouse.picking,inventoryTransaction; transferOrder; cycleCount; location,A,warehouseAssociate
+inventory/warehouses,Warehouses,/inventory/warehouses,BUILT,false,surface: warehouse.management,warehouse; location,N,warehouseAssociate|warehouseManager
+inventory/truckInventory,Truck Inventory,/inventory/truck-inventory,BUILT,false,surface: inventory.balances,truck; mobileLocation; inventoryTransaction,N,ownerExecutive|administrator|generalManager|serviceManager|dispatcher|serviceTechnician|partsAssociate|partsManager|warehouseAssociate|warehouseManager|financeAccounting
+inventory/transfers,Transfers,/inventory/transfers,BUILT,false,surface: inventory.transfers,transferOrder,N,ownerExecutive|administrator|generalManager|serviceManager|dispatcher|serviceTechnician|partsManager|warehouseAssociate|warehouseManager|financeAccounting
+inventory/reorderQueue,Reorder Queue,/inventory/reorder-queue,BUILT,false,surface: inventory.reorderQueue,reorderRequest,N,ownerExecutive|administrator|dispatcher|partsAssociate|partsManager
+inventory/receiving,Receiving,/inventory/receiving,BUILT,false,surface: receiving.checkIn,receivingOrder,N,administrator|dispatcher|partsAssociate|warehouseAssociate
+inventory/cycleCounts,Cycle Counts,/inventory/cycle-counts,BUILT,false,surface: inventory.cycleCount.count | inventory.cycleCount.review,cycleCount; inventoryAction,N,warehouseAssociate|warehouseManager
+inventory/backOrders,Back Orders,/inventory/back-orders,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+inventoryRole/manager,Parts Manager,/inventory-role/manager,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,reorderRequest; purchaseOrder,A,
+inventoryRole/warehouse,Warehouse Manager,/inventory-role/warehouse,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,transferOrder; cycleCount; receivingOrder,A,
+inventoryRole/mine,My Purchasing,/inventory-role/mine,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,reorderRequest,A,
+purchasing/purchaseOrders,Purchase Orders,/purchasing,BUILT,false,surface: purchasing.purchaseOrders,purchaseOrder; purchaseOrderVoid,N,ownerExecutive|administrator|generalManager|dispatcher|partsAssociate|partsManager|warehouseAssociate|warehouseManager|financeAccounting
+purchasing/suppliers,Suppliers,/purchasing/suppliers,BUILT,false,surface: purchasing.suppliers,supplier; supplierCatalogItem,N,administrator|dispatcher|partsAssociate|partsManager
+purchasing/quotes,Quotes,/purchasing/quotes,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+purchasing/receipts,Receipts,/purchasing/receipts,BUILT,false,surface: receiving.checkIn,receivingOrder,N,administrator|dispatcher|partsAssociate|warehouseAssociate
+purchasing/demandPlanning,Demand Planning,/purchasing/demand-planning,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+financials/overview,Overview,/financials,BUILT,false,surface: financials.payments,payment; invoice,A,ownerExecutive|administrator|generalManager|financeAccounting
+financials/billingQueue,Billing Queue,/financials/billing-queue,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,invoice,A,
+financials/invoices,Invoices,/financials/invoices,BUILT,false,surface: financials.invoices,invoice,N,ownerExecutive|administrator|generalManager|serviceManager|partsAssociate|partsManager|financeAccounting
+financials/accountsReceivable,Accounts Receivable,/financials/accounts-receivable,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,invoice; settlement,A,
+financials/payments,Payments,/financials/payments,BUILT,false,surface: financials.payments,payment; settlement,N,ownerExecutive|administrator|generalManager|financeAccounting
+financials/creditsAdjustments,Credits & Adjustments,/financials/credits-adjustments,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,invoice,A,
+financials/customerFinancials,Customer Financials,/financials/customer-financials,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,account; invoice,A,
+financials/salesToGoal,Sales to Goal,/financials/sales-to-goal,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(KPI over salesOrder; no registered Object),A,
+financials/costToBudget,Cost to Budget,/financials/cost-to-budget,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(KPI; no registered Object),A,
+financials/forecasting,Forecasting,/financials/forecasting,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(KPI; no registered Object),A,
+financials/profitability,Gross Margin & Profitability,/financials/profitability,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(KPI; no registered Object),A,
+financials/budgets,Budget Management,/financials/budgets,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(no registered Object),A,
+financials/goals,Goal Management,/financials/goals,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(no registered Object),A,
+financials/companyPerformance,Company & Business Unit Performance,/financials/company-performance,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(KPI; no registered Object),A,
+financials/employeePerformance,Salesperson & Employee Performance,/financials/employee-performance,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(KPI; no registered Object),A,
+financials/reconciliation,Reconciliation & Exceptions,/financials/reconciliation,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,settlement,A,
+financials/intercompany,Intercompany,/financials/intercompany,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,inventoryTransaction; invoice,A,
+financials/audit,Financial Audit & History,/financials/audit,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,auditLog,A,
+financials/reports,Reporting & Exports,/financials/reports,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,(exports; no registered Object),A,
+financials/governance,Financial Settings & Governance,/financials/governance,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,financialPolicy; financeConfiguration,A,
+reporting/builder,Report Builder,/reporting/builder,BUILT,false,surface: reporting.builder,account; contact; location; equipment,N,ownerExecutive|administrator|reportingAnalyst
+reporting/savedReports,Saved Reports,/reporting/saved,BUILT,false,surface: reporting.savedReports,reportDefinition,N,ownerExecutive|administrator|reportingAnalyst
+reporting/executive,Executive,/reporting,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/service,Service,/reporting/service,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/inventory,Inventory,/reporting/inventory,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/purchasing,Purchasing,/reporting/purchasing,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/warehouse,Warehouse,/reporting/warehouse,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/employees,Employees,/reporting/employees,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/customers,Customers,/reporting/customers,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+reporting/financial,Financial,/reporting/financial,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+administration/overview,Overview,/administration/overview,BUILT,false,container (derived from reachable children),(menu over Administration destinations),N,ownerExecutive|administrator|generalManager|serviceManager|partsManager|warehouseManager|financeAccounting
+administration/users,Employees & Users,/administration/users,BUILT,false,surface: administration.users,employee; principal,N,ownerExecutive|administrator|generalManager
+administration/rolesPermissions,Roles,/administration/roles-permissions,BUILT,false,surface: administration.rolesPermissions,rolesPermissions,N,ownerExecutive|administrator
+administration/objects,Objects,/administration/objects,BUILT,false,surface: administration.objects,rolesPermissions,N,ownerExecutive|administrator
+administration/permissions,Permissions,/administration/permissions,BUILT,false,surface: administration.objects,rolesPermissions,N,ownerExecutive|administrator
+administration/workflows,Workflows,/administration/workflows,BUILT,false,surface: administration.workflows,workflowDefinition; workflowInstance,N,ownerExecutive|administrator
+administration/permissionPreview,Principal Inspection (QA),/administration/qa/principal-inspection,BUILT,true,surface: administration.permissionPreview,principal,N,ownerExecutive|administrator
+administration/vehicles,Vehicles,/administration/vehicles,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+administration/regions,Regions,/administration/regions,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+administration/companySettings,Company Settings,/administration/company-settings,PLACEHOLDER,true,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+administration/duplicateRules,Duplicate Rules,/administration/duplicate-rules,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,account,A,
+administration/warehouseRacking,Warehouse Racking,/administration/warehouse-racking,BUILT,false,surface: inventory.racking,warehouse; location,N,ownerExecutive|administrator|warehouseAssociate|warehouseManager
+administration/financialPolicy,Financial Policy,/administration/financial-policy,BUILT,false,surface: finance.policy,financialPolicy,N,ownerExecutive|administrator|generalManager|financeAccounting
+administration/systemConfiguration,System Configuration,/administration/system-configuration,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,systemConfiguration,N,
+administration/salesConfiguration,Sales Configuration,/administration/sales-configuration,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,salesDiscountAuthority,N,
+administration/dataImport,Data Import,/administration/data-import,BUILT,false,surface: administration.dataImport,dataImport,N,administrator
+administration/emailCommunications,Email & Communications,/administration/email-communications,BUILT,false,surface: administration.emailCommunications,inboundMailbox,N,administrator|serviceManager
+administration/integrations,Integrations,/administration/integrations,BUILT,false,NO governed surface => invisible to every principal under the EOS navigation source,,N,
+administration/auditLogs,Audit Logs,/administration/audit-logs,BUILT,false,surface: administration.auditLogs,auditLog,N,ownerExecutive|administrator|generalManager|serviceManager|partsManager|warehouseManager|financeAccounting

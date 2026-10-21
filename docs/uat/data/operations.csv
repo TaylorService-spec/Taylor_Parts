@@ -1,0 +1,453 @@
+route,operation,registries,object,confidence
+/operations/inventory,resolveMyCapabilities,ops.read,"(platform, no Object)",N
+/operations/inventory,resolveMyExperienceContext,ops.read,"(platform, no Object)",N
+/operations/inventory,readReorderQueue,ops.read,reorderRequest,N
+/operations/inventory,readMyAssignedReorders,ops.read,reorderRequest,N
+/operations/inventory,readReorderRequest,ops.read,reorderRequest,N
+/operations/inventory,readMyReorderHistory,ops.read,reorderRequest,N
+/operations/inventory,listReorderWarehouseOptions,ops.read,reorderRequest,N
+/operations/inventory,readReorderPurchaseOrders,ops.read,purchaseOrder,N
+/operations/inventory,readInventoryOnHand,ops.read,inventoryTransaction,A
+/operations/inventory,readInventoryMovements,ops.read,inventoryTransaction,A
+/operations/inventory,listReceipts,ops.read,receivingOrder,N
+/operations/inventory,readReceipt,ops.read,receivingOrder,N
+/operations/inventory,listReceivingLocationOptions,ops.read,receivingOrder,N
+/operations/inventory,listSuppliers,ops.read,supplier,N
+/operations/inventory,listPurchaseOrderSupplierOptions,ops.read,purchaseOrder,N
+/operations/inventory,listSupplierOrganizationOptions,ops.read,supplier,N
+/operations/inventory,listPartSupplierItems,ops.read,supplierCatalogItem,N
+/operations/inventory,listInventoryWarehouses,ops.read,warehouse,N
+/operations/inventory,listInventoryLocations,ops.read,warehouse,A
+/operations/inventory,listTransferOrders,ops.read,transferOrder,N
+/operations/inventory,listReorderAssignmentTargets,ops.read,reorderRequest,N
+/operations/inventory,listTruckRoster,ops.read,truck,N
+/operations/inventory,readTruckStock,ops.read,truck,N
+/operations/inventory,listReturnIntakeOptions,ops.read,(unregistered: inventoryReturn),N
+/operations/inventory,listReceivableSupplierPurchaseOrders,ops.read,receivingOrder,A
+/operations/inventory,listSupplierPurchaseOrders,ops.read,purchaseOrder,N
+/operations/inventory,readSupplierPurchaseOrder,ops.read,purchaseOrder,N
+/operations/inventory,listPurchasableReorderRequests,ops.read,reorderRequest,N
+/operations/inventory,readSupplierPurchaseOrderProgress,ops.read,purchaseOrder,N
+/operations/inventory,listSupplierReceivingLocationOptions,ops.read,receivingOrder,A
+/operations/inventory,listLegacyInventoryActionNotes,ops.read,inventoryAction,N
+/operations/inventory,readPartBalance,ops.read,inventoryTransaction,A
+/operations/inventory,readSalesOrderAllocations,ops.read|salesOrderAllocation,salesOrder,N
+/operations/inventory,listImportedServiceHistory,ops.read,account,A
+/operations/inventory,listDataImportJobs,ops.read,dataImport,N
+/operations/inventory,listSavedReportDefinitions,ops.read,reportDefinition,N
+/operations/inventory,readSavedReportDefinition,ops.read,reportDefinition,N
+/operations/inventory,runReportDefinition,ops.read,(unregistered: report),N
+/operations/inventory,listCurrentPerformanceGoals,ops.read,(unregistered: performanceGoal),N
+/operations/inventory,listPerformanceGoalVersions,ops.read,(unregistered: performanceGoal),N
+/operations/inventory,listGoalSubjects,ops.read,(unregistered: performanceGoal),N
+/operations/inventory,listGoalAuthoringOptions,ops.read,(unregistered: performanceGoal),N
+/operations/inventory,createReorderRequest,ops.mutation,reorderRequest,N
+/operations/inventory,reviewReorderRequest,ops.mutation,reorderRequest,N
+/operations/inventory,assignReorderRequest,ops.mutation,reorderRequest,N
+/operations/inventory,startPurchasingOnReorder,ops.mutation,reorderRequest,N
+/operations/inventory,postPurchasingUpdate,ops.mutation,reorderRequest,N
+/operations/inventory,markReorderReceived,ops.mutation,reorderRequest,N
+/operations/inventory,cancelReorderRequest,ops.mutation,reorderRequest,N
+/operations/inventory,recordReorderPurchaseOrder,ops.mutation,purchaseOrder,N
+/operations/inventory,voidReorderPurchaseOrder,ops.mutation,purchaseOrderVoid,N
+/operations/inventory,receiveReorderStock,ops.mutation,reorderRequest,N
+/operations/inventory,correctReorderReceipt,ops.mutation,reorderRequest,N
+/operations/inventory,createSupplier,ops.mutation,supplier,N
+/operations/inventory,updateSupplier,ops.mutation,supplier,N
+/operations/inventory,setSupplierStatus,ops.mutation,supplier,N
+/operations/inventory,createPartSupplierItem,ops.mutation,supplierCatalogItem,N
+/operations/inventory,updatePartSupplierItem,ops.mutation,supplierCatalogItem,N
+/operations/inventory,setPartSupplierItemStatus,ops.mutation,supplierCatalogItem,N
+/operations/inventory,setPreferredPartSupplierItem,ops.mutation,supplierCatalogItem,N
+/operations/inventory,recordReturnIntake,ops.mutation,(unregistered: inventoryReturn),N
+/operations/inventory,receiveSupplierPurchaseOrder,ops.mutation,receivingOrder,A
+/operations/inventory,createSupplierPurchaseOrder,ops.mutation,purchaseOrder,N
+/operations/inventory,transitionSupplierPurchaseOrder,ops.mutation,purchaseOrder,N
+/operations/inventory,allocateSalesOrderLine,ops.mutation|salesOrderAllocation,salesOrder,N
+/operations/inventory,releaseSalesOrderAllocation,ops.mutation|salesOrderAllocation,salesOrder,N
+/operations/inventory,correctSupplierPurchaseOrderReceipt,ops.mutation,receivingOrder,A
+/operations/inventory,stageDataImport,ops.mutation,dataImport,N
+/operations/inventory,executeDataImport,ops.mutation,dataImport,N
+/operations/inventory,createSavedReportDefinition,ops.mutation,reportDefinition,N
+/operations/inventory,renameSavedReportDefinition,ops.mutation,reportDefinition,N
+/operations/inventory,duplicateSavedReportDefinition,ops.mutation,reportDefinition,N
+/operations/inventory,deleteSavedReportDefinition,ops.mutation,reportDefinition,N
+/operations/inventory,createPerformanceGoalDraft,ops.mutation,(unregistered: performanceGoal),N
+/operations/inventory,approvePerformanceGoal,ops.mutation,(unregistered: performanceGoal),N
+/operations/inventory,retirePerformanceGoal,ops.mutation,(unregistered: performanceGoal),N
+/operations/cycle-count,createCycleCountSheet,cycleCount,cycleCount,N
+/operations/cycle-count,openCycleCountLine,cycleCount,cycleCount,N
+/operations/cycle-count,submitCycleCountLine,cycleCount,cycleCount,N
+/operations/cycle-count,reconcileCycleCountLine,cycleCount,cycleCount,N
+/operations/cycle-count,cancelCycleCountLine,cycleCount,cycleCount,N
+/operations/cycle-count,closeCycleCountSheet,cycleCount,cycleCount,N
+/operations/cycle-count,cancelCycleCountSheet,cycleCount,cycleCount,N
+/operations/cycle-count,getCycleCountSheet,cycleCount,cycleCount,N
+/operations/cycle-count,listCycleCountSheets,cycleCount,cycleCount,N
+/operations/relocation,relocateStock,relocation,inventoryTransaction,A
+/operations/transfer,createTransfer,transfer,transferOrder,N
+/operations/transfer,dispatchTransfer,transfer,transferOrder,N
+/operations/transfer,receiveTransfer,transfer,transferOrder,N
+/operations/transfer,cancelTransfer,transfer,transferOrder,N
+/operations/placement,recordPutAway,placement,inventoryTransaction,A
+/operations/serialized-asset,acquireSerializedAsset,serializedAsset,serializedAssets,N
+/operations/work-orders,readWorkOrder,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,listWorkOrders,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,describeWorkOrderListQuery,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,listMyAssignedWorkOrders,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,listWorkOrderTechnicians,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,listWorkOrderOperatingCompanies,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readMyWorkOrderCapabilities,workOrder|workOrder.read,"(platform, no Object)",N
+/operations/work-orders,createWorkOrder,workOrder,workOrder,N
+/operations/work-orders,markWorkOrderReady,workOrder,workOrder,N
+/operations/work-orders,scheduleWorkOrder,workOrder,workOrder,N
+/operations/work-orders,unscheduleWorkOrder,workOrder,workOrder,N
+/operations/work-orders,rescheduleWorkOrder,workOrder,workOrder,N
+/operations/work-orders,dispatchWorkOrder,workOrder,workOrder,N
+/operations/work-orders,closeWorkOrder,workOrder,workOrder,N
+/operations/work-orders,cancelWorkOrder,workOrder,workOrder,N
+/operations/work-orders,setWorkOrderPartsPlan,workOrder,workOrder,N
+/operations/work-orders,acceptWorkOrder,workOrder,workOrder,N
+/operations/work-orders,startWorkOrderTravel,workOrder,workOrder,N
+/operations/work-orders,arriveAtWorkOrder,workOrder,workOrder,N
+/operations/work-orders,startWorkOrderWork,workOrder,workOrder,N
+/operations/work-orders,recordWorkOrderExecution,workOrder,workOrder,N
+/operations/work-orders,completeWorkOrder,workOrder,workOrder,N
+/operations/work-orders,listInstallableEquipmentForWorkOrder,workOrder|workOrder.read,equipment,A
+/operations/work-orders,recordWorkOrderEquipmentInstall,workOrder,equipment,A
+/operations/work-orders,readTechnicianAvailability,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readEmployeeWorkSchedule,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,setTechnicianWorkingHours,workOrder,workOrder,N
+/operations/work-orders,recordTechnicianUnavailability,workOrder,technicianTimeNonWork,A
+/operations/work-orders,endTechnicianUnavailability,workOrder,technicianTimeNonWork,A
+/operations/work-orders,findAvailableTechnicianSlots,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,suggestWorkOrderPlacement,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readWorkOrderLabor,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,recordWorkOrderLabor,workOrder,workOrder,N
+/operations/work-orders,readWorkOrderFieldContext,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readWorkOrderReadiness,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readTechnicianExecutionStats,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readWorkOrderConsumptionSnapshot,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,readTechnicianVolumeBreakdown,workOrder|workOrder.read,workOrder,N
+/operations/work-orders,setWorkOrderEstimatedDuration,workOrder,workOrder,N
+/operations/work-orders,saveSelfSchedulingPolicy,workOrder,workOrder,A
+/operations/work-orders,listSelfSchedulingPolicies,workOrder,workOrder,A
+/operations/work-orders,issueSelfSchedulingLink,workOrder,workOrder,A
+/operations/work-orders,revokeSelfSchedulingLink,workOrder,workOrder,A
+/operations/work-orders,readSelfSchedulingSessions,workOrder,workOrder,A
+/operations/work-orders,readWorkOrderAuthorityStatus,workOrder.read,"(platform, no Object)",N
+/operations/inbound-work,readWorkOrderAuthorityStatus,inboundWork|inboundWork.read,"(platform, no Object)",N
+/operations/inbound-work,readInboundWorkAccess,inboundWork|inboundWork.read,"(platform, no Object)",N
+/operations/inbound-work,listInboundWork,inboundWork|inboundWork.read,inboundWorkRequest,N
+/operations/inbound-work,readInboundWorkRequest,inboundWork|inboundWork.read,inboundWorkRequest,N
+/operations/inbound-work,acceptInboundWork,inboundWork,inboundWorkRequest,N
+/operations/inbound-work,declineInboundWork,inboundWork,inboundWorkRequest,N
+/operations/inbound-work,attachInboundWork,inboundWork,inboundWorkRequest,N
+/operations/inbound-work,readInboundIntakeConfiguration,inboundWork|inboundWork.read,inboundMailbox,N
+/operations/inbound-work,saveInboundMailbox,inboundWork,inboundMailbox,N
+/operations/inbound-work,saveInboundRoutingRule,inboundWork,inboundMailbox,N
+/operations/inbound-work,deliverInboundMessage,inboundWork,inboundMailbox,N
+/operations/inbound-work,releaseInboundWork,inboundRecovery,inboundWorkRequest,N
+/operations/inbound-work,reassignInboundWork,inboundRecovery,inboundWorkRequest,N
+/operations/inbound-work,listInboundRecoveryTargets,inboundRecovery,inboundWorkRequest,N
+/operations/inbound-work,saveInboundConnection,inboundProvider,inboundMailbox,N
+/operations/inbound-work,readInboundProviderReadiness,inboundProvider,inboundMailbox,N
+/operations/inbound-work,startInboundConnectionAuthorization,inboundProvider,inboundMailbox,N
+/operations/inbound-work,completeInboundConnectionAuthorization,inboundProvider,inboundMailbox,N
+/operations/inbound-work,testInboundConnection,inboundProvider,inboundMailbox,N
+/operations/inbound-work,disconnectInboundConnection,inboundProvider,inboundMailbox,N
+/operations/inbound-work,pollInboundMailboxNow,inboundProvider,inboundMailbox,N
+/operations/inbound-work,retryInboundDelivery,inboundProvider,inboundMailbox,N
+/operations/inbound-work,readInboundAttachment,inboundProvider,inboundMailbox,N
+/operations/equipment,listEquipment,equipment,equipment,N
+/operations/equipment,readEquipment,equipment,equipment,N
+/operations/equipment,readWorkOrderEquipment,equipment,equipment,A
+/operations/equipment,listAvailableEquipmentUnits,equipment,equipment,N
+/operations/equipment,listEquipmentOperatingCompanies,equipment,equipment,N
+/operations/equipment,createEquipment,equipment,equipment,N
+/operations/equipment,updateEquipment,equipment,equipment,N
+/operations/finance,readFinanceWorkspace,finance,(unregistered: receivable/obligation),A
+/operations/finance,listObligations,finance,(unregistered: receivable/obligation),A
+/operations/finance,readObligation,finance,(unregistered: receivable/obligation),A
+/operations/finance,listSettlements,finance,settlement,N
+/operations/finance,readMyFinanceCompanyAccess,finance,"(platform, no Object)",N
+/operations/finance,readFinanceOverview,finance,(unregistered: receivable/obligation),A
+/operations/finance,readAccountBalanceSummary,finance,(unregistered: receivable/obligation),A
+/operations/finance,readSettlement,finance,settlement,N
+/operations/finance,recordSettlement,finance,settlement,N
+/operations/finance,applySettlement,finance,settlement,N
+/operations/finance,reverseSettlementApplication,finance,settlement,N
+/operations/finance,voidSettlement,finance,settlement,N
+/operations/finance,reconcileSettlement,finance,settlement,N
+/operations/finance,issueInvoice,finance,invoice,N
+/operations/finance,prepareBillingPackage,finance,(unregistered: billing package),N
+/operations/finance,requestInvoiceCorrection,finance,invoice,N
+/operations/finance,decideInvoiceCorrection,finance,invoice,N
+/operations/finance,listInvoiceCorrections,finance,invoice,N
+/operations/finance,readInvoiceCorrection,finance,invoice,N
+/operations/finance,supplyReceiptCostEvidence,finance,receivingOrder,N
+/operations/finance,relieveIntercompanySaleInventory,finance,inventoryTransaction,A
+/operations/finance,readMyFinancialPolicyAuthority,financialPolicy,"(platform, no Object)",N
+/operations/finance,readFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,listFinancialPolicyVersions,financialPolicy,financialPolicy,N
+/operations/finance,saveFinancialPolicyDraft,financialPolicy,financialPolicy,N
+/operations/finance,submitFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,approveFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,rejectFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,activateFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,withdrawFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,cancelFinancialPolicy,financialPolicy,financialPolicy,N
+/operations/finance,listAccountingDestinations,financeConfig,financeConfiguration,N
+/operations/finance,configureAccountingDestination,financeConfig,financeConfiguration,N
+/operations/finance,setAccountingDestinationStatus,financeConfig,financeConfiguration,N
+/operations/finance,listCounterpartyPaymentTerms,financeConfig,financeConfiguration,N
+/operations/finance,setCounterpartyPaymentTerms,financeConfig,financeConfiguration,N
+/operations/rental,readRentalWorkspace,rental,rentalAgreement,N
+/operations/rental,listRentalAgreements,rental,rentalAgreement,N
+/operations/rental,readRentalAgreement,rental,rentalAgreement,N
+/operations/rental,listFleetUnits,rental,rentalEquipment,N
+/operations/rental,readFleetUnit,rental,rentalEquipment,N
+/operations/rental,designateFleetUnit,rental,rentalEquipment,N
+/operations/rental,setFleetUnitAvailability,rental,rentalEquipment,N
+/operations/rental,createRentalAgreement,rental,rentalAgreement,N
+/operations/rental,activateRentalAgreement,rental,rentalAgreement,N
+/operations/rental,amendRentalAgreementTerms,rental,rentalAgreement,N
+/operations/rental,endRentalAgreement,rental,rentalAgreement,N
+/operations/rental,reserveRentalUnit,rental,rentalAgreement,N
+/operations/rental,releaseRentalReservation,rental,rentalAgreement,N
+/operations/rental,initiateRentalReturn,rental,rentalAgreement,N
+/operations/rental,receiveRentalReturn,rental,rentalAgreement,N
+/operations/rental,inspectRentalUnit,rental,rentalAgreement,N
+/operations/rental,recordRentalCharge,rental,rentalAgreement,N
+/operations/rental,determineRentalChargeTax,rental,rentalAgreement,N
+/operations/analysis,readAnalysisCatalog,analysis,(unregistered: report/analysis measures),A
+/operations/analysis,readAnalysisWorkspace,analysis,(unregistered: report/analysis measures),A
+/operations/analysis,readMeasureAnalysis,analysis,(unregistered: report/analysis measures),A
+/operations/workspace,readMyWork,workspace,"(platform, no Object)",N
+/operations/workspace,searchEos,workspace,"(platform, no Object)",N
+/operations/workspace,previewMyWorkAs,workspace,"(platform, no Object)",N
+/operations/workspace,resolvePrincipalDisplayNames,workspace,"(platform, no Object)",N
+/operations/workspace,resolveEmployeeDisplayNames,workspace,"(platform, no Object)",N
+/operations/workspace,searchAccountOwnerCandidates,workspace,account,A
+/operations/workspace,readMyCompanyAuthority,workspace,"(platform, no Object)",N
+/operations/workflow,listWorkflowWork,workflowRuntime,workflowInstance,N
+/operations/workflow,transitionWorkflowInstance,workflowRuntime,workflowInstance,N
+/operations/catalog,readPart,catalog.read,part,N
+/operations/catalog,readPartsByIds,catalog.read,part,N
+/operations/catalog,searchParts,catalog.read,part,N
+/operations/catalog,countParts,catalog.read,part,N
+/operations/catalog,listPartAliases,catalog.read,partAlias,N
+/operations/catalog,probePartAlias,catalog.read,partAlias,N
+/operations/catalog,lookupScannedPart,catalog.read,partAlias,N
+/operations/catalog,listEquipmentModels,catalog.read,equipmentModel,N
+/operations/catalog,listManufacturers,catalog.read,manufacturer,N
+/operations/catalog,getManufacturer,catalog.read,manufacturer,N
+/operations/catalog,searchManufacturers,catalog.read,manufacturer,N
+/operations/catalog,createPart,catalog.mutation,part,N
+/operations/catalog,updatePart,catalog.mutation,part,N
+/operations/catalog,changePartStatus,catalog.mutation,part,N
+/operations/catalog,createPartAlias,catalog.mutation,partAlias,N
+/operations/catalog,deactivatePartAlias,catalog.mutation,partAlias,N
+/operations/catalog,reactivatePartAlias,catalog.mutation,partAlias,N
+/operations/catalog,createManufacturer,catalog.mutation,manufacturer,N
+/operations/catalog,updateManufacturer,catalog.mutation,manufacturer,N
+/operations/catalog,changeManufacturerStatus,catalog.mutation,manufacturer,N
+/operations/catalog,createEquipmentModel,catalog.mutation,equipmentModel,N
+/operations/catalog,updateEquipmentModel,catalog.mutation,equipmentModel,N
+/commercial,getOpportunityDetail,commercial.read,opportunity,N
+/commercial,listOpportunities,commercial.read,opportunity,N
+/commercial,getSalesAgreementDetail,commercial.read,salesAgreement,N
+/commercial,listSalesAgreements,commercial.read,salesAgreement,N
+/commercial,getSalesOrderDetail,commercial.read,salesOrder,N
+/commercial,listSalesOrders,commercial.read,salesOrder,N
+/commercial,getAccountCommercialProjection,commercial.read,account,N
+/commercial,readMyCommercialCapabilities,commercial.read,"(platform, no Object)",N
+/commercial,listCoordinatedOperations,commercial.read,salesOrder,N
+/commercial,createOpportunity,commercial.mutation,opportunity,N
+/commercial,updateOpportunity,commercial.mutation,opportunity,N
+/commercial,transitionOpportunity,commercial.mutation,opportunity,N
+/commercial,closeOpportunityAsWon,commercial.mutation,opportunity,N
+/commercial,createSalesAgreement,commercial.mutation,salesAgreement,N
+/commercial,updateSalesAgreementDraft,commercial.mutation,salesAgreement,N
+/commercial,acceptSalesAgreement,commercial.mutation,salesAgreement,N
+/commercial,approveSalesAgreementTradeIn,commercial.mutation,salesAgreement,N
+/commercial,declineSalesAgreementTradeIn,commercial.mutation,salesAgreement,N
+/commercial,createSalesOrder,commercial.mutation,salesOrder,N
+/commercial,createSalesOrderFromOpportunity,commercial.mutation,salesOrder,N
+/commercial,transitionSalesOrder,commercial.mutation,salesOrder,N
+/commercial,authorizeSalesOrderServiceProvider,commercial.mutation,salesOrder,N
+/commercial,revokeSalesOrderServiceProvider,commercial.mutation,salesOrder,N
+/crm,createAccount,crm,account,N
+/crm,updateAccount,crm,account,N
+/crm,getAccount,crm,account,N
+/crm,listAccounts,crm,account,N
+/crm,listAccountOwnershipHistory,crm,account,N
+/crm,createContact,crm,contact,N
+/crm,importAccountContacts,crm,contact,N
+/crm,updateContact,crm,contact,N
+/crm,getContact,crm,contact,N
+/crm,listAccountContacts,crm,contact,N
+/crm,createAccountLocation,crm,location,N
+/crm,updateAccountLocation,crm,location,N
+/crm,getAccountLocation,crm,location,N
+/crm,listAccountLocations,crm,location,N
+/crm,listAccountActivities,crm,(unregistered: crmActivity),N
+/crm,createAccountActivity,crm,(unregistered: crmActivity),N
+/workforce,readMyEmployeeProfile,workforce.read,employee,N
+/workforce,readMyWorkforceCapabilities,workforce.read,"(platform, no Object)",N
+/workforce,readEmployee,workforce.read,employee,N
+/workforce,listEmployees,workforce.read,employee,N
+/workforce,readEmployeePrincipalLink,workforce.read,employee,N
+/workforce,listManagedEmployees,workforce.read,employee,N
+/workforce,listRecordsOwnedByEmployee,workforce.read,employee,N
+/workforce,listAccountabilitiesForEmployee,workforce.read,employee,A
+/workforce,listJobRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listEmployeeJobRoleHistory,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listEmployeesWithoutJobRole,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listEmployeeChangeHistory,workforce.read,employee,N
+/workforce,listEmployeeWorkEligibility,workforce.read,employee,N
+/workforce,listEmployeeWorkEligibilityHistory,workforce.read,employee,N
+/workforce,listEmployeeOperationalScopes,workforce.read,employee,N
+/workforce,listEmployeeOperationalScopeHistory,workforce.read,employee,N
+/workforce,listOperationalScopeTargets,workforce.read,employee,N
+/workforce,listAssignableEmployees,workforce.read,employee,N
+/workforce,listFunctionalRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listFunctionalRoleHolders,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listEmployeeFunctionalRoles,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listFunctionalRoleHistory,workforce.read,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,listWorkforceRoster,workforce.read,employee,N
+/workforce,listAssignedWorkForEmployee,workforce.read,employee,N
+/workforce,updateEmployeeProfile,workforce.command,employee,N
+/workforce,establishReportingRelationship,workforce.command,employee,N
+/workforce,endReportingRelationship,workforce.command,employee,N
+/workforce,saveEmployeeEdit,workforce.command,employee,N
+/workforce,changeEmploymentStatus,workforce.command,employee,N
+/workforce,changeOperatingCompany,workforce.command,employee,N
+/workforce,createJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,updateJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,assignEmployeeJobRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,assignEmployeeWorkEligibility,workforce.command,employee,N
+/workforce,endEmployeeWorkEligibility,workforce.command,employee,N
+/workforce,assignEmployeeOperationalScope,workforce.command,employee,N
+/workforce,endEmployeeOperationalScope,workforce.command,employee,N
+/workforce,createEmployee,workforce.command,employee,N
+/workforce,linkEmployeePrincipal,workforce.command,employee,N
+/workforce,unlinkEmployeePrincipal,workforce.command,employee,N
+/workforce,relinkEmployeePrincipal,workforce.command,employee,N
+/workforce,createFunctionalRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,updateFunctionalRoleMetadata,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,setFunctionalRoleStatus,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,assignEmployeeFunctionalRole,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/workforce,endEmployeeFunctionalRoleAssignment,workforce.command,(unregistered: Job Role / Functional Role (workforce reference)),N
+/admin/policy,listTenantPrincipals,admin.read,principal,N
+/admin/policy,listObjects,admin.read,rolesPermissions,N
+/admin/policy,readObjectWithFields,admin.read,rolesPermissions,N
+/admin/policy,listRoles,admin.read,rolesPermissions,N
+/admin/policy,readRolePolicy,admin.read,rolesPermissions,N
+/admin/policy,listPrincipalRoleAssignments,admin.read,principal,N
+/admin/policy,listObjectsWithActions,admin.read,rolesPermissions,N
+/admin/policy,getObjectSecurityMatrix,admin.read,rolesPermissions,N
+/admin/policy,getRoleSecurity,admin.read,rolesPermissions,N
+/admin/policy,getPrincipalEffectiveAccess,admin.read,principal,N
+/admin/policy,listWorkflows,admin.read|workflowAdmin.read,workflowDefinition,N
+/admin/policy,readWorkflowVersion,admin.read|workflowAdmin.read,workflowDefinition,N
+/admin/policy,validateWorkflowVersion,admin.read|workflowAdmin.read,workflowDefinition,N
+/admin/policy,listWorkflowInstances,admin.read|workflowAdmin.read,workflowInstance,N
+/admin/policy,readWorkflowHistory,admin.read|workflowAdmin.read,workflowInstance,N
+/admin/policy,listPrincipalWorkflowResponsibilities,admin.read|workflowAdmin.read,workflowDefinition,N
+/admin/policy,readMyWorkflowAdministration,admin.read|workflowAdmin.read,"(platform, no Object)",N
+/admin/policy,listWorkflowActionRoleHolders,admin.read|workflowAdmin.read,workflowDefinition,N
+/admin/policy,readPolicyAuditHistory,admin.read,rolesPermissions,N
+/admin/policy,getSecurityRoleDetail,admin.read,rolesPermissions,N
+/admin/policy,getObjectActionGrantMatrix,admin.read,rolesPermissions,N
+/admin/policy,listRoleCapabilityDecisionHistory,admin.read,rolesPermissions,N
+/admin/policy,explainEffectiveAccess,admin.read,principal,N
+/admin/policy,listSupportedConditionKinds,admin.read,rolesPermissions,N
+/admin/policy,listSupportedAssignmentScopes,admin.read,rolesPermissions,N
+/admin/policy,listEmployeeCompanyAuthority,admin.read,employee,A
+/admin/policy,updateObjectMetadata,admin.mutation,rolesPermissions,N
+/admin/policy,createCustomField,admin.mutation,rolesPermissions,N
+/admin/policy,updateCustomFieldMetadata,admin.mutation,rolesPermissions,N
+/admin/policy,createRole,admin.mutation,rolesPermissions,N
+/admin/policy,updateRole,admin.mutation,rolesPermissions,N
+/admin/policy,setObjectPermission,admin.mutation,rolesPermissions,N
+/admin/policy,setFieldPermissionOverride,admin.mutation,rolesPermissions,N
+/admin/policy,removeFieldPermissionOverride,admin.mutation,rolesPermissions,N
+/admin/policy,assignRole,admin.mutation,rolesPermissions,N
+/admin/policy,revokeRole,admin.mutation,rolesPermissions,N
+/admin/policy,grantCompanyAuthority,admin.mutation,employee,A
+/admin/policy,revokeCompanyAuthority,admin.mutation,employee,A
+/admin/policy,grantObjectActionToRole,admin.mutation,rolesPermissions,N
+/admin/policy,revokeObjectActionFromRole,admin.mutation,rolesPermissions,N
+/admin/policy,applyObjectWideRoleAuthority,admin.mutation,rolesPermissions,N
+/admin/policy,grantObjectActionToPrincipal,admin.mutation,rolesPermissions,N
+/admin/policy,revokeObjectActionFromPrincipal,admin.mutation,rolesPermissions,N
+/admin/policy,setGrantCondition,admin.mutation,rolesPermissions,N
+/admin/policy,retireGrantCondition,admin.mutation,rolesPermissions,N
+/admin/policy,createWorkflowDraft,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,createWorkflowVersion,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,updateWorkflowDefinition,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,setWorkflowRoleBinding,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,publishWorkflowVersion,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,activateWorkflowVersion,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,retireWorkflowVersion,admin.mutation|workflowAdmin.mutation,workflowDefinition,N
+/admin/policy,startWorkflowInstance,admin.mutation|workflowAdmin.mutation,workflowInstance,N
+/admin/policy,adoptRecordsIntoWorkflowVersion,admin.mutation|workflowAdmin.mutation,workflowInstance,N
+/admin/policy,migrateWorkflowInstances,admin.mutation|workflowAdmin.mutation,workflowInstance,N
+/admin/policy,setTenantSalesChannelStatus,admin.mutation,systemConfiguration,A
+/admin/policy,previewAuthorityChange,admin.preview,rolesPermissions,A
+/admin/policy,listMobileLocationScopeBindings,adminConfig,mobileLocation,N
+/admin/policy,readMobileLocationScopeBinding,adminConfig,mobileLocation,N
+/admin/policy,setMobileLocationScopeBinding,adminConfig,mobileLocation,N
+/admin/policy,removeMobileLocationScopeBinding,adminConfig,mobileLocation,N
+/admin/policy,listWarehouses,adminConfig|warehouseAdmin,warehouse,N
+/admin/policy,listWarehouseBins,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,createWarehouse,adminConfig|warehouseAdmin,warehouse,N
+/admin/policy,updateWarehouse,adminConfig|warehouseAdmin,warehouse,N
+/admin/policy,setWarehouseStatus,adminConfig|warehouseAdmin,warehouse,N
+/admin/policy,createBin,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,relabelBin,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,setBinStatus,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,listRackingWarehouses,adminConfig|warehouseAdmin,warehouse,N
+/admin/policy,listRackingBins,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,previewBinCreates,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,createBins,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,renameRackingBin,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,setRackingBinStatus,adminConfig|warehouseAdmin,warehouse,A
+/admin/policy,listTrucks,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,readTruck,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,listMobileLocations,adminConfig|truckRegistryAdmin,mobileLocation,N
+/admin/policy,createMobileLocation,adminConfig|truckRegistryAdmin,mobileLocation,N
+/admin/policy,createTruck,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,linkTruck,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,relinkTruck,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,unlinkTruck,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,changeTruckStatus,adminConfig|truckRegistryAdmin,truck,N
+/admin/policy,listAccountingDestinations,adminConfig,financeConfiguration,N
+/admin/policy,configureAccountingDestination,adminConfig,financeConfiguration,N
+/admin/policy,setAccountingDestinationStatus,adminConfig,financeConfiguration,N
+/admin/policy,listCounterpartyPaymentTerms,adminConfig,financeConfiguration,N
+/admin/policy,setCounterpartyPaymentTerms,adminConfig,financeConfiguration,N
+/admin/policy,listSystemConfiguration,adminConfig|systemConfiguration,systemConfiguration,N
+/admin/policy,setSystemConfigurationSetting,adminConfig|systemConfiguration,systemConfiguration,N
+/admin/policy,listSalesDiscountAuthorities,adminConfig|salesDiscount,salesDiscountAuthority,N
+/admin/policy,setSalesDiscountAuthority,adminConfig|salesDiscount,salesDiscountAuthority,N
+/admin/policy,readLoginAccount,loginAdmin,principal,A
+/admin/policy,provisionLoginAccount,loginAdmin,principal,A
+/admin/policy,reissueLoginEnrollment,loginAdmin,principal,A
+/admin/policy,retireLoginAccount,loginAdmin,principal,A
+/admin/policy,issueLoginReset,loginAdmin,principal,A
+/admin/policy,unlockLoginAccount,loginAdmin,principal,A
+/admin/policy,resetLoginMfa,loginAdmin,principal,A
+/admin/policy,setLoginAccountStatus,loginAdmin,principal,A
+/admin/policy,revokeLoginSessions,loginAdmin,principal,A
+/admin/policy,setLoginMfaRequirement,loginAdmin,principal,A
+/admin/policy,readAuthenticationEvents,loginAdmin,principal,A
+/admin/policy,planAuthenticationEventArchive,loginAdmin,principal,A
+/admin/policy,setAuthenticationEventRetention,loginAdmin,principal,A
+/admin/policy,readAuthVerifierDiagnostics,loginAdmin,"(platform, no Object)",N
+/public/self-scheduling,saveSelfSchedulingPolicy,selfScheduling,workOrder,A
+/public/self-scheduling,listSelfSchedulingPolicies,selfScheduling,workOrder,A
+/public/self-scheduling,issueSelfSchedulingLink,selfScheduling,workOrder,A
+/public/self-scheduling,revokeSelfSchedulingLink,selfScheduling,workOrder,A
+/public/self-scheduling,readSelfSchedulingSessions,selfScheduling,workOrder,A
