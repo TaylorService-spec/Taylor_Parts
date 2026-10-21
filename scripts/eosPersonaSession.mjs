@@ -8,8 +8,12 @@
 // file, no password, no ADC, and contacts no Google or Firebase endpoint. It never prints the credential or a
 // token.
 //
-// The target is the EOS API base URL: explicit (`baseUrl`), else EOS_API_BASE_URL, else the eosApi.baseUrl of
-// a NON-production environment in config/environments.json. Production is refused.
+// THE TARGET ALLOWLIST. The target is the EOS API base URL: explicit (`baseUrl`), else EOS_API_BASE_URL, else the
+// eosApi.baseUrl of a NON-production environment in config/environments.json. Whatever the source, it is accepted ONLY
+// if it EXACTLY equals (scheme + host + port, normalised) a nonproduction environment's registered eosApi.baseUrl; a
+// browser `origin` only if it equals that SAME environment's registered EOS application surface. There is no
+// production-URL denylist to go stale: anything not registered is refused. The check runs BEFORE any password, MFA code,
+// issuer credential or token is sent, and authentication requests never follow a redirect.
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -28,24 +32,103 @@ export class EosPersonaSessionError extends Error {
   }
 }
 
-/** Resolve the EOS API base URL, refusing any production-role environment. */
-export function eosApiBaseUrl({ baseUrl, environmentId = "platform-sandbox", env = process.env } = {}) {
-  if (baseUrl) return String(baseUrl).replace(/\/+$/, "");
-  if (env.EOS_API_BASE_URL) return String(env.EOS_API_BASE_URL).replace(/\/+$/, "");
-  const registry = JSON.parse(readFileSync(join(REPO_ROOT, "config", "environments.json"), "utf8"));
-  const entry = (registry.environments ?? []).find((e) => e.id === environmentId);
-  if (!entry) throw new EosPersonaSessionError("UNKNOWN_ENVIRONMENT", `no environment '${environmentId}'`);
-  if (entry.role === "production") throw new EosPersonaSessionError("PRODUCTION_REFUSED", `'${environmentId}' is role=production`);
-  const url = entry.eosApi?.baseUrl;
-  if (!url) throw new EosPersonaSessionError("NO_EOS_API", `'${environmentId}' declares no eosApi.baseUrl`);
-  return String(url).replace(/\/+$/, "");
+const REGISTRY_PATH = join(REPO_ROOT, "config", "environments.json");
+
+/** What may be echoed about a refused URL: scheme://host[:port] only -- never userinfo, path, query or an unparseable string. */
+function describeUrl(raw) {
+  try { const u = new URL(String(raw)); return `${u.protocol}//${u.host}`; } catch { return "<unparseable URL>"; }
+}
+
+/** Normalise to a bare origin (lower-case host, default port dropped). https only; no userinfo, path, query or fragment. */
+function normalizeOrigin(raw, what) {
+  let u;
+  try { u = new URL(String(raw)); } catch { throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} is not a URL: ${describeUrl(raw)}`); }
+  if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || u.pathname !== "/") {
+    throw new EosPersonaSessionError("INVALID_TARGET_URL", `${what} must be a bare https origin: ${describeUrl(raw)}`);
+  }
+  return u.origin;
+}
+
+/**
+ * THE one validator for BOTH the password+MFA login and the persona issuer. Returns { environmentId, base, origin }
+ * (`origin` null when no browser origin is needed and none was supplied). Throws EosPersonaSessionError, code + URL only.
+ */
+export function resolveEosTargetFrom(registry, { baseUrl, origin, environmentId, env = process.env, needOrigin = false } = {}) {
+  const envs = registry.environments ?? [];
+  const nonprod = envs.filter((e) => e.role !== "production");
+  const production = envs.filter((e) => e.role === "production");
+  const surfaceOrigins = (e) => (e.surfaces ?? []).filter((x) => x.eosApplication === true).map((x) => normalizeOrigin(x.url, "registered surface"));
+  const apiOwner = (o) => nonprod.find((e) => e.eosApi?.baseUrl && normalizeOrigin(e.eosApi.baseUrl, "registered eosApi") === o);
+  const originOwner = (o) => nonprod.find((e) => surfaceOrigins(e).includes(o));
+  // Only to give a known production URL the clearer PRODUCTION_REFUSED code; the allowlist alone is what refuses.
+  const isProduction = (o) => production.some((e) => (e.eosApi?.baseUrl && new URL(e.eosApi.baseUrl).origin === o)
+    || (e.surfaces ?? []).some((x) => new URL(x.url).origin === o));
+
+  let apiInput = baseUrl ?? env.EOS_API_BASE_URL;
+  if (!apiInput) {
+    const id = environmentId ?? "platform-sandbox";
+    const entry = envs.find((e) => e.id === id);
+    if (!entry) throw new EosPersonaSessionError("UNKNOWN_ENVIRONMENT", `no environment '${id}'`);
+    if (entry.role === "production") throw new EosPersonaSessionError("PRODUCTION_REFUSED", `'${id}' is role=production`);
+    if (!entry.eosApi?.baseUrl) throw new EosPersonaSessionError("NO_EOS_API", `'${id}' declares no eosApi.baseUrl`);
+    apiInput = entry.eosApi.baseUrl;
+  }
+  const base = normalizeOrigin(apiInput, "the EOS API base URL");
+  const owner = apiOwner(base);
+  if (!owner) {
+    throw new EosPersonaSessionError(isProduction(base) ? "PRODUCTION_REFUSED" : "API_NOT_REGISTERED",
+      `the EOS API ${base} is not a registered nonproduction EOS API`);
+  }
+  if (environmentId && owner.id !== environmentId) {
+    throw new EosPersonaSessionError("ENVIRONMENT_MISMATCH", `the EOS API ${base} belongs to '${owner.id}', not '${environmentId}'`);
+  }
+
+  let resolvedOrigin = null;
+  if (origin !== undefined && origin !== null) {
+    resolvedOrigin = normalizeOrigin(origin, "the browser origin");
+    const o = originOwner(resolvedOrigin);
+    if (!o) {
+      throw new EosPersonaSessionError(isProduction(resolvedOrigin) ? "PRODUCTION_REFUSED" : "ORIGIN_NOT_REGISTERED",
+        `the browser origin ${resolvedOrigin} is not a registered nonproduction EOS application surface`);
+    }
+    if (o.id !== owner.id) {
+      throw new EosPersonaSessionError("ENVIRONMENT_MISMATCH", `the browser origin ${resolvedOrigin} belongs to '${o.id}' but the EOS API ${base} belongs to '${owner.id}'`);
+    }
+  } else if (needOrigin) {
+    resolvedOrigin = surfaceOrigins(owner)[0] ?? null;
+    if (!resolvedOrigin) throw new EosPersonaSessionError("NO_APPLICATION_ORIGIN", `'${owner.id}' declares no EOS application surface; pass a registered origin`);
+  }
+  return Object.freeze({ environmentId: owner.id, base, origin: resolvedOrigin });
+}
+
+/** Validate against the committed registry (the ONLY registry production callers use). */
+export function resolveEosTarget(options = {}) {
+  return resolveEosTargetFrom(JSON.parse(readFileSync(REGISTRY_PATH, "utf8")), options);
+}
+
+/** Resolve the EOS API base URL; only a registered nonproduction EOS API is returned (see resolveEosTarget). */
+export function eosApiBaseUrl(options = {}) {
+  return resolveEosTarget(options).base;
+}
+
+/**
+ * POST to a validated target without following redirects: a client that follows a redirect would forward the
+ * secrets, so ANY redirect is refused (the Location is never followed or echoed).
+ * ponytail: same-origin redirects are refused too; no auth route redirects, so validate-then-follow is not built.
+ */
+async function postGuarded(fetchImpl, url, init) {
+  const res = await fetchImpl(url, { ...init, redirect: "manual" });
+  if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+    throw new EosPersonaSessionError("REDIRECT_REFUSED", `${describeUrl(url)} answered with a redirect; an authentication request must not leave the approved environment`);
+  }
+  return res;
 }
 
 const SESSION_CACHE = new Map();
 
 /**
  * Issue (or reuse, while more than 2 minutes remain) an EOS session for a persona.
- * Returns { token, expiresAt, personaKey, principalId }. Throws EosPersonaSessionError; never leaks secrets.
+ * Returns { proof: "issuer-api", token, expiresAt, personaKey, principalId }. Throws EosPersonaSessionError; never leaks secrets.
  */
 export async function issueEosPersonaSession(personaKey, options = {}) {
   const env = options.env ?? process.env;
@@ -54,13 +137,13 @@ export async function issueEosPersonaSession(personaKey, options = {}) {
     throw new EosPersonaSessionError("NO_ISSUER_CREDENTIAL",
       `${PERSONA_ISSUER_CREDENTIAL_ENV} is not set. It is supplied explicitly (CI secret or operator shell); it is never discovered.`);
   }
-  const base = eosApiBaseUrl({ ...options, env });
+  const { base } = resolveEosTarget({ ...options, env });
   const cacheKey = `${base}::${personaKey}`;
   const cached = SESSION_CACHE.get(cacheKey);
   if (cached && Date.parse(cached.expiresAt) - Date.now() > 2 * 60 * 1000) return cached;
 
   const fetchImpl = options.fetch ?? globalThis.fetch;
-  const res = await fetchImpl(`${base}${PERSONA_SESSION_ROUTE}`, {
+  const res = await postGuarded(fetchImpl, `${base}${PERSONA_SESSION_ROUTE}`, {
     method: "POST",
     headers: { "content-type": "application/json", [PERSONA_ISSUER_CREDENTIAL_HEADER]: credential },
     body: JSON.stringify({ personaKey }),
@@ -71,7 +154,7 @@ export async function issueEosPersonaSession(personaKey, options = {}) {
     // The code and status only -- never the request headers or a token.
     throw new EosPersonaSessionError(body?.code ?? "ISSUE_FAILED", `persona session for '${personaKey}' refused (HTTP ${res.status})`);
   }
-  const session = Object.freeze({ token: body.token, expiresAt: body.expiresAt, personaKey: body.personaKey, principalId: body.principalId });
+  const session = Object.freeze({ proof: "issuer-api", token: body.token, expiresAt: body.expiresAt, personaKey: body.personaKey, principalId: body.principalId });
   SESSION_CACHE.set(cacheKey, session);
   return session;
 }
@@ -79,9 +162,9 @@ export async function issueEosPersonaSession(personaKey, options = {}) {
 /** Call one EOS API route as a persona. Returns the parsed JSON body and status. */
 export async function callEosApiAsPersona(personaKey, route, payload, options = {}) {
   const session = await issueEosPersonaSession(personaKey, options);
-  const base = eosApiBaseUrl({ ...options, env: options.env ?? process.env });
+  const { base } = resolveEosTarget({ ...options, env: options.env ?? process.env });
   const fetchImpl = options.fetch ?? globalThis.fetch;
-  const res = await fetchImpl(`${base}${route}`, {
+  const res = await postGuarded(fetchImpl, `${base}${route}`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${session.token}`, ...(options.tenantId ? { "x-eos-tenant": options.tenantId } : {}) },
     body: JSON.stringify(payload),
@@ -123,7 +206,7 @@ export function totpCode(secretBase32, nowMs = Date.now()) {
 }
 
 /**
- * Sign an ENROLLED persona in with its password and authenticator. Returns { token, expiresAt, personaKey }.
+ * Sign an ENROLLED persona in with its password and authenticator. Returns { proof: "login-mfa", token, expiresAt, personaKey }.
  * Throws EosPersonaSessionError carrying a code only.
  */
 export async function loginEosPersona(personaKey, options = {}) {
@@ -132,6 +215,8 @@ export async function loginEosPersona(personaKey, options = {}) {
   if (typeof file !== "string" || file.length === 0) {
     throw new EosPersonaSessionError("NO_CREDENTIALS_FILE", `${PERSONA_CREDENTIALS_FILE_ENV} is not set. The enrollment tool's output file is named explicitly; it is never discovered.`);
   }
+  // The target is validated BEFORE the credentials file is even read, so a refused target never touches a secret.
+  const { base, origin } = resolveEosTarget({ ...options, env, needOrigin: true });
   let entry;
   try {
     entry = (JSON.parse(readFileSync(file, "utf8")).entries ?? []).find((e) => e.personaKey === personaKey && e.state === "enrolled");
@@ -139,16 +224,9 @@ export async function loginEosPersona(personaKey, options = {}) {
     throw new EosPersonaSessionError("CREDENTIAL_FILE_INVALID", "the credentials file could not be read as JSON");
   }
   if (!entry) throw new EosPersonaSessionError("PERSONA_NOT_ENROLLED", `no enrolled entry for '${personaKey}'`);
-  const base = eosApiBaseUrl({ ...options, env });
-  const origin = options.origin ?? (() => {
-    const registry = JSON.parse(readFileSync(join(REPO_ROOT, "config", "environments.json"), "utf8"));
-    const surface = (registry.environments.find((e) => e.id === (options.environmentId ?? "platform-sandbox"))?.surfaces ?? []).find((s) => s.eosApplication === true);
-    if (!surface) throw new EosPersonaSessionError("NO_APPLICATION_ORIGIN", "the environment declares no EOS application surface; pass `origin`");
-    return surface.url;
-  })();
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const post = async (path, body) => {
-    const res = await fetchImpl(`${base}${path}`, {
+    const res = await postGuarded(fetchImpl, `${base}${path}`, {
       method: "POST", headers: { "content-type": "application/json", origin, "x-eos-csrf": "1" }, body: JSON.stringify(body),
     });
     let json = null;
@@ -160,7 +238,7 @@ export async function loginEosPersona(personaKey, options = {}) {
   if (r.status === "MFA_REQUIRED") r = await post("/auth/login/mfa", { challenge: r.challenge, code: totpCode(entry.totpSecretBase32, options.nowMs ?? Date.now()) });
   const session = r.session;
   if (typeof session?.accessToken !== "string") throw new EosPersonaSessionError("LOGIN_FAILED", "no session was issued");
-  return Object.freeze({ token: session.accessToken, expiresAt: session.accessTokenExpiresAt, personaKey });
+  return Object.freeze({ proof: "login-mfa", token: session.accessToken, expiresAt: session.accessTokenExpiresAt, personaKey });
 }
 
 /** The sessionStorage key the client reads (field-ops-app-vite/src/auth/eosSession.js). */

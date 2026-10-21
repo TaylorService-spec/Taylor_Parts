@@ -24,7 +24,7 @@ const deployed = await import(pathToFileURL(join(SKILL, "deployedSession.mjs")).
 const issuerClient = await import(pathToFileURL(join(REPO, "scripts", "eosPersonaSession.mjs")).href);
 const probe = await import(pathToFileURL(join(APP, "scripts", "adminUsersResponsiveProbe.mjs")).href);
 
-const BASE = "https://eos-api.test";
+const BASE = "https://eos-api-nonprod.onrender.com"; // the registered nonprod EOS API (config/environments.json)
 const CREDENTIAL = "test-issuer-credential-not-a-secret";
 // A structurally valid, unsigned-looking compact token; the client never verifies it here.
 const TOKEN = "eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJ0ZXN0In0.c2ln";

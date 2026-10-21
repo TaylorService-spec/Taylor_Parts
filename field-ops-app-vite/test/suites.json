@@ -1306,6 +1306,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/eosPersonaTargetAllowlist.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/supplierReceivingAndRackingEos.test.mjs",
       "runner": "node --test"
     },
