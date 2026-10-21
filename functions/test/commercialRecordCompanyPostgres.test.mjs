@@ -126,7 +126,7 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
   const assign = (who, over = {}, caps = ASSIGN) => rc.assignRecordOperatingCompany(wdeps, actor(who, caps),
     { idempotencyKey: key(), family: "OPPORTUNITY", recordId: "set-me", operatingCompanyId: "taylor", reason: REASON, ...over });
   const keyOf = async (table, id) => (await q(`SELECT operating_company_key AS k FROM eos_commercial.${table} WHERE id = $1`, [id])).rows[0].k;
-  const audits = async (id) => (await q(`SELECT action, actor_uid, target_kind, target_id, before, after, reason FROM eos_policy.audit_events WHERE action = 'commercial.recordCompany.assign' AND target_id = $1`, [id])).rows;
+  const audits = async (id) => (await q(`SELECT action, actor_uid, target_kind, target_id, before, after, reason FROM eos_policy.audit_events WHERE action = 'recordCompany.assign' AND target_id = $1`, [id])).rows;
   const visible = (who, read, field, id) => read(rdeps, actor(who), { [field]: id }).then(() => true, (e) => (e.code === "RECORD_NOT_FOUND" ? false : Promise.reject(e)));
   const STATE_TABLES = ["eos_commercial.opportunities", "eos_commercial.sales_agreements", "eos_commercial.sales_orders", "eos_commercial.command_receipts",
     "eos_commercial.number_counters", "eos_commercial.ownership_handoffs", "eos_policy.audit_events"];
@@ -351,7 +351,7 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     assert.ok(losers.every((l) => ["OPERATING_COMPANY_ALREADY_SET", "CONCURRENT_MODIFICATION"].includes(l.err.code)), losers.map((l) => l.err.code).join());
     assert.equal(await keyOf("opportunities", o.opportunityId), winners[0].ok.operatingCompanyId === "taylor" ? "taylor-ops-t1" : "ventana-ops-t1");
     assert.equal((await audits(o.opportunityId)).length, 1, "one audit row, whatever the race");
-    assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts WHERE operation = 'commercial.recordCompany.assign' AND target_id = $1`, [o.opportunityId])).rows[0].n, 1);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts WHERE operation = 'recordCompany.assign' AND target_id = $1`, [o.opportunityId])).rows[0].n, 1);
   });
 
   // ════════════════════ THE SERVER-DECIDED OFFER ════════════════════

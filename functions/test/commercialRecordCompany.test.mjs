@@ -20,6 +20,7 @@ const offerModule = require("../lib/eosCommercial/recordCompanyOffer.js");
 const http = require("../lib/eosCommercial/commercialHttp.js");
 
 const KEY = "commercial.recordCompany.assign";
+const ACTION = "recordCompany.assign"; // the operation and the audit action: command_receipts.operation is exactly two segments
 const KEY_OF = { taylor: "taylor-ops", ventana: "ventana-ops" };
 const reach = () => authority.commercialCompanyReachOf({ unrestricted: false, protectedOwner: false, companyKeys: ["taylor-ops"], employeeIds: ["e-owner"], creatorId: "p-1" });
 const ACTOR = { tenantId: "t1", principalId: "p-1", capabilities: new Set([KEY]) };
@@ -187,7 +188,7 @@ test("7. APPLIED Opportunity: one UPDATE (company, version) and NOTHING ELSE rew
   const audits = w.log.filter((l) => /^INSERT INTO eos_policy\.audit_events/.test(l.s));
   assert.equal(audits.length, 1, "exactly one audit row");
   const [, tenant, action, actor, targetKind, targetId, before, after, reason] = audits[0].params;
-  assert.deepEqual([tenant, action, actor, targetKind, targetId], ["t1", KEY, "p-1", "opportunity", "opp-1"]);
+  assert.deepEqual([tenant, action, actor, targetKind, targetId], ["t1", ACTION, "p-1", "opportunity", "opp-1"]);
   assert.deepEqual(JSON.parse(before), { operatingCompanyId: null, operatingCompanyKey: null });
   assert.deepEqual(JSON.parse(after), { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", editVersion: 4 });
   assert.equal(reason, "Entered without a company by mistake; belongs to Taylor.");
@@ -290,12 +291,14 @@ test("STRUCTURE: ONE new capability, held globally, registered by NO grant; the 
 
 test("STRUCTURE: the command locks through the Q-1a store, never reads the record unscoped, never sets a company by overwrite, and records its reason", () => {
   const src = code("eosCommercial/commands/commercialRecordCompanyService.ts");
+  assert.match(ACTION, /^[a-z][A-Za-z]*\.[a-z][A-Za-z]*$/, "the operation must satisfy command_receipts.operation's CHECK (exactly two segments)");
+  assert.match(src, /runCommercialCommand\(deps, actor, "recordCompany\.assign"/);
   assert.match(src, /lockOpportunity\(db, tenantId, recordId, scope\)/);
   assert.match(src, /lockAgreement\(db, tenantId, recordId, scope\)/);
   assert.equal([...src.matchAll(/operating_company_key IS NULL/g)].length, 2, "every UPDATE requires the company to still be NULL");
   assert.doesNotMatch(src, /RETURNING id|cascade(?!d)/i, "no cascade onto a related record");
   assert.doesNotMatch(src, /operating_company_key = NULL/, "no clear");
-  assert.match(src, /action: "commercial\.recordCompany\.assign"[\s\S]*reason,/);
+  assert.match(src, /action: "recordCompany\.assign"[\s\S]*reason,/);
   assert.ok(src.indexOf("lockOpportunity(") < src.indexOf("operatingCompanyKeyFor(") && src.indexOf("operatingCompanyKeyFor(") < src.indexOf("OPERATING_COMPANY_ALREADY_SET"), "visibility, target, then still-company-less");
   assert.ok(src.indexOf("OPERATING_COMPANY_ALREADY_SET") < src.indexOf("LINEAGE_DISAGREEMENT"), "still-company-less, then lineage");
   assert.doesNotMatch(src, /sales_orders/, "an Order is NOT NULL and never applies");

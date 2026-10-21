@@ -44,7 +44,8 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
   const family = typeof input?.family === "string" && Object.prototype.hasOwnProperty.call(FAMILY_OF, input.family) ? FAMILY_OF[input.family] : undefined;
   // A key reused on a different record (or with an unknown family) is never a replay (IDEMPOTENCY_KEY_REUSED).
   const replayTarget = { family: family ?? ("opportunity" as const), id: family ? input?.recordId : undefined };
-  return runCommercialCommand(deps, actor, "commercial.recordCompany.assign", [COMMERCIAL_RECORD_COMPANY_ASSIGN_CAPABILITY], input?.idempotencyKey, async (db, _now, scope) => {
+  // The operation name is also the audit action; command_receipts.operation must be exactly two segments (a CHECK), so it is not the capability key.
+  return runCommercialCommand(deps, actor, "recordCompany.assign", [COMMERCIAL_RECORD_COMPANY_ASSIGN_CAPABILITY], input?.idempotencyKey, async (db, _now, scope) => {
     const extra = Object.keys(input).filter((k) => !ACCEPTED_FIELDS.has(k));
     if (extra.length > 0) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `this command does not accept: ${extra.sort().join(", ")}`);
     if (!family) return fail("FAMILY_INVALID", "INVALID_INPUT", "family is OPPORTUNITY or SALES_AGREEMENT");
@@ -118,7 +119,7 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
       result: { family: input.family, recordId, operatingCompanyId: companyId, editVersion },
       target: { family, id: recordId },
       audit: {
-        action: "commercial.recordCompany.assign", targetKind: family, targetId: recordId,
+        action: "recordCompany.assign", targetKind: family, targetId: recordId,
         before: { operatingCompanyId: null, operatingCompanyKey: null },
         after: { operatingCompanyId: companyId, operatingCompanyKey: key, editVersion },
         reason,
