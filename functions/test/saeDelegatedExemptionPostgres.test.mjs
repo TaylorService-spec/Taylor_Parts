@@ -104,7 +104,7 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     for (const r of rows) {
       assert.match(r.description, /ALL operating companies until company scope ships/, r.key);
       assert.match(r.description, /ONLY the second-person exemption/, r.key);
-      assert.match(r.description, /ONLY the governed protected Owner/, r.key);
+      assert.match(r.description, /ONLY by the governed protected Owner/, r.key);
     }
     assert.deepEqual([await grantRows(), await directRows()], [0, 0], "no Role and no Principal holds a key");
     assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.role_capability_decisions WHERE capability_key = ANY($1)`, [KEYS]), 0);
@@ -291,7 +291,14 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     // a SCOPED assignment of the carrying Role is not a delegated exemption (global grants only until PR-3)
     const scoped = await person("uid-sae2-scoped", [], { id: "e-sae2-scoped", name: "Sam Scoped" });
     const scopedAssign = await adminAs(owner.subject, "assignRole", { principalId: scoped.principalId, roleId: await roleIdOf("saeFinLead"), reason: "scoped staffing", scopeType: "operatingCompany", scopeValue: "taylor" });
-    assert.equal(scopedAssign.ok, true, JSON.stringify(scopedAssign).slice(0, 300));
+    // Administration itself refuses to create one (the Role carries nothing the runtime decides at that scope) ...
+    assert.deepEqual([scopedAssign.ok, scopedAssign.code], [false, "INVALID_INPUT"], JSON.stringify(scopedAssign).slice(0, 300));
+    assert.match(String(scopedAssign.message), /SCOPE_NOT_EVALUABLE_FOR_ROLE/);
+    // ... and if such a row were written around Administration, the proof still reads global assignments only
+    try {
+      await q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,access_version_at_grant,created_by,updated_by)
+               VALUES ('a-sae2-scoped',$1,$2,$3,'operatingCompany','taylor','active','fixture',0,'fixture','fixture')`, [TENANT, scoped.principalId, await roleIdOf("saeFinLead")]);
+    } catch { /* the database may refuse the row too: then it cannot exist at all */ }
     assert.equal(await sqlHas(scoped, "FINANCIALS"), false, "scoped: nothing");
     assert.deepEqual(await tsGrants(scoped), []);
     // RELINK: the Employee moves to another Principal -- the old Principal has no Employee (not exempt), the new one holds no grant (not exempt)
