@@ -43,3 +43,47 @@ Outside this lane: the exact Ventana grant list and dry run (lane VFX), and the 
 | CG-05 | Work eligibility actually held | CLOSED for count: 16 Employees hold field qualifications; the per-persona declared eligibility in the manifest is to be confirmed by the effective-access explanation |
 | CG-06 | Record counts by kind and company | CLOSED: Opportunities 30, Agreements 17, Sales Orders 13, Work Orders 77, Invoices 2, all Taylor; 3 Ventana receivables exist (intercompany, PROTECTED); nothing else for Ventana |
 | CG-07 | Stale scoped assignments | CLOSED: 21 scoped assignments, none stale |
+
+## Corrected UAT expectations (lane U01, 2026-10-21)
+
+| ID | What was wrong | Corrected expectation | Grant change |
+|---|---|---|---|
+| RO-01 | The manifest computed `serviceTechnician` ALLOW on three reorder rows from `reorder.request.read` alone (the Role holds it for the technician's own assigned work). The server also requires a REORDER_QUEUE Operational Scope for the queue (`reorderQueueReach.ts`: own REORDER_QUEUE scopes plus protected Administrator reach) and the technician holds only MOBILE:taylor-truck-01. | `api-probe` `/operations/inventory readReorderQueue` -> **DENY**; `analysis` `readMeasureAnalysis` -> **DENY**; `search` `searchEos` -> **DENY**. Own-assigned reads (`readMyAssignedReorders`) are not queue reads and are unchanged. The refusal is `OUTSIDE_OPERATIONAL_SCOPE` (FORBIDDEN), not `CAPABILITY_REQUIRED`. | none (the manifest reflects the CURRENT grants; PARTS-404 is a separate release and ships its own manifest) |
+
+The same rule is now applied to EVERY operation whose server authorization requires an Operational Scope, derived from the server code (`tools/uatScope.mjs`; the generator fails if a cited server gate moves or a new scope-gating file appears). A persona expects ALLOW only when it holds the capability **and** a reaching scope (and the Work Eligibility, where the server also asks for it); otherwise DENY with the server's own refusal code. A persona that does hold a reaching scope keeps ALLOW: the request's own warehouse or company is then decided per request (the row's `basis` lists the scopes held).
+
+| Operation | Reach the server applies | Refusal when absent |
+|---|---|---|
+| `/operations/inventory readReorderQueue` | REORDER_QUEUE scope (company-keyed) or protected Administrator reach | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/inventory reviewReorderRequest` | REORDER_QUEUE scope (company-keyed) or protected Administrator reach | REORDER_NOT_FOUND (NOT_FOUND) |
+| `/operations/inventory cancelReorderRequest` | REORDER_QUEUE scope (company-keyed) or protected Administrator reach | REORDER_NOT_FOUND (NOT_FOUND) |
+| `/operations/inventory assignReorderRequest` | REORDER_QUEUE scope (company-keyed) or protected Administrator reach | REORDER_NOT_FOUND (NOT_FOUND) |
+| `/operations/inventory voidReorderPurchaseOrder` | REORDER_QUEUE scope (company-keyed) or protected Administrator reach | OUTSIDE_VOID_REACH (FORBIDDEN) |
+| `/operations/inventory createReorderRequest` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/inventory createSupplierPurchaseOrder` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/inventory receiveSupplierPurchaseOrder` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/inventory correctSupplierPurchaseOrderReceipt` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/inventory allocateSalesOrderLine` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/rental receiveRentalReturn` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/serialized-asset acquireSerializedAsset` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/placement recordPutAway` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/relocation relocateStock` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/cycle-count createCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/cycle-count submitCycleCountLine` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/cycle-count reconcileCycleCountLine` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/cycle-count closeCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/cycle-count cancelCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/transfer createTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/transfer dispatchTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/transfer cancelTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/transfer receiveTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope (or, ONLY for a MOBILE (truck) destination, SERVICE_TECHNICIAN eligibility plus a current MOBILE scope over that truck) | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+
+| Read door | Family | Reach | Result when absent |
+|---|---|---|---|
+| search | reorderRequest | QUEUE | kind absent from results (not searched): requires the REORDER_QUEUE Operational Scope |
+| analysis | reorderRequest | QUEUE | measure refused: requires the REORDER_QUEUE Operational Scope over the company in view |
+| analysis | purchaseOrder | QUEUE | measure refused: requires the REORDER_QUEUE Operational Scope over the company in view |
+| analysis | receivingOrder | WAREHOUSE | measure refused: requires a WAREHOUSE Operational Scope |
+| analysis | inventoryTransaction | WAREHOUSE | measure refused: requires a WAREHOUSE Operational Scope |
+
+Not encoded as a refusal (`NOT_AN_OPERATION_GATE` in `tools/uatScope.mjs`): reads that filter by scope and return an empty list (on-hand, receipts, movements), MOBILE scope that applies only when stock is drawn from a truck (equipment install, parts consumption), and warehouse-scoped operations that have no probe row (`correctReorderReceipt`, `receiveReorderStock`, cost-evidence supply, intercompany relief). Work Eligibility is the value DECLARED in `functions/scripts/fixtures/personaAuthorityDimensions.v1.json` (the census holds no eligibility table, CG-05): confirm it with `explainEffectiveAccess` before treating a `WORK_ELIGIBILITY_MISSING` expectation as a defect.

@@ -2,6 +2,7 @@
 // Every number comes from the model; the proposals are hand-written classification text (no automatic grant, exposure, deletion or retirement is made by any of it).
 import { PROBES } from "./uatProbes.mjs";
 import { RECORD_KINDS } from "./uatRecords.mjs";
+import { SCOPE_GATES, READ_REACH } from "./uatScope.mjs";
 
 const esc = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
 const tbl = (head, rows) => `| ${head.join(" | ")} |\n|${head.map(() => "---").join("|")}|\n${rows.map((r) => `| ${r.map(esc).join(" | ")} |`).join("\n")}\n`;
@@ -36,7 +37,7 @@ export function denominators({ m, matrix, totals, expectedCounts, pure, roleLeve
   return s;
 }
 
-export function ownerDecisions({ m, expectedCounts, totals }) {
+export function ownerDecisions({ m, rows, expectedCounts, totals }) {
   const ownerVsAdmin = m.census.capabilities.filter((c) => m.maps.grantsByRole.get("admin").has(c.key) && !m.maps.grantsByRole.get("owner").has(c.key)).length;
   const d = [
     ["OQ-01", "Server capabilities stay authoritative; divergence is configuration-integrity remediation, no automatic grants or revokes", "Runtime expectations follow capabilities. The Administration grid expectation is the stored CRED value; each divergence is a register row, not a failure (`09-configuration-integrity-register.md`)", "closes the cred-tier UNDETERMINED rows"],
@@ -68,6 +69,26 @@ export function ownerDecisions({ m, expectedCounts, totals }) {
     ["CG-06", "Record counts by kind and company", "CLOSED: Opportunities 30, Agreements 17, Sales Orders 13, Work Orders 77, Invoices 2, all Taylor; 3 Ventana receivables exist (intercompany, PROTECTED); nothing else for Ventana"],
     ["CG-07", "Stale scoped assignments", "CLOSED: 21 scoped assignments, none stale"],
   ]);
+  s += scopeCorrections({ rows });
+  return s;
+}
+
+/** Corrected UAT expectations (not Owner decisions, not census gaps): the manifest said ALLOW from the capability alone where the server also requires an Operational Scope. */
+function scopeCorrections({ rows }) {
+  const tech = (tier, object, op) => rows.find((r) => r.persona === "serviceTechnician" && r.tier === tier && r.object === object && (!op || r.action.endsWith(op)));
+  const ro = [tech("api-probe", "reorderRequest", "readReorderQueue"), tech("analysis", "reorderRequest"), tech("search", "reorderRequest")];
+  let s = `\n## Corrected UAT expectations (lane U01, 2026-10-21)\n\n`;
+  s += tbl(["ID", "What was wrong", "Corrected expectation", "Grant change"], [
+    ["RO-01", "The manifest computed `serviceTechnician` ALLOW on three reorder rows from `reorder.request.read` alone (the Role holds it for the technician's own assigned work). The server also requires a REORDER_QUEUE Operational Scope for the queue (`reorderQueueReach.ts`: own REORDER_QUEUE scopes plus protected Administrator reach) and the technician holds only MOBILE:taylor-truck-01.",
+      ro.map((r) => `\`${r.tier}\` \`${r.action}\` -> **${r.expected}**`).join("; ") + ". Own-assigned reads (`readMyAssignedReorders`) are not queue reads and are unchanged. The refusal is `OUTSIDE_OPERATIONAL_SCOPE` (FORBIDDEN), not `CAPABILITY_REQUIRED`.",
+      "none (the manifest reflects the CURRENT grants; PARTS-404 is a separate release and ships its own manifest)"],
+  ]);
+  s += `\nThe same rule is now applied to EVERY operation whose server authorization requires an Operational Scope, derived from the server code (\`tools/uatScope.mjs\`; the generator fails if a cited server gate moves or a new scope-gating file appears). A persona expects ALLOW only when it holds the capability **and** a reaching scope (and the Work Eligibility, where the server also asks for it); otherwise DENY with the server's own refusal code. A persona that does hold a reaching scope keeps ALLOW: the request's own warehouse or company is then decided per request (the row's \`basis\` lists the scopes held).\n\n`;
+  s += tbl(["Operation", "Reach the server applies", "Refusal when absent"], SCOPE_GATES.map((g) => [`\`${g.route} ${g.op}\``,
+    g.reach === "QUEUE" ? "REORDER_QUEUE scope (company-keyed) or protected Administrator reach" : g.preds().map((x) => (x.k === "E" ? `${x.code} eligibility` : `${x.type} scope`)).join(" + ") + (g.alt ? ` (${g.altNote})` : ""),
+    `${g.refusal.code} (${g.refusal.category})`]));
+  s += "\n" + tbl(["Read door", "Family", "Reach", "Result when absent"], Object.entries(READ_REACH).flatMap(([door, fams]) => Object.entries(fams).map(([f, d]) => [door, f, d.reach, d.result])));
+  s += `\nNot encoded as a refusal (\`NOT_AN_OPERATION_GATE\` in \`tools/uatScope.mjs\`): reads that filter by scope and return an empty list (on-hand, receipts, movements), MOBILE scope that applies only when stock is drawn from a truck (equipment install, parts consumption), and warehouse-scoped operations that have no probe row (\`correctReorderReceipt\`, \`receiveReorderStock\`, cost-evidence supply, intercompany relief). Work Eligibility is the value DECLARED in \`functions/scripts/fixtures/personaAuthorityDimensions.v1.json\` (the census holds no eligibility table, CG-05): confirm it with \`explainEffectiveAccess\` before treating a \`WORK_ELIGIBILITY_MISSING\` expectation as a defect.\n`;
   return s;
 }
 
