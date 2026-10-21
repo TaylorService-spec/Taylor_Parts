@@ -442,7 +442,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 195 -> 199: performance.goal.create / .approve / .supersede / .retire (G-1 performance goal authoring (2026-10-20), 1764690000000), granted to the eight Firebase-holder Roles.
   // 199 -> 202: finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve (F-1b, 1764712000000), granted to NOBODY.
   // 202 -> 203: salesOrder.fulfill (S1c Sales Order allocation, 1764714000000), granted to admin, dispatcher and owner.
-  assert.equal(VOCABULARY.size, 203);
+  // 203 -> 210: the seven approval.selfApproval.exempt* keys (SAE Rule 2, 1764718000000), granted to nobody.
+  assert.equal(VOCABULARY.size, 210);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

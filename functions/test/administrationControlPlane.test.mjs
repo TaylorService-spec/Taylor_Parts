@@ -419,7 +419,8 @@ test("no Firebase and no Role-name authorization in the control-plane modules", 
     "grantCompanyAuthority", "revokeCompanyAuthority"]) {
     const start = commandsSource.indexOf(`export async function ${fn}(`);
     const body = commandsSource.slice(start, commandsSource.indexOf("\n}\n", start));
-    assert.match(body, /requireSecurityAdministrationCapability\(/, `${fn} is capability-gated`);
+    // SAE Rule 2: the four Role / Principal grant and revoke commands gate through requireGrantAuthority, which is the SAME capability gate for every key except the approval.selfApproval.exempt* family (the verified protected Owner).
+    assert.match(body, /requireSecurityAdministrationCapability\(|requireGrantAuthority\(/, `${fn} is capability-gated`);
     assert.doesNotMatch(body, /requireAdministrationAuthority\(/, `${fn} still checks a Role name`);
   }
 });
