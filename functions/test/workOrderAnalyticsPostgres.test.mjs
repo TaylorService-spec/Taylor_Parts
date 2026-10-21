@@ -250,7 +250,7 @@ test("Work Order operational aggregates", { skip: SKIP, concurrency: 1 }, async 
     await assert.rejects(analytics.readTechnicianExecutionStats(deps, unlinked, {}), refusal("EMPLOYEE_LINK_REQUIRED", "FORBIDDEN"));
     await assert.rejects(analytics.readTechnicianExecutionStats(deps, nobody, {}), refusal("CAPABILITY_MISSING", "FORBIDDEN"));
     await assert.rejects(analytics.readTechnicianExecutionStats(deps, nobody, { employeeId: "emp-a" }), refusal("CAPABILITY_MISSING", "FORBIDDEN"));
-    await assert.rejects(analytics.readTechnicianExecutionStats(deps, office, {}), refusal("EMPLOYEE_REQUIRED", "INVALID_INPUT"),
+    await assert.rejects(analytics.readTechnicianExecutionStats(deps, caller("prn-office-unlinked", baselineRead), {}), refusal("EMPLOYEE_REQUIRED", "INVALID_INPUT"),
       "an unlinked office caller must name the Employee");
     await assert.rejects(analytics.readTechnicianExecutionStats(deps, office, { technicianId: "tech-1" }), refusal("INPUT_FIELD_NOT_ACCEPTED", "INVALID_INPUT"));
     await assert.rejects(analytics.readTechnicianExecutionStats(deps, office, { employeeId: "a/b" }), refusal("EMPLOYEE_ID_INVALID", "INVALID_INPUT"));

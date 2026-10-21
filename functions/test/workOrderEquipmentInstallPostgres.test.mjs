@@ -79,6 +79,10 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
     await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
              VALUES ($1,$2,$3,$4,'taylor','OPERATOR_ASSERTED','active','fixture','install fixture')`, [`lnk-${pid}`, T, pid, eid]);
   }
+  // DWO-company: the parts planner (prn-admin) plans only within a company it works for, so it is a Taylor Employee.
+  await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number) VALUES ('emp-admin',$1,'ACTIVE','taylor','emp-admin')`, [T]);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+           VALUES ('lnk-prn-admin',$1,'prn-admin','emp-admin','taylor','OPERATOR_ASSERTED','active','fixture','install fixture')`, [T]);
   const part = (id, { control = "STANDARD", whole = false } = {}) => q(
     `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
        control_type, stocking_class, expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
