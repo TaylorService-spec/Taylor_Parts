@@ -9,6 +9,8 @@
 //                         REORDER_QUEUE Operational Scope (or the Administrator's reach). reorder.request.read ALONE is refused
 //                         (OUTSIDE_OPERATIONAL_SCOPE), which is why a Service Technician (holds it, has a MOBILE scope only) is refused.
 //                         The same decision NotificationControl already makes for the bell.
+//   myAssigned            readMyAssignedReorders -- reorder.request.read ONLY (the OWN reach: only records assigned to the caller's Employee).
+//                         NOT the queue surface: an assignee with no REORDER_QUEUE scope may read their own work.
 //   warehouseOptions      listReorderWarehouseOptions -- reorder.request.create.manual.
 //   manufacturers         listManufacturers -- inventory.catalog.read AND inventory.manufacturer.read (the page's own door is catalog.read).
 //   suppliers             listSuppliers -- supplier.record.read.
@@ -23,10 +25,13 @@ import {
   useSessionAccess,
 } from "./sessionAccess.js";
 
-/** Pure, for tests: the four answers for a session-access value. */
+/** Pure, for tests: the answers for a session-access value. */
 export function partsReadGates(access) {
   return Object.freeze({
     queue: sessionSurfaceDecision(access, SESSION_GATE_SURFACES.reorderQueue, true),
+    myAssigned: sessionDecision(access, SESSION_GATE_KEYS.reorderRead, true),
+    // true once the session answer has arrived (or EOS is not the source): a panel states an ABSENCE only then, so it never flashes before the answer.
+    settled: !access?.eosSource || access.settled === true,
     warehouseOptions: sessionDecision(access, SESSION_GATE_KEYS.reorderManual, true),
     manufacturers: sessionDecision(access, SESSION_GATE_KEYS.manufacturerRead, true),
     suppliers: sessionDecision(access, SESSION_GATE_KEYS.supplierRead, true),
@@ -39,4 +44,4 @@ export function usePartsReadGates() {
 
 /** What a panel says in place of a queue the person does not hold. A statement of absence, never "none" or "try again". */
 export const REORDER_QUEUE_NOT_AVAILABLE_COPY =
-  "Reorder request queues are shown to people with Reorder Queue access. Your account does not have it, so nothing was requested.";
+  "The shared Reorder request queues are shown to people with Reorder Queue access. Your account does not have it, so they were not requested.";

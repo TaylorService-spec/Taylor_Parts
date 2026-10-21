@@ -48,6 +48,8 @@ export const SESSION_GATE_KEYS = Object.freeze({
   // such a read for a principal who does not hold the capability takes a 403 on every load, so the read is not fired and the panel says so.
   // Parts Catalog / Part detail -> Manufacturer names (catalogHttp listManufacturers: inventory.catalog.read AND inventory.manufacturer.read).
   manufacturerRead: Object.freeze(["inventory.manufacturer.read"]),
+  // Parts Catalog -> the person's OWN assigned Reorders (readMyAssignedReorders: reorder.request.read ONLY, the OWN reach; no REORDER_QUEUE scope).
+  reorderRead: Object.freeze(["reorder.request.read"]),
   // Receiving -> supplier names (partsReads listSuppliers: supplier.record.read).
   supplierRead: Object.freeze(["supplier.record.read"]),
 });

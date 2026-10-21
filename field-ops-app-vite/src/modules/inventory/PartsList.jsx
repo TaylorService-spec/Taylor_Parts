@@ -461,11 +461,11 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
     // NO uid. The server scopes this to the caller's own Employee through the governed assignment;
     // the browser no longer states whose work it is asking for.
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
-    gates.queue
+    gates.myAssigned
   );
   const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useMyAssignedReorderRequests(
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
-    gates.queue
+    gates.myAssigned
   );
   const {
     data: allAssignedWork,
@@ -802,10 +802,13 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
           </LoadingEmptyState>
         </details>
 
-        {/* UAT RO-01: the four reorder-request disclosures below are fed by reads the server refuses to anyone without the
-            inventory.reorderQueue surface (reorder.request.read AND the REORDER_QUEUE scope). Those reads are not fired for such a
-            person, and "none" / "No requests" would be a claim about requests -- so this states the absence instead. */}
-        {!gates.queue && (
+        {/* UAT RO-01: the SHARED queue disclosures (Parts Manager Queue, Team Work, History) are fed by reads the server refuses to
+            anyone without the inventory.reorderQueue surface (reorder.request.read AND the REORDER_QUEUE scope). Those reads are not
+            fired for such a person, and "none" / "No requests" would be a claim about requests -- so this states the absence instead.
+            The person's OWN assigned work (Waiting, In Progress) is a different read -- readMyAssignedReorders requires
+            reorder.request.read ONLY (the OWN reach) -- so it is gated on that and shown to an assignee who has no queue scope.
+            The note waits for the session answer (`settled`) so it never flashes before the answer arrives. */}
+        {gates.settled && !gates.queue && (
           <p className="fo-muted ns-parts-rail__note" data-reorder-queue-unavailable="true">{REORDER_QUEUE_NOT_AVAILABLE_COPY}</p>
         )}
         {gates.queue && (<>
@@ -827,7 +830,9 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
             description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
           />
         </details>
+        </>)}
 
+        {gates.myAssigned && (<>
         <details className="ns-parts-rail__item" open={partsAssociateWaiting.length > 0}>
           <summary>
             Waiting <span className="ns-parts-rail__count">{railCount(partsAssociateWaiting.length)}</span>
@@ -868,7 +873,9 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
             />
           </LoadingEmptyState>
         </details>
+        </>)}
 
+        {gates.queue && (<>
         {/* Cross-user oversight. Stays CLOSED by default even when populated: every row in it is
             already represented by the two disclosures above for the viewer's own work, and the panel
             says so itself ("Your own assignments above are a subset of this list"). */}
