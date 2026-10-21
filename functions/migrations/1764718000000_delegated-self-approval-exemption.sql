@@ -5,7 +5,7 @@
 --   1. Registers SEVEN capabilities on ONE Object (selfApprovalExemption): approval.selfApproval.exemptFinancials / Purchasing / Sales / Inventory / Service / Goals and exemptAll.
 --      NO GRANTS. Nobody but the protected Owner is exempt until the Owner grants a key through Administration, and only the protected Owner can (the grant / revoke commands are gated on
 --      the verified protected Owner for this family; the Administrator is refused). A grant is GLOBAL (all operating companies) until company scope ships (a follow-up). A key confers ONLY the
---      second-person exemption within its scope (Owner ruling D3). The Object itself is seeded by the policy seed (capabilityGovernedObjects.json), like every Object a capability names.
+--      second-person exemption within its scope (Owner ruling D3). The Object itself is seeded by the policy seed (capabilityGovernedObjects.json) for NEW tenants, and inserted here (idempotently, one row per policy-seeded tenant that lacks it) for EXISTING ones, so no operator re-seed is needed.
 --   2. The SQL PROOF of a delegated exemption, three functions that NEVER return NULL (a NULL inside NOT / OR in a trigger would let a forged basis through; see the v3 fix of 1764716000000):
 --        eos_policy.eligible_employee_of(tenant, principal)                         the Principal's ONE active access-eligible Employee (enabled, active membership), else NULL
 --        eos_policy.has_delegated_self_approval_exemption(tenant, principal, scope) TRUE only when the Principal holds the scope's key or the all-workflows key through an ACTIVE, GLOBAL,
@@ -44,6 +44,17 @@ INSERT INTO capabilities (id, key, description, object_key, action_key, action_k
      'Delegated self-approval exemption for ALL business workflows (Financials, Purchasing, Sales, Inventory, Service, Goals): lets the holder approve a transaction they themselves requested. It implies nothing outside the "otherwise authorized" rule. A grant applies across ALL operating companies until company scope ships. It confers ONLY the second-person exemption within its scope (Owner ruling D3): no business authority (the holder still needs the request and approval capabilities of the workflow itself), no company or tenant reach, no self-targeting or identity-guard exception, no integrity or evidence exception, no administration or onward-delegation right. Granted and revoked ONLY by the governed protected Owner.',
      'selfApprovalExemption', 'exemptAll', 'BUSINESS_ACTION', 'Self-Approve: All Business Workflows')
 ON CONFLICT (key) DO NOTHING;
+
+-- The governed Object the family hangs on, for tenants that were policy-seeded BEFORE this migration (a tenant seeded afterwards gets it from the policy seed; the grant commands
+-- require the Object to exist in the tenant). Idempotent: only tenants that already have Objects, and only where the Object is absent. Same values as the seed (capabilityGovernedObjects.json).
+-- It carries no verb, no permission and no grant. Deterministic id (no extension needed). The Down removes ONLY the rows this migration wrote (created_by marker).
+INSERT INTO objects (id, tenant_id, key, label, label_plural, description, origin, lifecycle, supports_delete, created_by, updated_by)
+SELECT 'obj_' || substr(md5(t.id || ':selfApprovalExemption'), 1, 24), t.id, 'selfApprovalExemption', 'Self-Approval Exemption', 'Self-Approval Exemptions',
+       'A delegated exemption from the second-person approval requirement, one key per workflow scope (Financials, Purchasing, Sales, Inventory, Service, Goals) plus an all-business-workflows key (SAE Rule 2, DECISIONS #SAE-2). A grant lets its holder approve a transaction they themselves requested, within that scope ONLY: it confers no business authority, no company, no self-targeting or identity-guard exception and no administration right. Granted and revoked ONLY by the governed protected Owner. A grant applies across ALL operating companies until company scope ships. A security subject with no field and no CRED verb.',
+       'SYSTEM'::definition_origin, 'ACTIVE'::definition_lifecycle, FALSE, 'migration:1764718000000', 'migration:1764718000000'
+  FROM tenants t
+ WHERE EXISTS (SELECT 1 FROM objects x WHERE x.tenant_id = t.id)
+   AND NOT EXISTS (SELECT 1 FROM objects x WHERE x.tenant_id = t.id AND x.key = 'selfApprovalExemption');
 
 -- ════════════════════ 2. the SQL proof of a delegated exemption ════════════════════
 
@@ -235,6 +246,9 @@ BEGIN
     IF v_n > 0 THEN RAISE EXCEPTION 'SAE2_DELEGATED_EXEMPTION: refuses to reverse -- % Administration decision(s) name an exemption key', v_n; END IF;
 END
 $$;
+
+-- The Object rows this migration wrote (never a seeded one: the marker is the migration's). Nothing references them once the guards above pass (no grant, no decision names a key).
+DELETE FROM eos_policy.objects WHERE key = 'selfApprovalExemption' AND created_by = 'migration:1764718000000';
 
 -- Back to 1764716000000's definitions (identical).
 CREATE OR REPLACE FUNCTION assert_financial_policy_decider_independent() RETURNS trigger AS $$
