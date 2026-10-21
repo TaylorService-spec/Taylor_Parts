@@ -154,7 +154,10 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
       await q(`UPDATE eos_policy.tenant_operating_companies SET status='ACTIVE' WHERE tenant_id='t1' AND operating_company_id='taylor'`);
     }
     const { lockOpportunity } = require("../lib/eosCommercial/commands/commercialRecordStore.js");
-    const row = await lockOpportunity(pool, "t1", id);
+    // Q-1a: a lock takes the command's scope; this suite is not about company authority, so the scope carries the tenant-wide reach.
+    const allCompanies = await ALL_COMPANIES();
+    const scope = { companyFilter: (alias, n) => ({ sql: allCompanies.sql(alias, n), params: allCompanies.sqlParams() }) };
+    const row = await lockOpportunity(pool, "t1", id, scope);
     assert.equal(row.operatingCompanyId, "taylor", "the read maps the stored key back to the governed company");
   });
 

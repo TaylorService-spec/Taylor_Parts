@@ -13,7 +13,7 @@
 //              record is visible ONLY to its owner (the caller's linked Employee) or creator (created_by = the caller's Principal), the protected
 //              Administrator and the protected Owner; everyone else sees it as nonexistent. Setting a company brings it under the rule above.
 //   ADMINISTRATOR the protected Administrator's Commercial reach is UNCHANGED: before this lane Commercial was tenant-wide for a global capability holder and
-//              the protected Administrator (standing decided by administrationReach.principalHasProtectedAdministratorStanding) is exactly that, so it is
+//              the protected Administrator (standing decided by the protected-administrator standing rule, principalHasProtectedAdministratorStanding) is exactly that, so it is
 //              UNRESTRICTED here -- every company, a company-less record, and a record of a since-deactivated company. Proved by a before/after test.
 //   NATIONAL ACCOUNTS are a sales CHANNEL, never a company: channel narrowing stays inside company authority and no channel crosses a company.
 //

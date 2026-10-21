@@ -261,9 +261,8 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
   await t.test("(f) CREATING a record in a company the caller does not reach reads exactly like a company this tenant does not govern", async () => {
     const snapshot = await trace();
     const foreign = await refusal(() => oppIn(actor(tay), { operatingCompanyId: "ventana" }));
-    const ungoverned = await refusal(() => oppIn(actor(tay), { operatingCompanyId: "nowhere" }));
-    assert.deepEqual([foreign.code, foreign.category], ["OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED"]);
-    assert.deepEqual([foreign.code, foreign.category], [ungoverned.code, ungoverned.category]);
+    // The words are the ones operatingCompanyKeyFor uses for a company this tenant does not govern (commercialRecordStore.ts): nothing reveals that Ventana exists.
+    assert.deepEqual(words(foreign), ["OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "operating company 'ventana' is not governed in this tenant"]);
     assert.equal((await refusal(() => orderIn(actor(tay), { operatingCompanyId: "ventana" }))).code, "OPERATING_COMPANY_NOT_GOVERNED");
     assert.equal(await trace(), snapshot, "nothing was booked, numbered or audited");
     // Reach through an explicit grant books to the second company; the Administrator books to either.
@@ -361,7 +360,7 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
     const outcome = async (deps, id, n) => opp.updateOpportunity({ ...deps, catalog }, A, { idempotencyKey: key(), opportunityId: id, expectedEditVersion: n, need: `by admin ${n}` })
       .then((r) => ({ ok: true, keys: Object.keys(r).sort().join(","), version: r.editVersion }), (e) => ({ ok: false, code: e.code }));
     const ids = [oT.opportunityId, oV.opportunityId, oN.opportunityId, legacy.opportunityId];
-    const versionOf = async (id) => (await q(`SELECT edit_version FROM eos_commercial.opportunities WHERE id = $1`, [id])).rows[0].edit_version;
+    const versionOf = async (id) => Number((await q(`SELECT edit_version FROM eos_commercial.opportunities WHERE id = $1`, [id])).rows[0].edit_version);
     const beforeOut = []; const afterOut = [];
     for (const id of ids) {
       const v1 = await versionOf(id);
@@ -370,7 +369,7 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
       afterOut.push({ ...(await outcome({ pool }, id, v2)), version: undefined });
     }
     assert.deepEqual(afterOut, beforeOut, "the Administrator's write reach is identical");
-    assert.ok(afterOut.every((o) => o.ok === true), "and every one was applied");
+    assert.ok(afterOut.every((o) => o.ok === true), `and every one was applied: ${JSON.stringify([beforeOut, afterOut])}`);
     const refusalOf = async (deps) => (await refusal(() => opp.transitionOpportunity({ ...deps, catalog }, A, { idempotencyKey: key(), opportunityId: "opp-missing", toStage: "QUALIFYING" }))).code;
     assert.equal(await refusalOf({ pool }), await refusalOf({ pool, companyReach: ALL_COMPANIES }));
     // A non-protected admin-role holder has no standing: it is an ordinary caller (no company, no claim).
