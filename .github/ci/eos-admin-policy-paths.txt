@@ -858,6 +858,7 @@ functions/test/support/removalMatrix.mjs
 functions/test/fixtures/removalMatrix.pinned.json
 # PR 4: the grant-impact PREVIEW step every Administration authority change takes before Confirm.
 field-ops-app-vite/src/modules/administration/AuthorityImpactPreview.jsx
+field-ops-app-vite/src/modules/administration/exemptionFamily.js
 field-ops-app-vite/src/modules/administration/ObjectAuthorityMatrix.jsx
 field-ops-app-vite/test/authorityImpactPreview.test.jsx
 field-ops-app-vite/test/support/authorityPreviewKit.js
