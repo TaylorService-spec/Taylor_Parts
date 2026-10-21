@@ -966,4 +966,68 @@ test("Performance goal authoring on PostgreSQL: lifecycle, versioning, the self 
     const after2 = await counts();
     assert.deepEqual([after2.g, after2.c, after2.a], [guardState.g + 2, guardState.c, guardState.a], "only the two seeded fixture rows; the refusals wrote no command record and no audit row");
   });
+
+  // ════════════════════ SAE Rule 2: the DELEGATED exemption (DECISIONS #SAE-2; Owner ruling D3) ════════════════════
+  await t.test("SAE-2: a GOALS-exempt grantee (direct grant) approves a goal they authored, only within scope; a wrong-scope, expired, revoked or absent grant keeps SELF_APPROVAL_FORBIDDEN; the grant adds no capability and no self-targeting exception (D2, D3)", async () => {
+    const make = async (subject, emp) => {
+      const p = await principal(subject);
+      await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1,'t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`, [emp]);
+      await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+               VALUES ($1,'t1',$2,$3,'taylor','OPERATOR_ASSERTED','f','test','active')`, [`l-${emp}`, p, emp]);
+      await assign(`a-sm-${emp}`, p, "salesManager");
+      return p;
+    };
+    const grant = (p, key, expires = null) => q(
+      `INSERT INTO eos_policy.principal_capabilities (id,tenant_id,principal_id,capability_id,granted_by,created_by,updated_by,exception_reason,expires_at)
+       SELECT 'pc-' || $2 || '-' || c.id, 't1', $2, c.id, 'f', 'f', 'f', 'SAE-2 test', $3 FROM eos_policy.capabilities c WHERE c.key = $1`, [key, p, expires]);
+    const revoke = (p, key) => q(`DELETE FROM eos_policy.principal_capabilities WHERE principal_id = $1 AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = $2)`, [p, key]);
+    const author = async (p, from) => (await create(p, W, EMP("e-rep", { effectiveFrom: from, effectiveTo: `${from.slice(0, 4)}-12-31` }))).goalId;
+
+    const p = await make("uid-sae2-goals", "e-sae2-goals");
+    // NO grant: refused, zero trace
+    const g0 = await author(p, "2081-01-01");
+    let mark = await counts();
+    assert.equal((await refusal(() => approve(p, W, g0))).code, "SELF_APPROVAL_FORBIDDEN");
+    assert.deepEqual(await counts(), mark, "no grant: no trace");
+    // a PURCHASING-only grant does not reach a GOALS site
+    await grant(p, "approval.selfApproval.exemptPurchasing");
+    assert.equal((await refusal(() => approve(p, W, g0))).code, "SELF_APPROVAL_FORBIDDEN", "wrong scope");
+    assert.deepEqual(await counts(), mark, "wrong scope: no trace");
+    // the GOALS key: approved, basis + scope + provenance on the result, the audit row and the stored answer
+    await grant(p, "approval.selfApproval.exemptGoals");
+    const before = await counts();
+    const out = await approve(p, W, g0);
+    assert.deepEqual([out.outcome, out.status, out.approvalBasis, out.approvalScope], ["applied", "APPROVED", "DELEGATED_EXEMPTION", "GOALS"]);
+    assert.match(out.approvalGrantSource, /^direct:/);
+    const audit = (await q(`SELECT after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'approvePerformanceGoal'`, [g0])).rows[0].after;
+    assert.deepEqual([audit.approvalBasis, audit.approvalScope, audit.author, audit.approver], ["DELEGATED_EXEMPTION", "GOALS", p, p]);
+    assert.match(audit.approvalGrantSource, /^direct:/);
+    const after = await counts();
+    assert.deepEqual([after.g, after.c, after.a], [before.g, before.c + 1, before.a + 1], "one command record and ONE audit row");
+    // the exemption adds no authority: without the approve capability the grantee is refused first
+    const g1 = await author(p, "2082-01-01");
+    assert.equal((await refusal(() => approve(p, [CREATE, SUPERSEDE, RETIRE], g1))).code, "CAPABILITY_REQUIRED");
+    // D2 / D3: no self-targeting exception -- authoring, approving or retiring a target on their OWN Employee stays refused
+    mark = await counts();
+    assert.equal((await refusal(() => create(p, W, EMP("e-sae2-goals", { effectiveFrom: "2083-01-01" })))).code, "SELF_TARGETING_FORBIDDEN");
+    const ownTarget = await seed({ metric: "technician.workOrder.open.count", scope: "EMPLOYEE", scopeId: "e-sae2-goals", unit: "COUNT", from: "2084-01-01", author: p });
+    assert.equal((await refusal(() => approve(p, W, ownTarget))).code, "SELF_TARGETING_FORBIDDEN", "a delegated grantee cannot approve a target on their own Employee");
+    // an EXPIRED grant and a REVOKED grant confer nothing: the very next call keeps the second person
+    await revoke(p, "approval.selfApproval.exemptGoals");
+    const g2 = await author(p, "2085-01-01");
+    assert.equal((await refusal(() => approve(p, W, g2))).code, "SELF_APPROVAL_FORBIDDEN", "revoked: immediate");
+    await grant(p, "approval.selfApproval.exemptAll", new Date(Date.now() - 60_000).toISOString());
+    assert.equal((await refusal(() => approve(p, W, g2))).code, "SELF_APPROVAL_FORBIDDEN", "expired");
+    await revoke(p, "approval.selfApproval.exemptAll");
+    // the all-workflows key covers GOALS
+    await grant(p, "approval.selfApproval.exemptAll");
+    assert.equal((await approve(p, W, g2)).approvalBasis, "DELEGATED_EXEMPTION");
+    // a grantee with no active Employee link is not exempt
+    const q2 = await make("uid-sae2-nolink", "e-sae2-nolink");
+    await grant(q2, "approval.selfApproval.exemptGoals");
+    const g3 = await author(q2, "2086-01-01");
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE principal_id = $1`, [q2]);
+    assert.ok(["SELF_APPROVAL_FORBIDDEN", "COMPANY_AUTHORITY_REQUIRED"].includes((await refusal(() => approve(q2, W, g3))).code), "no Employee link: not exempt");
+    assert.equal((await row(g3)).status, "DRAFT");
+  });
 });

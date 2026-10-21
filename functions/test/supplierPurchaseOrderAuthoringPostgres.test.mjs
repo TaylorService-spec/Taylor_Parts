@@ -633,4 +633,57 @@ test("Supplier purchase order authoring on PostgreSQL: raise, approve, send, rec
     const poB = await raise(buyer, "e-b");
     assert.equal((await refusal(() => transition(poB, "APPROVE", {}, actor(BUYER_CAPS, buyer)))).code, "SELF_APPROVAL_FORBIDDEN");
   });
+
+  // ════════════════════════════ SAE Rule 2: the DELEGATED exemption (DECISIONS #SAE-2; Owner ruling D3) ════════════════════════════
+  await t.test("SAE-2: a PURCHASING-exempt grantee (direct grant) approves a purchase order they raised, only within scope; wrong-scope, expired, revoked and absent grants keep SELF_APPROVAL_FORBIDDEN; the grant adds no capability", async () => {
+    const BUYER_CAPS = [CREATE, SEND, READ, APPROVE, CANCEL];
+    const make = async (subject, emp) => {
+      const p = await principal(subject);
+      await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at) VALUES ($1,'t1','ACTIVE','taylor','2020-01-01T00:00:00Z')`, [emp]);
+      await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+               VALUES ($1,'t1',$2,$3,'taylor','OPERATOR_ASSERTED','f','test','active')`, [`epl-${emp}`, p, emp]);
+      await q(`INSERT INTO eos_workforce.employee_operational_scopes (id, tenant_id, employee_id, scope_type, scope_id, effective_from, assigned_by)
+               VALUES ($1,'t1',$2,'WAREHOUSE','wh-1', now(),'fixture')`, [`os-${emp}`, emp]);
+      return p;
+    };
+    const grant = (p, key, expires = null) => q(
+      `INSERT INTO eos_policy.principal_capabilities (id,tenant_id,principal_id,capability_id,granted_by,created_by,updated_by,exception_reason,expires_at)
+       SELECT 'pc-' || $2 || '-' || c.id, 't1', $2, c.id, 'f', 'f', 'f', 'SAE-2 test', $3 FROM eos_policy.capabilities c WHERE c.key = $1`, [key, p, expires]);
+    const revoke = (p, key) => q(`DELETE FROM eos_policy.principal_capabilities WHERE principal_id = $1 AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = $2)`, [p, key]);
+    const raise = async (who, emp) => (await create([{ reorderRequestId: await request({ assignee: emp }) }], {}, actor(BUYER_CAPS, who))).purchaseOrderId;
+    const approveAs = (po, who, caps = BUYER_CAPS) => transition(po, "APPROVE", {}, actor(caps, who));
+
+    const p = await make("uid-sae2-purch", "e-sae2-purch");
+    const po0 = await raise(p, "e-sae2-purch");
+    // no grant, and a grant for a DIFFERENT scope: refused, nothing written
+    assert.equal((await refusal(() => approveAs(po0, p))).code, "SELF_APPROVAL_FORBIDDEN");
+    await grant(p, "approval.selfApproval.exemptFinancials");
+    assert.equal((await refusal(() => approveAs(po0, p))).code, "SELF_APPROVAL_FORBIDDEN", "a Financials grant does not reach a Purchasing site");
+    assert.equal((await poOf(po0)).status, "DRAFT");
+    // the PURCHASING key: approved, with basis + scope + provenance on the result, the audit row and the row's request / decision facts
+    await grant(p, "approval.selfApproval.exemptPurchasing");
+    const out = await approveAs(po0, p);
+    assert.deepEqual([out.outcome, out.status, out.approvalBasis, out.approvalScope], ["applied", "APPROVED", "DELEGATED_EXEMPTION", "PURCHASING"]);
+    assert.match(out.approvalGrantSource, /^direct:/);
+    const row = await poOf(po0);
+    assert.deepEqual([row.status, row.created_by, row.approved_by], ["APPROVED", p, p]);
+    const audit = await one(`SELECT actor_uid, after FROM eos_policy.audit_events WHERE target_id = $1 AND action = 'supplier.purchaseOrder.approve'`, [po0]);
+    assert.deepEqual([audit.actor_uid, audit.after.approvalBasis, audit.after.approvalScope], [p, "DELEGATED_EXEMPTION", "PURCHASING"]);
+    assert.match(audit.after.approvalGrantSource, /^direct:/);
+    // the exemption adds no authority: no approve capability, no approval
+    const po1 = await raise(p, "e-sae2-purch");
+    assert.equal((await refusal(() => approveAs(po1, p, [CREATE, SEND, READ]))).code, "CAPABILITY_REQUIRED");
+    // revoked: the very next call keeps the second person; expired likewise; the all-workflows key covers Purchasing
+    await revoke(p, "approval.selfApproval.exemptPurchasing");
+    assert.equal((await refusal(() => approveAs(po1, p))).code, "SELF_APPROVAL_FORBIDDEN", "revoked: immediate");
+    await grant(p, "approval.selfApproval.exemptAll", new Date(Date.now() - 60_000).toISOString());
+    assert.equal((await refusal(() => approveAs(po1, p))).code, "SELF_APPROVAL_FORBIDDEN", "expired");
+    await revoke(p, "approval.selfApproval.exemptAll");
+    await grant(p, "approval.selfApproval.exemptAll");
+    assert.equal((await approveAs(po1, p)).approvalBasis, "DELEGATED_EXEMPTION");
+    assert.equal((await poOf(po1)).status, "APPROVED");
+    // the ordinary buyer is unchanged
+    const poB = await raise(buyer, "e-b");
+    assert.equal((await refusal(() => approveAs(poB, buyer))).code, "SELF_APPROVAL_FORBIDDEN");
+  });
 });

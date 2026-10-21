@@ -267,7 +267,8 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 114 -> 115: 1764714000000 -- S1c Sales Order allocation (2026-10-20): salesOrder.fulfill registered (a BUSINESS_ACTION, not a READ key) and 3 Firebase-parity grants; no schema. Not a read-enforcement change.
   // 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam and database-level people rules; no capability, no grant; not a read-enforcement change.
   // 116 -> 117: 1764717000000 -- S1c holders (Owner ruling 2026-10-20): 4 grants of salesOrder.fulfill; no capability, no schema. Not a read-enforcement change.
-  assert.equal(migrations.length, 117, "a migration was added or removed by the read enforcement");
+  // 117 -> 118: 1764718000000 -- SAE Rule 2 delegated self-approval exemption (2026-10-20): seven BUSINESS_ACTION capabilities (not READ keys), no grants; not a read-enforcement change.
+  assert.equal(migrations.length, 118, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

@@ -30,9 +30,11 @@ const ENGINE = "src/eosOps/authorityChangePreview.ts";
 
 const PINNED_CLOSURE = [
   "src/access/compatibilityRoles.ts", "src/access/governedBusinessRoles.ts", "src/access/permissionCatalog.ts",
+  // DECISIONS #SAE-2: the Owner-only gate of the self-approval exemption family (SAE Rule 2) and the pure rule it shares with the approval seam (no I/O, an immutable symbol brand).
+  "src/access/secondaryApprovalExemptionCore.ts",
   "src/adminPolicy/administrationAuthority.ts", "src/adminPolicy/administrationCapabilityGate.ts",
   "src/adminPolicy/administrationSurfaceAuthority.ts", "src/adminPolicy/assignmentScope.ts", "src/adminPolicy/assignmentScopeRuntime.ts",
-  "src/adminPolicy/authorityChangePreviewPort.ts", "src/adminPolicy/effectiveObjectAccess.ts", "src/adminPolicy/employmentAccessEligibility.ts",
+  "src/adminPolicy/authorityChangePreviewPort.ts", "src/adminPolicy/effectiveObjectAccess.ts", "src/adminPolicy/employmentAccessEligibility.ts", "src/adminPolicy/exemptionAdministration.ts",
   "src/adminPolicy/objectSecurityAuthority.ts", "src/adminPolicy/policyCommands.ts", "src/adminPolicy/policyDatabase.ts",
   "src/adminPolicy/policyRepository.ts", "src/adminPolicy/postgresPolicyRepository.ts", "src/adminPolicy/principalContext.ts",
   "src/adminPolicy/protectedAdministrator.ts", "src/adminPolicy/roleCapabilityAdministration.ts", "src/adminPolicy/types.ts",
