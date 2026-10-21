@@ -25,6 +25,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import Modal from "../../shared/ui/Modal.jsx";
 import { Field, FormActions, FormStatus } from "../../shared/ui/form/index.js";
 import { AUTHORITY_CHANGE_INPUT, isAuthorityChangeOperation, refusalText } from "../../services/adminControlPlaneClient.js";
+import { EXEMPTION_OWNER_ONLY_NOTE, isExemptionFamilyObject } from "./exemptionFamily.js";
 
 /** The commit refusal that means "the authority moved since the preview": the code rides in the message. */
 export const isStalePreview = (result) => Boolean(result && result.ok === false && typeof result.message === "string"
@@ -112,7 +113,8 @@ export function useAuthorityImpactPreview(api, operation, args) {
   };
 
   // previewDigest is SENT only when the server requires it: not mandatory means the unchanged commit path, no digest.
-  return { ...current, stale, mandatory, requiredByServer, unavailable, run,
+  // ownerOnlyExemption is presentation only (SAE Rule 2): the change names the self-approval exemption Object, which the SERVER gates on the protected Owner.
+  return { ...current, stale, mandatory, requiredByServer, unavailable, run, ownerOnlyExemption: key !== null && isExemptionFamilyObject(args?.objectKey),
     previewDigest: mandatory ? digest : null, canConfirm, settle };
 }
 
@@ -229,6 +231,7 @@ export function AuthorityImpactPreview({ preview, disabled = false }) {
           PREVIEW_REQUIRED: this server requires an impact preview before the change is saved, and nothing was saved. Preview the impact, then confirm.
         </p>
       ) : null}
+      {preview.ownerOnlyExemption ? <p className="fo-muted" data-exemption-owner-only>{EXEMPTION_OWNER_ONLY_NOTE}</p> : null}
       {status === "idle" ? (
         <p className="fo-muted">Preview the impact first: Confirm is enabled only after the server shows what this change does.</p>
       ) : null}
@@ -236,7 +239,9 @@ export function AuthorityImpactPreview({ preview, disabled = false }) {
       {status === "failed" ? (
         <p className="fo-warning" role="alert" data-preview-failure={preview.error?.code ?? "INTERNAL"}
           data-preview-unavailable={preview.canConfirm ? "confirmable" : "blocked"}>
-          {preview.canConfirm
+          {preview.error?.code === "FORBIDDEN"
+            ? `You are not authorized to make this change, so nothing was saved and it cannot be confirmed here. (${refusalText(preview.error)})`
+            : preview.canConfirm
             ? `Impact preview unavailable: the impact of this change cannot be shown. You can still confirm; the server decides. (${refusalText(preview.error) ?? "INTERNAL"})`
             : `The impact preview is unavailable, so this change cannot be confirmed here. (${refusalText(preview.error) ?? "INTERNAL"})`}
         </p>

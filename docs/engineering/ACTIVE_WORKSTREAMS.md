@@ -38,6 +38,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none — no capability, grant, migration, Rules, deploy, Firebase, production or external-payment change; touches no adminPolicy, secondaryApproval or Commercial file
 - Lifecycle stage:     INTEGRATION (PR open; not merged)
 
+- Capability:          Lane FU-3 (2026-10-21) — PR B: the delegated self-approval exemption in Administration (Owner review of #2193, mandatory items): the exemption Object says "only the protected Owner" before any change to it, a FORBIDDEN preview reads "not authorized" (not "preview unavailable"), and the preview naming the affected Employee and the effective-access view showing the source Role / Direct Exception are proved by test. PR A (#2197): `reorderConsumersDeniedVsAbsent` registered in required CI.
+- Agent/session:       Claude Code Lane FU-3 · Role: builder; controller merges
+- Branch / worktree:   `fu3-exemption-access-view` (PR A: `fu3-ci-reorder-consumers-denied-vs-absent`) · `.claude/worktrees/agent-a00a10148bbb9d557`
+- Base commit:         `1732a445`
+- Owned paths:         `modules/administration/{AuthorityImpactPreview.jsx,exemptionFamily.js}` · `test/authorityImpactPreview.test.jsx` · the ADMIN-3b subtest of `functions/test/saeDelegatedExemptionPostgres.test.mjs` · `.github/workflows/reorder-domain-client-tests.yml` (PR A) · `docs/training/administration-policy-and-access.md` (section 13)
+- Shared paths req'd:  this registry · `.github/ci/eos-admin-policy-paths.txt`
+- Dependencies:        none
+- Expected outcome:    nobody is surprised by an Owner-only refusal on the exemption keys; every acceptance item of #2193 is proved by a named test
+- Protected boundaries:no migration, no capability, no grant, no Rules, deploy, Firebase or production change
+- Lifecycle stage:     INTEGRATION (PRs open; not merged)
+
 - Capability:          Lane FU-1 low follow-ups (2026-10-20) — Sales Order tracker follows the server allocation read, bare `/opportunities/sales-order/:id` redirects to the canonical route, supplier PO "Loading name…" while the directory loads, R1 doc tag line corrected
 - Agent/session:       Claude Code Lane FU-1 · Role: builder; controller merges
 - Branch / worktree:   `fu1/low-followups` · `.claude/worktrees/agent-a073b3972e3908774`
