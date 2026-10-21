@@ -685,8 +685,8 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     // The row is the obligation register's own shape: amounts and references only -- no part, quantity or unit cost (the
     // cost INPUTS #2084 withholds on the workspace rows never appear on an obligation row at all).
     for (const o of cons) {
-      assert.deepEqual(Object.keys(o).sort(), ["counterparty", "currency", "dueOn", "id", "invoice", "kind", "operatingCompanyId", "originatedMinor",
-        "outstandingMinor", "overdue", "settledMinor", "sourceDomain", "sourceRecordId", "sourceSalesOrder", "status"]);
+      assert.deepEqual(Object.keys(o).sort(), ["counterparty", "currency", "dueOn", "id", "invoice", "issuable", "kind", "operatingCompanyId", "originatedMinor",
+        "outstandingMinor", "overdue", "rebill", "settledMinor", "sourceDomain", "sourceRecordId", "sourceSalesOrder", "status"]);
       // F-2: the Sales Order the receivable was billed from -- a reference (id and number), never an amount, part or cost.
       assert.deepEqual(Object.keys(o.sourceSalesOrder).sort(), ["id", "salesOrderNumber"]);
     }
