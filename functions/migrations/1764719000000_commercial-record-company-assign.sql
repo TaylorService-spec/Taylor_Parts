@@ -30,7 +30,7 @@ SET search_path = eos_policy, public;
 
 INSERT INTO capabilities (id, key, description, object_key, action_key, action_kind, display_label) VALUES
     ('cap_commercial_recordCompany_assign', 'commercial.recordCompany.assign',
-     'Set the operating company of an Opportunity or Sales Agreement that has none, ONCE, with a stated reason (never a change, never a clear). The caller still needs the record to be visible to them and the target company to be one they reach; an Agreement takes its Opportunity''s company, a conflict is refused and named, and no related record is ever rewritten. Held by nobody until the Owner grants it.',
+     'Set the operating company of an Opportunity or Sales Agreement that has none, ONCE, with a stated reason (never a change, never a clear). The caller still needs the record to be visible to them and the target company to be one they reach; a company-less Sales Agreement inherits its Opportunity''s company in the same step (audited), an Agreement already in another company refuses the whole command, and nothing else is rewritten. Held by nobody until granted by name through Administration.',
      'opportunity', 'assignOperatingCompany', 'BUSINESS_ACTION', 'Set Operating Company')
 ON CONFLICT (key) DO NOTHING;
 
