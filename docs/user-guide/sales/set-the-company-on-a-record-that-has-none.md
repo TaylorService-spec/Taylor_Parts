@@ -33,11 +33,14 @@ words as a company that does not exist.
 - **After it is set, the normal company rule applies.** People who work for that company can see the
   record. Its owner and creator keep it **only if they work for that company too**: if you set a company
   they do not work for, they stop seeing the record.
-- **An agreement always carries its opportunity's company.**
-  - Setting the company on an **Opportunity** also sets it on that Opportunity's Sales Agreement, in
-    the same step, if the agreement has none. You do not need to do both, and it is recorded as one change.
-  - A **Sales Agreement** on its own can be given only its Opportunity's company, and only once the
-    Opportunity has one. If the Opportunity has none, set it there first; the agreement follows.
+- **An agreement always carries its opportunity's company, and nothing is changed for you.** Each record is
+  set on its own, with its own reason and its own audit entry.
+  - Set the **Opportunity** first. Its Sales Agreement is **not** changed: until you set it too, the
+    agreement stays without a company, visible only to its owner, its creator and the administrators.
+  - Then open the **Sales Agreement** and set it. The only company it offers is its Opportunity's. If the
+    Opportunity has no company yet, or is in a different one, the system refuses and says which.
+  - If an agreement is already in a different company from the Opportunity you are setting, the Opportunity
+    is refused and the message names the agreement's company: choose that one.
 - **Sales Orders always have a company**, so there is nothing to set on them.
 
 ## What the system refuses
@@ -47,7 +50,8 @@ words as a company that does not exist.
 | No "Set operating company" band | The record already has a company, you do not hold the permission, no company is open to you, or (for an agreement) its Opportunity has no company yet. |
 | *The Opportunity / Sales Agreement does not exist* | You cannot see the record. This is the same answer as a record that is not there. |
 | *This record already has an operating company* | Someone set it first (two people trying at once: exactly one succeeds). It is not changed. |
-| *The operating company has to match the records this one belongs to* | An agreement and its opportunity must agree. Set the Opportunity first. |
+| *This Sales Agreement's Opportunity has no operating company yet ...* or *... is in operating company X, not Y* | An agreement and its opportunity must agree. Set the Opportunity first, then the agreement to the same company. |
+| *This Opportunity's Sales Agreement is already in ...* | The agreement already has a different company, and nothing is rewritten for you. Choose the agreement's company. |
 | *Say why the operating company is being set* | The reason is required. |
 
 A refused attempt changes nothing and leaves no record, number or audit entry. If a click is repeated
