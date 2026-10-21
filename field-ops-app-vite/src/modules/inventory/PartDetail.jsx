@@ -42,6 +42,7 @@ import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL, LEGACY_NOTES_ARCHIVE_NOT_LOADED, LEGACY_NOTES_NONE_FOR_PART } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
+import { usePartsReadGates } from "../../access/partsReadGates.js";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
@@ -1378,7 +1379,10 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // Wave 6 Owner Decision (2026-08-15) -- must be called unconditionally, before any early
   // return below, per the Rules of Hooks; the derived name-lookup map itself is computed
   // further down, after `canonicalPart` resolves.
-  const manufacturerCatalog = useManufacturerCatalog();
+  // UAT RO-01: a read the server is certain to refuse for this person is not fired (see access/partsReadGates.js). The Manufacturer
+  // catalog settles at its existing "denied" state, so the raw manufacturerId fallback below is unchanged.
+  const gates = usePartsReadGates();
+  const manufacturerCatalog = useManufacturerCatalog(gates.manufacturers);
   const {
     data: reorderRequest,
     loading: reorderRequestLoading,
@@ -1422,7 +1426,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // starts empty; the control below stays disabled until it is answered.
   const [reorderWarehouseId, setReorderWarehouseId] = useState("");
   // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
-  const reorderWarehouses = useReorderWarehouseOptions(true);
+  const reorderWarehouses = useReorderWarehouseOptions(gates.warehouseOptions);
 
   // Wave 6 -- master-data-in-Parts. null | "edit" | "status" -- which governed
   // Part Master action panel (if any) is open. Uses the SAME PartWriteModal +
@@ -1555,14 +1559,17 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             is not a place: nothing on this page knows where the shortage is, so it is asked, and it is asked ABOVE the button rather than
             beside it -- the band's row is the command and its disclosure, and a governed input is neither. Empty until answered, which
             leaves the button off. */}
-        <ReorderWarehouseSelect
-          id="part-detail-reorder-warehouse"
-          options={reorderWarehouses.options}
-          loading={reorderWarehouses.loading}
-          error={reorderWarehouses.error}
-          value={reorderWarehouseId}
-          onChange={setReorderWarehouseId}
-        />
+        {/* Not asked of someone who cannot raise a request (UAT RO-01): the control below already states who can. */}
+        {gates.warehouseOptions && (
+          <ReorderWarehouseSelect
+            id="part-detail-reorder-warehouse"
+            options={reorderWarehouses.options}
+            loading={reorderWarehouses.loading}
+            error={reorderWarehouses.error}
+            value={reorderWarehouseId}
+            onChange={setReorderWarehouseId}
+          />
+        )}
         <span className="ns-reorder-row">
           <RequestReorderControl
             recommendation={recommendation}

@@ -16,6 +16,7 @@ import {
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
+import { usePartsReadGates, REORDER_QUEUE_NOT_AVAILABLE_COPY } from "../../access/partsReadGates.js";
 import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -384,6 +385,9 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
   // UI PERMISSION PARITY (PERM-UI): New Part is offered only to a holder of inventory.catalog.manage (createPart).
   const canCreatePart = hasCapability?.(PART_CATALOG_GATE.manage) === true;
   const { user } = useAuth();
+  // UAT RO-01: which of this page's AUTOMATIC reads can succeed for this person. A read the server is certain to refuse is not fired
+  // (it took a 403 on every load and was then worded "try again shortly"); the panel it fed states the absence instead.
+  const gates = usePartsReadGates();
   const { healthEntries, loading, error: healthError } = useInventoryLedger();
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
@@ -448,24 +452,27 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
     return (partId) => map.get(partId) ?? partId;
   }, [catalogRows]);
 
-  const { data: pendingRequests } = useReorderRequests();
+  const { data: pendingRequests } = useReorderRequests(gates.queue);
   const { data: partsManagerQueue, loading: partsManagerLoading, error: partsManagerError, refresh: refreshPartsManagerQueue } = useReorderRequestsByStatus(
-    REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
+    REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,
+    gates.queue
   );
   const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useMyAssignedReorderRequests(
     // NO uid. The server scopes this to the caller's own Employee through the governed assignment;
     // the browser no longer states whose work it is asking for.
-    REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
+    REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
+    gates.queue
   );
   const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useMyAssignedReorderRequests(
-    REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
+    REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
+    gates.queue
   );
   const {
     data: allAssignedWork,
     loading: allAssignedWorkLoading,
     error: allAssignedWorkError,
     refresh: refreshAllAssignedWork,
-  } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES);
+  } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES, gates.queue);
   // Firebase exit F4 (DECISIONS #247): "Team Work" names each assignee through the governed resolveEmployeeDisplayNames, for exactly
   // the Employee ids on the rows above (assignedEmployeeId). It used to read the whole Firestore employee directory, which is
   // keyed by Firebase uid and could not name an EOS Employee id. A refusal leaves the table at "Unknown assignee".
@@ -510,6 +517,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
     statuses: HISTORY_STATUSES,
     pageSize: HISTORY_PAGE_SIZE,
     fetchPageImpl: historyFetchPageImpl,
+    enabled: gates.queue,
   });
   // Distinguishes the INITIAL load failing (nothing to show at all -- the
   // whole section becomes the error state, per the Specification's "never
@@ -584,7 +592,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
   // off, which is honest, where a silent default would author a company fact nobody chose.
   const [reorderWarehouseId, setReorderWarehouseId] = useState("");
   // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
-  const reorderWarehouses = useReorderWarehouseOptions(true);
+  const reorderWarehouses = useReorderWarehouseOptions(gates.warehouseOptions);
 
   const needsPlanningEntries = useMemo(
     () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),
@@ -636,7 +644,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
 
   // ── FRAME 1a (ND-30). Composed from facts this page ALREADY holds: the governed catalogue rows
   //    and the reorder_requests behind `pendingRequests`. No new read, no new state, no quantity.
-  const manufacturerCatalog = useManufacturerCatalog();
+  const manufacturerCatalog = useManufacturerCatalog(gates.manufacturers);
   const manufacturerNames = useMemo(() => {
     // Same governed resolution the record uses. A part with no manufacturer id resolves to nothing
     // and the cell says so -- it never borrows another field to look populated.
@@ -759,14 +767,19 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
             activeKey={queueFilter}
             onChange={setQueueFilter}
           />
-          <ReorderWarehouseSelect
-            id="parts-queue-reorder-warehouse"
-            options={reorderWarehouses.options}
-            loading={reorderWarehouses.loading}
-            error={reorderWarehouses.error}
-            value={reorderWarehouseId}
-            onChange={setReorderWarehouseId}
-          />
+          {gates.warehouseOptions ? (
+            <ReorderWarehouseSelect
+              id="parts-queue-reorder-warehouse"
+              options={reorderWarehouses.options}
+              loading={reorderWarehouses.loading}
+              error={reorderWarehouses.error}
+              value={reorderWarehouseId}
+              onChange={setReorderWarehouseId}
+            />
+          ) : (
+            // Not "No warehouses are available": that is a claim about warehouses. The person cannot request a reorder at all.
+            <p className="fo-muted" data-reorder-request-unavailable="true">Requesting a reorder needs the Request Reorder permission, which your account does not have.</p>
+          )}
           {reorderError && <p className="fo-muted">{reorderError}</p>}
           <LoadingEmptyState
             loading={loading}
@@ -789,6 +802,13 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
           </LoadingEmptyState>
         </details>
 
+        {/* UAT RO-01: the four reorder-request disclosures below are fed by reads the server refuses to anyone without the
+            inventory.reorderQueue surface (reorder.request.read AND the REORDER_QUEUE scope). Those reads are not fired for such a
+            person, and "none" / "No requests" would be a claim about requests -- so this states the absence instead. */}
+        {!gates.queue && (
+          <p className="fo-muted ns-parts-rail__note" data-reorder-queue-unavailable="true">{REORDER_QUEUE_NOT_AVAILABLE_COPY}</p>
+        )}
+        {gates.queue && (<>
         {/* The SAME actionable ManagerQueuePanel PartsManagerHome.jsx uses -- an admin/dispatcher can
             Assign directly from here. Unchanged by the move into the rail: same component, same
             props, same server-enforced authority. */}
@@ -870,6 +890,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
             error={allAssignedWorkError}
           />
         </details>
+        </>)}
 
         {/* The associate request detail is a DIALOG, not a rail row -- it stays outside the
             disclosures so opening a request from either queue composes the same way it did before. */}
@@ -882,6 +903,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
         )}
       </section>
 
+      {gates.queue && (
       <section className="ns-parts-rail__group" aria-labelledby="parts-group-flow">
         <h2 id="parts-group-flow" className="ns-parts-rail__heading">
           Flow
@@ -991,6 +1013,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
           )}
         </details>
       </section>
+      )}
     </div>
   );
 
