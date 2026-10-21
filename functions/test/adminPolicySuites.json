@@ -322,6 +322,7 @@
     "test/saeProtectedOwnerExemptionPostgres.test.mjs",
     "test/commercialCompanyAuthorityPostgres.test.mjs",
     "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
+    "test/sal03CompanylessOwnerEligibilityPostgres.test.mjs",
     "test/saeDelegatedExemptionPostgres.test.mjs"
   ]
 }

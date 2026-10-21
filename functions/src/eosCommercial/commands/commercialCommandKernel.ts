@@ -427,6 +427,48 @@ export async function requireTenantEmployee(
   );
 }
 
+/**
+ * SAL-03(c) (P0, Owner security ruling 2026-10-21): OWNER ELIGIBILITY ON A COMPANY-LESS RECORD. A company-less Opportunity or Sales Agreement is visible to its owner
+ * (Q-1a), so naming an owner is granting reach. On CREATION or REASSIGNMENT of such a record the owner must be exactly one of:
+ *   1. the CREATOR's own linked Employee -- the authenticated actor at creation, the record's STORED creator (created_by) at reassignment; never client input; or
+ *   2. the Account's governed owner (an Agreement: its Opportunity's Account), when that Employee's home company lies inside the creator's company authority.
+ * Anything else, including an account owner of a company the creator does not reach, is refused with the words of an owner that does not exist
+ * (OWNER_NOT_FOUND), or -- when the owner was only INHERITED -- the words of an Account with nothing to inherit (OWNER_REQUIRED), so the refusal never says that
+ * a foreign Employee exists. Run it AFTER requireTenantEmployee, and only for a company-less record; a company-keyed record keeps today's behaviour (Q-1a
+ * decides it by company alone). A historical owner is never re-judged: callers invoke this only for a NEW owner value. Not in resolveCreationOwner, which is pure
+ * and shared with the Firebase path.
+ */
+export async function requireEligibleCompanylessOwner(
+  db: Queryable,
+  tenantId: string,
+  facts: { readonly recordCreatorPrincipalId: string | null; readonly accountId: string; readonly ownerEmployeeId: string; readonly inherited?: boolean },
+  resolver: CommercialCompanyResolver = resolveCommercialCompanyReach,
+): Promise<void> {
+  const refuse = (): never => facts.inherited === true
+    ? fail("OWNER_REQUIRED", "INVALID_INPUT",
+      "No owner: none was supplied and the Account has no governed owner to inherit (no upstream owner supplied). "
+      + "Ownership is never assigned to the caller, the creator, or an arbitrary employee.")
+    : fail("OWNER_NOT_FOUND", "NOT_FOUND", `the owner ${facts.ownerEmployeeId} is not an Employee of this tenant`);
+  const creator = facts.recordCreatorPrincipalId;
+  if (creator === null || creator.trim() === "") return refuse();
+  // 1. The creator's own Employee.
+  const own = await db.query<{ employee_id: string }>(
+    `SELECT employee_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`, [tenantId, creator]);
+  if (own.rows.some((r) => String(r.employee_id) === facts.ownerEmployeeId)) return;
+  // 2. The Account's governed owner, read here in the transaction (never taken from input).
+  const account = await db.query<{ owner_employee_id: string | null }>(
+    `SELECT owner_employee_id FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2`, [tenantId, facts.accountId]);
+  if (account.rows.length === 0 || account.rows[0].owner_employee_id !== facts.ownerEmployeeId) return refuse();
+  // ... and inheritance never crosses companies: the owner's HOME company must be inside the creator's company authority.
+  const reach = await resolver(db, tenantId, creator);
+  if (reach.basis === "PROTECTED_ADMINISTRATOR") return; // unrestricted by standing: every company is inside its authority
+  const home = await db.query<{ operating_company_key: string }>(
+    `SELECT k.operating_company_key FROM eos_workforce.employees e
+       JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = e.tenant_id AND k.operating_company_id = e.operating_company_id AND k.status = 'ACTIVE'
+      WHERE e.tenant_id = $1 AND e.id = $2`, [tenantId, facts.ownerEmployeeId]);
+  if (!home.rows.some((r) => reach.companyKeys.includes(String(r.operating_company_key)))) return refuse(); // no home company bound = cannot show same-company: fail closed
+}
+
 /** The Account row, read in THIS tenant only. */
 /**
  * A customer SITE stated on an Agreement or Sales Order must be one of THAT record's Account's governed sites
