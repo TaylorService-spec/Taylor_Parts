@@ -27,6 +27,7 @@ import { admittedScopeValues } from "../adminPolicy/assignmentScopeRuntime";
 import { readAnalysisCatalog, readAnalysisWorkspace, type AnalysisArea } from "../eosAnalysis/analysis";
 import { readRentalWorkspace, RENTAL_READ } from "../eosRental/rental";
 import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
+import { resolveWorkOrderCompanyReach, type WorkOrderCompanyReach } from "../eosOps/workOrderCompanyAuthority";
 import { resolveCommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
 
 type Queryable = Pick<PoolClient, "query">;
@@ -299,14 +300,17 @@ interface SearchKind {
   readonly companyScopedBy?: string;
   /** Q-1a: a Commercial kind -- `{{COMPANY_x}}` in `sql` becomes the caller's company predicate over alias x, bound at $4..$6 (a Commercial kind uses no reach-key slot). */
   readonly commercial?: true;
+  /** DWO-company: a Work Order kind -- `{{WO_COMPANY}}` in `sql` becomes the caller's Work Order company predicate over alias w, bound at $4. */
+  readonly workOrder?: true;
   readonly sql: string;   // $1 tenant, $2 pattern, $3 channels (text[] | null), $4 reach keys (text[] | null); a commercial kind binds $1 tenant, $2 pattern, $3 channels, $4..$6 company reach
 }
 
 const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
-  { kind: "workOrder", label: "Work Order", capabilities: ["workOrder.record.read"],
+  { kind: "workOrder", label: "Work Order", capabilities: ["workOrder.record.read"], workOrder: true,
     sql: `SELECT w.id, w.work_order_number AS label, concat_ws(' · ', a.name, w.status::text) AS detail FROM eos_ops.work_orders w
             LEFT JOIN eos_crm.accounts a ON a.tenant_id = w.tenant_id AND a.id = w.customer_id
-           WHERE w.tenant_id = $1 AND (w.work_order_number ILIKE $2 OR a.name ILIKE $2 OR w.complaint ILIKE $2) ORDER BY w.updated_at DESC LIMIT 8` },
+           -- ($3 is bound but unused by this kind; the cast gives it a type so the driver can prepare the statement)
+           WHERE w.tenant_id = $1 AND {{WO_COMPANY}} AND ($3::text[] IS NULL OR TRUE) AND (w.work_order_number ILIKE $2 OR a.name ILIKE $2 OR w.complaint ILIKE $2) ORDER BY w.updated_at DESC LIMIT 8` },
   { kind: "opportunity", label: "Opportunity", capabilities: ["opportunity.read"], channelScopedBy: "opportunity.read", commercial: true,
     sql: `SELECT o.id, o.opportunity_number AS label, concat_ws(' · ', a.name, o.sales_channel::text, o.stage::text) AS detail FROM eos_commercial.opportunities o
             LEFT JOIN eos_crm.accounts a ON a.tenant_id = o.tenant_id AND a.id = o.account_id
@@ -367,6 +371,7 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
   const notSearched: string[] = [];
   let reachKeys: readonly string[] | null = null;
   let searchReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
+  let workOrderReach: WorkOrderCompanyReach | null = null;
   for (const k of SEARCH_KINDS) {
     const flat = k.capabilities.some((c) => actor.capabilities.has(c));
     const channels = k.channelScopedBy && !flat ? admittedScopeValues(caller.operational?.scopedHeld as never, k.channelScopedBy, "salesChannel")
@@ -387,6 +392,13 @@ export async function searchEos(deps: WorkOrderOperationDeps, caller: WorkOrderC
       const company = searchReach ?? (searchReach = await (deps.companyReach ?? resolveCommercialCompanyReach)(deps.pool, actor.tenantId, actor.principalId));
       sql = sql.replace(/\{\{COMPANY_([a-z])\}\}/g, (_m, alias: string) => company.sql(alias, 4));
       params = [actor.tenantId, pattern, channels, ...company.sqlParams()];
+    }
+    // DWO-company: the Work Order kind is bounded by the caller's operating-company authority, inside the WHERE: a Work Order of another company is never found,
+    // and its text (complaint, customer name) is never matched against the query.
+    if (k.workOrder) {
+      const woReach = workOrderReach ?? (workOrderReach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId));
+      sql = sql.replace("{{WO_COMPANY}}", woReach.sql("w.operating_company_key", 4, { assignment: false }));
+      params = [actor.tenantId, pattern, channels, ...woReach.sqlParams()];
     }
     const used = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
     const { rows } = await deps.pool.query(sql, params.slice(0, used));

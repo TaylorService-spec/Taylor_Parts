@@ -21,6 +21,9 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   see (and which you do not).
 - [Read the Dispatch & Scheduling board](./dispatch/read-the-dispatch-board.md) — lane colours, time zone,
   keeping your place.
+- [Which work orders you can see](./work-orders/which-work-orders-you-can-see.md) — work orders belong to
+  one operating company: what is hidden, why a missing work order is not an error, and work done for another
+  company's sale.
 
 ## Inventory and scanning
 

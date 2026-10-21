@@ -30,6 +30,7 @@ import * as fieldContext from "./workOrderFieldContext";
 import * as readiness from "./workOrderReadiness";
 import * as analytics from "./workOrderAnalytics";
 import { listInstallableUnitsForWorkOrder, recordWorkOrderEquipmentInstall } from "./workOrderEquipmentInstall";
+import { readSalesOrderServiceWorkOrdersOp } from "./salesOrderServiceWorkOrders";
 export type { WorkOrderOperationDeps, WorkOrderCaller } from "./workOrderOperationTypes";
 
 const refuse = (code: string, category: WorkOrderLifecycleError["category"], message: string): never => {
@@ -61,6 +62,8 @@ export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   listMyAssignedWorkOrders: (deps, caller, input) => listMyAssignedWorkOrders({ pool: deps.pool, reader: deps.reader }, caller.operational, input),
   listWorkOrderTechnicians: (deps, caller, input) => (only(input, ["workOrderId"]), listWorkOrderTechnicians({ pool: deps.pool }, caller.actor, input)),
   listWorkOrderOperatingCompanies: (deps, caller, input) => (only(input, []), listWorkOrderOperatingCompanies({ pool: deps.pool }, caller.actor)),
+  // DWO-1: the SELLER of a Sales Order sees the narrow, read-only projection of the Service Work Orders another company performs for it (never ordinary Work Order detail).
+  readSalesOrderServiceWorkOrders: readSalesOrderServiceWorkOrdersOp,
   // WHICH Work Order controls (and routes) the CALLER may be OFFERED (UI corrections integration, 2026-10-08) -- the
   // readMyCommercialCapabilities / readMyWorkforceCapabilities pattern for Work Orders: the caller's OWN resolved
   // capabilities (the exact set every Work Order command re-checks), narrowed to the workOrder.* keys. Discloses nothing
@@ -130,7 +133,7 @@ export type EosWorkOrderOperation = keyof typeof EOS_WORK_ORDER_OPERATIONS | "re
 
 export const WORK_ORDER_READ_OPERATIONS: readonly string[] = Object.freeze([
   "readWorkOrderAuthorityStatus", "readWorkOrder", "listWorkOrders", "describeWorkOrderListQuery", "listMyAssignedWorkOrders", "listWorkOrderTechnicians",
-  "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities",
+  "listWorkOrderOperatingCompanies", "readMyWorkOrderCapabilities", "readSalesOrderServiceWorkOrders",
   "readTechnicianAvailability", "readEmployeeWorkSchedule", "findAvailableTechnicianSlots", "suggestWorkOrderPlacement", "readWorkOrderLabor", "readWorkOrderFieldContext",
   "readWorkOrderReadiness", "readTechnicianExecutionStats", "listInstallableEquipmentForWorkOrder", "readWorkOrderConsumptionSnapshot", "readTechnicianVolumeBreakdown",
   ...SELF_SCHEDULING_READ_OPERATIONS,

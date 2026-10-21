@@ -1041,3 +1041,8 @@ functions/test/support/commercialCompanyReachFixture.mjs
 # FU-2 rebill trigger and Issue eligibility (2026-10-20): the suites; functions/src/eosFinance/** and the Finance client files are covered above.
 functions/test/fu2PrepareBillingPackage.test.mjs
 functions/test/fu2PrepareBillingPackagePostgres.test.mjs
+# DWO-company (2026-10-21): operating-company authority on Work Orders (src/eosOps/workOrderCompanyAuthority.ts; the other Work Order, Dispatch, experience and Workforce sources are already listed or under globs).
+functions/src/eosOps/workOrderCompanyAuthority.ts
+functions/test/workOrderCompanyAuthority.test.mjs
+functions/test/workOrderCompanyBoundaryPostgres.test.mjs
+functions/test/support/workOrderCompanyEntryPoints.mjs

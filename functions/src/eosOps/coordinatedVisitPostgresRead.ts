@@ -46,6 +46,8 @@
 import { notQuarantined } from "./workOrderQuarantine";
 import type { Pool, PoolClient } from "pg";
 import { resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
+import { resolveWorkOrderCompanyReach, type WorkOrderCompanyReach } from "./workOrderCompanyAuthority";
+import { SERVICE_PROJECTION_COLUMNS, projectServiceWorkOrder, type ServiceWorkOrderProjection } from "./salesOrderServiceWorkOrders";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -145,7 +147,8 @@ export interface CoordinatedWorkOrderPostgresProjection {
 /** Mirrors CoordinatedOperationsReadResult, key for key. */
 export interface CoordinatedOperationsPostgresResult {
   readonly status: "ready";
-  readonly workOrders: readonly CoordinatedWorkOrderPostgresProjection[];
+  /** Own-company rows in the legacy shape; a row the caller sees ONLY as the SELLER of its Sales Order (DWO-1) is exactly the seller projection (ServiceWorkOrderProjection), nothing more. */
+  readonly workOrders: readonly (CoordinatedWorkOrderPostgresProjection | ServiceWorkOrderProjection)[];
   /** salesOrderId -> SO-YYYY-######. An anchor whose reference cannot be resolved is ABSENT, never mapped to its own id. */
   readonly salesOrderReferences: Readonly<Record<string, string>>;
   /** Fetched rows that carried no sales_order_id, i.e. that are not coordinated at all. */
@@ -255,22 +258,40 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
   /**
    * Q-1a (Owner ruling Q1-11): the caller's Commercial company reach. The Sales Order each Work Order anchors to is a Commercial record, so its number and its
    * line refs are disclosed only where the caller reaches that order; otherwise they are ABSENT (the surface renders its truthful fallback). The Work Orders
-   * themselves are Dispatch\'s to scope and are not narrowed here (named follow-up, DECISIONS #Q-1a-company). Absent = no narrowing (the parity seam / census).
+   * themselves are Dispatch's: DWO-company (DECISIONS #DWO-company) scopes them by operating company through `workOrderReach` below. Absent = no narrowing (the parity seam / census).
    */
   reach?: CommercialCompanyReach,
+  /**
+   * DWO-company (closes the #Q-1a-company named follow-up): the caller's Work Order company reach. A Work Order of a company the caller does not reach is DROPPED
+   * ENTIRELY -- inside the SELECT, before the page is cut, so it is never listed, never counted in `skipped` or `truncated`, and nothing about it (id, number, status,
+   * customer, location, anchor) is read. The governed entry point (readCoordinatedOperations) always supplies it. Absent = no narrowing (the parity seam / census only).
+   */
+  workOrderReach?: WorkOrderCompanyReach,
 ): Promise<CoordinatedOperationsPostgresResult> {
   if (!Number.isSafeInteger(limit) || limit <= 0 || limit > DEFAULT_LIMIT) {
     fail("PAGE_SIZE_INVALID", "INVALID_INPUT", `limit must be a positive integer no greater than ${DEFAULT_LIMIT}`);
   }
+  // The caller's own companies' Work Orders (no assignment branch: this is an office list) ...
+  const ownPredicate = workOrderReach ? workOrderReach.sql("w.operating_company_key", 4, { assignment: false }) : "TRUE";
+  // ... and, DWO-1, a Service Work Order another company performs for a Sales Order the caller REACHES: the seller authorized that company on that order, the authorization is
+  // ACTIVE and covers the type's scope. Such a row is returned as the seller projection only (below), never as the Work Order's own row.
+  const sellerPredicate = workOrderReach && reach
+    ? `EXISTS (SELECT 1 FROM eos_commercial.sales_orders so
+                 JOIN eos_commercial.sales_order_service_providers p ON p.tenant_id = so.tenant_id AND p.sales_order_id = so.id
+                WHERE so.tenant_id = w.tenant_id AND so.id = w.sales_order_id AND p.service_operating_company_key = w.operating_company_key
+                  AND so.operating_company_key <> w.operating_company_key AND p.status = 'ACTIVE'
+                  AND (CASE WHEN w.work_order_type = 'INSTALL' THEN 'INSTALLATION' ELSE 'SERVICE' END) = ANY(p.scopes)
+                  AND ${reach.sql("so", 6)})`
+    : "FALSE";
   const { rows } = await db.query(
-    `SELECT w.id, w.work_order_number, w.status::text AS status,
-            w.customer_id, w.location_id, w.sales_order_id
+    `SELECT ${SERVICE_PROJECTION_COLUMNS}, w.customer_id, w.location_id, w.sales_order_id, (${ownPredicate}) AS own_reach
        FROM eos_ops.work_orders w
       WHERE w.tenant_id = $1 AND ${notQuarantined("w")}
         AND w.status::text = ANY($2::text[])
+        ${workOrderReach ? `AND (${ownPredicate} OR ${sellerPredicate})` : ""}
       ORDER BY w.id COLLATE "C" ASC
       LIMIT $3`,
-    [tenantId, ACTIVE_COORDINATION_STATUSES as string[], limit + 1],
+    [tenantId, ACTIVE_COORDINATION_STATUSES as string[], limit + 1, ...(workOrderReach ? workOrderReach.sqlParams() : []), ...(workOrderReach && reach ? reach.sqlParams() : [])],
   );
   const truncated = rows.length > limit;
   const page = rows.slice(0, limit) as Record<string, unknown>[];
@@ -293,20 +314,24 @@ export async function readActiveCoordinatedWorkOrdersFromPostgres(
   }
   const reachable = (r: Record<string, unknown>): boolean => visibleOrders === null || visibleOrders.has(String(r.sales_order_id));
   const lineRefs = await readLineRefs(db, tenantId, coordinated.filter(reachable).map((r) => String(r.id)));
-  const workOrders: CoordinatedWorkOrderPostgresProjection[] = coordinated.map((r) => Object.freeze({
-    id: String(r.id),
-    woNumber: stated(r.work_order_number),
-    status: stated(r.status),
-    customerId: stated(r.customer_id),
-    locationId: stated(r.location_id),
-    salesOrderId: reachable(r) ? String(r.sales_order_id) : null,
-    salesOrderLineRefs: lineRefs.get(`${String(r.id)}\u0000${String(r.sales_order_id)}`) ?? Object.freeze([]),
-  }));
+  const references = await resolveSalesOrderReferencesFromPostgres(db, tenantId, coordinated.filter(reachable).map((r) => String(r.sales_order_id)));
+  const workOrders: (CoordinatedWorkOrderPostgresProjection | ServiceWorkOrderProjection)[] = coordinated.map((r) => (r.own_reach === false
+    // A seller-only row: EXACTLY the approved projection (no customer, no site, no line refs, nothing of the Work Order's own record).
+    ? projectServiceWorkOrder(r, String(r.sales_order_id), references[String(r.sales_order_id)] ?? null)
+    : Object.freeze({
+      id: String(r.id),
+      woNumber: stated(r.work_order_number),
+      status: stated(r.status),
+      customerId: stated(r.customer_id),
+      locationId: stated(r.location_id),
+      salesOrderId: reachable(r) ? String(r.sales_order_id) : null,
+      salesOrderLineRefs: lineRefs.get(`${String(r.id)}\u0000${String(r.sales_order_id)}`) ?? Object.freeze([]),
+    })));
 
   return Object.freeze({
     status: "ready" as const,
     workOrders: Object.freeze(workOrders),
-    salesOrderReferences: await resolveSalesOrderReferencesFromPostgres(db, tenantId, workOrders.map((w) => w.salesOrderId).filter((id): id is string => id !== null)),
+    salesOrderReferences: references,
     skipped,
     truncated,
   });
@@ -419,7 +444,8 @@ export async function readCoordinatedOperations(
     }
     await assertCanonicalCapability(client);
     const reach = await (deps.companyReach ?? resolveCommercialCompanyReach)(client, actor.tenantId, actor.principalId);
-    const result = await readActiveCoordinatedWorkOrdersFromPostgres(client, actor.tenantId, undefined, reach);
+    const workOrderReach = await resolveWorkOrderCompanyReach(client, actor.tenantId, actor.principalId);
+    const result = await readActiveCoordinatedWorkOrdersFromPostgres(client, actor.tenantId, undefined, reach, workOrderReach);
     await client.query("COMMIT");
     return result;
   } catch (err) {

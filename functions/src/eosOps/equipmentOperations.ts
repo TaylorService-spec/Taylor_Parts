@@ -30,6 +30,7 @@ import { EQUIPMENT_COLUMNS, equipmentColumns, equipmentRow, readInstalledUnit, t
 import { EQUIPMENT_WRITER_AUTHORITY, type PostgresEquipmentWriterState } from "./equipmentWriterState";
 import { resolveOperatingCompanyKeyForCompany } from "./operatingCompanyBinding";
 import { resolveInventoryCompanyAuthority } from "./inventoryCompanyAuthority";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import { scopedWarehouseIds } from "./partsReads";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority";
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "./workOrderOperationTypes";
@@ -223,8 +224,11 @@ async function readWorkOrderEquipment(deps: Deps, caller: WorkOrderCaller, input
         : "only the Equipment of a Work Order assigned to you");
     }
   }
-  const { rows } = await deps.pool.query(`SELECT equipment_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, input.workOrderId]);
+  // DWO-company: capability and relation first (above), then the caller's operating companies, inside the SELECT. A Work Order outside them is the plain miss, and its
+  // Equipment is never read through it.
+  const woReach = await requireWorkOrderCompanyReach(deps.pool, tenantId, caller.actor.principalId, refuse);
+  const { rows } = await deps.pool.query(`SELECT equipment_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 AND ${woReach.sql("operating_company_key", 3)}`,
+    [tenantId, input.workOrderId, ...woReach.sqlParams()]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "no such Work Order");
   const equipmentId = rows[0].equipment_id as string | null;
   if (equipmentId === null) return Object.freeze({ workOrderId: input.workOrderId, equipment: null, installedUnit: null, events: [] });

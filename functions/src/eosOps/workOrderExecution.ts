@@ -27,6 +27,7 @@ import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeObjectAction, postgresContextualReader, type ContextualReader } from "./contextualAuthorization";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import { TERMINAL_STATUSES, WorkOrderLifecycleError, lifecycleContextPredicates, WORK_ORDER_LIFECYCLE_COMPLETE, type LifecycleActor } from "./workOrderLifecycle";
 import { authorizeMobileAct, MobileStockRefusal } from "./mobileStockAuthority";
 import { lockStockLocation } from "./stockLocationLock";
@@ -193,9 +194,11 @@ export async function recordWorkOrderExecution(
   const client = await deps.pool.connect();
   try {
     await client.query("BEGIN");
+    // DWO-company: capability and own assignment first (above), then the caller's operating companies, inside the locking SELECT.
+    const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse);
     const wo = await client.query(
-      `SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-      [actor.tenantId, request.workOrderId]);
+      `SELECT status::text AS status FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)} FOR UPDATE`,
+      [actor.tenantId, request.workOrderId, ...reach.sqlParams()]);
     if (wo.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
     if (await isQuarantined(client, actor.tenantId, request.workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
 
