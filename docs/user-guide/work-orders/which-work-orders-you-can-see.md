@@ -56,7 +56,7 @@ scheduled window, how far along it is, and the outcome the customer is told abou
 technician notes, labor rates or costs, restricted attachments, security details or the servicing
 company's finances, and the seller cannot change, schedule, dispatch, reassign, complete or cancel the work.
 The same read-only line appears on the seller's coordinated visits list while the authorization is active.
-It is shown only for work orders linked to that sales order, never for a customer's other work.
+It is shown only for work orders linked to that sales order, never for a customer's other work, and only while the authorization is active and covers that type of work: once it is revoked or narrowed, the seller no longer sees that work.
 
 ## The Administrator and the Owner
 

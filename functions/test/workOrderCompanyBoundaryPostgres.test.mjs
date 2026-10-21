@@ -686,10 +686,17 @@ test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL"
     assert.equal(JSON.stringify(other).includes(unrelatedSameOrder), false);
 
     assert.equal((await visits(dspV)).workOrders.some((w) => [unrelatedSameOrder, unrelatedNoOrder].includes(w.workOrderId ?? w.id)), false, "unrelated Work Orders are not in the seller's visits");
-    // a REVOKED authorization ends the live visit (the coordinated read needs an ACTIVE one); the recorded projection stays
+    // N1: a narrowed scope ends the seller's view of a type no longer authorized (this Work Order is SERVICE; the authorization narrowed to INSTALLATION), in BOTH reads
+    const scopesOf = (await one(`SELECT scopes FROM eos_commercial.sales_order_service_providers WHERE sales_order_id = 'so-ventana-3'`)).scopes;
+    await q(`UPDATE eos_commercial.sales_order_service_providers SET scopes = ARRAY['INSTALLATION'] WHERE sales_order_id = 'so-ventana-3'`);
+    assert.deepEqual((await project(seller, "so-ventana-3")).result.items, [], "a scope that no longer covers the type removes the Work Order from the seller's projection");
+    assert.equal((await visits(dspV)).workOrders.some((w) => (w.workOrderId ?? w.id) === id), false, "...and from the seller's visits");
+    await q(`UPDATE eos_commercial.sales_order_service_providers SET scopes = $1 WHERE sales_order_id = 'so-ventana-3'`, [scopesOf]);
+    assert.equal((await project(seller, "so-ventana-3")).result.items.length, 1, "restored scope shows it again");
+    // a REVOKED authorization ends the seller's view of the live Work Order in BOTH reads (N1); history is not kept from the live row
     await q(`UPDATE eos_commercial.sales_order_service_providers SET status = 'REVOKED', revoked_by = 'f', revoked_at = now(), revoke_reason = 'fixture' WHERE sales_order_id = 'so-ventana-3'`);
     assert.equal((await visits(dspV)).workOrders.some((w) => (w.workOrderId ?? w.id) === id), false, "a revoked authorization removes the live visit from the seller");
-    assert.equal((await project(seller, "so-ventana-3")).result.items.length, 1, "the recorded projection remains");
+    assert.deepEqual((await project(seller, "so-ventana-3")).result.items, [], "a revoked authorization returns an empty projection: the provider's live rows are no longer the seller's to see");
     await q(`UPDATE eos_commercial.sales_order_service_providers SET status = 'ACTIVE', revoked_by = NULL, revoked_at = NULL, revoke_reason = NULL WHERE sales_order_id = 'so-ventana-3'`);
     // (8) foreign == missing for an unrelated caller: a Sales Order it does not reach reads exactly as a missing one, and without the capability it is the capability
     const taylorSeller = callerOf(dspT, SELLER_CAPS);
@@ -931,6 +938,14 @@ test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL"
     assert.deepEqual([cf.code, cf.category, cf.message], [cg.code, cg.category, cg.message], "a carried Work Order of another company == one that does not exist");
     assert.doesNotMatch(cf.message, /differs|type|customer|site|operating company|CLOSED|CANCELLED|quarantined/);
     assert.equal(await stateHash(), before, "no trace");
+    // N2: the carried Work Order is NAMED only where the caller reaches it, in the queue and in the detail
+    await carriedRequest("inb-f5-co", own);
+    const carriedQueue = (await inboundCall("listInboundWork", { statuses: ["ACCEPTING"], limit: 300 })).result.rows;
+    const carriedRow = (id) => carriedQueue.find((r) => r.id === id);
+    assert.equal(carriedRow("inb-f5-cf").pendingWorkOrderId, null, "the queue does not name a carried Work Order the caller does not reach");
+    assert.equal(carriedRow("inb-f5-co").pendingWorkOrderId, own, "a reachable carried Work Order is shown");
+    assert.equal((await inboundCall("readInboundWorkRequest", { requestId: "inb-f5-cf" })).result.pendingWorkOrderId, null, "nor does the detail");
+    assert.equal((await inboundCall("readInboundWorkRequest", { requestId: "inb-f5-co" })).result.pendingWorkOrderId, own);
   });
 
 });

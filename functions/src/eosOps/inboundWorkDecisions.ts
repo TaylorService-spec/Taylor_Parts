@@ -139,7 +139,8 @@ function queueRow(r: Record<string, unknown>) {
     claimedByEmployeeId: (r.claimed_by_employee_id as string | null) ?? null,
     claimedByName: (r.claimed_by_name as string | null) ?? null,
     claimedAt: r.accept_claimed_at ? millis(r.accept_claimed_at) : null,
-    pendingWorkOrderId: (r.accept_pending_work_order_id as string | null) ?? null,
+    // DWO-company (N2): a carried Work Order is named only where the caller reaches it, exactly like the linked one (pending_reach is decided in the same SELECT).
+    pendingWorkOrderId: r.pending_reach === false ? null : (r.accept_pending_work_order_id as string | null) ?? null,
   };
 }
 
@@ -172,6 +173,8 @@ export async function listInboundWork(deps: Deps, actor: LifecycleActor, input: 
             r.operating_company_id, r.customer_candidate, r.equipment_candidate, r.attachment_refs, r.warnings, r.work_order_id,
             (r.work_order_id IS NULL OR EXISTS (SELECT 1 FROM eos_ops.work_orders wl WHERE wl.tenant_id = r.tenant_id AND wl.id = r.work_order_id
                                                   AND ${listReach.sql("wl.operating_company_key", 4, { assignment: false })})) AS wo_reach,
+            (r.accept_pending_work_order_id IS NULL OR EXISTS (SELECT 1 FROM eos_ops.work_orders wp WHERE wp.tenant_id = r.tenant_id AND wp.id = r.accept_pending_work_order_id
+                                                  AND ${listReach.sql("wp.operating_company_key", 4, { assignment: false })})) AS pending_reach,
             r.duplicate_of_request_id, r.created_at, r.source_mailbox_id, r.source_mailbox_name, r.destination, r.status_note,
             r.thread_association, r.attachment_custody, r.accept_claimed_by_principal_id, r.accept_claimed_at, r.accept_pending_work_order_id,
             ${CLAIMANT_COLUMNS}
@@ -190,9 +193,10 @@ export async function readInboundWorkRequest(deps: Deps, actor: LifecycleActor, 
   // DWO-company: the linked Work Order's NUMBER is shown only where the caller's operating companies reach that Work Order.
   const reach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
   const { rows } = await deps.pool.query(
-    `SELECT r.*, w.work_order_number, (r.work_order_id IS NULL OR w.id IS NOT NULL) AS wo_reach, l.link_kind, ${CLAIMANT_COLUMNS}
+    `SELECT r.*, w.work_order_number, (r.work_order_id IS NULL OR w.id IS NOT NULL) AS wo_reach, (r.accept_pending_work_order_id IS NULL OR wp.id IS NOT NULL) AS pending_reach, l.link_kind, ${CLAIMANT_COLUMNS}
        FROM eos_ops.inbound_work_requests r
        LEFT JOIN eos_ops.work_orders w ON w.tenant_id = r.tenant_id AND w.id = r.work_order_id AND ${reach.sql("w.operating_company_key", 3, { assignment: false })}
+       LEFT JOIN eos_ops.work_orders wp ON wp.tenant_id = r.tenant_id AND wp.id = r.accept_pending_work_order_id AND ${reach.sql("wp.operating_company_key", 3, { assignment: false })}
        LEFT JOIN eos_ops.inbound_work_order_links l ON l.tenant_id = r.tenant_id AND l.request_id = r.id
       WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, input.requestId, ...reach.sqlParams()]);
   if (rows.length === 0) refuse("INBOUND_REQUEST_NOT_FOUND", "NOT_FOUND", "that inbound request does not exist");

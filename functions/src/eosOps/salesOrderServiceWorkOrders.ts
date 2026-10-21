@@ -96,6 +96,7 @@ export async function readSalesOrderServiceWorkOrders(deps: { readonly pool: Poo
        FROM eos_ops.work_orders w
        JOIN eos_commercial.sales_order_service_providers p
          ON p.tenant_id = w.tenant_id AND p.sales_order_id = w.sales_order_id AND p.service_operating_company_key = w.operating_company_key
+        AND p.status = 'ACTIVE' AND (CASE WHEN w.work_order_type = 'INSTALL' THEN 'INSTALLATION' ELSE 'SERVICE' END) = ANY(p.scopes)
       WHERE w.tenant_id = $1 AND w.sales_order_id = $2 AND w.operating_company_key <> $3 AND ${notQuarantined("w")}
       ORDER BY w.created_at, w.id
       LIMIT ${SERVICE_WORK_ORDER_LIST_MAX + 1}`,
