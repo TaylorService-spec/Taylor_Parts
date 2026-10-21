@@ -1028,3 +1028,6 @@ functions/src/access/secondaryApprovalExemption.ts
 functions/test/saeProtectedOwnerExemption.test.mjs
 functions/test/saeProtectedOwnerExemptionPostgres.test.mjs
 functions/test/support/protectedOwnerFixture.mjs
+# FU-2 rebill trigger and Issue eligibility (2026-10-20): the suites; functions/src/eosFinance/** and the Finance client files are covered above.
+functions/test/fu2PrepareBillingPackage.test.mjs
+functions/test/fu2PrepareBillingPackagePostgres.test.mjs

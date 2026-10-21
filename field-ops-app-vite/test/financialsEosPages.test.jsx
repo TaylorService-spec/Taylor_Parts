@@ -48,9 +48,11 @@ import { FINANCE_READ_OPERATIONS } from "../src/services/financeApiClient.js";
 const row = (over = {}) => ({
   id: "obl_aaaaaaaa-1", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", sourceDomain: "BILLING_PACKAGE", sourceRecordId: "bp-1",
   dueOn: "2026-01-15", overdue: true, originatedMinor: "40000", settledMinor: "16000", outstandingMinor: "24000",
-  counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-t", name: "Harbor Grill" }, ...over,
+  counterparty: { kind: "EXTERNAL_ORGANIZATION", crmAccountId: "acct-t", name: "Harbor Grill" },
+  // FU-2: the server's own verdict on offering Issue (invoiceIssue.ts issueBlocker); the screen decides nothing.
+  issuable: { eligible: true, reason: null }, ...over,
 });
-const settlement = (over = {}) => ({
+const settlement =(over = {}) => ({
   id: "stl_1", operatingCompanyId: "taylor", counterpartyId: "cp", kind: "CUSTOMER_PAYMENT", direction: "RECEIPT", amountMinor: "10000", currency: "USD",
   businessDate: "2026-10-01", recordedAt: "2026-10-01T15:00:00.000Z", sourceReference: "ACH-1001", method: "ACH", status: "RECORDED", notes: null, voidReason: null,
   replacesSettlementId: null, appliedMinor: "10000", unappliedMinor: "0", reconciliationStatus: "UNRECONCILED",
@@ -190,7 +192,7 @@ describe("Receivables — Issue invoice (F-1a-UI)", () => {
   });
 
   test("an issued receivable shows its number and issue date and has no Issue", async () => {
-    server({ listObligations: { scope: "consolidated", items: [row({ invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null } })] } });
+    server({ listObligations: { scope: "consolidated", items: [row({ invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null }, issuable: { eligible: false, reason: "INVOICE_ALREADY_ISSUED" } })] } });
     const callApi = stub();
     const { container } = page({ hasCapability: holder, callApi });
     await settled(container, /INV-2026-000007/);
@@ -200,7 +202,7 @@ describe("Receivables — Issue invoice (F-1a-UI)", () => {
   });
 
   test("every body row has as many cells as the header has columns, for a holder and a non-holder", async () => {
-    server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null } })] } });
+    server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", invoice: { id: "inv-1", invoiceNumber: "INV-2026-000007", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null }, issuable: { eligible: false, reason: "INVOICE_ALREADY_ISSUED" } })] } });
     for (const props of [{ hasCapability: holder, callApi: stub() }, { hasCapability: () => false, callApi: stub() }, {}]) {
       const { container, unmount } = page(props);
       await settled(container, /INV-2026-000007/);
@@ -213,11 +215,11 @@ describe("Receivables — Issue invoice (F-1a-UI)", () => {
     }
   });
 
-  test("a void row, a non-billing-package source and a non-RECEIVABLE kind each show no Issue", async () => {
+  test("a void row, a non-billing-package source and a non-RECEIVABLE kind each show no Issue: the server's verdict says so", async () => {
     server({ listObligations: { scope: "consolidated", items: [
-      row({ id: "obl_00000001", status: "VOID" }),
-      row({ id: "obl_00000002", sourceDomain: "MANUAL" }),
-      row({ id: "obl_00000003", kind: "FUNDING_RECEIVABLE" }),
+      row({ id: "obl_00000001", status: "VOID", issuable: { eligible: false, reason: "BILLING_PACKAGE_NOT_READY" } }),
+      row({ id: "obl_00000002", sourceDomain: "MANUAL", issuable: { eligible: false, reason: "UNSUPPORTED_BILLING_SOURCE" } }),
+      row({ id: "obl_00000003", kind: "FUNDING_RECEIVABLE", issuable: { eligible: false, reason: "UNSUPPORTED_FINANCIAL_OBLIGOR" } }),
     ] } });
     const callApi = stub();
     const { container } = page({ hasCapability: holder, callApi });
@@ -225,6 +227,112 @@ describe("Receivables — Issue invoice (F-1a-UI)", () => {
     await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
     expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
   });
+
+  // FU-2 (F-1a low finding): the screen offers Issue only where the SERVER says the receivable is issuable -- never on a financed sale.
+  test("Issue follows the server's verdict alone: a financed-sale receivable is named and not offered; a read with no verdict offers nothing", async () => {
+    server({ listObligations: { scope: "consolidated", items: [
+      row({ id: "obl_aaaaaaaa-1", sourceRecordId: "bp-1" }),
+      row({ id: "obl_ffffffff-2", sourceRecordId: "bp-fin", issuable: { eligible: false, reason: "UNSUPPORTED_FINANCIAL_OBLIGOR" } }),
+      row({ id: "obl_eeeeeeee-3", sourceRecordId: "bp-old", issuable: undefined }),
+    ] } });
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await settled(container, /FFFFFFFF/);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Issue invoice" }).length).toBe(1));
+    expect(container.textContent).toMatch(/Financed sale — not invoiced here/);
+  });
+});
+
+// FU-2: Prepare rebill on a VOIDED invoice's row -- offered only where the server's read says the order can be prepared again.
+describe("Receivables — Prepare rebill (FU-2)", () => {
+  const holder = (id) => id === "finance.invoice.issue";
+  const adviceOk = { ok: true, result: { principalId: "p", consolidated: true, companies: [{ operatingCompanyId: "taylor", name: "Taylor", actions: { view: true, issue: true } }] } };
+  const voidedRow = (rebill = { eligible: true, reason: null }, over = {}) => row({
+    id: "obl_vvvvvvvv-9", status: "VOID", sourceRecordId: "bp-void", outstandingMinor: "0", settledMinor: "0", overdue: false,
+    sourceSalesOrder: { id: "so-9", salesOrderNumber: "SO-9" },
+    invoice: { id: "inv-9", invoiceNumber: "INV-2026-000009", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null, voidedAt: "2026-10-21T15:00:00.000Z" },
+    issuable: { eligible: false, reason: "BILLING_PACKAGE_NOT_READY" }, rebill, ...over,
+  });
+  const stub = (over = {}) => vi.fn(async (op) => {
+    if (op === "readMyFinanceCompanyAccess") return over.access ?? adviceOk;
+    if (op === "prepareBillingPackage") return over.prepare ?? { ok: true, result: { outcome: "recorded", packageId: "bpk_2", version: 2, status: "READY", readinessExceptions: [], totalMinor: "3000" } };
+    throw new Error(`unexpected ${op}`);
+  });
+  const page = (props) => at("/financials/invoices", "/financials/invoices", <FinancialsReceivablesEos {...props} />);
+
+  test("the control shows only on the server's flag: eligible shows it; each ineligible reason, an issued invoice and a non-voided row show none", async () => {
+    server({ listObligations: { scope: "consolidated", items: [
+      voidedRow(),
+      voidedRow({ eligible: false, reason: "BILLING_PACKAGE_ALREADY_PREPARED" }, { id: "obl_vvvvvvvv-8", invoice: { id: "inv-8", invoiceNumber: "INV-2026-000008", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null, voidedAt: "2026-10-21T15:00:00.000Z" } }),
+      voidedRow(null, { id: "obl_vvvvvvvv-7" }),
+      row({ id: "obl_iiiiiiii-6", rebill: null, invoice: { id: "inv-6", invoiceNumber: "INV-2026-000006", issuedAt: "2026-10-20T15:00:00.000Z", accountingReference: null }, issuable: { eligible: false, reason: "INVOICE_ALREADY_ISSUED" } }),
+    ] } });
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await settled(container, /INV-2026-000009/);
+    await waitFor(() => expect(callApi).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Prepare rebill" }).length).toBe(1));
+    expect(screen.queryByRole("button", { name: "Issue invoice" })).toBeNull();
+  });
+
+  test("a non-holder, and a holder whose company the server does not offer, see no Prepare rebill", async () => {
+    server({ listObligations: { scope: "consolidated", items: [voidedRow()] } });
+    const a = stub();
+    const first = page({ hasCapability: () => false, callApi: a });
+    await settled(first.container, /INV-2026-000009/);
+    expect(screen.queryByRole("button", { name: "Prepare rebill" })).toBeNull();
+    expect(a).not.toHaveBeenCalled();
+    first.unmount();
+    const b = stub({ access: { ok: true, result: { principalId: "p", consolidated: true, companies: [{ operatingCompanyId: "taylor", name: "Taylor", actions: { view: true, issue: false } }] } } });
+    const second = page({ hasCapability: holder, callApi: b });
+    await settled(second.container, /INV-2026-000009/);
+    await waitFor(() => expect(b).toHaveBeenCalledWith("readMyFinanceCompanyAccess"));
+    expect(screen.queryByRole("button", { name: "Prepare rebill" })).toBeNull();
+  });
+
+  test("preparing sends the Sales Order and ONE key, then re-reads; nothing is optimistic", async () => {
+    server({ listObligations: { scope: "consolidated", items: [voidedRow()] } });
+    const callApi = stub();
+    const { container } = page({ hasCapability: holder, callApi });
+    await screen.findByRole("button", { name: "Prepare rebill" });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill" }));
+    expect(container.textContent).toMatch(/NEW invoice number/);
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill now" }));
+    await screen.findByText(/A new billing package was prepared for SO-9/);
+    const call = callApi.mock.calls.find(([op]) => op === "prepareBillingPackage");
+    expect(call[1]).toEqual({ salesOrderId: "so-9", idempotencyKey: expect.stringMatching(/^bpk-prepare-/) });
+    await waitFor(() => expect(fb.ops.filter(([op]) => op === "listObligations").length).toBe(2));
+  });
+
+  test("a package prepared on hold says so; a refusal is the server's own words and nothing is reported as prepared", async () => {
+    server({ listObligations: { scope: "consolidated", items: [voidedRow()] } });
+    const held = stub({ prepare: { ok: true, result: { outcome: "recorded", packageId: "bpk_3", version: 3, status: "HELD", readinessExceptions: ["TAX_NOT_DETERMINED"], totalMinor: null } } });
+    const first = page({ hasCapability: holder, callApi: held });
+    await screen.findByRole("button", { name: "Prepare rebill" });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill now" }));
+    await screen.findByText(/on hold \(TAX_NOT_DETERMINED\)/);
+    first.unmount();
+    server({ listObligations: { scope: "consolidated", items: [voidedRow()] } });
+    const refused = stub({ prepare: { ok: false, code: "PRECONDITION_FAILED", message: "the Sales Order is NOT_YET; only an order ELIGIBLE in full is prepared for billing" } });
+    const second = page({ hasCapability: holder, callApi: refused });
+    await screen.findByRole("button", { name: "Prepare rebill" });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill now" }));
+    await screen.findByText(/only an order ELIGIBLE in full/);
+    expect(second.container.textContent).not.toMatch(/was prepared for/);
+  });
+});
+
+describe("Receivables — Issue invoice: in flight and refused (F-1a-UI)", () => {
+  const holder = (id) => id === "finance.invoice.issue";
+  const issueAdvice = (issue = true) => ({ ok: true, result: { principalId: "p", consolidated: true, companies: [{ operatingCompanyId: "taylor", name: "Taylor", actions: { view: true, issue } }] } });
+  const stub = (over = {}) => vi.fn(async (op) => {
+    if (op === "readMyFinanceCompanyAccess") return over.access ?? issueAdvice();
+    if (op === "issueInvoice") return over.issue ?? { ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000001" } } };
+    throw new Error(`unexpected ${op}`);
+  });
+  const page = (props) => at("/financials/invoices", "/financials/invoices", <FinancialsReceivablesEos {...props} />);
 
   test("while an issue is in flight no other row can start one", async () => {
     server({ listObligations: { scope: "consolidated", items: [row(), row({ id: "obl_bbbbbbbb-2", sourceRecordId: "bp-2" })] } });

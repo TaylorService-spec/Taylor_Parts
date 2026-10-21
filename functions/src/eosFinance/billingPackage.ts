@@ -52,7 +52,7 @@ const big = (v: unknown): bigint | null => (v === null || v === undefined ? null
 const str = (v: bigint | null): string | null => (v === null ? null : v.toString());
 
 /** Prepare (or replay / supersede) the Operational Billing Package of ONE Sales Order, inside the caller's transaction. */
-export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor, input: { readonly salesOrderId: string }): Promise<BillingPackageOutcome> {
+export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor, input: { readonly salesOrderId: string; readonly idempotencyKey?: string }): Promise<BillingPackageOutcome> {
   const { rows: so } = await c.query(
     `SELECT so.id, so.state::text AS state, so.operating_company_key, so.account_id, so.currency, so.sales_agreement_id,
             a.is_lease, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.tax_evidence_status, a.down_payment_minor, a.trade_in_minor,
@@ -228,7 +228,9 @@ export async function prepareBillingPackageOn(c: Queryable, actor: FinanceActor,
      VALUES ($1, $2, 'finance.billingPackage.prepare', $3, 'billing_package', $4, $5::jsonb, $6::jsonb, now(), $7)`,
     [`audit_${randomUUID()}`, actor.tenantId, actor.principalId, packageId,
       current[0] ? JSON.stringify({ supersededPackageId: current[0].id, version: current[0].version }) : null,
-      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId })),
+      JSON.stringify(await withActorAuthority(c, actor.tenantId, actor.principalId, { salesOrderId: input.salesOrderId, version, status, readinessExceptions: exceptions, totalMinor: str(total), operatingCompanyId: companyId,
+      // FU-2: the governed on-demand command records its key here, so a replay of the same key is found without a new table.
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}) })),
       "operational billing package prepared from governed Commercial eligibility"]);
   // THE OWNER-RULED CONSEQUENCE (DECISIONS #197): a READY direct-sale package establishes the EOS operational receivable --
   // in THIS transaction, so a READY package can never be observed without it.
@@ -407,6 +409,61 @@ export async function prepareBillingPackage(pool: Pool, actor: FinanceActor, inp
     const out = await prepareBillingPackageOn(c, actor, input);
     await c.query("COMMIT");
     return out;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    c.release();
+  }
+}
+
+/** The governed on-demand command's answer (FU-2). `outcome` is what the command did; the package is the Sales Order's current one. */
+export interface PrepareBillingPackageResult {
+  readonly outcome: "recorded" | "replayed" | "superseded"; readonly packageId: string; readonly version: number; readonly status: "READY" | "HELD";
+  readonly readinessExceptions: readonly string[]; readonly totalMinor: string | null;
+}
+
+/**
+ * FU-2 (DECISIONS #F-1b addendum): PREPARE THE BILLING PACKAGE OF ONE SALES ORDER ON DEMAND -- the rebill trigger after an Owner-approved VOID (the void retires the
+ * package; before this only a Work Order completion or the unrouted recovery could prepare a new one). A governed wrapper over the SAME `prepareBillingPackageOn`
+ * (no second preparation path): it is idempotent and versions after every retired package, so a voided sale gets a NEW package, a NEW receivable and, when issued,
+ * a NEW invoice number; the voided number is kept.
+ *
+ * AUTHORITY (capability and company) is decided by the transport before this runs. HERE, in ONE transaction: the Sales Order row is locked FIRST, so two concurrent
+ * prepares of one order take turns and yield ONE package version (the loser replays); a missing order, an order not ELIGIBLE in full, and a reused key refuse
+ * and roll back with ZERO trace. REPLAY: the key is recorded in the applied command's audit row (the existing `finance.billingPackage.prepare` row -- ONE per
+ * applied command, nothing else written), so the same key answers the recorded package; the same key for a different order is IDEMPOTENCY_KEY_REUSED.
+ */
+export async function prepareBillingPackageCommand(pool: Pool, actor: FinanceActor, input: { readonly salesOrderId: unknown; readonly idempotencyKey: unknown }): Promise<PrepareBillingPackageResult> {
+  const extra = Object.keys(input ?? {}).filter((k) => k !== "salesOrderId" && k !== "idempotencyKey");
+  if (extra.length > 0) throw new FinanceFoundationError("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${extra.sort().join(", ")}`);
+  const need = (v: unknown, code: string, what: string): string => {
+    if (typeof v !== "string" || v.trim() === "" || v.length > 200) throw new FinanceFoundationError(code, "INVALID_INPUT", `${what} is required`);
+    return v.trim();
+  };
+  const salesOrderId = need(input.salesOrderId, "SALES_ORDER_ID_REQUIRED", "salesOrderId");
+  const key = need(input.idempotencyKey, "IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey");
+  const c = await pool.connect();
+  try {
+    await c.query("BEGIN");
+    const { rows: so } = await c.query(`SELECT id FROM eos_commercial.sales_orders WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE`, [actor.tenantId, salesOrderId]);
+    if (!so[0]) throw new FinanceFoundationError("SALES_ORDER_NOT_FOUND", "NOT_FOUND", "no Sales Order with that id");
+    const { rows: prior } = await c.query(
+      `SELECT target_id, after FROM eos_policy.audit_events WHERE tenant_id = $1 AND action = 'finance.billingPackage.prepare' AND actor_uid = $2 AND after->>'idempotencyKey' = $3 LIMIT 1`,
+      [actor.tenantId, actor.principalId, key]);
+    if (prior[0]) {
+      if (prior[0].after?.salesOrderId !== salesOrderId) throw new FinanceFoundationError("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "that idempotency key prepared a package for a different Sales Order");
+      await c.query("COMMIT");
+      const a = prior[0].after;
+      return Object.freeze({ outcome: "replayed" as const, packageId: String(prior[0].target_id), version: Number(a.version), status: a.status as "READY" | "HELD",
+        readinessExceptions: Object.freeze([...(a.readinessExceptions ?? [])] as string[]), totalMinor: a.totalMinor ?? null });
+    }
+    const out = await prepareBillingPackageOn(c, actor, { salesOrderId, idempotencyKey: key });
+    if (out.outcome === "NOT_ELIGIBLE") {
+      throw new FinanceFoundationError("SALES_ORDER_NOT_ELIGIBLE", "PRECONDITION_FAILED", `the Sales Order is ${out.eligibility}; only an order ELIGIBLE in full is prepared for billing`);
+    }
+    await c.query("COMMIT");
+    return Object.freeze({ outcome: out.outcome, packageId: out.packageId, version: out.version, status: out.status, readinessExceptions: out.readinessExceptions, totalMinor: out.totalMinor });
   } catch (err) {
     await c.query("ROLLBACK").catch(() => undefined);
     throw err;

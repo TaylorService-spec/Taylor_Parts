@@ -59,6 +59,9 @@ export function receivablePosition(row) {
   return typeof row.dueOn === "string" && row.dueOn.length > 0 ? "CURRENT" : "UNKNOWN";
 }
 
+/** A server verdict `{ eligible, reason }`, or null. Anything but an explicit boolean is no verdict (the control then stays hidden). */
+const verdict = (v) => (v && typeof v.eligible === "boolean" ? { eligible: v.eligible, reason: typeof v.reason === "string" ? v.reason : null } : null);
+
 /** One `listObligations` row -> the invoice-shaped record the Financials pages render. null when a field is unsafe (the read is then unavailable). */
 export function receivableRecord(row) {
   if (!row || typeof row.id !== "string" || typeof row.currency !== "string") return null;
@@ -81,6 +84,10 @@ export function receivableRecord(row) {
     currency: row.currency,
     state: row.status ?? null,
     totalMinor, appliedMinor, outstandingMinor,
+    // FU-2: whether Issue may be offered and whether a VOIDED invoice's order can be rebilled -- both decided by the SERVER (the command's own predicate); null when the server sent none.
+    issuable: verdict(row.issuable),
+    rebill: verdict(row.rebill),
+    invoiceVoided: Boolean(row.invoice?.voidedAt),
     issuedAtMillis: invoiceIssuedAtMillis(row.invoice),
     dueDate: dayMillis(row.dueOn),
     arPosition: receivablePosition(row),

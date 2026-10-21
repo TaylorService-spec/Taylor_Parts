@@ -71,6 +71,35 @@ export function IssuePanel({ callApi, billingPackageId, subject, amountText, onI
   );
 }
 
+/**
+ * REBILL after a void (FU-2): prepare a NEW billing package for the voided sale's Sales Order (`prepareBillingPackage`, the invoice-issue key). It is offered only where the
+ * server's read says the order can be prepared again; this decides nothing. ONE idempotency key per opened panel; a refusal stays here in the server's own words with nothing changed.
+ * `onPrepared(result)` is the caller's cue to re-read: the new receivable then appears with its own Issue.
+ */
+export function RebillPanel({ callApi, salesOrderId, subject, onPrepared, onCancel, onBusyChange }) {
+  const [key] = useState(() => `bpk-prepare-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const prepare = async () => {
+    setBusy(true); onBusyChange?.(true); setRefusal(null);
+    const res = await callApi("prepareBillingPackage", { salesOrderId, idempotencyKey: key });
+    setBusy(false); onBusyChange?.(false);
+    if (!res.ok) { setRefusal(res.message ?? "The rebill was not prepared."); return; }
+    onPrepared(res.result);
+  };
+  return (
+    <div role="group" aria-label="Prepare rebill">
+      <p>
+        Prepare a new billing package for {subject}, so it can be invoiced again under a NEW invoice number.
+        The voided invoice keeps its number. Nothing is issued until you issue the new receivable.
+      </p>
+      {refusal && <StatusIndicator tone="danger">{refusal}</StatusIndicator>}
+      <Button disabled={busy} onClick={prepare}>Prepare rebill now</Button>{" "}
+      <Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>
+    </div>
+  );
+}
+
 export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
   const access = useIssuableCompanies(callApi);
   const [company, setCompany] = useState("");
@@ -128,7 +157,12 @@ export default function InvoiceIssueQueue({ callApi = callFinanceApi }) {
                 <td>{o.counterparty?.name ?? o.counterparty?.crmAccountId ?? "—"}</td>
                 <td>{operatingCompanyLabel(o.operatingCompanyId) || "—"}</td>
                 <td>{money(o.originatedMinor, o.currency)}</td>
-                <td><Button size="sm" variant="secondary" disabled={busy} onClick={() => { setNotice(null); openRow.current = o.id; setRow(o); }}>Issue invoice</Button></td>
+                <td>
+                  {/* FU-2: Issue only where the SERVER says the receivable is issuable (the command's own predicate); a financed sale is told apart, not offered. */}
+                  {o.issuable?.eligible === true
+                    ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setNotice(null); openRow.current = o.id; setRow(o); }}>Issue invoice</Button>
+                    : o.issuable?.reason === "UNSUPPORTED_FINANCIAL_OBLIGOR" ? <span className="fo-muted">Financed sale — not invoiced here</span> : null}
+                </td>
               </tr>
             ))}
           </tbody>

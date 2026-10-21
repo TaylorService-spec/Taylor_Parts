@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Lane FU-2 (2026-10-20) — Finance completion: `prepareBillingPackage { salesOrderId, idempotencyKey }` on `/operations/finance` (the governed rebill trigger after an approved void; wraps the existing preparation; REUSES `finance.invoice.issue`), the server-derived `issuable` / `rebill` verdicts on the receivable read (one predicate, `issueBlocker`, shared with `issueInvoice`), and the Receivables Prepare rebill control; Issue is never offered on a financed sale
+- Agent/session:       Claude Code Lane FU-2 · Role: builder; controller merges
+- Branch / worktree:   `fu2/rebill-and-financed-issue` · `.claude/worktrees/agent-ad004157f3f83888e`
+- Base commit:         `4876712b`
+- Owned paths:         `functions/src/eosFinance/{billingPackage,invoiceIssue,financeOperations}.ts` · `functions/test/fu2PrepareBillingPackage{,Postgres}.test.mjs` · `field-ops-app-vite/src/modules/financials/{FinancialsReceivablesEos,InvoiceIssueQueue}.jsx` · `src/domain/financialsEos.js` · `src/services/financeApiClient.js` · `docs/user-guide/financials/{issue-an-invoice,correct-an-invoice}.md`
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` (#F-1b addendum) · `docs/governance/precedence-sweep.json` (hash only) · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt`
+- Dependencies:        F-1a (#2184) and F-1b (#2188) merged; no migration, no capability, no grant
+- Expected outcome:    a voided sale can be rebilled on demand under a NEW invoice number (the voided number kept); the screen never offers Issue on a financed sale; the predicate and the command cannot disagree
+- Protected boundaries:none — no capability, grant, migration, Rules, deploy, Firebase, production or external-payment change; touches no adminPolicy, secondaryApproval or Commercial file
+- Lifecycle stage:     INTEGRATION (PR open; not merged)
+
 - Capability:          Lane FU-1 low follow-ups (2026-10-20) — Sales Order tracker follows the server allocation read, bare `/opportunities/sales-order/:id` redirects to the canonical route, supplier PO "Loading name…" while the directory loads, R1 doc tag line corrected
 - Agent/session:       Claude Code Lane FU-1 · Role: builder; controller merges
 - Branch / worktree:   `fu1/low-followups` · `.claude/worktrees/agent-a073b3972e3908774`
