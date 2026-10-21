@@ -930,12 +930,15 @@ test("DWO-company: the operating-company boundary on Work Orders, in PostgreSQL"
     // a carried Work Order (an interrupted Accept) that the caller does not reach reads exactly as one that no longer exists
     const carriedRequest = (id, pending) => mkRequest(id, { status: "ACCEPTING", accept_claimed_by_principal_id: dspT, accept_claim_prior_status: "NEEDS_REVIEW", accept_claimed_at: new Date(), accept_pending_work_order_id: pending });
     await carriedRequest("inb-f5-cf", foreign);
-    await carriedRequest("inb-f5-cg", "wo-gone-forever");
+    // the FK forbids a carried id that does not exist; a second foreign Work Order (another status) proves the message is the same whatever the foreign Work Order is
+    const foreign2 = await wo("ventana", "READY_TO_DISPATCH");
+    await carriedRequest("inb-f5-cg", foreign2);
     const before = await stateHash();
     const cf = await accept("inb-f5-cf");
     const cg = await accept("inb-f5-cg");
     assert.deepEqual([cf.ok, cf.code], [false, "RECOVERED_WORK_ORDER_CONTEXT_MISMATCH"]);
-    assert.deepEqual([cf.code, cf.category, cf.message], [cg.code, cg.category, cg.message], "a carried Work Order of another company == one that does not exist");
+    assert.deepEqual([cf.code, cf.category, cf.message], [cg.code, cg.category, cg.message], "a carried Work Order of another company reads the same whatever it is");
+    assert.match(cf.message, /no longer exists/, "...as one that no longer exists");
     assert.doesNotMatch(cf.message, /differs|type|customer|site|operating company|CLOSED|CANCELLED|quarantined/);
     assert.equal(await stateHash(), before, "no trace");
     // N2: the carried Work Order is NAMED only where the caller reaches it, in the queue and in the detail
