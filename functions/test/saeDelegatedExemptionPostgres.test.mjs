@@ -24,6 +24,7 @@ const core = require("../lib/access/secondaryApprovalExemptionCore.js");
 const seam = require("../lib/access/secondaryApprovalExemption.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
 const { createAuthorityChangePreview } = require("../lib/eosOps/authorityChangePreview.js");
+const { explainEffectiveAccess } = require("../lib/eosOps/effectiveAccessExplanation.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -182,6 +183,34 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     const ordinary = { operation: "grantObjectActionToRole", input: { roleKey: "saePurchLead", objectKey: readPair.object_key, actionKey: readPair.action_key, reason: "preview" } };
     assert.equal((await adminAs(adminDual.subject, "previewAuthorityChange", { change: ordinary })).ok, true);
     assert.deepEqual((({ ok, code }) => [ok, code])(await adminAs(owner.subject, "previewAuthorityChange", { change: ordinary })), [false, "FORBIDDEN"]);
+  });
+
+  await t.test("ADMIN-3b VISIBILITY (FU-3, Owner review of #2193): the Owner's preview NAMES the Employee who would gain a Role-inherited key; effective access lists a Role-inherited key with its source Role and a direct key as a Direct Exception; nothing is written", async () => {
+    // ADMIN-1 left: saePurchLead <- exemptPurchasing (purchUser holds it), saeFinLead <- exemptFinancials (finUser), directUser holds exemptFinancials directly.
+    const before = await traces();
+    const preview = await adminAs(owner.subject, "previewAuthorityChange",
+      { change: { operation: "grantObjectActionToRole", input: { roleKey: "saePurchLead", objectKey: OBJECT, actionKey: "exemptGoals", reason: "preview names who" } } });
+    assert.equal(preview.ok, true, JSON.stringify(preview).slice(0, 500));
+    assert.equal(preview.data.outcome, "WOULD_APPLY");
+    assert.equal(preview.data.detail, "FULL", "the Owner holds admin.principalAccess.read, so the preview names people");
+    const delta = preview.data.affected.find((d) => d.principalId === purchUser.principalId);
+    assert.ok(delta, "the holder of the Role is named");
+    assert.ok(delta.changes.flat.added.includes("approval.selfApproval.exemptGoals"), JSON.stringify(delta.changes));
+    assert.equal(preview.data.affected.some((d) => d.principalId === finUser.principalId), false, "a holder of a different Role is not affected");
+    assert.deepEqual(await traces(), before, "a preview leaves no trace");
+
+    const explainedAs = async (who) => (await explainEffectiveAccess(repo, pool, { tenantId: TENANT, principalId: who.principalId })).actions;
+    const inherited = (await explainedAs(purchUser)).find((a) => a.capabilityKey === "approval.selfApproval.exemptPurchasing");
+    assert.equal(inherited.result, "ALLOWED");
+    assert.equal(inherited.provenance, "ROLE");
+    assert.deepEqual(inherited.sourceRoles.map((r) => r.roleKey), ["saePurchLead"], "the source Role is named");
+    assert.equal(inherited.directGrant, null);
+    const direct = (await explainedAs(directUser)).find((a) => a.capabilityKey === "approval.selfApproval.exemptFinancials");
+    assert.equal(direct.provenance, "DIRECT");
+    assert.equal(direct.directGrant.label, "DIRECT_EXCEPTION");
+    assert.deepEqual(direct.sourceRoles, []);
+    const unheld = (await explainedAs(purchUser)).find((a) => a.capabilityKey === "approval.selfApproval.exemptFinancials");
+    assert.deepEqual([unheld.result, unheld.sourceRoles.length, unheld.directGrant], ["DENIED", 0, null], "a key the person does not hold is listed as not held");
   });
 
   await t.test("ADMIN-4 OBJECT-WIDE AND CONDITIONS (F2): the Administrator is refused with zero trace on an object-wide GRANT / REVOKE of the exemption Object, on their preview and commit, and on every condition command naming it", async () => {
