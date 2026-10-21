@@ -66,17 +66,17 @@ The same rule is now applied to EVERY operation whose server authorization requi
 | `/operations/inventory allocateSalesOrderLine` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
 | `/operations/rental receiveRentalReturn` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
 | `/operations/serialized-asset acquireSerializedAsset` | WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/placement recordPutAway` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/relocation relocateStock` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/cycle-count createCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/cycle-count submitCycleCountLine` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/cycle-count reconcileCycleCountLine` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/cycle-count closeCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/cycle-count cancelCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/transfer createTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/transfer dispatchTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/transfer cancelTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
-| `/operations/transfer receiveTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope (or, ONLY for a MOBILE (truck) destination, SERVICE_TECHNICIAN eligibility plus a current MOBILE scope over that truck) | OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) |
+| `/operations/placement recordPutAway` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/relocation relocateStock` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/cycle-count createCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/cycle-count submitCycleCountLine` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/cycle-count reconcileCycleCountLine` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/cycle-count closeCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/cycle-count cancelCycleCountSheet` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/transfer createTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/transfer dispatchTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/transfer cancelTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
+| `/operations/transfer receiveTransfer` | WAREHOUSE_OPERATIONS eligibility + WAREHOUSE scope (or, ONLY for a MOBILE (truck) destination, SERVICE_TECHNICIAN eligibility plus a current MOBILE scope over that truck) | WORK_ELIGIBILITY_MISSING (FORBIDDEN) if eligibility is absent; OUTSIDE_OPERATIONAL_SCOPE (FORBIDDEN) if only the scope is absent |
 
 | Read door | Family | Reach | Result when absent |
 |---|---|---|---|
@@ -87,3 +87,5 @@ The same rule is now applied to EVERY operation whose server authorization requi
 | analysis | inventoryTransaction | WAREHOUSE | measure refused: requires a WAREHOUSE Operational Scope |
 
 Not encoded as a refusal (`NOT_AN_OPERATION_GATE` in `tools/uatScope.mjs`): reads that filter by scope and return an empty list (on-hand, receipts, movements), MOBILE scope that applies only when stock is drawn from a truck (equipment install, parts consumption), and warehouse-scoped operations that have no probe row (`correctReorderReceipt`, `receiveReorderStock`, cost-evidence supply, intercompany relief). Work Eligibility is the value DECLARED in `functions/scripts/fixtures/personaAuthorityDimensions.v1.json` (the census holds no eligibility table, CG-05): confirm it with `explainEffectiveAccess` before treating a `WORK_ELIGIBILITY_MISSING` expectation as a defect.
+
+**Note for Codex: `serviceManager`'s three transfer rows (`createTransfer`, `dispatchTransfer`, `cancelTransfer`) are eligibility-only denials.** The persona holds `WAREHOUSE:taylor-service` and the capabilities; the DENY comes solely from the missing WAREHOUSE_OPERATIONS eligibility, which is sourced from the fixture, not the census. Confirm those three with `explainEffectiveAccess` before reporting a defect either way.

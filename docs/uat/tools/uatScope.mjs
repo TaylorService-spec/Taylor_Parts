@@ -17,7 +17,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "./uatExtract.mjs";
 
-const SRC = path.join(REPO_ROOT, "functions", "src");
+// UAT_SERVER_SRC lets the mutation proofs point the checker at a scratch copy of functions/src (never set it in normal use).
+const SRC = process.env.UAT_SERVER_SRC ? path.resolve(process.env.UAT_SERVER_SRC) : path.join(REPO_ROOT, "functions", "src");
 const text = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 
 /** The source of ONE top-level function, from its declaration to the next top-level declaration. */
@@ -51,8 +52,11 @@ const q = (op, refusal, ev, extra = {}) => ({ route: INV, op, reach: "QUEUE", re
 const w = (route, op, preds, ev, extra = {}) => ({ route, op, reach: "PREDICATES", preds: typeof preds === "function" ? preds : () => preds, refusal: { code: "OUTSIDE_OPERATIONAL_SCOPE", category: "FORBIDDEN" }, ev, ...extra });
 const queueHelper = { file: "eosOps/reorderLifecycleCommands.ts", fn: "lockReorderInQueueReach", must: [/queueReachKeys\(/, /refuse\("REORDER_NOT_FOUND", "NOT_FOUND"/] };
 const whPred = /kind:\s*"OPERATIONAL_SCOPE"(?:\s+as const)?,\s*scopeType:\s*"WAREHOUSE"/;
-const cc = (op, fnName, cap) => w("/operations/cycle-count", op, WH_ELIG, [{ file: "eosOps/cycleCountOperations.ts", fn: fnName, must: [new RegExp(`authorizeAtWarehouse\\(db, actor, EOS_CYCLE_COUNT_CAPABILITY\\.${cap}\\b`)] }]);
-const tr = (op, fnName, act, extra = {}) => w("/operations/transfer", op, WH_ELIG, [{ file: "eosOps/transferOperations.ts", fn: fnName, must: [new RegExp(`authorizeAct\\(db, actor, "${act}"`)] }], extra);
+// The call site names the act; the HELPER body is what builds the predicates, so it is cited too (a helper that stops using warehousePredicates changes every row).
+const ccHelper = { file: "eosOps/cycleCountOperations.ts", fn: "authorizeAtWarehouse", must: [/warehousePredicates\(/] };
+const trHelper = { file: "eosOps/transferOperations.ts", fn: "authorizeAct", must: [/warehousePredicates\(/] };
+const cc = (op, fnName, cap) => w("/operations/cycle-count", op, WH_ELIG, [{ file: "eosOps/cycleCountOperations.ts", fn: fnName, must: [new RegExp(`authorizeAtWarehouse\\(db, actor, EOS_CYCLE_COUNT_CAPABILITY\\.${cap}\\b`)] }, ccHelper]);
+const tr = (op, fnName, act, extra = {}) => w("/operations/transfer", op, WH_ELIG, [{ file: "eosOps/transferOperations.ts", fn: fnName, must: [new RegExp(`authorizeAct\\(db, actor, "${act}"`)] }, trHelper], extra);
 
 export const SCOPE_GATES = Object.freeze([
   // ---- REORDER_QUEUE reach (reorderQueueReach.ts: own REORDER_QUEUE scopes UNION protected Administrator standing; company-keyed)
@@ -133,6 +137,26 @@ function walk(dir, out = []) {
 }
 const SCAN = /kind:\s*"OPERATIONAL_SCOPE"|scopeType:\s*"(?:WAREHOUSE|MOBILE|REORDER_QUEUE)"|queueReachKeys\(|requireQueueReach\(|scopedWarehouseIds\(|warehousePredicates\(|mobilePredicates\(|authorizeMobileAct\(|acquirePredicates\(/;
 
+/**
+ * Facts every gate above relies on but no single gate cites. If one stops being true, rows would be wrong in bulk.
+ *  - warehousePredicates still builds eligibility THEN warehouse scope (the order the refusal codes assume);
+ *  - queueReachKeys still unions the Employee's REORDER_QUEUE scopes with the protected Administrator reach (what reachQueue() models).
+ */
+const INVARIANTS = Object.freeze([
+  { label: "warehousePredicates order", file: "eosOps/cycleCountOperations.ts", fn: "warehousePredicates", must: [/WORK_ELIGIBILITY[\s\S]*OPERATIONAL_SCOPE[\s\S]*scopeType:\s*"WAREHOUSE"/] },
+  { label: "queueReachKeys unions own scopes and Administrator reach", file: "eosOps/reorderQueueReach.ts", fn: "queueReachKeys",
+    must: [/scopeType === REORDER_QUEUE_SCOPE_TYPE/, /administrationReachTargets\(db, actor\.tenantId, actor\.principalId, REORDER_QUEUE_SCOPE_TYPE\)/, /new Set\(\[\.\.\.own, \.\.\.administered\]\)/] },
+]);
+
+/**
+ * The ONLY call sites that let the protected Administrator's reach satisfy an OPERATIONAL_SCOPE predicate (`administrationReach:` set to anything but false).
+ * The gates above assume NO other site does (uatScope models the Administrator as reaching only the queue, and read doors). A new or moved site fails the generator.
+ */
+const ADMIN_REACH_OPT_IN = Object.freeze({
+  "eosOps/experienceAuthority.ts": { count: 1, reason: "navigation-surface evaluation (warehouse.record.read / reorder.request.read inspection)" },
+  "eosOps/receiptCorrectionCommand.ts": { count: 1, reason: "correctReorderReceipt VOID only (G2); not a probe operation" },
+});
+
 /** Problems that must stop the generator: a gate whose server evidence has moved, an unaccounted scope-gating file, a gate that names no probe. */
 export function scopeProblems(probes) {
   const problems = [];
@@ -151,10 +175,22 @@ export function scopeProblems(probes) {
     check(`${g.route}:${g.op}`, g.ev);
   }
   for (const [door, fams] of Object.entries(READ_REACH)) for (const [f, d] of Object.entries(fams)) check(`${door}/${f}`, d.ev);
+  for (const iv of INVARIANTS) check(`invariant: ${iv.label}`, [iv]);
+  const optIns = new Map();
   for (const f of walk(SRC)) {
     const rel = path.relative(SRC, f).replace(/\\/g, "/");
-    if (SCAN.test(fs.readFileSync(f, "utf8")) && !CITED.has(rel) && !(rel in NOT_AN_OPERATION_GATE)) problems.push(`${rel} gates on an Operational Scope but no scope gate cites it and it is not in NOT_AN_OPERATION_GATE`);
+    const src = fs.readFileSync(f, "utf8");
+    if (SCAN.test(src) && !CITED.has(rel) && !(rel in NOT_AN_OPERATION_GATE)) problems.push(`${rel} gates on an Operational Scope but no scope gate cites it and it is not in NOT_AN_OPERATION_GATE`);
+    // `administrationReach: false` and the type declaration (`administrationReach?: boolean`) are not opt-ins; a comment is not code.
+    const n = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l) && /(?:^\s*|[{,]\s*)administrationReach\s*:\s*(?!false\b)\S/.test(l)).length;
+    if (n) optIns.set(rel, n);
   }
+  for (const [rel, n] of optIns) {
+    const ok = ADMIN_REACH_OPT_IN[rel];
+    if (!ok) problems.push(`${rel} sets administrationReach (${n}x) but is not a listed opt-in site: a new Administrator-reach site changes the expectations in bulk`);
+    else if (ok.count !== n) problems.push(`${rel} sets administrationReach ${n}x, listed ${ok.count}x`);
+  }
+  for (const rel of Object.keys(ADMIN_REACH_OPT_IN)) if (!optIns.has(rel)) problems.push(`${rel} is a listed Administrator-reach opt-in but no longer sets administrationReach (re-derive)`);
   return problems;
 }
 
