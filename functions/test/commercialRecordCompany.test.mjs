@@ -20,6 +20,7 @@ const offerModule = require("../lib/eosCommercial/recordCompanyOffer.js");
 const http = require("../lib/eosCommercial/commercialHttp.js");
 
 const KEY = "commercial.recordCompany.assign";
+const NEUTRAL = "the company of a related record cannot be confirmed from here; ask someone who can see it";
 const ACTION = "recordCompany.assign"; // the operation and the audit action: command_receipts.operation is exactly two segments
 const KEY_OF = { taylor: "taylor-ops", ventana: "ventana-ops" };
 const reach = () => authority.commercialCompanyReachOf({ unrestricted: false, protectedOwner: false, companyKeys: ["taylor-ops"], employeeIds: ["e-owner"], creatorId: "p-1" });
@@ -49,12 +50,13 @@ function world(cfg = {}) {
       if (/FROM eos_commercial\.opportunity_lines/.test(s) || /FROM eos_commercial\.sales_agreement_lines/.test(s)) return { rows: [] };
       if (/FROM eos_commercial\.sales_agreements a WHERE .* FOR UPDATE OF a/.test(s)) return { rows: cfg.agreement ? [cfg.agreement] : [] };
       if (/^SELECT sales_channel::text FROM eos_commercial\.opportunities/.test(s)) return { rows: [{ sales_channel: cfg.parentChannel ?? "RETAIL" }] };
-      if (/^SELECT operating_company_key FROM eos_commercial\.opportunities/.test(s)) return { rows: [{ operating_company_key: cfg.parentKey ?? null }] };
+      if (/^SELECT o\.operating_company_key, .* AS visible FROM eos_commercial\.opportunities o WHERE/.test(s)) return { rows: [{ operating_company_key: cfg.parentKey ?? null, visible: cfg.parentVisible ?? true }] };
       if (/^SELECT status FROM eos_policy\.tenant_operating_companies/.test(s)) return { rows: params[1] in KEY_OF ? [{ status: "ACTIVE" }] : [] };
       if (/^SELECT b\.operating_company_key FROM eos_policy\.tenant_operating_company_keys/.test(s)) return { rows: [{ operating_company_key: KEY_OF[params[1]] }] };
-      if (/^SELECT operating_company_key FROM eos_commercial\.sales_agreements WHERE .* operating_company_key <> \$3/.test(s)) return { rows: cfg.disagreeingChild ? [{ operating_company_key: cfg.disagreeingChild }] : [] };
+      if (/^SELECT a\.operating_company_key, .* AS visible FROM eos_commercial\.sales_agreements a/.test(s)) return { rows: cfg.disagreeingChild ? [{ operating_company_key: cfg.disagreeingChild, visible: cfg.childVisible ?? true }] : [] };
       if (/^SELECT operating_company_id FROM eos_policy\.tenant_operating_company_keys/.test(s)) return { rows: Object.entries(KEY_OF).filter(([, k]) => k === params[1]).map(([id]) => ({ operating_company_id: id })) };
       if (/^UPDATE eos_commercial\.opportunities SET operating_company_key/.test(s)) return { rowCount: 1, rows: [{ edit_version: "4" }] };
+      if (/^UPDATE eos_commercial\.sales_agreements SET operating_company_key = \$3, updated_by = \$4, updated_at = now\(\) WHERE tenant_id = \$1 AND opportunity_id/.test(s)) return { rowCount: (cfg.children ?? []).length, rows: cfg.children ?? [] };
       if (/^UPDATE eos_commercial\.sales_agreements SET operating_company_key/.test(s)) return { rowCount: 1, rows: [] };
       return { rows: [] };
     },
@@ -156,64 +158,115 @@ test("6. LINEAGE: an Agreement's company is its Opportunity's; a company-less or
   assert.deepEqual([e1.code, e1.category], ["LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED"]);
   assert.match(e1.message, /Opportunity has no operating company yet; set the Opportunity's operating company first, then set this Agreement to the same company/);
   zeroTrace(noCompanyParent, "company-less parent");
-  const otherParent = world({ agreement: agrRow(), parentKey: "ventana-ops" });
+  const otherParent = world({ agreement: agrRow(), parentKey: "ventana-ops", parentVisible: false });
   const e2 = await run(otherParent, agreement);
   assert.equal(e2.code, "LINEAGE_DISAGREEMENT");
-  assert.match(e2.message, /Opportunity is in a company you do not work for, not 'taylor'; a Sales Agreement can only be set to its Opportunity's company/, "an unreached company is not named");
+  assert.equal(e2.message, NEUTRAL, "a parent the caller cannot see: ONE neutral message, no company named");
+  // the lookup went through the Q-1a predicate (its params follow the tenant and the parent id)
+  const parentLookup = otherParent.log.find((l) => /^SELECT o\.operating_company_key, .* AS visible/.test(l.s));
+  assert.match(parentLookup.s, /operating_company_key = ANY\(\$3::text\[\]\)/);
+  assert.deepEqual(parentLookup.params, ["t1", "opp-1", ["taylor-ops"], ["e-owner"], "p-1"]);
+  const hiddenNoCompany = await run(world({ agreement: agrRow(), parentKey: null, parentVisible: false }), agreement);
+  assert.equal(hiddenNoCompany.message, NEUTRAL, "an invisible company-less parent is not described as company-less");
+  const hiddenSame = world({ agreement: agrRow(), parentKey: "taylor-ops", parentVisible: false });
+  assert.equal((await run(hiddenSame, good({ family: "SALES_AGREEMENT", recordId: "sag-1" }))).replayed, false, "a parent in the SAME company is consistent whoever can see it");
   const ownParent = world({ agreement: agrRow(), parentKey: "taylor-ops" });
   assert.equal((await run(ownParent, good({ family: "SALES_AGREEMENT", recordId: "sag-1", operatingCompanyId: "taylor" }))).replayed, false, "the Opportunity's own company is the one an Agreement may take");
   const dualReach = (w) => ({ ...deps(w), companyReach: async () => authority.commercialCompanyReachOf({ unrestricted: false, protectedOwner: false, companyKeys: ["taylor-ops", "ventana-ops"], employeeIds: ["e-owner"], creatorId: "p-1" }) });
   const e2b = await service.assignRecordOperatingCompany(dualReach(world({ agreement: agrRow(), parentKey: "ventana-ops" })), ACTOR, agreement).then((r) => r, (e) => e);
   assert.match(e2b.message, /Opportunity is in operating company 'ventana', not 'taylor'/, "a company the caller reaches is named");
   zeroTrace(otherParent, "different parent");
-  const child = world({ opportunity: oppRow(), disagreeingChild: "ventana-ops" });
+  const child = world({ opportunity: oppRow(), disagreeingChild: "ventana-ops", childVisible: false });
   const e3 = await run(child, good());
   assert.equal(e3.code, "LINEAGE_DISAGREEMENT");
-  assert.match(e3.message, /^this Opportunity's Sales Agreement is already in a company you do not work for, which differs from 'taylor'/);
+  assert.equal(e3.message, NEUTRAL, "a hidden Agreement still blocks the Opportunity, but is not described");
+  const childLookup = child.log.find((l) => /^SELECT a\.operating_company_key, .* AS visible/.test(l.s));
+  assert.match(childLookup.s, /operating_company_key = ANY\(\$4::text\[\]\)/);
+  assert.deepEqual(childLookup.params, ["t1", "opp-1", "taylor-ops", ["taylor-ops"], ["e-owner"], "p-1"]);
+  const e3b = await service.assignRecordOperatingCompany(dualReach(world({ opportunity: oppRow(), disagreeingChild: "ventana-ops" })), ACTOR, good()).then((r) => r, (e) => e);
+  assert.match(e3b.message, /^this Opportunity's Sales Agreement is already in operating company 'ventana', which differs from 'taylor'/, "a visible Agreement's company is named");
   zeroTrace(child, "disagreeing child");
 });
 
-test("7. APPLIED Opportunity: one UPDATE (company, version) and NOTHING ELSE rewritten (no Agreement child is touched), ONE audit row, then the receipt", async () => {
-  const w = world({ opportunity: oppRow() });
+const kindOf = (q) => (/^UPDATE eos_commercial\.opportunities/.test(q) ? "opportunity" : /^UPDATE eos_commercial\.sales_agreements/.test(q) ? "inherit" : /audit_events/.test(q) ? "audit" : /command_receipts/.test(q) ? "receipt" : q);
+const auditsOf = (w) => w.log.filter((l) => /^INSERT INTO eos_policy\.audit_events/.test(l.s)).map((l) => ({
+  tenant: l.params[1], action: l.params[2], actor: l.params[3], targetKind: l.params[4], targetId: l.params[5], before: JSON.parse(l.params[6]), after: JSON.parse(l.params[7]), reason: l.params[8] }));
+const REASON = "Entered without a company by mistake; belongs to Taylor.";
+
+test("7. APPLIED Opportunity WITH a company-less Agreement: the Agreement INHERITS in the same transaction; two audit rows (the child's names its basis); the result lists the child", async () => {
+  const w = world({ opportunity: oppRow(), children: [{ id: "sag-child" }] });
   const out = await run(w, good());
   assert.equal(out.replayed, false, out.message);
-  assert.deepEqual(out, { family: "OPPORTUNITY", recordId: "opp-1", operatingCompanyId: "taylor", editVersion: 4, replayed: false });
-  const writes = w.writes();
-  const kind = (q) => (/^UPDATE eos_commercial.opportunities/.test(q) ? "opportunity" : /^UPDATE eos_commercial.sales_agreements/.test(q) ? "REWRITE" : /audit_events/.test(q) ? "audit" : /command_receipts/.test(q) ? "receipt" : q);
-  assert.deepEqual(writes.map((x) => kind(x.s)), ["opportunity", "audit", "receipt"], "UPDATE, audit, receipt: no related record is rewritten");
-  assert.ok(!w.log.some((l) => /sales_agreements/.test(l.s) && /^UPDATE/.test(l.s)), "no silent cascade onto a company-less Agreement");
-  const upd = writes[0];
-  assert.match(upd.s, /operating_company_key IS NULL/, "the UPDATE also requires the company to still be NULL (two assigns, one winner)");
-  assert.deepEqual(upd.params, ["t1", "opp-1", "taylor-ops", "p-1"]);
-  const audits = w.log.filter((l) => /^INSERT INTO eos_policy\.audit_events/.test(l.s));
-  assert.equal(audits.length, 1, "exactly one audit row");
-  const [, tenant, action, actor, targetKind, targetId, before, after, reason] = audits[0].params;
-  assert.deepEqual([tenant, action, actor, targetKind, targetId], ["t1", ACTION, "p-1", "opportunity", "opp-1"]);
-  assert.deepEqual(JSON.parse(before), { operatingCompanyId: null, operatingCompanyKey: null });
-  assert.deepEqual(JSON.parse(after), { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", editVersion: 4 });
-  assert.equal(reason, "Entered without a company by mistake; belongs to Taylor.");
+  assert.deepEqual(out, { family: "OPPORTUNITY", recordId: "opp-1", operatingCompanyId: "taylor", editVersion: 4, inheritedSalesAgreementIds: ["sag-child"], replayed: false });
+  assert.deepEqual(w.writes().map((x) => kindOf(x.s)), ["opportunity", "inherit", "audit", "audit", "receipt"], "parent, child, the child's audit, the parent's audit, the receipt");
+  const [up, child] = w.writes();
+  assert.match(up.s, /operating_company_key IS NULL/, "the parent UPDATE also requires the company to still be NULL (two assigns, one winner)");
+  assert.deepEqual(up.params, ["t1", "opp-1", "taylor-ops", "p-1"]);
+  assert.match(child.s, /WHERE tenant_id = \$1 AND opportunity_id = \$2 AND operating_company_key IS NULL RETURNING id$/, "ONLY a NULL child inherits");
+  assert.doesNotMatch(child.s, /owner_employee_id|accountable|credited|state|edit_version/, "only the company column (and the stamp) changes");
+  assert.deepEqual(child.params, ["t1", "opp-1", "taylor-ops", "p-1"]);
+  const [childAudit, parentAudit] = auditsOf(w);
+  assert.deepEqual([childAudit.action, childAudit.targetKind, childAudit.targetId, childAudit.actor, childAudit.reason], [ACTION, "salesAgreement", "sag-child", "p-1", REASON]);
+  assert.deepEqual(childAudit.before, { operatingCompanyId: null, operatingCompanyKey: null });
+  assert.deepEqual(childAudit.after, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", basis: "inherited from Opportunity opp-1" });
+  assert.deepEqual([parentAudit.action, parentAudit.targetKind, parentAudit.targetId, parentAudit.reason], [ACTION, "opportunity", "opp-1", REASON]);
+  assert.deepEqual(parentAudit.before, { operatingCompanyId: null, operatingCompanyKey: null });
+  assert.deepEqual(parentAudit.after, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", editVersion: 4, inheritedSalesAgreementIds: ["sag-child"] });
   const order = w.log.map((l) => l.s);
-  assert.ok(order.findIndex((s) => /audit_events/.test(s)) < order.findIndex((s) => /INSERT INTO eos_commercial\.command_receipts/.test(s)), "audit precedes the receipt");
+  assert.ok(order.findIndex((s) => /audit_events/.test(s)) < order.findIndex((s) => /INSERT INTO eos_commercial\.command_receipts/.test(s)), "the audit precedes the receipt");
   assert.ok(w.committed() && !w.rolledBack());
-  // the order of the checks, as the statements ran
   const at = (re) => order.findIndex((s) => re.test(s));
   const target = at(/^SELECT b\.operating_company_key FROM/);
-  assert.ok(at(/FOR UPDATE OF o/) < target && target < at(/^UPDATE eos_commercial\.opportunities/), "visibility, target, then the write");
+  assert.ok(at(/FOR UPDATE OF o/) < target && target < at(/^UPDATE eos_commercial\.opportunities/), "visibility, target, then the writes");
+});
+
+test("7b. APPLIED Opportunity with NO Agreement, or whose Agreement already has the SAME company: the Opportunity succeeds; no child write that changes a row, no child audit row", async () => {
+  for (const [what, cfg] of [["no Agreement", {}], ["an Agreement already in the same company (a NULL-only UPDATE finds nothing)", { children: [] }]]) {
+    const w = world({ opportunity: oppRow(), ...cfg });
+    const out = await run(w, good());
+    assert.deepEqual(out, { family: "OPPORTUNITY", recordId: "opp-1", operatingCompanyId: "taylor", editVersion: 4, inheritedSalesAgreementIds: [], replayed: false }, what);
+    assert.equal(auditsOf(w).length, 1, `${what}: ONE audit row`);
+    assert.deepEqual(auditsOf(w)[0].after, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", editVersion: 4, inheritedSalesAgreementIds: [] });
+    assert.ok(w.committed(), what);
+  }
+});
+
+test("7c. an Agreement in ANOTHER company refuses the WHOLE command (nothing overwritten, zero trace); a hidden one is refused in the neutral words", async () => {
+  const w = world({ opportunity: oppRow(), disagreeingChild: "ventana-ops", childVisible: false, children: [{ id: "sag-child" }] });
+  const err = await run(w, good());
+  assert.deepEqual([err.code, err.category, err.message], ["LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED", NEUTRAL]);
+  zeroTrace(w, "a differing child");
+  assert.ok(!w.log.some((l) => /^UPDATE/.test(l.s)), "not even the parent UPDATE ran: the conflict is found first");
 });
 
 test("8. APPLIED Agreement under an Opportunity that already carries the SAME company: one UPDATE, one audit row", async () => {
   const w = world({ agreement: agrRow(), parentKey: "taylor-ops" });
   const out = await run(w, good({ family: "SALES_AGREEMENT", recordId: "sag-1", idempotencyKey: "k-2" }));
-  assert.deepEqual(out, { family: "SALES_AGREEMENT", recordId: "sag-1", operatingCompanyId: "taylor", editVersion: null, replayed: false });
+  assert.deepEqual(out, { family: "SALES_AGREEMENT", recordId: "sag-1", operatingCompanyId: "taylor", editVersion: null, inheritedSalesAgreementIds: [], replayed: false });
   const updates = w.writes().filter((x) => /^UPDATE/.test(x.s));
   assert.equal(updates.length, 1);
   assert.match(updates[0].s, /^UPDATE eos_commercial\.sales_agreements SET operating_company_key = \$3.*WHERE tenant_id = \$1 AND id = \$2 AND operating_company_key IS NULL$/);
   const audit = w.log.find((l) => /^INSERT INTO eos_policy\.audit_events/.test(l.s)).params;
   assert.equal(audit[4], "salesAgreement");
-  assert.deepEqual(JSON.parse(audit[7]), { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", editVersion: null });
+  assert.deepEqual(JSON.parse(audit[7]), { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops", editVersion: null, inheritedSalesAgreementIds: [] });
   // An Agreement with NO Opportunity chooses freely among the companies the caller reaches.
   const free = world({ agreement: agrRow({ opportunity_id: null }) });
   assert.equal((await run(free, good({ family: "SALES_AGREEMENT", recordId: "sag-1", idempotencyKey: "k-3" }))).replayed, false);
+});
+
+test("9a. the record id is trimmed BEFORE the replay identity is built: a padded id replays the same command, and a different record is still refused", async () => {
+  const receipt = { result: { family: "OPPORTUNITY", recordId: "opp-1", operatingCompanyId: "taylor", editVersion: 4 }, target_family: "opportunity", target_id: "opp-1" };
+  const padded = world({ receipt });
+  const out = await run(padded, good({ recordId: "  opp-1  " }));
+  assert.deepEqual(out, { ...receipt.result, replayed: true });
+  assert.deepEqual(padded.writes(), []);
+  const other = await run(world({ receipt }), good({ recordId: " opp-2 " }));
+  assert.equal(other.code, "IDEMPOTENCY_KEY_REUSED");
+  // and an APPLIED command records the trimmed id as its receipt target
+  const w = world({ opportunity: oppRow() });
+  await run(w, good({ recordId: " opp-1 " }));
+  const stored = w.log.find((l) => /^INSERT INTO eos_commercial\.command_receipts/.test(l.s)).params;
+  assert.deepEqual([stored[5], stored[6]], ["opportunity", "opp-1"]);
 });
 
 test("9. REPLAY writes nothing; a key reused on another record (or another family) is IDEMPOTENCY_KEY_REUSED", async () => {
@@ -295,8 +348,8 @@ test("STRUCTURE: the command locks through the Q-1a store, never reads the recor
   assert.match(src, /runCommercialCommand\(deps, actor, "recordCompany\.assign"/);
   assert.match(src, /lockOpportunity\(db, tenantId, recordId, scope\)/);
   assert.match(src, /lockAgreement\(db, tenantId, recordId, scope\)/);
-  assert.equal([...src.matchAll(/operating_company_key IS NULL/g)].length, 2, "every UPDATE requires the company to still be NULL");
-  assert.doesNotMatch(src, /RETURNING id|cascade(?!d)/i, "no cascade onto a related record");
+  assert.equal([...src.matchAll(/operating_company_key IS NULL/g)].length, 3, "every UPDATE (the parent, the inheriting children, the Agreement) requires the company to still be NULL");
+  assert.doesNotMatch(src, /SET operating_company_key = \$3, edit_version[^`]*sales_agreements|cascade(?!d)/i, "no cascade verb; inheritance is the NULL-only UPDATE below");
   assert.doesNotMatch(src, /operating_company_key = NULL/, "no clear");
   assert.match(src, /action: "recordCompany\.assign"[\s\S]*reason,/);
   assert.ok(src.indexOf("lockOpportunity(") < src.indexOf("operatingCompanyKeyFor(") && src.indexOf("operatingCompanyKeyFor(") < src.indexOf("OPERATING_COMPANY_ALREADY_SET"), "visibility, target, then still-company-less");
@@ -314,4 +367,41 @@ test("STRUCTURE: both record details carry the SERVER's offer, decided on the re
   assert.ok(sag.indexOf("const parentOpportunityId") < sag.indexOf("await maskUnreachedLinks(db, tenantId, reach.company, [r]"), "the parent id is captured before the link is masked");
   assert.match(sag, /readOperatingCompanyAssignmentOffer\(db, tenantId, actor, reach\.company, \{ operatingCompanyKey: r\.operating_company_key \?\? null, parentOpportunityId \}\)/);
   assert.match(sag, /\.\.\.\(assignment \? \{ operatingCompanyAssignment: assignment \} : \{\}\)/);
+});
+
+// ════════════════════ named-only grant (security review, follow-up 1) ════════════════════
+
+test("NAMED-ONLY GRANT: an object-wide GRANT of `opportunity` never confers commercial.recordCompany.assign, and the preview (the same command) does not list it; a REVOKE may still sweep it; it stays grantable by NAME", async () => {
+  const commands = require("../lib/adminPolicy/policyCommands.js");
+  const oa = require("../lib/adminPolicy/objectSecurityAuthority.js");
+  const CAPS = [
+    { id: "c-w", key: "opportunity.write", objectKey: "opportunity", actionKey: "write", actionKind: "EDIT" },
+    { id: "c-s", key: "opportunity.createSalesOrder", objectKey: "opportunity", actionKey: "createSalesOrder", actionKind: "BUSINESS_ACTION" },
+    { id: "c-a", key: KEY, objectKey: "opportunity", actionKey: "assignOperatingCompany", actionKind: "BUSINESS_ACTION" },
+  ];
+  const roles = [{ id: "r-admin", key: "admin", protected: true }, { id: "r-lead", key: "salesLead", protected: false }];
+  const repo = () => ({
+    listCapabilities: async () => CAPS,
+    getMembership: async () => ({ status: "active" }), getPrincipal: async (id) => ({ id, status: "active" }), getAccessVersion: async () => ({ accessVersion: 1 }),
+    listRoles: async () => roles,
+    listAssignmentsForPrincipal: async () => [{ id: "a1", roleId: "r-admin", status: "active", scopeType: "global", accessVersionAtGrant: 1 }],
+    getLinkedEmployeeAccessFact: async () => ({ employeeId: "e-1", employmentStatus: "ACTIVE" }),
+    listRoleCapabilities: async () => [], getRoleByKey: async () => roles[1],
+    getObjectByKey: async () => ({ key: "opportunity" }),
+    transact: async () => { throw new Error("the stub never opens a transaction"); },
+  });
+  const admin = Object.freeze({ tenantId: "t1", uid: "p-admin", heldRoleKeys: ["admin"], protectedAdministrator: true, capabilities: new Set(["admin.securityPolicy.write"]) });
+  const wide = (mode, extra = {}) => ({ objectKey: "opportunity", roleKey: "salesLead", mode, reason: "r", ...extra });
+  assert.deepEqual([...oa.NAMED_ONLY_GRANT_CAPABILITIES], [KEY]);
+  const grant = await commands.applyObjectWideRoleAuthority(repo(), admin, wide("GRANT"));
+  assert.deepEqual(grant.actions.map((a) => a.capabilityKey).sort(), ["opportunity.createSalesOrder", "opportunity.write"], "the object-wide GRANT (and so its preview) does not list or confer the key");
+  const byKind = await commands.applyObjectWideRoleAuthority(repo(), admin, wide("GRANT", { actionKinds: ["BUSINESS_ACTION"] }));
+  assert.deepEqual(byKind.actions.map((a) => a.capabilityKey), ["opportunity.createSalesOrder"], "even asking for the BUSINESS_ACTION kind does not confer it");
+  const revoke = await commands.applyObjectWideRoleAuthority(repo(), admin, wide("REVOKE"));
+  assert.ok(revoke.actions.some((a) => a.capabilityKey === KEY), "a REVOKE may still sweep it: revoking only reduces authority");
+  // the Object still LISTS the action, so it can be granted by naming it
+  assert.ok(oa.actionsForObject(CAPS, "opportunity").some((c) => c.key === KEY));
+  // the preview is the same command: the port routes applyObjectWideRoleAuthority to it, so there is no second expansion to leak the key
+  assert.doesNotMatch(readFileSync(join(SRC, "adminPolicy", "authorityChangePreviewPort.ts"), "utf8"), /actionsForObject/);
+  assert.equal([...readFileSync(join(SRC, "adminPolicy", "policyCommands.ts"), "utf8").matchAll(/NAMED_ONLY_GRANT_CAPABILITIES/g)].length, 2, "imported and applied once, in the object-wide expansion only");
 });

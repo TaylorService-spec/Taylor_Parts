@@ -172,13 +172,13 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
       assert.equal(await visible(who, oppRead.getOpportunityDetail, "opportunityId", oN.opportunityId), expected, `before: ${who}`);
     }
     const out = await assign(tay, { recordId: oN.opportunityId, operatingCompanyId: "taylor" });
-    assert.deepEqual(out, { family: "OPPORTUNITY", recordId: oN.opportunityId, operatingCompanyId: "taylor", editVersion: 2, replayed: false });
+    assert.deepEqual(out, { family: "OPPORTUNITY", recordId: oN.opportunityId, operatingCompanyId: "taylor", editVersion: 2, inheritedSalesAgreementIds: [], replayed: false });
     assert.equal(await keyOf("opportunities", oN.opportunityId), "taylor-ops-t1");
     const rows = await audits(oN.opportunityId);
     assert.equal(rows.length, 1, "ONE audit row per applied command");
     assert.deepEqual([rows[0].actor_uid, rows[0].target_kind, rows[0].reason], [tay, "opportunity", REASON]);
     assert.deepEqual(rows[0].before, { operatingCompanyId: null, operatingCompanyKey: null });
-    assert.deepEqual({ ...rows[0].after, authorizedBy: undefined }, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops-t1", editVersion: 2, authorizedBy: undefined });
+    assert.deepEqual({ ...rows[0].after, authorizedBy: undefined }, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops-t1", editVersion: 2, inheritedSalesAgreementIds: [], authorizedBy: undefined });
     // After: normal company authority. Its Ventana CREATOR loses it; Taylor's people (including a colleague who never owned it) gain it; Ventana never sees it.
     for (const [who, expected] of [[vcreator, false], [ven, false], [tay, true], [other, true], [dual, true], [admin, true], [own, true]]) {
       assert.equal(await visible(who, oppRead.getOpportunityDetail, "opportunityId", oN.opportunityId), expected, `after: ${who}`);
@@ -192,7 +192,7 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     const a = await agreementIn(tay, o.opportunityId);
     await q(`UPDATE eos_commercial.sales_agreements SET operating_company_key = NULL WHERE id = $1`, [a.salesAgreementId]);
     const out = await assign(tay, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor" });
-    assert.deepEqual(out, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor", editVersion: null, replayed: false });
+    assert.deepEqual(out, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor", editVersion: null, inheritedSalesAgreementIds: [], replayed: false });
     assert.equal(await keyOf("sales_agreements", a.salesAgreementId), "taylor-ops-t1");
     const rows = await audits(a.salesAgreementId);
     assert.equal(rows.length, 1);
@@ -208,29 +208,81 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     assert.equal(await keyOf("sales_agreements", loneAgreement.salesAgreementId), "taylor-ops-t1");
   });
 
-  await t.test("(3) an OPPORTUNITY WITH A COMPANY-LESS AGREEMENT CHILD: NO silent rewriting -- the child is left alone and is then set EXPLICITLY, to the Opportunity's company", async () => {
+  await t.test("(3) INHERITANCE (Owner ruling): an Opportunity set with a company-less Agreement -> BOTH carry the company, in one transaction, with TWO audit rows; only the company column changes; the result lists the child", async () => {
     const o = await companyless(creator);
     const a = await agreementIn(creator, o.opportunityId);
     assert.equal(await keyOf("sales_agreements", a.salesAgreementId), null, "a child of a company-less parent is company-less");
-    // The child cannot be set while its Opportunity has no company, and the refusal NAMES the conflict.
+    const frozen = async () => (await q(`SELECT owner_employee_id, accountable_employee_id, credited_salesperson_employee_id, state::text AS state, created_by, sales_agreement_number FROM eos_commercial.sales_agreements WHERE id = $1`, [a.salesAgreementId])).rows[0];
+    const beforeChild = await frozen();
+    // Set on its own, before its Opportunity has a company, the Agreement is refused and the words name the conflict.
     const alone = await refusedWithZeroTrace(() => assign(creator, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor" }), "LINEAGE_DISAGREEMENT", "the child alone");
     assert.match(alone.message, /Opportunity has no operating company yet; set the Opportunity's operating company first/);
     const out = await assign(creator, { recordId: o.opportunityId, operatingCompanyId: "taylor" });
-    assert.ok(!JSON.stringify(out).includes(a.salesAgreementId));
+    assert.deepEqual(out.inheritedSalesAgreementIds, [a.salesAgreementId], "nothing is silent: the result lists every inherited child");
     assert.equal(await keyOf("opportunities", o.opportunityId), "taylor-ops-t1");
-    assert.equal(await keyOf("sales_agreements", a.salesAgreementId), null, "the Agreement was NOT rewritten");
-    assert.equal(await visible(other, saRead.getSalesAgreementDetail, "salesAgreementId", a.salesAgreementId), false, "it stays company-less: owner / creator / administrators only");
+    assert.equal(await keyOf("sales_agreements", a.salesAgreementId), "taylor-ops-t1", "the Agreement INHERITED the company");
+    assert.deepEqual(await frozen(), beforeChild, "ownership, accountable Employee, credit, state and number are untouched: only the company changed");
+    const parentRows = await audits(o.opportunityId);
+    const childRows = await audits(a.salesAgreementId);
+    assert.equal(parentRows.length, 1);
+    assert.equal(childRows.length, 1, "one audit event for the parent plus one per CHANGED Agreement");
+    assert.deepEqual(parentRows[0].after.inheritedSalesAgreementIds, [a.salesAgreementId]);
+    assert.deepEqual([childRows[0].target_kind, childRows[0].reason, childRows[0].actor_uid], ["salesAgreement", REASON, creator]);
+    assert.deepEqual(childRows[0].before, { operatingCompanyId: null, operatingCompanyKey: null });
+    assert.deepEqual({ ...childRows[0].after, authorizedBy: undefined }, { operatingCompanyId: "taylor", operatingCompanyKey: "taylor-ops-t1", basis: `inherited from Opportunity ${o.opportunityId}`, authorizedBy: undefined });
+    assert.equal(await visible(other, saRead.getSalesAgreementDetail, "salesAgreementId", a.salesAgreementId), true, "and the child now follows normal company authority");
+    // A child never changes once set: asking again changes nothing.
+    await refusedWithZeroTrace(() => assign(creator, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor" }), "OPERATING_COMPANY_ALREADY_SET", "the inherited child");
+  });
+
+  await t.test("(3b) an Agreement ALREADY in the Opportunity's company is left unchanged: no child write, no child audit row; and an Opportunity with NO Agreement succeeds", async () => {
+    const o = await companyless(creator);
+    const a = await agreementIn(creator, o.opportunityId);
+    await q(`UPDATE eos_commercial.sales_agreements SET operating_company_key = 'taylor-ops-t1' WHERE id = $1`, [a.salesAgreementId]);
+    const stamp = async () => (await q(`SELECT updated_at::text AS u, updated_by AS b FROM eos_commercial.sales_agreements WHERE id = $1`, [a.salesAgreementId])).rows[0];
+    const beforeChild = await stamp();
+    const out = await assign(creator, { recordId: o.opportunityId, operatingCompanyId: "taylor" });
+    assert.deepEqual(out.inheritedSalesAgreementIds, []);
+    assert.deepEqual(await stamp(), beforeChild, "the child row was not written");
+    assert.equal((await audits(a.salesAgreementId)).length, 0, "no audit row for an unchanged Agreement");
     assert.equal((await audits(o.opportunityId)).length, 1);
-    assert.equal((await audits(a.salesAgreementId)).length, 0);
-    // The user corrects the Agreement explicitly, to the Opportunity's company only.
-    const wrong = await refusedWithZeroTrace(() => assign(dual, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "ventana" }).catch((e) => { throw e; }), "RECORD_NOT_FOUND", "dual cannot see another's company-less Agreement");
-    assert.ok(wrong);
-    const cmismatch = await refusedWithZeroTrace(() => assign(admin, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "ventana" }), "LINEAGE_DISAGREEMENT", "another company than the Opportunity's");
-    assert.match(cmismatch.message, /Opportunity is in operating company 'taylor', not 'ventana'/);
-    assert.equal((await assign(creator, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor" })).replayed, false);
-    assert.equal(await keyOf("sales_agreements", a.salesAgreementId), "taylor-ops-t1");
-    assert.equal(await visible(other, saRead.getSalesAgreementDetail, "salesAgreementId", a.salesAgreementId), true);
-    assert.equal((await audits(a.salesAgreementId)).length, 1, "each record has its own audit row");
+    const bare = await companyless(creator);
+    assert.deepEqual((await assign(creator, { recordId: bare.opportunityId })).inheritedSalesAgreementIds, []);
+    assert.equal(await keyOf("opportunities", bare.opportunityId), "taylor-ops-t1");
+  });
+
+  await t.test("(3c) an Agreement in ANOTHER company refuses the WHOLE command (LINEAGE_DISAGREEMENT, nothing overwritten, zero trace); neutral words when the Agreement is not visible to the caller", async () => {
+    const o = await companyless(creator);
+    const a = await agreementIn(creator, o.opportunityId);
+    await q(`UPDATE eos_commercial.sales_agreements SET operating_company_key = 'ventana-ops-t1' WHERE id = $1`, [a.salesAgreementId]);
+    // the creator reaches Taylor only: the Ventana Agreement is invisible to it -> the neutral words, no company named
+    const hidden = await refusedWithZeroTrace(() => assign(creator, { recordId: o.opportunityId, operatingCompanyId: "taylor" }), "LINEAGE_DISAGREEMENT", "a hidden differing child");
+    assert.equal(hidden.message, "the company of a related record cannot be confirmed from here; ask someone who can see it");
+    // the Administrator sees it: the conflict is named
+    const named = await refusedWithZeroTrace(() => assign(admin, { recordId: o.opportunityId, operatingCompanyId: "taylor" }), "LINEAGE_DISAGREEMENT", "a visible differing child");
+    assert.match(named.message, /Sales Agreement is already in operating company 'ventana', which differs from 'taylor'/);
+    assert.equal(await keyOf("opportunities", o.opportunityId), null);
+    assert.equal(await keyOf("sales_agreements", a.salesAgreementId), "ventana-ops-t1", "nothing overwritten");
+    // and an Agreement set directly to a company other than its (set) Opportunity's names the Opportunity's company only if the caller can see it
+    const oK = await oppIn(ven, { accountId: "acct-ven", operatingCompanyId: "ventana" });
+    const aK = await agreementIn(ven, oK.opportunityId, { ownerEmployeeId: "e-ven" });
+    await q(`UPDATE eos_commercial.sales_agreements SET operating_company_key = NULL, owner_employee_id = 'e-tay' WHERE id = $1`, [aK.salesAgreementId]);
+    const hiddenParent = await refusedWithZeroTrace(() => assign(tay, { family: "SALES_AGREEMENT", recordId: aK.salesAgreementId, operatingCompanyId: "taylor" }), "LINEAGE_DISAGREEMENT", "a parent Taylor cannot see");
+    assert.equal(hiddenParent.message, "the company of a related record cannot be confirmed from here; ask someone who can see it");
+    const namedParent = await refusedWithZeroTrace(() => assign(admin, { family: "SALES_AGREEMENT", recordId: aK.salesAgreementId, operatingCompanyId: "taylor" }), "LINEAGE_DISAGREEMENT", "a parent the Administrator sees");
+    assert.match(namedParent.message, /Opportunity is in operating company 'ventana', not 'taylor'/);
+  });
+
+  await t.test("(3d) NEW Agreement creation: it inherits the Opportunity's company on the server and refuses a conflicting client-supplied company (Q-1a M-3); a company-less Opportunity keeps its Agreement company-less", async () => {
+    const o = await oppIn(tay);
+    const clash = await refusal(() => agreementIn(dual, o.opportunityId, { operatingCompanyId: "ventana" }));
+    assert.equal(clash.code, "OPERATING_COMPANY_MISMATCH");
+    const a = await agreementIn(tay, o.opportunityId);
+    assert.equal(await keyOf("sales_agreements", a.salesAgreementId), "taylor-ops-t1", "inherited from the Opportunity");
+    const n = await companyless(creator);
+    assert.equal((await refusal(() => agreementIn(creator, n.opportunityId, { operatingCompanyId: "taylor" }))).code, "OPERATING_COMPANY_MISMATCH", "a company cannot be chosen by stating it on the child of a company-less Opportunity");
+    const nc = await agreementIn(creator, n.opportunityId);
+    assert.equal(await keyOf("sales_agreements", nc.salesAgreementId), null);
   });
 
   // ════════════════════ REFUSALS (each with ZERO trace) ════════════════════
@@ -352,6 +404,43 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     assert.equal(await keyOf("opportunities", o.opportunityId), winners[0].ok.operatingCompanyId === "taylor" ? "taylor-ops-t1" : "ventana-ops-t1");
     assert.equal((await audits(o.opportunityId)).length, 1, "one audit row, whatever the race");
     assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.command_receipts WHERE operation = 'recordCompany.assign' AND target_id = $1`, [o.opportunityId])).rows[0].n, 1);
+  });
+
+  await t.test("(12b) RETRY of an Opportunity that inherited into an Agreement: the replay writes NOTHING and adds no second audit event for the parent or the child", async () => {
+    const o = await companyless(creator);
+    const a = await agreementIn(creator, o.opportunityId);
+    const k = key();
+    const first = await assign(creator, { recordId: o.opportunityId, idempotencyKey: k });
+    assert.deepEqual(first.inheritedSalesAgreementIds, [a.salesAgreementId]);
+    const before = await stateHash();
+    const again = await assign(creator, { recordId: o.opportunityId, idempotencyKey: k });
+    assert.deepEqual(again, { ...first, replayed: true });
+    assert.equal(await stateHash(), before, "no duplicate row, receipt or audit event");
+    assert.equal((await audits(o.opportunityId)).length + (await audits(a.salesAgreementId)).length, 2);
+    // a padded record id is the same command (trimmed before the replay identity is built)
+    const padded = await assign(creator, { recordId: `  ${o.opportunityId}  `, idempotencyKey: k });
+    assert.equal(padded.replayed, true);
+    assert.equal(await stateHash(), before);
+  });
+
+  await t.test("(13b) CONCURRENCY with a child: racing assigns of an Opportunity AND a direct assign of its Agreement leave parent and child CONSISTENT, with one audit event per changed record", async () => {
+    const o = await oppIn(dual, { accountId: "acct-null", operatingCompanyId: undefined, need: "Race with a child" });
+    const a = await agreementIn(dual, o.opportunityId);
+    const racers = [
+      assign(dual, { recordId: o.opportunityId, operatingCompanyId: "taylor" }),
+      assign(dual, { recordId: o.opportunityId, operatingCompanyId: "ventana" }),
+      assign(dual, { family: "SALES_AGREEMENT", recordId: a.salesAgreementId, operatingCompanyId: "taylor" }),
+      assign(dual, { recordId: o.opportunityId, operatingCompanyId: "taylor" }),
+    ].map((p) => p.then((r) => ({ ok: r }), (e) => ({ err: e })));
+    const settled = await Promise.all(racers);
+    const parent = await keyOf("opportunities", o.opportunityId);
+    const child = await keyOf("sales_agreements", a.salesAgreementId);
+    assert.ok(parent !== null, JSON.stringify(settled.map((s) => s.err?.code ?? "ok")));
+    assert.equal(child, parent, "parent and child agree after any interleaving");
+    assert.equal(settled.filter((s) => s.ok && s.ok.family === "OPPORTUNITY").length, 1, "exactly one Opportunity assign wins");
+    assert.equal((await audits(o.opportunityId)).length, 1);
+    assert.equal((await audits(a.salesAgreementId)).length, 1, "the child changed exactly once (by inheritance or, if it ran first, refused)");
+    assert.ok(settled.filter((s) => s.err).every((s) => ["OPERATING_COMPANY_ALREADY_SET", "LINEAGE_DISAGREEMENT", "CONCURRENT_MODIFICATION"].includes(s.err.code)));
   });
 
   // ════════════════════ THE SERVER-DECIDED OFFER ════════════════════

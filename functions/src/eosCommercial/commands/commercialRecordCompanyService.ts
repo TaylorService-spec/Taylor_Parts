@@ -13,14 +13,16 @@
 //   3. TARGET REACH          the caller reaches the company it assigns (the SAME Q-1a decision a creation uses); a company it does not reach reads as an ungoverned one
 //   4. STILL COMPANY-LESS    a record that already has a company refuses OPERATING_COMPANY_ALREADY_SET and changes nothing
 //   5. LINEAGE               an Agreement's company must equal its Opportunity's, and NO RELATED RECORD IS EVER REWRITTEN (Owner ruling 2026-10-21): a conflict is refused with
-//                            LINEAGE_DISAGREEMENT and NAMES it. An Agreement whose Opportunity has no company, or another one, is refused; an Opportunity whose Agreement is
-//                            already in another company is refused; a company-less Agreement of an Opportunity is left as it is and set explicitly, to the Opportunity's
-//                            company, through this same command. An Order is NOT NULL and never applies.
+//                            LINEAGE_DISAGREEMENT (neutral wording when the related record is not visible). An Agreement whose Opportunity has no company, or another one, is
+//                            refused; an Opportunity whose Agreement is already in another company refuses the whole command. A COMPANY-LESS Agreement INHERITS the
+//                            Opportunity's company in the same transaction (Owner ruling 2026-10-21): its own audit row, listed in the result; a child never changes once set.
+//                            An Order is NOT NULL and never applies.
 //
 // ONE audit row per applied command (action = the operation), carrying the governed reason and the before (null) / after company. Replay is the kernel's
 // receipt; two assigns on one record have exactly one winner (the record is locked, and the UPDATE also requires the company to still be NULL).
 //
 // A refusal names a conflicting company only when the caller reaches it; it never names a linked record id.
+import { recordCommandAudit } from "../../eosAudit/commandAuditEvent";
 import { fail, runCommercialCommand, COMMERCIAL_RECORD_COMPANY_ASSIGN_CAPABILITY, type CommercialActorContext, type CommercialCommandDeps } from "./commercialCommandKernel";
 import { lockAgreement, lockOpportunity, operatingCompanyKeyFor } from "./commercialRecordStore";
 import { sourceOpportunityChannel } from "./salesAgreementCommandService";
@@ -31,19 +33,23 @@ const MAX_REASON_LENGTH = 500;
 const COMPANY_ID_SHAPE = /^[a-z][a-z0-9_-]{1,62}$/;
 const LABEL = { opportunity: "Opportunity", salesAgreement: "Sales Agreement" } as const;
 
-/** The words for a company named in a refusal: its id when the caller reaches it, otherwise only that it is a company the caller does not work for. */
-async function describeCompany(db: Parameters<typeof operatingCompanyKeyFor>[0], tenantId: string, scope: Parameters<typeof lockOpportunity>[3], companyKey: string): Promise<string> {
+/**
+ * ONE neutral refusal for a related record the caller cannot see (a hidden-record oracle otherwise: whether it exists, has a company, which one). It names
+ * nothing; the caller asks someone who can see the related record.
+ */
+const RELATED_RECORD_NEUTRAL = "the company of a related record cannot be confirmed from here; ask someone who can see it";
+
+/** The id of the ACTIVE company a key is bound to; null when none. Called ONLY for a related record that passed the caller's visibility. */
+async function visibleCompanyId(db: Parameters<typeof operatingCompanyKeyFor>[0], tenantId: string, companyKey: string): Promise<string | null> {
   const { rows } = await db.query<{ operating_company_id: string }>(
     `SELECT operating_company_id FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1 AND operating_company_key = $2 AND status = 'ACTIVE'`, [tenantId, companyKey]);
-  const id = rows[0]?.operating_company_id;
-  if (!id) return "a company that is no longer bound to a governed company";
-  try { scope.admitNewCompany(companyKey, id); return `operating company '${id}'`; } catch { return "a company you do not work for"; }
+  return rows[0]?.operating_company_id ?? null;
 }
 
 export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   const family = typeof input?.family === "string" && Object.prototype.hasOwnProperty.call(FAMILY_OF, input.family) ? FAMILY_OF[input.family] : undefined;
   // A key reused on a different record (or with an unknown family) is never a replay (IDEMPOTENCY_KEY_REUSED).
-  const replayTarget = { family: family ?? ("opportunity" as const), id: family ? input?.recordId : undefined };
+  const replayTarget = { family: family ?? ("opportunity" as const), id: family ? (typeof input?.recordId === "string" ? input.recordId.trim() : input?.recordId) : undefined };
   // The operation name is also the audit action; command_receipts.operation must be exactly two segments (a CHECK), so it is not the capability key.
   return runCommercialCommand(deps, actor, "recordCompany.assign", [COMMERCIAL_RECORD_COMPANY_ASSIGN_CAPABILITY], input?.idempotencyKey, async (db, _now, scope) => {
     const extra = Object.keys(input).filter((k) => !ACCEPTED_FIELDS.has(k));
@@ -76,15 +82,20 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
       fail("OPERATING_COMPANY_ALREADY_SET", "PRECONDITION_FAILED", "the record already has an operating company; this command sets it once and never changes it");
     }
 
-    // 5. LINEAGE -- consistency is CHECKED, never repaired: no related record is rewritten (Owner ruling 2026-10-21). A conflict is refused and NAMED.
+    // 5. LINEAGE -- consistency is CHECKED first, and only a NULL child ever inherits (Owner rulings 2026-10-21). A conflict refuses the whole command.
     let editVersion: number | null = null;
+    const inherited: string[] = [];
     if (family === "opportunity") {
-      const disagreeing = await db.query<{ operating_company_key: string }>(
-        `SELECT operating_company_key FROM eos_commercial.sales_agreements WHERE tenant_id = $1 AND opportunity_id = $2 AND operating_company_key IS NOT NULL AND operating_company_key <> $3`,
-        [tenantId, recordId, key]);
+      // The conflict is found whether or not the caller can see the Agreement (it must still be refused); the company is NAMED only if the lookup passed the Q-1a predicate.
+      const related = scope.companyFilter("a", 4);
+      const disagreeing = await db.query<{ operating_company_key: string; visible: boolean }>(
+        `SELECT a.operating_company_key, ${related.sql} AS visible FROM eos_commercial.sales_agreements a
+          WHERE a.tenant_id = $1 AND a.opportunity_id = $2 AND a.operating_company_key IS NOT NULL AND a.operating_company_key <> $3`,
+        [tenantId, recordId, key, ...related.params]);
       if (disagreeing.rows.length > 0) {
-        fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED",
-          `this Opportunity's Sales Agreement is already in ${await describeCompany(db, tenantId, scope, disagreeing.rows[0].operating_company_key)}, which differs from '${companyId}'; an Agreement and its Opportunity must carry the same company, so choose the Agreement's company`);
+        const seen = disagreeing.rows[0].visible === true ? await visibleCompanyId(db, tenantId, disagreeing.rows[0].operating_company_key) : null;
+        fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED", seen === null ? RELATED_RECORD_NEUTRAL
+          : `this Opportunity's Sales Agreement is already in operating company '${seen}', which differs from '${companyId}'; an Agreement and its Opportunity must carry the same company, so choose the Agreement's company`);
       }
       const set = await db.query(
         `UPDATE eos_commercial.opportunities SET operating_company_key = $3, edit_version = edit_version + 1, updated_by = $4, updated_at = now()
@@ -92,20 +103,41 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
         [tenantId, recordId, key, actor.principalId]);
       if (set.rowCount !== 1) fail("CONCURRENT_MODIFICATION", "CONFLICT", "the record changed since it was read; reload and retry");
       editVersion = Number(set.rows[0].edit_version);
-      // A company-less Agreement of this Opportunity is NOT touched: it is set explicitly, to the Opportunity's company, through this same command.
+      // INHERITANCE (Owner ruling 2026-10-21: "agreements should inherit the opportunities company"): the Opportunity's COMPANY-LESS Agreement takes the same company in this
+      // transaction -- explicit, never silent: it gets its OWN audit row (basis "inherited from Opportunity <id>", the same reason) and the result lists it. Only a NULL child
+      // inherits; a child that already has a company never changes (a DIFFERENT one was refused above, before any write).
+      const children = await db.query<{ id: string }>(
+        `UPDATE eos_commercial.sales_agreements SET operating_company_key = $3, updated_by = $4, updated_at = now()
+          WHERE tenant_id = $1 AND opportunity_id = $2 AND operating_company_key IS NULL RETURNING id`,
+        [tenantId, recordId, key, actor.principalId]);
+      for (const child of children.rows.map((r) => r.id).sort()) {
+        inherited.push(child);
+        await recordCommandAudit(db, tenantId, actor.principalId, {
+          action: "recordCompany.assign", targetKind: "salesAgreement", targetId: child,
+          before: { operatingCompanyId: null, operatingCompanyKey: null },
+          after: { operatingCompanyId: companyId, operatingCompanyKey: key, basis: `inherited from Opportunity ${recordId}` },
+          reason,
+        });
+      }
     } else {
       const agreement = current as { opportunityId: string | null };
       if (agreement.opportunityId !== null) {
-        const parent = await db.query<{ operating_company_key: string | null }>(
-          `SELECT operating_company_key FROM eos_commercial.opportunities WHERE tenant_id = $1 AND id = $2`, [tenantId, agreement.opportunityId]);
+        // The parent is read through the Q-1a predicate: whether it exists, has a company, or which, is told only if the caller can see it.
+        const related = scope.companyFilter("o", 3);
+        const parent = await db.query<{ operating_company_key: string | null; visible: boolean }>(
+          `SELECT o.operating_company_key, ${related.sql} AS visible FROM eos_commercial.opportunities o WHERE o.tenant_id = $1 AND o.id = $2`,
+          [tenantId, agreement.opportunityId, ...related.params]);
         const parentKey = parent.rows[0]?.operating_company_key ?? null;
-        if (parentKey === null) {
-          fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED",
-            "this Sales Agreement's Opportunity has no operating company yet; set the Opportunity's operating company first, then set this Agreement to the same company");
-        }
-        if (parentKey !== key) {
-          fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED",
-            `this Sales Agreement's Opportunity is in ${await describeCompany(db, tenantId, scope, parentKey as string)}, not '${companyId}'; a Sales Agreement can only be set to its Opportunity's company`);
+        const parentVisible = parent.rows[0]?.visible === true;
+        if (parentKey !== key) { // a parent in the SAME company is consistent whoever can see it; anything else is a conflict
+          if (!parentVisible) fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED", RELATED_RECORD_NEUTRAL);
+          if (parentKey === null) {
+            fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED",
+              "this Sales Agreement's Opportunity has no operating company yet; set the Opportunity's operating company first, then set this Agreement to the same company");
+          }
+          const seen = await visibleCompanyId(db, tenantId, parentKey as string);
+          fail("LINEAGE_DISAGREEMENT", "PRECONDITION_FAILED", seen === null ? RELATED_RECORD_NEUTRAL
+            : `this Sales Agreement's Opportunity is in operating company '${seen}', not '${companyId}'; a Sales Agreement can only be set to its Opportunity's company`);
         }
       }
       const set = await db.query(
@@ -116,12 +148,12 @@ export function assignRecordOperatingCompany(deps: CommercialCommandDeps, actor:
     }
 
     return {
-      result: { family: input.family, recordId, operatingCompanyId: companyId, editVersion },
+      result: { family: input.family, recordId, operatingCompanyId: companyId, editVersion, inheritedSalesAgreementIds: inherited },
       target: { family, id: recordId },
       audit: {
         action: "recordCompany.assign", targetKind: family, targetId: recordId,
         before: { operatingCompanyId: null, operatingCompanyKey: null },
-        after: { operatingCompanyId: companyId, operatingCompanyKey: key, editVersion },
+        after: { operatingCompanyId: companyId, operatingCompanyKey: key, editVersion, inheritedSalesAgreementIds: inherited },
         reason,
       },
     };
