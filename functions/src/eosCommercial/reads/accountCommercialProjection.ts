@@ -44,7 +44,10 @@ export function getAccountCommercialProjection(
     async (db, tenantId, { accountId, limit }, reach) => {
       const account = await db.query<{ id: string; name: string }>(`SELECT id, name FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2`, [tenantId, accountId]);
       if (account.rows.length === 0) return fail("ACCOUNT_NOT_FOUND", "NOT_FOUND", "the Account does not exist in this tenant");
-      const scope = { limit, accountId, cursor: null };
+      // Q-1a: every family is also filtered to the records of the companies the caller reaches (capability -> company -> channel). The Account itself
+      // is a customer record shared across companies, not company-owned: only its Commercial records are company-scoped, and a caller who reaches none
+      // sees the Account with empty sections -- no trace of a record in another company.
+      const scope = { limit, accountId, cursor: null, company: reach.company };
       // Lane GA: each family is filtered to the channels ITS read key is held in (null = held globally, unfiltered).
       const C = COMMERCIAL_READ_CAPABILITIES;
       const opportunities = await readOpportunityPage(db, tenantId, { ...scope, stage: null, salesChannels: reach.channelsFor(C.OPPORTUNITY_READ) });

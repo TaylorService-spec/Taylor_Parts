@@ -6,6 +6,7 @@
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -67,7 +68,7 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);
-  const writeDeps = { pool, catalog };
+  const writeDeps = { pool, catalog, companyReach: ALL_COMPANIES };
 
   // Every statement a read issues, captured. A read that wrote anything would show up here before it showed up in data.
   const statements = [];
@@ -77,7 +78,7 @@ test("governed PostgreSQL Commercial read projections, in PostgreSQL", { skip: S
       return { query: (text, values) => { statements.push(String(text)); return client.query(text, values); }, release: () => client.release() };
     },
   };
-  const readDeps = { pool: spyPool };
+  const readDeps = { pool: spyPool, companyReach: ALL_COMPANIES };
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);

@@ -19,18 +19,18 @@ import { allocateCommercialNumber } from "../commercialNumbering";
 import { lineFacts, pickFields } from "../../eosAudit/commandAuditEvent";
 import {
   ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveSalesChannel, requireActiveTenantAccount, requireTenantEmployee, runCommercialCommand,
-  type CommercialActorContext, type CommercialCommandDeps,
+  type CommercialActorContext, type CommercialCommandDeps, type CommercialWriteScope,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
-import { insertOpportunity, lockAgreementForOpportunity, lockOpportunity, lockOrderForOpportunity, newRecordId, replaceOpportunityLines } from "./commercialRecordStore";
+import { admitNewRecordCompany, insertOpportunity, lockAgreementForOpportunity, lockOpportunity, lockOrderForOpportunity, newRecordId, replaceOpportunityLines } from "./commercialRecordStore";
 import { assertConvertibleAgreement, stageSalesOrderFromAgreement } from "./salesOrderCommandService";
 
 type Queryable = Pick<PoolClient, "query">;
 const target = (id: string) => ({ family: "opportunity" as const, id });
 
-async function requireOpportunity(db: Queryable, tenantId: string, id: unknown) {
+async function requireOpportunity(db: Queryable, tenantId: string, id: unknown, scope: CommercialWriteScope) {
   if (typeof id !== "string" || id.trim() === "") fail("OPPORTUNITY_REQUIRED", "INVALID_INPUT", "opportunityId is required");
-  const row = await lockOpportunity(db, tenantId, id as string);
+  const row = await lockOpportunity(db, tenantId, id as string, scope);
   if (!row) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
   if (row.stage === null || row.salesChannel === null) {
     fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Opportunity was not created through a governed command and carries no lifecycle");
@@ -48,6 +48,7 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
       { ...(fields as Record<string, unknown>), accountId: account.id, inheritedOwner: deriveEmployeeRefOwner({ ownerEmployeeId: account.ownerEmployeeId }) } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
+    await admitNewRecordCompany(db, actor.tenantId, scope, built.operatingCompanyId); // Q-1a: the company it is booked to, BEFORE the channel
     scope.admitChannel(built.salesChannel); // DQ-020: the channel it is created in
     await requireActiveSalesChannel(db, actor.tenantId, built.salesChannel);
     await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
@@ -86,7 +87,7 @@ const UPDATE_COLUMNS: Readonly<Record<string, string>> = Object.freeze({
 
 export function updateOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "opportunity.update", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now, scope) => {
-    const current = await requireOpportunity(db, actor.tenantId, input.opportunityId);
+    const current = await requireOpportunity(db, actor.tenantId, input.opportunityId, scope);
     scope.admitChannel(current.salesChannel); // DQ-020: its stored channel
     const expected = input.expectedEditVersion;
     if (typeof expected !== "number" || !Number.isInteger(expected) || expected < 1) {
@@ -191,7 +192,7 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
 
 export function transitionOpportunity(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "opportunity.transition", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE], input?.idempotencyKey, async (db, now, scope) => {
-    const current = await requireOpportunity(db, actor.tenantId, input.opportunityId);
+    const current = await requireOpportunity(db, actor.tenantId, input.opportunityId, scope);
     scope.admitChannel(current.salesChannel);
     const hasStage = typeof input.toStage === "string";
     const hasOutcome = typeof input.outcome === "string";
@@ -237,10 +238,10 @@ async function applyOpportunityTransition(db: Queryable, actor: CommercialActorC
 export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "opportunity.closeAsWon",
     [COMMERCIAL_CAPABILITIES.OPPORTUNITY_WRITE, COMMERCIAL_CAPABILITIES.OPPORTUNITY_CREATE_SALES_ORDER], input?.idempotencyKey, async (db, now, scope) => {
-      const opportunity = await requireOpportunity(db, actor.tenantId, input.opportunityId);
+      const opportunity = await requireOpportunity(db, actor.tenantId, input.opportunityId, scope);
       scope.admitChannel(opportunity.salesChannel);
       if (opportunity.outcome === "LOST") fail("OPPORTUNITY_LOST", "PRECONDITION_FAILED", "a LOST Opportunity cannot be closed as WON");
-      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id)) {
+      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id, scope)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Order");
       }
       const alreadyWon = opportunity.outcome === "WON";
@@ -249,8 +250,8 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
         { kind: "OUTCOME", outcome: "WON" },
         { actorUid: actor.principalId, nowMillis: now.getTime() },
       );
-      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id), opportunity);
-      const order = await stageSalesOrderFromAgreement(db, actor, now, opportunity, agreement, input as { salesChannel: unknown });
+      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id, scope), opportunity);
+      const order = await stageSalesOrderFromAgreement(db, actor, now, scope, opportunity, agreement, input as { salesChannel: unknown });
       if (patch) await applyOpportunityTransition(db, actor, opportunity.id, opportunity.editVersion, patch.stage, patch.outcome, now);
       return {
         result: {

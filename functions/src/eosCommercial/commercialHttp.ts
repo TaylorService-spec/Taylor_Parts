@@ -45,6 +45,7 @@ import { getOpportunityDetail, listOpportunities } from "./reads/opportunityRead
 import { getSalesAgreementDetail, listSalesAgreements } from "./reads/salesAgreementReadProjection";
 import { getSalesOrderDetail, listSalesOrders } from "./reads/salesOrderReadProjection";
 import { readMyCommercialCapabilities } from "./myCommercialCapabilities";
+import type { CommercialCompanyResolver } from "./commercialCompanyAuthority";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -61,6 +62,8 @@ export interface CommercialApiDeps {
   readonly catalog?: CommercialCatalogAuthority;
   /** TEST INJECTION ONLY: the C2 command clock. */
   readonly now?: () => Date;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in company resolver. The deployed server supplies none (a test asserts it), so the governed one decides. */
+  readonly companyReach?: CommercialCompanyResolver;
 }
 
 type Input = Record<string, unknown>;
@@ -69,11 +72,11 @@ type Input = Record<string, unknown>;
 // (commands/commercialCommandKernel.ts CommercialWriteScope). Only UNCONDITIONED salesChannel holdings count.
 type ResolvedActor = CommercialActorContext & Pick<CommercialReadActor, "scopedHeld">;
 type Runner = (deps: CommercialApiDeps, actor: ResolvedActor, input: Input) => Promise<unknown>;
-const command = (fn: (d: { pool: Pool; catalog?: CommercialCatalogAuthority; now?: () => Date }, a: CommercialActorContext, i: Input) => Promise<unknown>): Runner =>
-  (deps, actor, input) => fn({ pool: deps.pool, catalog: deps.catalog, now: deps.now },
+const command = (fn: (d: { pool: Pool; catalog?: CommercialCatalogAuthority; now?: () => Date; companyReach?: CommercialCompanyResolver }, a: CommercialActorContext, i: Input) => Promise<unknown>): Runner =>
+  (deps, actor, input) => fn({ pool: deps.pool, catalog: deps.catalog, now: deps.now, companyReach: deps.companyReach },
     Object.freeze({ tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities, scopedHeld: actor.scopedHeld }), input);
-const read = (fn: (d: { pool: Pool }, a: CommercialReadActor, i: Input) => Promise<unknown>): Runner =>
-  (deps, actor, input) => fn({ pool: deps.pool }, actor, input);
+const read = (fn: (d: { pool: Pool; companyReach?: CommercialCompanyResolver }, a: CommercialReadActor, i: Input) => Promise<unknown>): Runner =>
+  (deps, actor, input) => fn({ pool: deps.pool, companyReach: deps.companyReach }, actor, input);
 
 // ════════════════════ the closed operation lists ════════════════════
 

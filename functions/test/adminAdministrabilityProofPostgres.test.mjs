@@ -26,6 +26,7 @@
 // Writes ONLY to a database it creates under POLICY_TEST_DATABASE_URL and drops at the end.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
@@ -461,7 +462,7 @@ test("administrability: workflow responsibility is changed by Administration alo
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-wr-writer',$1,'p-wr-writer')`, [TENANT]);
     const writer = { tenantId: TENANT, principalId: "p-wr-writer", capabilities: new Set(["opportunity.write"]) };
     const catalog = { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } };
-    const newOpp = async (salesChannel) => (await opportunityCommands.createOpportunity({ pool, catalog }, writer, {
+    const newOpp = async (salesChannel) => (await opportunityCommands.createOpportunity({ pool, catalog, companyReach: ALL_COMPANIES }, writer, {
       idempotencyKey: `k-${randomUUID()}`, accountId: "acct-wr", salesChannel, operatingCompanyId: "taylor", need: `${salesChannel} need`,
       lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] })).opportunityId;
     const retail = await newOpp("RETAIL");

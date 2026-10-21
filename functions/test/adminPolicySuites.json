@@ -129,7 +129,8 @@
     "test/f1bInvoiceCorrection.test.mjs",
     "test/fu2PrepareBillingPackage.test.mjs",
     "test/salesOrderAllocationOffline.test.mjs",
-    "test/saeProtectedOwnerExemption.test.mjs"
+    "test/saeProtectedOwnerExemption.test.mjs",
+    "test/commercialCompanyAuthority.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -319,6 +320,8 @@
     "test/fu2PrepareBillingPackagePostgres.test.mjs",
     "test/salesOrderAllocationPostgres.test.mjs",
     "test/saeProtectedOwnerExemptionPostgres.test.mjs",
+    "test/commercialCompanyAuthorityPostgres.test.mjs",
+    "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
     "test/saeDelegatedExemptionPostgres.test.mjs"
   ]
 }

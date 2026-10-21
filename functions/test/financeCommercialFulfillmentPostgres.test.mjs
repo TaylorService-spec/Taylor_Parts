@@ -6,6 +6,7 @@
 // fixtures (Commercial creation is proven in its own suites); everything else is the product path.
 // Real PostgreSQL; set POLICY_TEST_DATABASE_URL (without it the database half SKIPS).
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -229,7 +230,7 @@ test("Commercial fulfillment -> billing eligibility over the governed Work Order
     ok(await complete(w1), "complete 1");
     assert.deepEqual((await eligibility(so2)).rows.map((r) => [r.fulfilled_qty, r.remaining_qty, r.eligibility]), [[2, 1, "PARTIALLY_ELIGIBLE"]]);
     const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesOrder.write"]) };
-    const advance = (k) => soCommands.transitionSalesOrder({ pool }, sellerActor, { idempotencyKey: k, salesOrderId: so2, transition: "ADVANCE" });
+    const advance = (k) => soCommands.transitionSalesOrder({ pool, companyReach: ALL_COMPANIES }, sellerActor, { idempotencyKey: k, salesOrderId: so2, transition: "ADVANCE" });
     await assert.rejects(advance("adv-1"), (e) => e.code === "SALES_ORDER_NOT_FULLY_FULFILLED");
     const w2 = await workOrder({ type: "SERVICE_CALL", salesOrderId: so2, salesOrderLines: [1], plan: [{ partId: "PRT-HOSE", qtyPlanned: 1 }] });
     await use(w2, "hose-2", [{ partId: "PRT-HOSE", qtyDelta: 1 }]);
@@ -255,7 +256,7 @@ test("Commercial fulfillment -> billing eligibility over the governed Work Order
       priority: 2, salesOrderId: "so-nowhere", salesOrderLines: [1] }), 404, "SALES_ORDER_NOT_FOUND", "a Sales Order that does not exist");
     const ventanaSo = await salesOrder({ company: "ventana", lines: [{ n: 1, kind: "PART", ref: "PRT-HOSE", qty: 1 }] });
     refused(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL",
-      priority: 2, salesOrderId: ventanaSo, salesOrderLines: [1] }), 412, "SALES_ORDER_COMPANY_MISMATCH", "a Taylor job cannot fulfil Ventana's order");
+      priority: 2, salesOrderId: ventanaSo, salesOrderLines: [1] }), 404, "SALES_ORDER_NOT_FOUND", "a Taylor job cannot fulfil Ventana's order");
     const otherSo = await salesOrder({ account: "acct-o", location: "loc-o", lines: [{ n: 1, kind: "PART", ref: "PRT-HOSE", qty: 1 }] });
     refused(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL",
       priority: 2, salesOrderId: otherSo, salesOrderLines: [1] }), 412, "SALES_ORDER_CUSTOMER_MISMATCH");

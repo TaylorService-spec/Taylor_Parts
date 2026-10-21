@@ -16,13 +16,13 @@ import { lineFacts } from "../../eosAudit/commandAuditEvent";
 import { MAX_HANDOFF_REASON_LENGTH } from "../commercialOwnershipAuthority";
 import {
   COMMERCIAL_CAPABILITIES, fail, requireAccountLocation, requireActiveSalesChannel, requireActiveTenantAccount, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
-  type CommercialActorContext, type CommercialCommandDeps,
+  type CommercialActorContext, type CommercialCommandDeps, type CommercialWriteScope,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
 import { salesOrderFulfillmentLines, salesOrderFullyFulfilled } from "../fulfillment/salesOrderFulfillmentAuthority";
 import { releaseSalesOrderClaims } from "../../eosOps/salesOrderAllocation";
 import {
-  insertSalesOrder, lockAgreementForOpportunity, lockOpportunity, lockOrderForOpportunity, lockOrderState, newRecordId,
+  admitNewRecordCompany, insertSalesOrder, lockAgreementForOpportunity, lockOpportunity, lockOrderForOpportunity, lockOrderState, newRecordId,
   type AgreementRow, type OpportunityRow,
 } from "./commercialRecordStore";
 
@@ -78,7 +78,7 @@ export function salesChannelFromSource(opportunity: OpportunityRow, requested: u
  * catalog entry that later disappears cannot rewrite, or block the fulfilment of, a contract the customer accepted.
  */
 export async function stageSalesOrderFromAgreement(
-  db: Queryable, actor: CommercialActorContext, now: Date, opportunity: OpportunityRow, agreement: AgreementRow,
+  db: Queryable, actor: CommercialActorContext, now: Date, scope: CommercialWriteScope, opportunity: OpportunityRow, agreement: AgreementRow,
   input: { salesChannel: unknown; ownerEmployeeId?: unknown; locationId?: unknown; customerPO?: unknown },
 ): Promise<SalesOrderCreated> {
   const lines = deriveSalesOrderLinesFromAgreement({ state: agreement.state as SalesAgreementState, lines: agreement.lines as never });
@@ -95,11 +95,11 @@ export async function stageSalesOrderFromAgreement(
     notes: agreement.specialInstructions ?? undefined,
     lines,
   }, { actorUid: actor.principalId, nowMillis: now.getTime(), bookedAtMillis: agreement.acceptedAtMillis ?? now.getTime() });
-  return stageBuiltSalesOrder(db, actor, now, built, { opportunityId: opportunity.id, salesAgreementId: agreement.id }, undefined);
+  return stageBuiltSalesOrder(db, actor, now, scope, built, { opportunityId: opportunity.id, salesAgreementId: agreement.id }, undefined);
 }
 
 async function stageBuiltSalesOrder(
-  db: Queryable, actor: CommercialActorContext, now: Date, built: ReturnType<typeof buildCreateSalesOrder>,
+  db: Queryable, actor: CommercialActorContext, now: Date, scope: CommercialWriteScope, built: ReturnType<typeof buildCreateSalesOrder>,
   source: { opportunityId: string | null; salesAgreementId: string | null }, explicitAccountable: unknown,
 ): Promise<SalesOrderCreated> {
   await requireTenantAccount(db, actor.tenantId, built.accountId);
@@ -109,6 +109,7 @@ async function stageBuiltSalesOrder(
   const established = await resolveCreationAccountablePerson(db, actor.tenantId, "salesOrder", explicitAccountable, built.ownerEmployeeId);
   const number = await allocateCommercialNumber(db, actor.tenantId, "SALES_ORDER", now);
   const id = newRecordId("sor");
+  await admitNewRecordCompany(db, actor.tenantId, scope, built.operatingCompanyId); // Q-1a: the company the order is booked to (a Sales Order always has one)
   await insertSalesOrder(db, actor.tenantId, actor.principalId, {
     id, number: number.number, accountId: built.accountId, opportunityId: source.opportunityId, salesAgreementId: source.salesAgreementId,
     ownerEmployeeId: built.ownerEmployeeId, operatingCompanyId: built.operatingCompanyId, salesChannel: built.salesChannel,
@@ -141,18 +142,23 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
     const built = buildCreateSalesOrder({ ...(fields as Record<string, unknown>), sourceOpportunityId } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() });
     // DQ-020: the channel it is created in -- which, with a source Opportunity, must equal that Opportunity's (below).
+    await admitNewRecordCompany(db, actor.tenantId, scope, built.operatingCompanyId); // Q-1a: the company it is booked to, BEFORE the channel
     scope.admitChannel(built.salesChannel);
     let opportunityId: string | null = null;
     if (typeof sourceOpportunityId === "string" && sourceOpportunityId.trim() !== "") {
-      const opportunity = await lockOpportunity(db, actor.tenantId, sourceOpportunityId);
+      const opportunity = await lockOpportunity(db, actor.tenantId, sourceOpportunityId, scope);
       if (!opportunity) fail("SOURCE_OPPORTUNITY_NOT_FOUND", "NOT_FOUND", "the source Opportunity does not exist in this tenant");
+      // Q-1a (residual A): the lineage must agree on the company, exactly as for an Agreement. A stated company that differs from the source Opportunity's is refused.
+      if (built.operatingCompanyId !== opportunity!.operatingCompanyId) {
+        fail("OPERATING_COMPANY_MISMATCH", "PRECONDITION_FAILED", "a Sales Order carries its source Opportunity's operating company");
+      }
       if (opportunity!.outcome !== "WON") fail("OPPORTUNITY_NOT_WON", "PRECONDITION_FAILED", "the source Opportunity is not WON");
       if (opportunity!.accountId !== built.accountId) fail("SOURCE_ACCOUNT_MISMATCH", "PRECONDITION_FAILED", "the source Opportunity is for a different Account");
       salesChannelFromSource(opportunity!, built.salesChannel);
       const expected = opportunity!.lines.map(lineKey);
       const actual = built.lines.map((l) => lineKey({ kind: l.kind, ref: l.ref, qty: l.orderedQty }));
       if (!sameMultiset(expected, actual)) fail("SOURCE_LINES_MISMATCH", "PRECONDITION_FAILED", "the Order lines do not match the source Opportunity");
-      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity!.id)) {
+      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity!.id, scope)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the source Opportunity already has a Sales Order");
       }
       opportunityId = opportunity!.id;
@@ -165,7 +171,7 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
     }
     // A direct Order carries NEW product references: they pass the catalog authority before any number or row.
     await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
-    const created = await stageBuiltSalesOrder(db, actor, now, built, { opportunityId, salesAgreementId: null }, accountableEmployeeId);
+    const created = await stageBuiltSalesOrder(db, actor, now, scope, built, { opportunityId, salesAgreementId: null }, accountableEmployeeId);
     return {
       result: created, target: { family: "salesOrder" as const, id: created.salesOrderId },
       audit: {
@@ -186,15 +192,15 @@ export function createSalesOrderFromOpportunity(deps: CommercialCommandDeps, act
   return runCommercialCommand(deps, actor, "salesOrder.createFromOpportunity", [COMMERCIAL_CAPABILITIES.OPPORTUNITY_CREATE_SALES_ORDER],
     input?.idempotencyKey, async (db, now, scope) => {
       if (typeof input.opportunityId !== "string") fail("OPPORTUNITY_REQUIRED", "INVALID_INPUT", "opportunityId is required");
-      const opportunity = await lockOpportunity(db, actor.tenantId, input.opportunityId as string);
+      const opportunity = await lockOpportunity(db, actor.tenantId, input.opportunityId as string, scope);
       if (!opportunity) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Opportunity does not exist in this tenant");
       scope.admitChannel(opportunity.salesChannel);
       if (opportunity.outcome !== "WON") fail("OPPORTUNITY_NOT_WON", "PRECONDITION_FAILED", "the Opportunity is not WON");
-      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id)) {
+      if (await lockOrderForOpportunity(db, actor.tenantId, opportunity.id, scope)) {
         fail("SALES_ORDER_ALREADY_EXISTS", "CONFLICT", "the Opportunity already has a Sales Order");
       }
-      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id), opportunity);
-      const created = await stageSalesOrderFromAgreement(db, actor, now, opportunity, agreement, input as { salesChannel: unknown });
+      const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id, scope), opportunity);
+      const created = await stageSalesOrderFromAgreement(db, actor, now, scope, opportunity, agreement, input as { salesChannel: unknown });
       return {
         result: { ...created, opportunityId: opportunity.id }, target: { family: "salesOrder" as const, id: created.salesOrderId },
         audit: {
@@ -215,7 +221,7 @@ export function transitionSalesOrder(deps: CommercialCommandDeps, actor: Commerc
     async (db, now, scope) => {
       const transition = input.transition as SalesOrderTransition;
       if (transition !== "ADVANCE" && transition !== "CANCEL") fail("TRANSITION_INVALID", "INVALID_INPUT", "transition must be ADVANCE or CANCEL");
-      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""));
+      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""), scope);
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       scope.admitChannel(order.salesChannel); // DQ-020: its stored channel
       if (!isSalesOrderState(order.state)) return fail("ORDER_STATE_UNSET", "PRECONDITION_FAILED", "the Sales Order has no governed lifecycle state");
@@ -258,7 +264,7 @@ export function authorizeSalesOrderServiceProvider(deps: CommercialCommandDeps, 
       for (const k of Object.keys(input ?? {})) {
         if (!["idempotencyKey", "salesOrderId", "serviceOperatingCompanyId", "scopes", "reason"].includes(k)) fail("FIELD_NOT_ACCEPTED", "INVALID_INPUT", `not accepted: ${k}`);
       }
-      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""));
+      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""), scope);
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       scope.admitChannel(order.salesChannel);
       if (order.state === "CANCELLED") fail("ORDER_CANCELLED", "PRECONDITION_FAILED", "a cancelled Sales Order authorizes no service");
@@ -296,7 +302,7 @@ export function authorizeSalesOrderServiceProvider(deps: CommercialCommandDeps, 
 export function revokeSalesOrderServiceProvider(deps: CommercialCommandDeps, actor: CommercialActorContext, input: Record<string, unknown>) {
   return runCommercialCommand(deps, actor, "salesOrder.revokeServiceProvider", [COMMERCIAL_CAPABILITIES.SALES_ORDER_WRITE], input?.idempotencyKey,
     async (db, _now, scope) => {
-      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""));
+      const order = await lockOrderState(db, actor.tenantId, String(input.salesOrderId ?? ""), scope);
       if (!order) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       scope.admitChannel(order.salesChannel);
       if (typeof input.reason !== "string" || input.reason.trim() === "") fail("REASON_REQUIRED", "INVALID_INPUT", "a revocation states its reason");

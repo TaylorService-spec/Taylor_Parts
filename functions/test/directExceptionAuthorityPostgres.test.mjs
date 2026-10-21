@@ -17,6 +17,7 @@
 //                 never-widen on retire; tenant isolation; audit exactly once per effective change, none for a no-op.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -134,7 +135,7 @@ test("lane DX: direct Principal exceptions are enforced by every runtime gate, e
       return [d.allowed, d.outcome];
     } },
     { gate: "Commercial kernel (listOpportunities)", key: K.COMMERCIAL, decide: async (s) => {
-      const r = await executeCommercialOperation({ reader: repo, pool }, { caller: caller(s), operation: "listOpportunities", input: {} });
+      const r = await executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES }, { caller: caller(s), operation: "listOpportunities", input: {} });
       return r.ok ? "OK" : `${r.code}`;
     } },
     { gate: "CRM kernel (listAccounts)", key: K.CRM, decide: async (s) => {
@@ -499,9 +500,9 @@ test("lane DX: direct Principal exceptions are enforced by every runtime gate, e
     assert.deepEqual(await decide("salesOrder.read", "RETAIL"), [true, "ALLOWED", "PRINCIPAL", null]);
     // The Commercial transport hands the SAME composition to its reads: flat keys include the direct grant, scoped
     // holdings stay scoped.
-    const list = await executeCommercialOperation({ reader: repo, pool }, { caller: caller("channel-plus-direct"), operation: "listSalesOrders", input: {} });
+    const list = await executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES }, { caller: caller("channel-plus-direct"), operation: "listSalesOrders", input: {} });
     assert.equal(list.ok, true, JSON.stringify(list));
-    const opp = await executeCommercialOperation({ reader: repo, pool }, { caller: caller("channel-plus-direct"), operation: "listOpportunities", input: {} });
+    const opp = await executeCommercialOperation({ reader: repo, pool, companyReach: ALL_COMPANIES }, { caller: caller("channel-plus-direct"), operation: "listOpportunities", input: {} });
     assert.equal(opp.ok, true, "the Retail-scoped holder still lists (channel-filtered) opportunities");
   });
 

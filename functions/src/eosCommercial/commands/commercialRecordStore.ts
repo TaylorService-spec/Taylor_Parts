@@ -3,7 +3,7 @@
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { resolveOperatingCompanyKeyForCompany } from "../../eosOps/operatingCompanyBinding";
-import { fail } from "./commercialCommandKernel";
+import { fail, type CommercialWriteScope } from "./commercialCommandKernel";
 
 type Queryable = Pick<PoolClient, "query">;
 const S = "eos_commercial";
@@ -43,6 +43,14 @@ export async function operatingCompanyKeyFor(db: Queryable, tenantId: string, op
   return resolveOperatingCompanyKeyForCompany(db, tenantId, operatingCompanyId);
 }
 
+/**
+ * Q-1a: a command that CREATES a record books it to `companyId`: that company must be one the caller reaches (a company-less record is the creator's own).
+ * A company the caller does not reach refuses exactly like one this tenant does not govern. The governed-company checks (operatingCompanyKeyFor) run first.
+ */
+export async function admitNewRecordCompany(db: Queryable, tenantId: string, scope: CommercialWriteScope, companyId: string | null): Promise<void> {
+  scope.admitNewCompany(await operatingCompanyKeyFor(db, tenantId, companyId), companyId);
+}
+
 /** SQL: the ACTIVE company bound to a record's stored key (`alias` is the record table's alias). */
 export const operatingCompanyIdOfKey = (alias: string): string =>
   `(SELECT k.operating_company_id FROM eos_policy.tenant_operating_company_keys k
@@ -53,18 +61,21 @@ export const operatingCompanyIdOfKey = (alias: string): string =>
 export interface OpportunityLineRow { kind: "EQUIPMENT_MODEL" | "PART" | "SERVICE"; ref: string; qty: number }
 export interface OpportunityRow {
   id: string; number: string; accountId: string; ownerEmployeeId: string; operatingCompanyId: string | null;
+  /** The RAW stored company key (the resolved id above is null when the key is unbound or inactive). */
+  operatingCompanyKey: string | null;
   salesChannel: string | null; stage: string | null; outcome: string | null; closedAtMillis: number | null;
   need: string | null; expectedValue: number | null; expectedCloseAtMillis: number | null; nextAction: string | null;
   creditedSalespersonId: string | null; accountableEmployeeId: string | null; editVersion: number; lines: OpportunityLineRow[];
 }
 
-export async function lockOpportunity(db: Queryable, tenantId: string, id: string): Promise<OpportunityRow | null> {
+export async function lockOpportunity(db: Queryable, tenantId: string, id: string, scope: CommercialWriteScope): Promise<OpportunityRow | null> {
+  const company = scope.companyFilter("o", 3); // Q-1a: a foreign-company record is not found, and never locked
   const { rows } = await db.query(
     `SELECT o.id, o.opportunity_number, o.account_id, o.owner_employee_id, ${operatingCompanyIdOfKey("o")} AS operating_company_id,
-            o.sales_channel::text, o.stage::text, o.outcome::text, o.closed_at, o.need, o.expected_value::float8 AS expected_value,
+            o.operating_company_key, o.sales_channel::text, o.stage::text, o.outcome::text, o.closed_at, o.need, o.expected_value::float8 AS expected_value,
             o.expected_close_at, o.next_action, o.credited_salesperson_employee_id, o.accountable_employee_id, o.edit_version
-       FROM ${S}.opportunities o WHERE o.tenant_id = $1 AND o.id = $2 FOR UPDATE OF o`,
-    [tenantId, id],
+       FROM ${S}.opportunities o WHERE o.tenant_id = $1 AND o.id = $2 AND ${company.sql} FOR UPDATE OF o`,
+    [tenantId, id, ...company.params],
   );
   if (rows.length === 0) return null;
   const r = rows[0];
@@ -74,7 +85,7 @@ export async function lockOpportunity(db: Queryable, tenantId: string, id: strin
   );
   return {
     id: r.id, number: r.opportunity_number, accountId: r.account_id, ownerEmployeeId: r.owner_employee_id,
-    operatingCompanyId: r.operating_company_id, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome,
+    operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key ?? null, salesChannel: r.sales_channel, stage: r.stage, outcome: r.outcome,
     closedAtMillis: millis(r.closed_at), need: r.need, expectedValue: r.expected_value, expectedCloseAtMillis: millis(r.expected_close_at),
     nextAction: r.next_action, creditedSalespersonId: r.credited_salesperson_employee_id, accountableEmployeeId: r.accountable_employee_id,
     editVersion: Number(r.edit_version), lines: lines.rows.map((l) => ({ kind: l.kind, ref: l.ref, qty: l.qty })),
@@ -153,13 +164,15 @@ async function agreementFrom(db: Queryable, tenantId: string, r: Record<string, 
   };
 }
 
-export async function lockAgreement(db: Queryable, tenantId: string, id: string): Promise<AgreementRow | null> {
-  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.id = $2 FOR UPDATE OF a`, [tenantId, id]);
+export async function lockAgreement(db: Queryable, tenantId: string, id: string, scope: CommercialWriteScope): Promise<AgreementRow | null> {
+  const company = scope.companyFilter("a", 3); // Q-1a: a foreign-company record is not found, and never locked
+  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.id = $2 AND ${company.sql} FOR UPDATE OF a`, [tenantId, id, ...company.params]);
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
-export async function lockAgreementForOpportunity(db: Queryable, tenantId: string, opportunityId: string): Promise<AgreementRow | null> {
-  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.opportunity_id = $2 FOR UPDATE OF a`, [tenantId, opportunityId]);
+export async function lockAgreementForOpportunity(db: Queryable, tenantId: string, opportunityId: string, scope: CommercialWriteScope): Promise<AgreementRow | null> {
+  const company = scope.companyFilter("a", 3); // Q-1a: the same reach as every other lock -- an Agreement of an unreached company is not found, and not locked
+  const { rows } = await db.query(`${agreementSelect} WHERE a.tenant_id = $1 AND a.opportunity_id = $2 AND ${company.sql} FOR UPDATE OF a`, [tenantId, opportunityId, ...company.params]);
   return rows.length === 0 ? null : agreementFrom(db, tenantId, rows[0]);
 }
 
@@ -178,13 +191,15 @@ export async function replaceAgreementLines(db: Queryable, tenantId: string, id:
 
 export interface OrderLineRow { kind: string; ref: string; businessUnitId: string; orderedQty: number; unitPrice: number | null }
 
-export async function lockOrderForOpportunity(db: Queryable, tenantId: string, opportunityId: string): Promise<{ id: string } | null> {
-  const { rows } = await db.query(`SELECT id FROM ${S}.sales_orders WHERE tenant_id = $1 AND opportunity_id = $2 FOR UPDATE`, [tenantId, opportunityId]);
+export async function lockOrderForOpportunity(db: Queryable, tenantId: string, opportunityId: string, scope: CommercialWriteScope): Promise<{ id: string } | null> {
+  const company = scope.companyFilter("s", 3); // Q-1a: as above
+  const { rows } = await db.query(`SELECT s.id FROM ${S}.sales_orders s WHERE s.tenant_id = $1 AND s.opportunity_id = $2 AND ${company.sql} FOR UPDATE OF s`, [tenantId, opportunityId, ...company.params]);
   return rows[0] ?? null;
 }
 
-export async function lockOrderState(db: Queryable, tenantId: string, id: string): Promise<{ id: string; state: string | null; salesChannel: string | null } | null> {
-  const { rows } = await db.query(`SELECT id, state::text, sales_channel::text FROM ${S}.sales_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, [tenantId, id]);
+export async function lockOrderState(db: Queryable, tenantId: string, id: string, scope: CommercialWriteScope): Promise<{ id: string; state: string | null; salesChannel: string | null } | null> {
+  const company = scope.companyFilter("s", 3); // Q-1a: a foreign-company order is not found, and never locked
+  const { rows } = await db.query(`SELECT s.id, s.state::text, s.sales_channel::text FROM ${S}.sales_orders s WHERE s.tenant_id = $1 AND s.id = $2 AND ${company.sql} FOR UPDATE OF s`, [tenantId, id, ...company.params]);
   return rows[0] ? { id: rows[0].id, state: rows[0].state, salesChannel: rows[0].sales_channel } : null;
 }
 

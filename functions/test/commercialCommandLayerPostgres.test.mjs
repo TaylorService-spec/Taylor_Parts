@@ -6,6 +6,7 @@
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import { bindOperatingCompany } from "./support/governedOperatingCompanyBinding.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -58,11 +59,11 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`));
   });
   const q = (text, values = []) => pool.query(text, values);
-  const deps = { pool, catalog };
+  const deps = { pool, catalog, companyReach: ALL_COMPANIES };
   // NO catalog authority composed. This is no longer the deployed shape -- eosApi/server.ts now
   // composes the real one -- but the refusal must stay reachable and stay correct: a composition
   // that omits the authority has to refuse rather than skip the reference check.
-  const bare = { pool };
+  const bare = { pool, companyReach: ALL_COMPANIES };
   const count = async (table, where = "true", values = []) => (await q(`SELECT count(*)::int n FROM eos_commercial.${table} WHERE ${where}`, values)).rows[0].n;
   const withTrigger = async (table, fn) => {
     const name = `force_fail_${table}`;
@@ -153,7 +154,10 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
       await q(`UPDATE eos_policy.tenant_operating_companies SET status='ACTIVE' WHERE tenant_id='t1' AND operating_company_id='taylor'`);
     }
     const { lockOpportunity } = require("../lib/eosCommercial/commands/commercialRecordStore.js");
-    const row = await lockOpportunity(pool, "t1", id);
+    // Q-1a: a lock takes the command's scope; this suite is not about company authority, so the scope carries the tenant-wide reach.
+    const allCompanies = await ALL_COMPANIES();
+    const scope = { companyFilter: (alias, n) => ({ sql: allCompanies.sql(alias, n), params: allCompanies.sqlParams() }) };
+    const row = await lockOpportunity(pool, "t1", id, scope);
     assert.equal(row.operatingCompanyId, "taylor", "the read maps the stored key back to the governed company");
   });
 
@@ -521,7 +525,7 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     const counts = async () => [await count("opportunities"), await count("sales_orders"), await count("sales_agreements"), await count("command_receipts")];
     const before = await counts();
     for (const verifyReferences of [async () => [], async (_d, _t, r) => [...r.map(() => "FOUND"), "FOUND"], async (_d, _t, r) => r.map(() => "MAYBE"), async () => "FOUND"]) {
-      const broken = { pool, catalog: { verifyReferences } };
+      const broken = { pool, catalog: { verifyReferences }, companyReach: ALL_COMPANIES };
       await assert.rejects(opp.createOpportunity(broken, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-b", qty: 1 }] }), code("CATALOG_AUTHORITY_CONTRACT_VIOLATION"));
       await assert.rejects(so.createSalesOrder(broken, ACTOR, { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-national", operatingCompanyId: "taylor", salesChannel: "RETAIL",
         lines: [{ kind: "EQUIPMENT_MODEL", ref: "model-a", orderedQty: 1, unitPrice: 100 }] }), code("CATALOG_AUTHORITY_CONTRACT_VIOLATION"));
@@ -541,7 +545,7 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
 
   await t.test("closed_at is the command's governed instant, for a plain outcome and for close-as-won", async () => {
     const fixed = new Date("2026-10-15T12:34:56.789Z");
-    const clocked = { pool, catalog, now: () => fixed };
+    const clocked = { pool, catalog, now: () => fixed, companyReach: ALL_COMPANIES };
     const lost = await newOpportunity();
     await opp.transitionOpportunity(clocked, ACTOR, { idempotencyKey: key(), opportunityId: lost.opportunityId, outcome: "LOST" });
     assert.equal((await q(`SELECT closed_at FROM eos_commercial.opportunities WHERE id=$1`, [lost.opportunityId])).rows[0].closed_at.toISOString(), fixed.toISOString());

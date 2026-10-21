@@ -24,6 +24,7 @@ import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assig
 import { RESERVED_CAPABILITY_HOLDERS } from "../../adminPolicy/roleCapabilityAdministration";
 import { qualifyingGlobalRoles } from "../../eosOps/administrationReach";
 import { recordCommandAudit, wellFormed, type CommandAuditSpec } from "../../eosAudit/commandAuditEvent";
+import { resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../commercialCompanyAuthority";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
 
@@ -92,6 +93,17 @@ export interface CommercialWriteScope {
   readonly global: boolean;
   /** Refuse OUTSIDE_SALES_CHANNEL_SCOPE unless every required capability reaches `channel`. */
   admitChannel(channel: string | null | undefined): void;
+  /**
+   * Q-1a (Owner ruling Q1-11): OPERATING-COMPANY AUTHORITY, decided BEFORE the channel. A command that acts on an EXISTING record locks it through
+   * a `commercialRecordStore` lock function, which puts this predicate INSIDE the SELECT ... FOR UPDATE: a record of a company the caller does not reach
+   * is simply not found (RECORD_NOT_FOUND, never "forbidden") and is never locked. Calling it records that the command decided company authority.
+   */
+  companyFilter(alias: string, firstParam: number): { readonly sql: string; readonly params: readonly unknown[] };
+  /**
+   * Q-1a: a command that CREATES a record states the company it books to (a key, null = company-less). A company the caller does not reach refuses
+   * with the SAME words as a company this tenant does not govern (OPERATING_COMPANY_NOT_GOVERNED): the caller learns nothing about it.
+   */
+  admitNewCompany(companyKey: string | null, companyId: string | null): void;
 }
 
 export type CommercialErrorCategory =
@@ -140,6 +152,8 @@ export interface CommercialCommandDeps {
   readonly catalog?: CommercialCatalogAuthority;
   /** Clock seam for tests. Defaults to the server clock. */
   readonly now?: () => Date;
+  /** TEST INJECTION ONLY (Q-1a). The deployed server supplies none (a test asserts it); absent = the governed resolver. */
+  readonly companyReach?: CommercialCompanyResolver;
 }
 
 /** Validate product references through the port, refusing when no authority exists. */
@@ -287,7 +301,23 @@ export async function runCommercialCommand<R extends object>(
     throw new CommercialCommandError("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${missing.join(", ")}`);
   }
   let channelDecided = false;
+  let companyDecided = false;
+  // Resolved in the command's transaction once membership is proved (below); the scope is bound to it.
+  let company: CommercialCompanyReach | null = null;
+  const reach = (): CommercialCompanyReach => company ?? fail("COMPANY_AUTHORITY_NOT_ESTABLISHED", "FORBIDDEN", "operating-company authority was not resolved for this command");
   const scope: CommercialWriteScope = Object.freeze({
+    companyFilter(alias: string, firstParam: number) {
+      const r = reach();
+      companyDecided = true;
+      return { sql: r.sql(alias, firstParam), params: r.sqlParams() };
+    },
+    admitNewCompany(companyKey: string | null, companyId: string | null) {
+      const r = reach();
+      companyDecided = true;
+      if (!r.admitsNewCompany(companyKey)) {
+        fail("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", `operating company '${companyId ?? ""}' is not governed in this tenant`);
+      }
+    },
     global: channelsByCapability.size === 0,
     admitChannel(channel: string | null | undefined) {
       channelDecided = true;
@@ -334,7 +364,12 @@ export async function runCommercialCommand<R extends object>(
     if (member.rows.length === 0) {
       fail("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
     }
+    // Q-1a: capability (above) -> COMPANY AUTHORITY -> channel / ownership reach (the body). Resolved once, in this transaction.
+    company = await (deps.companyReach ?? resolveCommercialCompanyReach)(client, actor.tenantId, actor.principalId);
     const outcome = await body(client, now, scope);
+    if (!companyDecided) {
+      fail("COMPANY_AUTHORITY_NOT_ESTABLISHED", "FORBIDDEN", "this command did not establish operating-company authority for the record it acts on");
+    }
     if (!scope.global && !channelDecided) {
       fail("OUTSIDE_SALES_CHANNEL_SCOPE", "FORBIDDEN", "this command did not establish the record's sales channel for a channel-scoped caller");
     }

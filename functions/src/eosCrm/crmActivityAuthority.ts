@@ -25,6 +25,7 @@ import {
   runCrmCommand, runCrmRead, type CrmActorContext, type CrmDeps,
 } from "./crmAuthorityKernel";
 import { withActorAuthority } from "../eosOps/administrationReach";
+import { reachableCommercialIds, resolveCommercialCompanyReach, type CommercialCompanyResolver } from "../eosCommercial/commercialCompanyAuthority";
 
 export const CRM_ACTIVITY_READ = "crm.activity.read";
 export const CRM_ACTIVITY_CREATE = "crm.activity.create";
@@ -85,11 +86,26 @@ export function listAccountActivities(deps: CrmDeps, actor: CrmActorContext, inp
         `SELECT * FROM eos_crm.activities WHERE tenant_id = $1 AND account_id = $2 ORDER BY occurred_at DESC, id LIMIT $3`,
         [tenantId, accountId, limit + 1]);
       if (rows.length > limit) return Object.freeze({ status: "unavailable" as const, activities: Object.freeze([]) });
+      // Q-1a (Owner review item 4): an activity names the Opportunity / Sales Order it was recorded against. That link is shown only where the viewer reaches the
+      // linked record (its operating-company authority); otherwise it is null -- no id, number, state or account detail of a record the viewer cannot see.
+      const linked = rows.some((r) => r.opportunity_id != null || r.sales_order_id != null);
+      if (linked) {
+        const company = await (deps.companyReach ?? resolveCommercialCompanyReach)(db, tenantId, actor.principalId);
+        const oppIds = [...new Set(rows.map((r) => r.opportunity_id).filter((v): v is string => typeof v === "string"))];
+        const soIds = [...new Set(rows.map((r) => r.sales_order_id).filter((v): v is string => typeof v === "string"))];
+        const { opportunities: okOpp, salesOrders: okSo } = await reachableCommercialIds(db, tenantId, company, oppIds, soIds);
+        for (const r of rows) {
+          if (typeof r.opportunity_id === "string" && !okOpp.has(r.opportunity_id)) r.opportunity_id = null;
+          if (typeof r.sales_order_id === "string" && !okSo.has(r.sales_order_id)) r.sales_order_id = null;
+        }
+      }
       return Object.freeze({ status: "ready" as const, activities: Object.freeze(rows.map(project)) });
     });
 }
 
 /** Each stated reference must be in this tenant AND on this Account; anything else answers like an unknown record. */
+// Q-1a (Owner ruling Q1-11): the Commercial links are Commercial records, so they are probed through the caller's operating-company reach (alias `t`): a record of
+// an unreached company (or a company-less one the caller neither owns nor created) answers exactly like an unknown id.
 const LINKS = Object.freeze([
   ["contactId", "eos_crm.contacts", "CONTACT_NOT_FOUND", "no such Contact on this Account"],
   ["opportunityId", "eos_commercial.opportunities", "OPPORTUNITY_NOT_FOUND", "no such Opportunity on this Account"],
@@ -131,10 +147,15 @@ export function createAccountActivity(deps: CrmDeps, actor: CrmActorContext, inp
     },
     async (client, a, p) => {
       await requireTenantAccount(client, a.tenantId, p.accountId);
+      let linkReach: Awaited<ReturnType<CommercialCompanyResolver>> | null = null;
       for (const [field, table, code, message] of LINKS) {
         const id = p[field];
         if (id === null) continue;
-        const found = await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND account_id = $3`, [a.tenantId, id, p.accountId]);
+        const commercial = table.startsWith("eos_commercial.");
+        if (commercial) linkReach = linkReach ?? await (deps.companyReach ?? resolveCommercialCompanyReach)(client, a.tenantId, a.principalId);
+        const found = commercial
+          ? await client.query(`SELECT 1 FROM ${table} t WHERE t.tenant_id = $1 AND t.id = $2 AND t.account_id = $3 AND ${linkReach!.sql("t", 4)}`, [a.tenantId, id, p.accountId, ...linkReach!.sqlParams()])
+          : await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND id = $2 AND account_id = $3`, [a.tenantId, id, p.accountId]);
         if (found.rows.length === 0) fail(code, "NOT_FOUND", message);
       }
       // One key per actor = one activity, exactly as the Firestore audit-id derivation (actor + key) decided it.

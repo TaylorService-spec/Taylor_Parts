@@ -9,6 +9,8 @@ import type { PostgresWorkOrderWriterState } from "./workOrderWriterState";
 
 export interface WorkOrderOperationDeps {
   readonly pool: Pool;
+  /** TEST INJECTION ONLY (Q-1a): a stand-in Commercial company resolver for the experience reads (site search, owned records). The deployed server supplies none. */
+  readonly companyReach?: import("../eosCommercial/commercialCompanyAuthority").CommercialCompanyResolver;
   readonly reader: ContextualReader;
   readonly postgresState: PostgresWorkOrderWriterState;
   readonly now?: () => Date;

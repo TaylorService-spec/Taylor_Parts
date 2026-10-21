@@ -34,6 +34,7 @@ import {
   acceptOnly, decodeEmployeeCursor, encodeEmployeeCursor, isoOf, refuse, requireEmployeeId, requirePageSize, runEmployeeRead,
   type EmployeeCursor, type EmployeeReadActor, type EmployeeReadDeps,
 } from "./employeeReadKernel";
+import { resolveCommercialCompanyReach } from "../../eosCommercial/commercialCompanyAuthority";
 
 interface FamilySpec {
   readonly table: string;
@@ -132,7 +133,7 @@ async function listForAxis<Item>(
   deps: EmployeeReadDeps, actor: EmployeeReadActor, axis: Axis, input: Record<string, unknown> | undefined,
 ): Promise<EmployeeRecordPage<Item>> {
   return runEmployeeRead(deps, actor, () => prepare(axis, input), (p) => [FAMILIES[p.family].capability],
-    async (db, tenantId, _principalId, p) => {
+    async (db, tenantId, principalId, p) => {
       const exists = await db.query(`SELECT 1 FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [tenantId, p.employeeId]);
       if (exists.rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
       const f: FamilySpec = FAMILIES[p.family];
@@ -148,16 +149,21 @@ async function listForAxis<Item>(
               ORDER BY ah.effective_at DESC, ah.recorded_at DESC, ah.id DESC LIMIT 1) h ON true`
         : "";
       const after = f.direction === "DESC" ? "<" : ">";
+      // Q-1a (Owner ruling Q1-11): a COMMERCIAL family is also bounded by the caller's operating-company authority -- a record of a company the caller does
+      // not reach (or a company-less one it neither owns nor created) is not listed, and a caller reaching none gets an empty page. CRM families are customer
+      // records, not company-owned, and are unchanged.
+      const reach = f.table.startsWith("eos_commercial.") ? await (deps.companyReach ?? resolveCommercialCompanyReach)(db, tenantId, principalId) : null;
+      const companyClause = reach ? `AND ${reach.sql("r", 6)}` : "";
       const { rows } = await db.query(
         `SELECT r.id, ${f.sortKey} AS sort_key, ${f.numberExpr} AS record_number, ${f.nameExpr} AS record_name, ${f.stateExpr} AS state,
                 ${f.accountExpr} AS account_id, ${f.companyExpr} AS operating_company_key, r.updated_at${accountability}
            FROM ${f.table} r
            ${accountabilityJoin}
           WHERE r.tenant_id = $1 AND r.${personColumn} = $2 AND ${f.complete}
-            AND ($3::text IS NULL OR (${f.sortKey}, r.id) ${after} ($3::text, $4::text))
+            AND ($3::text IS NULL OR (${f.sortKey}, r.id) ${after} ($3::text, $4::text)) ${companyClause}
           ORDER BY ${f.sortKey} ${f.direction}, r.id ${f.direction}
           LIMIT $5`,
-        [tenantId, p.employeeId, p.cursor?.number ?? null, p.cursor?.id ?? null, p.limit + 1],
+        [tenantId, p.employeeId, p.cursor?.number ?? null, p.cursor?.id ?? null, p.limit + 1, ...(reach ? reach.sqlParams() : [])],
       );
       const truncated = rows.length > p.limit;
       const kept = rows.slice(0, p.limit);

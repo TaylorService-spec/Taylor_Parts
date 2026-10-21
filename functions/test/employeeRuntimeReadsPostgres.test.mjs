@@ -6,6 +6,7 @@
 // rows below exist ONLY in this disposable database.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -92,7 +93,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     if (!subject) throw new Error("invalid token");
     return { externalSubject: subject, identityProvider: "firebase" };
   };
-  const deps = { reader: repo, pool: spyPool, verifyToken, allowedOrigins: [] };
+  const deps = { reader: repo, pool: spyPool, verifyToken, allowedOrigins: [], companyReach: ALL_COMPANIES };
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
   const fixtureActor = (tenantId) => ({ tenantId, uid: "uid-fixture-admin" });

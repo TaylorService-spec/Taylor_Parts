@@ -13,6 +13,7 @@
 //   REPLAY        the same key and request writes nothing; a different request under the key is refused; ONE audit row per applied command.
 //   DATABASE      the two-person CHECK, the approved-fact trigger, the origination-reversal guard and the narrow void gate hold on their own.
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { serviceBaselineTenant } from "./support/serviceBaselineTenant.mjs";
@@ -99,7 +100,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
   await q(`INSERT INTO eos_policy.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by) VALUES ($1,'RETAIL','ACTIVE','f','f','f') ON CONFLICT DO NOTHING`, [TENANT]);
   const seller = await person("uid-seller", [], { id: "e-seller", name: "Sam Seller" });
   const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) };
-  const deps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  const deps = { pool, companyReach: ALL_COMPANIES, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   let gn = 0;
   const directPackage = async ({ account = "acct-a", price = 40000, tax = 0, companyKey = "taylor" } = {}) => {
     const opp = `opp-f1b-${++gn}`;

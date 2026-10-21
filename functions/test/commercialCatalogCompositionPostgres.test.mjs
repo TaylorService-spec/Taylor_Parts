@@ -9,6 +9,7 @@
 // does, and drives the governed Sales Agreement and Sales Order commands through it.
 import { endPoolAndDrain } from "./support/poolTeardown.mjs";
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -54,8 +55,8 @@ test("Commercial resolves Catalog references through the REAL PostgreSQL authori
 
   // THE COMPOSITION UNDER TEST: exactly what eosApi/server.ts now builds.
   const catalog = createPostgresCatalogReferenceAuthority();
-  const deps = { pool, catalog };
-  const bare = { pool };
+  const deps = { pool, catalog, companyReach: ALL_COMPANIES };
+  const bare = { pool, companyReach: ALL_COMPANIES };
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
   // The tenant's sales channels, as Administration setTenantSalesChannelStatus records them: new Commercial work requires an ACTIVE channel.

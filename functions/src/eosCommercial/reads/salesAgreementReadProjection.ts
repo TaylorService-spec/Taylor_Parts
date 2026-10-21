@@ -9,8 +9,9 @@
 import { SALES_AGREEMENT_STATES } from "../../salesAgreement/salesAgreementLifecycle";
 import { computeAgreementTotals } from "../../salesAgreement/salesAgreementCommands";
 import { fail } from "../commands/commercialCommandKernel";
+import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
 import {
-  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
+  COMMERCIAL_READ_CAPABILITIES, maskUnreachedLinks, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
   type CommercialReadDeps, type Queryable,
 } from "./commercialReadKernel";
@@ -192,17 +193,19 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
                 a.location_id, loc.name AS location_name, a.customer_po, a.is_lease, a.fulfillment_intent::text AS fulfillment_intent,
                 a.shipping_instructions, a.ship_via, a.special_instructions,
                 o.opportunity_number, o.stage::text AS opportunity_stage, o.sales_channel::text AS sales_channel,
-                so.id AS order_id, so.sales_order_number AS order_number, so.state::text AS order_state, so.sales_channel::text AS order_channel
+                so.id AS order_id, so.sales_order_number AS order_number, so.state::text AS order_state, so.sales_channel::text AS order_channel,
+                ${reach.company.sql("o", 3)} AS opportunity_company_ok, ${reach.company.sql("so", 3)} AS order_company_ok
            FROM eos_commercial.sales_agreements a
            LEFT JOIN eos_crm.accounts acc ON acc.tenant_id = a.tenant_id AND acc.id = a.account_id
            LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = a.tenant_id AND loc.account_id = a.account_id AND loc.id = a.location_id
            LEFT JOIN eos_commercial.opportunities o ON o.tenant_id = a.tenant_id AND o.id = a.opportunity_id
            LEFT JOIN eos_commercial.sales_orders so ON so.tenant_id = a.tenant_id AND so.sales_agreement_id = a.id
-          WHERE a.tenant_id = $1 AND a.id = $2`,
-        [tenantId, salesAgreementId],
+          WHERE a.tenant_id = $1 AND a.id = $2 AND ${reach.company.sql("a", 3)}`, // Q-1a: a foreign-company Agreement is a plain miss
+        [tenantId, salesAgreementId, ...reach.company.sqlParams()],
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Agreement does not exist in this tenant");
       const r = rows[0] as Row;
+      await maskUnreachedLinks(db, tenantId, reach.company, [r], { opportunity: "opportunity_id" }); // Q-1a: a link to an unreached record is shown as none
       // An Agreement carries no channel of its own: its channel IS its source Opportunity's, joined in this statement.
       // No source Opportunity (or one with no channel) admits no scoped holder.
       if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Agreement");
@@ -224,10 +227,10 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
         customerPO: r.customer_po, isLease: r.is_lease, fulfillmentIntent: r.fulfillment_intent,
         shippingInstructions: r.shipping_instructions, shipVia: r.ship_via, specialInstructions: r.special_instructions,
         // Pass 10 P10-4: lineage only where the reader could read the linked record. A global holder is unchanged.
-        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null
+        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null || r.opportunity_company_ok !== true
           || !reach.admits(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, r.sales_channel ?? null) ? null
           : { id: r.opportunity_id, number: r.opportunity_number, state: r.opportunity_stage },
-        salesOrder: r.order_id === null || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.order_channel ?? null) ? null
+        salesOrder: r.order_id === null || r.order_company_ok !== true || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.order_channel ?? null) ? null
           : { id: r.order_id, number: r.order_number, state: r.order_state },
       };
     }, salesChannelScopedWithLineage([COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ]));
@@ -240,9 +243,11 @@ export interface SalesAgreementListOptions {
   readonly cursor: { number: string; id: string } | null;
   /** Lane GA: null/absent = every channel; otherwise ONLY Agreements whose source Opportunity carries one of these. */
   readonly salesChannels?: readonly string[] | null;
+  /** Q-1a: the caller's operating-company reach; a list contains only reachable records. */
+  readonly company: CommercialCompanyReach;
 }
 
-export function prepareSalesAgreementList(input: Record<string, unknown> | undefined): SalesAgreementListOptions {
+export function prepareSalesAgreementList(input: Record<string, unknown> | undefined): Omit<SalesAgreementListOptions, "company"> {
   return {
     limit: requirePageSize(input?.limit),
     accountId: optionalAccountId(input?.accountId),
@@ -262,11 +267,13 @@ export async function readSalesAgreementPage(db: Queryable, tenantId: string, o:
         AND ($3::text[] IS NULL OR a.state::text = ANY($3::text[]))
         AND ($4::text IS NULL OR (a.sales_agreement_number, a.id) < ($4::text, $5::text))
         AND ($7::text[] IS NULL OR src.sales_channel::text = ANY($7::text[]))
+        AND ${o.company.sql("a", 8)}
       ORDER BY a.sales_agreement_number DESC, a.id DESC
       LIMIT $6`,
-    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null],
+    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null, ...o.company.sqlParams()],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
+  await maskUnreachedLinks(db, tenantId, o.company, kept, { opportunity: "opportunity_id" });
   const lines = await linesByAgreement(db, tenantId, kept.map((r) => r.id));
   return pageOf("salesAgreement", rows as Row[], o.limit, (r) => r.sales_agreement_number, (r) => summaryOf(r, lines.get(r.id)!));
 }
@@ -274,6 +281,6 @@ export async function readSalesAgreementPage(db: Queryable, tenantId: string, o:
 export function listSalesAgreements(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<CommercialPage<SalesAgreementSummaryProjection>> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ], () => prepareSalesAgreementList(input),
     (db, tenantId, options, reach) => readSalesAgreementPage(db, tenantId,
-      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ) }),
+      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ), company: reach.company }),
     SALES_CHANNEL_SCOPED);
 }

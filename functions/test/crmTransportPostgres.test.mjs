@@ -92,7 +92,7 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
   const q = (text, values = []) => pool.query(text, values);
   const repo = new PostgresPolicyRepository(pool);
   const TOKENS = new Map();
-  const deps = { reader: repo, pool, writerAuthority: ACTIVE, verifyToken: async (token) => { const s = TOKENS.get(token); if (!s) throw new Error("bad"); return { externalSubject: s, identityProvider: "firebase" }; }, allowedOrigins: [] };
+  const deps = { reader: repo, pool, companyReach: async () => (await import("./support/commercialCompanyReachFixture.mjs")).ALL_COMPANIES(), writerAuthority: ACTIVE, verifyToken: async (token) => { const s = TOKENS.get(token); if (!s) throw new Error("bad"); return { externalSubject: s, identityProvider: "firebase" }; }, allowedOrigins: [] };
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-1','t1','ACTIVE','taylor'), ('e-1b','t1','ACTIVE','taylor'), ('e-2','t2','ACTIVE','taylor')`);

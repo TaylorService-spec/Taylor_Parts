@@ -3,6 +3,7 @@
 // the EOS operational receivable through the existing Finance foundation; the provider-neutral accounting handoff. Not an
 // accounting invoice, not GL, not recognition, nothing delivered. Real PostgreSQL; set POLICY_TEST_DATABASE_URL.
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -152,7 +153,7 @@ test("Finance Activation 2: tax evidence -> READY package -> EOS receivable -> a
   };
 
   // ── TAX EVIDENCE through the governed Agreement writer (the Commercial command service) ──
-  const commercialDeps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  const commercialDeps = { pool, companyReach: ALL_COMPANIES, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   const seller2 = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept"]) };
   let oppSeq = 0;
   const opportunity = async () => {
@@ -202,19 +203,19 @@ test("Finance Activation 2: tax evidence -> READY package -> EOS receivable -> a
     const reads = require("../lib/eosCommercial/reads/salesAgreementReadProjection.js");
     const reader = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.read"]) };
     const id = await agreement({ taxEvidence: { status: "DETERMINED", amountMinor: 1850, currency: "USD" } });
-    let d = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+    let d = await reads.getSalesAgreementDetail({ pool, companyReach: ALL_COMPANIES }, reader, { salesAgreementId: id });
     assert.deepEqual([d.taxEvidence, d.totals.taxMinor, d.totals.totalMinor], [{ status: "DETERMINED", amountMinor: 1850 }, 1850, 31850]);
     await sa.updateSalesAgreementDraft(commercialDeps, seller2, { idempotencyKey: `nd-${Date.now()}`, salesAgreementId: id, taxEvidence: { status: "NOT_DETERMINED" } });
-    d = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+    d = await reads.getSalesAgreementDetail({ pool, companyReach: ALL_COMPANIES }, reader, { salesAgreementId: id });
     assert.deepEqual([d.taxEvidence, d.totals.taxMinor, d.totals.totalMinor], [{ status: "NOT_DETERMINED", amountMinor: null }, 0, 30000],
       "a tax no longer determined is not carried in the Agreement's arithmetic");
     await assert.rejects(sa.updateSalesAgreementDraft(commercialDeps, seller2, { idempotencyKey: `nd2-${Date.now()}`, salesAgreementId: id, taxMinor: 500,
       taxEvidence: { status: "NOT_DETERMINED" } }), code("TAX_EVIDENCE_CONFLICT"));
     // A bare amount change is the server-side reset the UI reflects: NOT_DETERMINED, no evidenced amount.
     await sa.updateSalesAgreementDraft(commercialDeps, seller2, { idempotencyKey: `nd3-${Date.now()}`, salesAgreementId: id, taxMinor: 900 });
-    d = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: id });
+    d = await reads.getSalesAgreementDetail({ pool, companyReach: ALL_COMPANIES }, reader, { salesAgreementId: id });
     assert.deepEqual(d.taxEvidence, { status: "NOT_DETERMINED", amountMinor: null });
-    const legacy = await reads.getSalesAgreementDetail({ pool }, reader, { salesAgreementId: "sa-legacy" }).catch((e) => e);
+    const legacy = await reads.getSalesAgreementDetail({ pool, companyReach: ALL_COMPANIES }, reader, { salesAgreementId: "sa-legacy" }).catch((e) => e);
     if (!(legacy instanceof Error)) assert.deepEqual(legacy.taxEvidence, { status: "LEGACY_UNVERIFIED", amountMinor: null });
   });
 

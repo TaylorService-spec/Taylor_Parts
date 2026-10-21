@@ -16,6 +16,7 @@
 //   NEG   wrong company / currency / counterparty / kind / over-application / future date / CONSOLIDATED refused.
 //   WS    the exception-first workspace, per company and as the CONSOLIDATED projection.
 import test from "node:test";
+import { ALL_COMPANIES } from "./support/commercialCompanyReachFixture.mjs"; // Q-1a: this suite is not about company authority
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -159,7 +160,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const seller = await person("uid-seller", [], { id: "e-seller", name: "Sam Seller" });
   const sellerActor = { tenantId: TENANT, principalId: seller.principalId, capabilities: new Set(["salesAgreement.create", "salesAgreement.updateDraft", "salesAgreement.accept", "salesOrder.write"]) };
   await q(`INSERT INTO eos_commercial.sales_discount_authorities (tenant_id, principal_id, max_discount_basis_points, updated_by) VALUES ($1,$2,1000,'f')`, [TENANT, seller.principalId]);
-  const commercialDeps = { pool, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
+  const commercialDeps = { pool, companyReach: ALL_COMPANIES, catalog: { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } } };
   let gn = 0;
   const directPackage = async ({ account = "acct-cust", price = 40000, extra = {}, approveTradeIn = null, companyKey = "taylor" } = {}) => {
     const opp = `opp-fc-${++gn}`;
@@ -520,13 +521,13 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
              VALUES ($1,'so-ventana',1,'SERVICE','SVC-INSTALL','INSTALLATION',1,90000)`, [TENANT]);
     const create = (type) => call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-cust", locationId: "loc-c", workOrderType: type,
       priority: 2, salesOrderId: "so-ventana", salesOrderLines: [1] });
-    refused(await create("SERVICE_CALL"), 412, "SALES_ORDER_COMPANY_MISMATCH", "no arbitrary cross-company Work Order");
+    refused(await create("SERVICE_CALL"), 404, "SALES_ORDER_NOT_FOUND", "no arbitrary cross-company Work Order (a Ventana order is nonexistent to a Taylor-only dispatcher, Q-1a)");
     await assert.rejects(soCommands.authorizeSalesOrderServiceProvider(commercialDeps, { ...sellerActor, capabilities: new Set(["salesAgreement.read"]) },
       { idempotencyKey: key("auth"), salesOrderId: "so-ventana", serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "x" }), (e) => e.code === "CAPABILITY_REQUIRED");
     const auth = await soCommands.authorizeSalesOrderServiceProvider(commercialDeps, sellerActor, { idempotencyKey: key("auth"), salesOrderId: "so-ventana",
       serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "Taylor Service installs for Ventana's customer" });
     assert.deepEqual([(auth.result ?? auth).serviceOperatingCompanyKey, (auth.result ?? auth).status], ["taylor", "ACTIVE"]);
-    refused(await create("INSTALL"), 412, "SALES_ORDER_COMPANY_MISMATCH", "the authorization covers SERVICE only");
+    refused(await create("INSTALL"), 404, "SALES_ORDER_NOT_FOUND", "the authorization covers SERVICE only");
     const woId = ok(await create("SERVICE_CALL"), "authorized cross-company Work Order").workOrderId;
     assert.equal((await one(`SELECT operating_company_key k FROM eos_ops.work_orders WHERE id=$1`, [woId])).k, "taylor", "the Work Order is the service-performing company's");
     ok(await call(dispatcher, WO, "markWorkOrderReady", { workOrderId: woId }), "ready");
@@ -540,7 +541,7 @@ test("finance closure over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.deepEqual([f.operating_company_key, f.operating_company_id, f.service_operating_company_key], ["ventana", "ventana", "taylor"], "seller = Ventana; service provider = Taylor");
     assert.equal((await one(`SELECT operating_company_key k FROM eos_commercial.sales_orders WHERE id='so-ventana'`)).k, "ventana", "the seller is never rewritten");
     await soCommands.revokeSalesOrderServiceProvider(commercialDeps, sellerActor, { idempotencyKey: key("rev"), salesOrderId: "so-ventana", serviceOperatingCompanyId: "taylor", reason: "done" });
-    refused(await create("SERVICE_CALL"), 412, "SALES_ORDER_COMPANY_MISMATCH", "revoked");
+    refused(await create("SERVICE_CALL"), 404, "SALES_ORDER_NOT_FOUND", "revoked");
   });
 
   await t.test("CORR: reverse -> balance restored; re-apply; void refused with live applications; void + replacement; reconciliation", async () => {
