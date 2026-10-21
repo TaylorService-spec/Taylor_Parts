@@ -6,6 +6,7 @@ import path from "node:path";
 import { REPO_ROOT, extractOperations, extractSurfaces, extractScopeEvaluable, extractNavigation, readRepoJson, servedRoutes, eosApiDomainForPort } from "./uatExtract.mjs";
 import { OP_RULES, PAGE_OBJECTS, EXTRA_ROUTES, PLATFORM } from "./uatMaps.mjs";
 import { PROBES } from "./uatProbes.mjs";
+import { scopeGateFor, applyOperationGate, scopeProblems } from "./uatScope.mjs";
 
 const csv = (v) => (v === null || v === undefined ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
 export const toCsv = (rows, cols) => [cols.join(","), ...rows.map((r) => cols.map((c) => csv(r[c])).join(","))].join("\n") + "\n";
@@ -375,11 +376,21 @@ export async function buildModel(censusPath) {
   const routeCheck = { servedRoutes: Object.fromEntries(served), checked: Object.fromEntries([...routeUses].map(([r, who]) => [r, [...who].sort()])), domains: Object.fromEntries([...routeUses.keys()].map((r) => [r, eosApiDomainForPort(r)])), problems: routeProblems };
   for (const p of personasAll) for (const pr of PROBES) {
     const flat = p.flatCaps.has(pr.cap); const sc = p.scopedCaps.get(pr.cap);
-    const expected = flat ? "ALLOW" : sc ? "SCOPED" : "DENY";
+    let expected = flat ? "ALLOW" : sc ? "SCOPED" : "DENY";
     let reach = "";
     if (pr.finance) reach = `finance companies: ${p.financeReach.join(",") || "none"}`;
     else if (pr.company) reach = `operating companies: ${p.companyReach.join(",") || "none"}`;
-    probeRows.push({ persona: p.key, route: pr.route, op: pr.op, object: pr.object, kind: pr.kind, capability: pr.cap, expected, expectedRefusal: expected === "DENY" ? "CAPABILITY_REQUIRED (names the capability)" : "", reach, basis: flat ? (p.capSource.get(pr.cap) ?? []).join("+") : sc ? sc.map((s) => `${s.role}@${s.scopeType}=${s.scopeValue}`).join("+") : "none" });
+    let basis = flat ? (p.capSource.get(pr.cap) ?? []).join("+") : sc ? sc.map((s) => `${s.role}@${s.scopeType}=${s.scopeValue}`).join("+") : "none";
+    let expectedRefusal = expected === "DENY" ? "CAPABILITY_REQUIRED (names the capability)" : "";
+    // OPERATIONAL SCOPE (lane U01 / RO-01): capability AND a reaching scope, else the server's own refusal. Derived in uatScope.mjs from the server code.
+    let scopeRequirement, scopeNote;
+    const gate = scopeGateFor(pr.route, pr.op);
+    if (gate) {
+      const r = applyOperationGate(p, gate, { expected });
+      ({ expected, scopeRequirement, scopeNote } = r);
+      if (r.expectedRefusal) expectedRefusal = r.expectedRefusal;
+    }
+    probeRows.push({ persona: p.key, route: pr.route, op: pr.op, object: pr.object, kind: pr.kind, capability: pr.cap, expected, expectedRefusal, reach, basis, scopeRequirement, scopeNote });
   }
 
   // ---------------------------------------------------------------- reconciliation
@@ -404,7 +415,7 @@ export async function buildModel(censusPath) {
     census: C, snap: SNAP, roles, personas, pure, personasAll, personaByKey, objects, destinations, operations, surfaces, scopeEval, nav,
     principalsNoRole, personasNoRole, personasZeroCaps, rolesNoAssignee,
     roleCapRows, divergence, credOnly, editWithoutRead, personaCapRows, personaCredRows, wfSeeds, wfActions, bindingCounts, censusBindings, personaWfRows,
-    probeRows, probeProblems, routeCheck, reconciliation, impliedKeys, opErrors: opx.errors,
+    probeRows, probeProblems, scopeProblems: scopeProblems(PROBES), routeCheck, reconciliation, impliedKeys, opErrors: opx.errors,
     maps: { roleByKey, capByKey, objByKey, grantsByRole, jobRoleLabel },
   };
 }

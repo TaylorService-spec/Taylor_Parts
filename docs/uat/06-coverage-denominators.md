@@ -84,13 +84,13 @@ These rows exist so that "pure Administrator" expectations are judged from the `
 
 | Expected | Rows |
 |---|---|
-| ALLOW | 2027 |
-| DENY | 8633 |
-| SCOPED | 161 |
+| ALLOW | 1976 |
+| DENY | 8685 |
+| SCOPED | 159 |
 | VISIBLE | 292 |
 | HIDDEN | 924 |
 | PRESENT | 68 |
-| CONDITIONAL | 7 |
+| CONDITIONAL | 8 |
 | NOT_APPLICABLE | 275 |
 | ALLOW_PREVIEW_ONLY | 1 |
 

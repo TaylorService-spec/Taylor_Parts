@@ -1,6 +1,7 @@
 // UAT census -- record-level, search, dashboard, route and unmerged-PR expectation rows.
 // Derived from the same governed model as uatModel.mjs plus the Owner rulings cited per row. A ruling is cited by its DECISIONS anchor.
 import { PROBES } from "./uatProbes.mjs";
+import { applyReadReach } from "./uatScope.mjs";
 import { EXTRA_ROUTES } from "./uatMaps.mjs";
 
 // Rulings cited in `source`. (All are in docs/DECISIONS.md unless noted.)
@@ -163,8 +164,10 @@ export function buildSearchRows(m) {
   for (const p of m.personasAll) for (const s of SEARCH_KINDS) {
     const flat = has(p, s.cap); const sc = scopedHas(p, s.cap, "salesChannel") || scopedHas(p, s.cap, "operatingCompany");
     const expected = flat ? "ALLOW" : sc ? "SCOPED" : "DENY";
-    rows.push({ id: `${p.key}:search:${s.kind}`, persona: p.key, tier: "search", object: s.kind, op: "searchEos", capability: s.cap, expected,
-      basis: expected === "DENY" ? "kind absent from results (capability not held)" : "results limited to the company/channel the persona reaches (a foreign-company record, and its text, never matches)",
+    // OPERATIONAL SCOPE (lane U01 / RO-01): the Reorder kind is searched only with a REORDER_QUEUE reach (myWork.ts), else it is absent from results.
+    const r = applyReadReach(p, "search", s.kind, { expected, basis: expected === "DENY" ? "kind absent from results (capability not held)" : "results limited to the company/channel the persona reaches (a foreign-company record, and its text, never matches)" });
+    rows.push({ id: `${p.key}:search:${s.kind}`, persona: p.key, tier: "search", object: s.kind, op: "searchEos", capability: s.cap, expected: r.expected,
+      basis: r.expectedRefusal ? `${r.expectedRefusal} -- ${r.basis}` : r.basis, scopeRequirement: r.scopeRequirement,
       source: s.commercial ? RULINGS.Q1A : RULINGS.COMPANY_V1, company: "reach-dependent", needsFixtures: false });
   }
   return rows;
@@ -211,8 +214,11 @@ export function buildAnalysisRows(m) {
   const rows = [];
   for (const p of m.personasAll) for (const [fam, cap] of ANALYSIS_FAMILIES) {
     const flat = has(p, cap); const sc = (p.scopedCaps.get(cap) ?? []).length > 0;
-    rows.push({ id: `${p.key}:analysis:${fam}`, persona: p.key, tier: "analysis", object: fam, op: "readMeasureAnalysis", capability: cap, expected: flat ? "ALLOW" : sc ? "SCOPED" : "DENY",
-      basis: fam === "payment" ? "finance measures are decided against the explicit Financials company assignment" : "measure family decided on its own read capability and company key", source: "DECISIONS #208 (analysis doors confer no data)", company: "reach-dependent", needsFixtures: false });
+    // OPERATIONAL SCOPE (lane U01 / RO-01): Reorder measures need the REORDER_QUEUE reach, receipt / stock-movement measures a WAREHOUSE reach (analysis.ts rowsFor).
+    const r = applyReadReach(p, "analysis", fam, { expected: flat ? "ALLOW" : sc ? "SCOPED" : "DENY",
+      basis: fam === "payment" ? "finance measures are decided against the explicit Financials company assignment" : "measure family decided on its own read capability and company key" });
+    rows.push({ id: `${p.key}:analysis:${fam}`, persona: p.key, tier: "analysis", object: fam, op: "readMeasureAnalysis", capability: cap, expected: r.expected,
+      basis: r.expectedRefusal ? `${r.expectedRefusal} -- ${r.basis}` : r.basis, scopeRequirement: r.scopeRequirement, source: "DECISIONS #208 (analysis doors confer no data)", company: "reach-dependent", needsFixtures: false });
   }
   return rows;
 }
