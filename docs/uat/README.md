@@ -27,7 +27,7 @@ Roles, assignments, capabilities, CRED and company grants come from the census; 
 
 ## 2. Headline numbers (exact; see `06-coverage-denominators.md`)
 
-- 12,340 persona-level expectation rows across 14 tiers for the 16 sign-in personas, plus a separately counted pure-Administrator evidence set. Run now (Taylor baseline): 10,692; need a created record or state: 890; controller-run SAE walk: 6; BLOCKED (Ventana key not bound): 365; blocked on #2200/#2199: 112; not applicable: 275; UNDETERMINED: 0.
+- 12,388 persona-level expectation rows across 14 tiers for the 16 sign-in personas, plus a separately counted pure-Administrator evidence set. Run now (Taylor baseline): 10,692; need a created record or state: 890; controller-run SAE walk: 6; BLOCKED (Ventana key not bound): 413; blocked on #2200/#2199: 112; not applicable: 275; UNDETERMINED: 0.
 - 22,550 role-level cells verified by readback, and 3,183 field-level tests, now unblocked (the controller found 0 field overrides).
 - 20 of 55 Roles have no active assignee; 8 Principals hold no Role; the `generalEmployee` persona sees nothing by design.
 - 26 built pages have no governed surface and stay HIDDEN (`11-classification-tables.md`).

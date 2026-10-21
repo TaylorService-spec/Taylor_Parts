@@ -4,11 +4,11 @@
   "RUN_NOW": 10692,
   "NEEDS_FIXTURES": 890,
   "CONTROLLER_WALK": 6,
-  "BLOCKED_VENTANA_KEY_NOT_BOUND": 365,
+  "BLOCKED_VENTANA_KEY_NOT_BOUND": 413,
   "BLOCKED_UNMERGED_PR": 112,
   "BLOCKED_OWNER_QUESTION": 0,
   "NOT_APPLICABLE": 275,
-  "TOTAL": 12340
+  "TOTAL": 12388
  },
  "matrix": {
   "capability": {
@@ -65,11 +65,11 @@
    "RUN_NOW": 432,
    "NEEDS_FIXTURES": 48,
    "CONTROLLER_WALK": 0,
-   "BLOCKED_VENTANA_KEY_NOT_BOUND": 365,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 413,
    "BLOCKED_UNMERGED_PR": 96,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 19,
-   "TOTAL": 960
+   "TOTAL": 1008
   },
   "search": {
    "RUN_NOW": 160,
@@ -153,8 +153,8 @@
   }
  },
  "expectedCounts": {
-  "ALLOW": 2016,
-  "DENY": 8596,
+  "ALLOW": 2027,
+  "DENY": 8633,
   "SCOPED": 161,
   "VISIBLE": 292,
   "HIDDEN": 924,
@@ -220,11 +220,11 @@
     "RUN_NOW": 27,
     "NEEDS_FIXTURES": 3,
     "CONTROLLER_WALK": 0,
-    "BLOCKED_VENTANA_KEY_NOT_BOUND": 23,
+    "BLOCKED_VENTANA_KEY_NOT_BOUND": 26,
     "BLOCKED_UNMERGED_PR": 6,
     "BLOCKED_OWNER_QUESTION": 0,
     "NOT_APPLICABLE": 1,
-    "TOTAL": 60
+    "TOTAL": 63
    },
    "search": {
     "RUN_NOW": 10,
@@ -311,14 +311,14 @@
    "RUN_NOW": 664,
    "NEEDS_FIXTURES": 56,
    "CONTROLLER_WALK": 0,
-   "BLOCKED_VENTANA_KEY_NOT_BOUND": 23,
+   "BLOCKED_VENTANA_KEY_NOT_BOUND": 26,
    "BLOCKED_UNMERGED_PR": 7,
    "BLOCKED_OWNER_QUESTION": 0,
    "NOT_APPLICABLE": 17,
-   "TOTAL": 767
+   "TOTAL": 770
   },
   "expectedCounts": {
-   "ALLOW": 433,
+   "ALLOW": 436,
    "DENY": 237,
    "SCOPED": 0,
    "VISIBLE": 45,
@@ -434,6 +434,6 @@
   "operations": 442,
   "probes": 127,
   "workflowActions": 48,
-  "recordKinds": 20
+  "recordKinds": 21
  }
 }

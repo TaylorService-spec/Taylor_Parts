@@ -40,6 +40,7 @@ export const RECORD_KINDS = Object.freeze([
   // ---- Ventana (SYNTHETIC; created by the fixture script -- docs/uat/05-ventana-fixture-plan.md)
   { id: "V-ACC", label: "Ventana line-of-business customer account", family: "account", company: "ventana", read: "customer.record.read", write: "customer.record.update", fixture: "F-ACC" },
   { id: "V-OPP-R", label: "Ventana RETAIL opportunity", family: "commercial", company: "ventana", channel: "RETAIL", read: "opportunity.read", write: "opportunity.write", fixture: "F-OPP" },
+  { id: "V-OPP-N", label: "Ventana NATIONAL_ACCOUNTS opportunity", family: "commercial", company: "ventana", channel: "NATIONAL_ACCOUNTS", read: "opportunity.read", write: "opportunity.write", fixture: "F-OPP-N (lane VFX S51n)" },
   { id: "V-AGR-R", label: "Ventana RETAIL sales agreement", family: "commercial", company: "ventana", channel: "RETAIL", read: "salesAgreement.read", write: "salesAgreement.updateDraft", fixture: "F-AGR" },
   { id: "V-ORD-R", label: "Ventana RETAIL sales order", family: "commercial", company: "ventana", channel: "RETAIL", read: "salesOrder.read", write: "salesOrder.write", fixture: "F-ORD" },
   { id: "V-WO", label: "Ventana Work Order", family: "workOrder", company: "ventana", assignedTo: null, read: "workOrder.record.read", write: "workOrder.lifecycle.schedule", fixture: "F-WO", dependsOn: ["#2200"] },

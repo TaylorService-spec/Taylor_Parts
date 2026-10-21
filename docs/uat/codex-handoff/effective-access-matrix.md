@@ -4,7 +4,7 @@
 
 EXPECTED is derived **only** from governed configuration (census `role_capabilities`, `role_object_permissions`, scoped assignments, the surface catalog, company authority) plus the Owner rulings cited per row. Where configuration and a ruling disagree, or nothing establishes the expectation, the cell is **UNDETERMINED**, is listed as an Owner question and is **never asserted**. After the Owner's 2026-10-21 decisions (`../07-owner-questions.md`) there are **0** such cells. No permission is inferred to make a test pass.
 
-The complete machine-readable matrix is `codex-handoff/expected-access-manifest.json` (13107 rows). This page explains it and shows the headline views.
+The complete machine-readable matrix is `codex-handoff/expected-access-manifest.json` (13158 rows). This page explains it and shows the headline views.
 
 ## C0. Method and authority order
 
@@ -19,8 +19,8 @@ The complete machine-readable matrix is `codex-handoff/expected-access-manifest.
 
 | Expected | Rows |
 |---|---|
-| ALLOW | 2016 |
-| DENY | 8596 |
+| ALLOW | 2027 |
+| DENY | 8633 |
 | SCOPED | 161 |
 | VISIBLE | 292 |
 | HIDDEN | 924 |
@@ -132,7 +132,7 @@ The manifest marks every such row `dependsOn: ["after #NNNN"]` and `runStatus: B
 
 ## C7. Pure-Administrator evidence (OQ-11; separate from the composite persona)
 
-The persona `administratorPure` carries 767 rows computed from the `admin` Role alone (stored grants plus the derived protected-Administrator standing; Finance assignments are separate FINANCE_ONLY Roles and are not part of it). It is tagged `group: "pure-admin"`, is not a sign-in account, and its expectations are read from the effective-access explanation of the `admin` Role. Capability rows of the composite `administrator` carry `viaAdminRoleOnly` (true when the capability comes through `admin` alone) and their source Roles.
+The persona `administratorPure` carries 770 rows computed from the `admin` Role alone (stored grants plus the derived protected-Administrator standing; Finance assignments are separate FINANCE_ONLY Roles and are not part of it). It is tagged `group: "pure-admin"`, is not a sign-in account, and its expectations are read from the effective-access explanation of the `admin` Role. Capability rows of the composite `administrator` carry `viaAdminRoleOnly` (true when the capability comes through `admin` alone) and their source Roles.
 
 |  | Composite administrator | Pure Administrator (admin only) |
 |---|---|---|

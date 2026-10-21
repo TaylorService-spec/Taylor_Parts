@@ -20,7 +20,7 @@ Counts are exact and reproducible: `node docs/uat/tools/uatCensusGenerate.mjs`. 
 | API (route, operation) pairs (after the Phase 2 route fix) | 442 |
 | Direct-API probes | 127 |
 | Seeded workflow actions | 48 |
-| Record kinds | 20 |
+| Record kinds | 21 |
 | Fields (nonprod) | 404 |
 
 ## H2. Role-level cells (readback; no persona sign-in; run now)
@@ -38,7 +38,7 @@ Counts are exact and reproducible: `node docs/uat/tools/uatCensusGenerate.mjs`. 
 | navigation | 1216 | 1216 | 0 | 0 | 0 | 0 | 0 | 0 |
 | workflow | 768 | 0 | 752 | 0 | 0 | 0 | 0 | 16 |
 | api-probe | 2032 | 2032 | 0 | 0 | 0 | 0 | 0 | 0 |
-| record-reach | 960 | 432 | 48 | 0 | 365 | 96 | 0 | 19 |
+| record-reach | 1008 | 432 | 48 | 0 | 413 | 96 | 0 | 19 |
 | search | 160 | 160 | 0 | 0 | 0 | 0 | 0 | 0 |
 | dashboard | 68 | 68 | 0 | 0 | 0 | 0 | 0 | 0 |
 | analysis | 160 | 160 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -47,7 +47,7 @@ Counts are exact and reproducible: `node docs/uat/tools/uatCensusGenerate.mjs`. 
 | sae-grant | 16 | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clc | 16 | 0 | 0 | 0 | 0 | 16 | 0 | 0 |
 | channel-boundary | 48 | 48 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **ALL** | 12340 | 10692 | 890 | 6 | 365 | 112 | 0 | 275 |
+| **ALL** | 12388 | 10692 | 890 | 6 | 413 | 112 | 0 | 275 |
 
 ## H3b. Pure-Administrator evidence (the `admin` Role alone; separate from H3)
 
@@ -58,7 +58,7 @@ Counts are exact and reproducible: `node docs/uat/tools/uatCensusGenerate.mjs`. 
 | navigation | 76 | 76 | 0 | 0 | 0 | 0 | 0 | 0 |
 | workflow | 48 | 0 | 47 | 0 | 0 | 0 | 0 | 1 |
 | api-probe | 127 | 127 | 0 | 0 | 0 | 0 | 0 | 0 |
-| record-reach | 60 | 27 | 3 | 0 | 23 | 6 | 0 | 1 |
+| record-reach | 63 | 27 | 3 | 0 | 26 | 6 | 0 | 1 |
 | search | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
 | dashboard | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
 | analysis | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -66,7 +66,7 @@ Counts are exact and reproducible: `node docs/uat/tools/uatCensusGenerate.mjs`. 
 | sae-self-approval | 6 | 0 | 6 | 0 | 0 | 0 | 0 | 0 |
 | sae-grant | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | clc | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |
-| **ALL** | 767 | 664 | 56 | 0 | 23 | 7 | 0 | 17 |
+| **ALL** | 770 | 664 | 56 | 0 | 26 | 7 | 0 | 17 |
 
 These rows exist so that "pure Administrator" expectations are judged from the `admin` Role alone, using the effective-access explanation, and rights contributed by the composite persona's other eleven Roles are never counted as inherent Administrator authority. In the composite persona's capability rows, `viaAdminRoleOnly` says whether a capability comes through `admin` (stored or derived) alone.
 
@@ -84,8 +84,8 @@ These rows exist so that "pure Administrator" expectations are judged from the `
 
 | Expected | Rows |
 |---|---|
-| ALLOW | 2016 |
-| DENY | 8596 |
+| ALLOW | 2027 |
+| DENY | 8633 |
 | SCOPED | 161 |
 | VISIBLE | 292 |
 | HIDDEN | 924 |
@@ -107,6 +107,6 @@ UNDETERMINED is **0**: every question was answered on 2026-10-21 (`07-owner-ques
 
 - **Run now (Taylor-only baseline):** 10692 persona tests + 22550 role-level cells + 3183 field-level tests.
 - **Needs a created record or state:** 890. **Controller walk (SAE positive):** 6.
-- **BLOCKED, Ventana key not bound:** 365 (never PASS, never FAIL).
+- **BLOCKED, Ventana key not bound:** 413 (never PASS, never FAIL).
 - **Blocked on unmerged PRs (#2200, #2199):** 112. **Blocked on Owner rulings:** 0. **Not applicable:** 275.
-- **Pure-Administrator evidence rows:** 767.
+- **Pure-Administrator evidence rows:** 770.
