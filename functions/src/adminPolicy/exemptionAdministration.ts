@@ -15,10 +15,9 @@ import { AdministrationDeniedError } from "./administrationAuthority";
 import { requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
 import { employeeAccessIneligibility } from "./employmentAccessEligibility";
 import type { PolicyReader } from "./policyRepository";
-import { resolveObjectAction } from "./objectSecurityAuthority";
 import type { SecurityAdministrationAction } from "./administrationAuthority";
 import type { AdminActor } from "./policyCommands";
-import { decideSecondaryApprovalExemption, isSelfApprovalExemptKey } from "../access/secondaryApprovalExemptionCore";
+import { SELF_APPROVAL_EXEMPT_OBJECT, decideSecondaryApprovalExemption, isSelfApprovalExemptKey } from "../access/secondaryApprovalExemptionCore";
 
 /** Refusal of an exemption grant / revoke / staffing by anyone but the verified protected Owner. Maps to FORBIDDEN. */
 export class ExemptionAdministrationDeniedError extends AdministrationDeniedError {
@@ -48,14 +47,13 @@ export async function isVerifiedProtectedOwner(repo: PolicyReader, tenantId: str
   return r.exempt && r.basis === "PROTECTED_OWNER";
 }
 
-/** Does (objectKey, actionKey) name a key of the exemption family? A name that does not resolve is "no": today's gate and today's error then apply unchanged. */
-export async function namesExemptionKey(repo: PolicyReader, objectKey: unknown, actionKey: unknown): Promise<boolean> {
-  if (typeof objectKey !== "string" || typeof actionKey !== "string") return false;
-  try {
-    return isSelfApprovalExemptKey(resolveObjectAction(await repo.listCapabilities(), objectKey, actionKey).key);
-  } catch {
-    return false;
-  }
+/**
+ * Does this request concern the exemption family? Decided on the OBJECT ALONE (trimmed exactly as `resolveObjectAction` trims it): every family key lives on the one governed Object
+ * `selfApprovalExemption`, so a request naming that Object -- with any action, with none (an object-wide grant or revoke, a condition) or with a name that resolves to nothing -- is the
+ * family's. No catalog is read and nothing can fail open: an unreadable or unresolvable action name cannot turn a family request into an ordinary one.
+ */
+export function namesExemptionFamily(objectKey: unknown): boolean {
+  return typeof objectKey === "string" && objectKey.trim() === SELF_APPROVAL_EXEMPT_OBJECT;
 }
 
 export async function requireVerifiedProtectedOwner(repo: PolicyReader, actor: AdminActor): Promise<void> {
@@ -66,8 +64,8 @@ export async function requireVerifiedProtectedOwner(repo: PolicyReader, actor: A
  * THE GATE of every command that grants or revokes a capability on a Role or a Principal: the exemption family needs the verified protected Owner; every other key needs what it
  * always needed (`gate`). Decided before the request is otherwise read.
  */
-export async function requireGrantAuthority(repo: PolicyReader, actor: AdminActor, gate: SecurityAdministrationAction, objectKey: unknown, actionKey: unknown): Promise<void> {
-  if (await namesExemptionKey(repo, objectKey, actionKey)) return requireVerifiedProtectedOwner(repo, actor);
+export async function requireGrantAuthority(repo: PolicyReader, actor: AdminActor, gate: SecurityAdministrationAction, objectKey: unknown, _actionKey?: unknown): Promise<void> {
+  if (namesExemptionFamily(objectKey)) return requireVerifiedProtectedOwner(repo, actor);
   return requireSecurityAdministrationCapability(repo, actor, gate);
 }
 

@@ -151,7 +151,7 @@ const decideRules = ({ row = CORR(), roles = [], delegated = [], employees = { "
   [/FROM eos_finance\.invoice_corrections WHERE tenant_id = \$1 AND decided_by = \$2 AND decision_idempotency_key = \$3/, () => ({ rows: [] })],
   [/SELECT r\.key, r\.protected FROM eos_policy\.user_role_assignments/, () => ({ rows: roles })],
   // Rule 2: the delegated exemption grants in force (key + source). Asked only of a Principal who is not the protected Owner.
-  [/SELECT c\.key, 'role:' \|\| r\.key AS source/, () => ({ rows: delegated })],
+  [/SELECT c\.key, 'role:' \|\| r\.key \|\| ':' \|\| c\.key AS source/, () => ({ rows: delegated })],
   [/SELECT l\.employee_id, e\.employment_status::text AS employment_status FROM eos_policy\.employee_principal_links l/, (p) => (employees[p[1]] ? { rows: [{ employee_id: employees[p[1]], employment_status: status }] } : { rows: [] })],
   [/SELECT employee_id FROM eos_policy\.employee_principal_links WHERE tenant_id = \$1 AND principal_id = \$2 AND status = 'active'/, (p) => ({ rows: (current[p[1]] ?? []).map((e) => ({ employee_id: e })) })],
   [/UPDATE eos_finance\.invoice_corrections SET status = \$3/, () => ({ rows: [], rowCount: 1 })],
@@ -438,9 +438,59 @@ test("RULE 2 ADMIN GATE: for the family ONLY the verified protected Owner grants
   assert.doesNotMatch(String(a?.message), /not authorized/);
   const o = await failure(commands.grantObjectActionToRole(adminRepo(), ownerActor, ordinary));
   assert.equal(o?.constructor?.name, "AdministrationCapabilityDeniedError", "today's gate, unchanged: the Owner holds no admin.securityPolicy.write");
-  // a name that does not resolve is refused by today's gate, not guessed to be in the family
-  const unknown = await failure(commands.grantObjectActionToRole(adminRepo(), ownerActor, { ...ordinary, objectKey: "selfApprovalExemption", actionKey: "exemptEverything" }));
-  assert.equal(unknown?.constructor?.name, "AdministrationCapabilityDeniedError");
+  // FAIL CLOSED (F3): the family is recognised on the OBJECT alone, so a name that does not resolve to a key (or no action name at all) is still the family's -- the Administrator is refused, the Owner is not
+  const unknown = { ...ordinary, objectKey: "selfApprovalExemption", actionKey: "exemptEverything" };
+  assert.equal((await failure(commands.grantObjectActionToRole(adminRepo(), adminActor, unknown)))?.constructor?.name, "ExemptionAdministrationDeniedError");
+  assert.doesNotMatch(String((await failure(commands.grantObjectActionToRole(adminRepo(), ownerActor, unknown)))?.message), /not authorized/);
+  // ... and an unreadable catalog can never turn a family request into an ordinary one: the gate reads no catalog at all
+  const broken = { ...adminRepo(), listCapabilities: async () => { throw new Error("catalog unreadable"); } };
+  assert.equal((await failure(commands.grantObjectActionToRole(broken, adminActor, FIN_GRANT)))?.constructor?.name, "ExemptionAdministrationDeniedError");
+  assert.deepEqual([" selfApprovalExemption ", "selfApprovalExemption"].map(adminGate.namesExemptionFamily), [true, true]);
+  assert.deepEqual([undefined, null, "", "workOrder", "SelfApprovalExemption", 7, {}].map(adminGate.namesExemptionFamily), [false, false, false, false, false, false, false]);
+});
+
+test("RULE 2 OBJECT-WIDE AND CONDITIONS (F2): the Administrator is refused, with zero trace, on an object-wide GRANT / REVOKE of the exemption Object and on any condition command naming it; the Owner is not refused by the gate; another Object keeps today's gate", async () => {
+  const wide = (mode) => ({ objectKey: "selfApprovalExemption", roleKey: "financeLead", mode, reason: "r" });
+  const cond = { roleKey: "financeLead", objectKey: "selfApprovalExemption", actionKey: "exemptFinancials", reason: "r", condition: { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" } };
+  const calls = [
+    ["applyObjectWideRoleAuthority GRANT", (r, a) => commands.applyObjectWideRoleAuthority(r, a, wide("GRANT"))],
+    ["applyObjectWideRoleAuthority REVOKE", (r, a) => commands.applyObjectWideRoleAuthority(r, a, wide("REVOKE"))],
+    ["setGrantCondition (Role)", (r, a) => commands.setGrantCondition(r, a, cond)],
+    ["retireGrantCondition (Role)", (r, a) => commands.retireGrantCondition(r, a, cond)],
+    ["setGrantCondition (direct)", (r, a) => commands.setGrantCondition(r, a, { principalId: "p-x", objectKey: "selfApprovalExemption", actionKey: "exemptFinancials", reason: "r", condition: cond.condition })],
+    ["retireGrantCondition (direct)", (r, a) => commands.retireGrantCondition(r, a, { principalId: "p-x", objectKey: "selfApprovalExemption", actionKey: "exemptFinancials", reason: "r" })],
+  ];
+  for (const [label, run] of calls) {
+    const denied = adminRepo();
+    const d = await failure(run(denied, adminActor));
+    assert.equal(d?.constructor?.name, "ExemptionAdministrationDeniedError", label);
+    assert.deepEqual(denied.calls, [], `${label}: zero trace (${denied.calls})`);
+    const owner = await failure(run(adminRepo(), ownerActor));
+    assert.doesNotMatch(String(owner?.message), /not authorized: only the governed protected Owner/, `${label}: the Owner is not refused by the gate`);
+  }
+  // another Object keeps today's gate (the Owner holds no admin.securityPolicy.write)
+  const other = await failure(commands.applyObjectWideRoleAuthority(adminRepo(), ownerActor, { ...wide("GRANT"), objectKey: "workOrder" }));
+  assert.equal(other?.constructor?.name, "AdministrationCapabilityDeniedError");
+  // the API's preview and commit gates route through the same family-aware gate on the OBJECT, so an object-wide change with no actionKey is gated too
+  const api = readFileSync(join(ROOT, "src/adminPolicy/adminPolicyApi.ts"), "utf8");
+  assert.equal((api.match(/requireGrantAuthority\(deps\.repo, actor, AUTHORITY_CHANGE_GATE\[operation\], (?:changeInput|input)\.objectKey/g) ?? []).length, 2);
+});
+
+test("RULE 2 GRANT SOURCE (F4): the delegated grants are read in a DETERMINISTIC order and record the capability key, so the grant a decision cites is the same on every call", async () => {
+  const sqls = [];
+  const db = { query: async (sql) => { sqls.push(sql); return { rows: [] }; } };
+  await seam.delegatedExemptionGrants(db, T, "p-d");
+  assert.equal(sqls.length, 1);
+  assert.match(sqls[0], /'role:' \|\| r\.key \|\| ':' \|\| c\.key AS source/);
+  assert.match(sqls[0], /'direct:' \|\| pc\.id \|\| ':' \|\| c\.key AS source/);
+  assert.match(sqls[0], /ORDER BY 1, 2\s*$/);
+  // the core prefers the site's SCOPED key over exemptAll whatever order they arrive in, and takes the first of equals
+  for (const order of [[["exemptAll", "role:b:exemptAll"], ["exemptFinancials", "role:a:exemptFinancials"]], [["exemptFinancials", "role:a:exemptFinancials"], ["exemptAll", "role:b:exemptAll"]]]) {
+    const delegated = order.map(([k, source]) => ({ scopeKey: core.scopeOfExemptKey(`approval.selfApproval.${k}`), source }));
+    const r = core.decideSecondaryApprovalExemption(T, "p-d", "finance.invoiceCorrection", { principalEnabled: true, membershipActive: true, heldRoles: [],
+      employeeLinks: [{ employeeId: "e-d", employmentStatus: "ACTIVE" }], delegated });
+    assert.equal(r.grantSource, "role:a:exemptFinancials");
+  }
 });
 
 test("RULE 2 STAFFING: assigning a Role that CARRIES a family key is the Owner's act; revoking an assignment stays as it was", async () => {

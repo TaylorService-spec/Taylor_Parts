@@ -184,6 +184,56 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     assert.deepEqual((({ ok, code }) => [ok, code])(await adminAs(owner.subject, "previewAuthorityChange", { change: ordinary })), [false, "FORBIDDEN"]);
   });
 
+  await t.test("ADMIN-4 OBJECT-WIDE AND CONDITIONS (F2): the Administrator is refused with zero trace on an object-wide GRANT / REVOKE of the exemption Object, on their preview and commit, and on every condition command naming it", async () => {
+    const before = await traces();
+    const wide = (mode) => ({ objectKey: OBJECT, roleKey: "saePurchLead", mode, reason: "SAE-2 proof" });
+    for (const mode of ["GRANT", "REVOKE"]) {
+      const commit = await adminAs(adminDual.subject, "applyObjectWideRoleAuthority", wide(mode));
+      assert.deepEqual([commit.ok, commit.code], [false, "FORBIDDEN"], `${mode} commit ${JSON.stringify(commit).slice(0, 300)}`);
+      assert.match(String(commit.message), /only the governed protected Owner/);
+      const preview = await adminAs(adminDual.subject, "previewAuthorityChange", { change: { operation: "applyObjectWideRoleAuthority", input: wide(mode) } });
+      assert.deepEqual([preview.ok, preview.code], [false, "FORBIDDEN"], `${mode} preview`);
+    }
+    const cond = { roleKey: "saePurchLead", objectKey: OBJECT, actionKey: "exemptPurchasing", reason: "SAE-2 proof",
+      condition: { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" } };
+    for (const operation of ["setGrantCondition", "retireGrantCondition"]) {
+      const role = await adminAs(adminDual.subject, operation, cond);
+      assert.deepEqual([role.ok, role.code], [false, "FORBIDDEN"], `${operation} (Role)`);
+      const direct = await adminAs(adminDual.subject, operation, { ...cond, roleKey: undefined, principalId: directUser.principalId });
+      assert.deepEqual([direct.ok, direct.code], [false, "FORBIDDEN"], `${operation} (direct)`);
+    }
+    assert.deepEqual(await traces(), before, "zero trace");
+  });
+
+  await t.test("ADMIN-5 STAFFING RACE (F1): a grant of an exemption key to a Role that commits AFTER the Administrator's early check and BEFORE the governance lock still stops the Administrator staffing someone into it", async () => {
+    const commands = require("../lib/adminPolicy/policyCommands.js");
+    assert.equal((await admin("createRole", { key: "saeRaceRole", name: "SAE race role", reason: "local test tenant only (SAE-2)" })).ok, true);
+    const raceRoleId = await roleIdOf("saeRaceRole");
+    const target = await person("uid-sae2-race-target", [], { id: "e-sae2-race", name: "Ray Race" });
+    const actorFor = { tenantId: TENANT, uid: adminDual.principalId, heldRoleKeys: ["admin", "financialPolicyPreparer"] };
+    // The Owner's grant lands inside the Administrator's call, between its early (unlocked) check and its transaction.
+    let interleaved = false;
+    const racing = new Proxy(repo, { get(target_, prop) {
+      const value = target_[prop];
+      if (prop === "transact") return async (...args) => {
+        if (!interleaved) { interleaved = true; const g = await grantRole(owner, "saeRaceRole", "GOALS"); assert.equal(g.ok, true, JSON.stringify(g).slice(0, 300)); }
+        return value.apply(target_, args);
+      };
+      return typeof value === "function" ? value.bind(target_) : value;
+    } });
+    const assignmentsBefore = await count(`SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE tenant_id = $1 AND principal_id = $2`, [TENANT, target.principalId]);
+    await assert.rejects(commands.assignRole(racing, actorFor, { principalId: target.principalId, roleId: raceRoleId, reason: "staffing during a race", requireStatedReason: true }),
+      (e) => { assert.equal(e.constructor.name, "ExemptionAdministrationDeniedError"); assert.match(e.message, /only the governed protected Owner/); return true; });
+    assert.equal(interleaved, true, "the interleaving happened");
+    assert.equal(await count(`SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE tenant_id = $1 AND principal_id = $2`, [TENANT, target.principalId]), assignmentsBefore, "nothing was assigned");
+    // the Owner may staff the same Role
+    const staffed = await adminAs(owner.subject, "assignRole", { principalId: target.principalId, roleId: raceRoleId, reason: "Owner staffs the exempt Role" });
+    assert.equal(staffed.ok, true, JSON.stringify(staffed).slice(0, 300));
+    assert.equal(await sqlHas(target, "GOALS"), true);
+    assert.equal((await revokeRole(owner, "saeRaceRole", "GOALS")).ok, true);
+    assert.equal(await sqlHas(target, "GOALS"), false);
+  });
+
   await t.test("SEAM PARITY: the SQL proof and the TypeScript seam agree for role grants, a direct grant, the all key, a wrong-scope key, no Employee, a terminated Employee, a look-alike role; the SQL never answers NULL", async () => {
     const people = { finUser, purchUser, allUser, directUser, plainUser, noEmployee, terminated, lookalike, adminDual, owner };
     const scopes = ["FINANCIALS", "PURCHASING", "SALES", "INVENTORY", "SERVICE", "GOALS"];
@@ -212,7 +262,7 @@ test("SAE Rule 2: the delegated self-approval exemption over PostgreSQL", { skip
     assert.equal((await one(`SELECT eos_policy.is_delegated_exempt_employee($1, $2, 'e-sae2-all', 'GOALS') AS b`, [TENANT, allUser.principalId])).b, true);
     assert.equal((await one(`SELECT eos_policy.is_delegated_exempt_employee($1, $2, 'e-someone-else', 'GOALS') AS b`, [TENANT, allUser.principalId])).b, false);
     // sources are recorded
-    assert.deepEqual((await tsGrants(finUser)).map((g) => g.source), ["role:saeFinLead"]);
+    assert.deepEqual((await tsGrants(finUser)).map((g) => g.source), ["role:saeFinLead:approval.selfApproval.exemptFinancials"]);
     assert.match((await tsGrants(directUser))[0].source, /^direct:/);
   });
 

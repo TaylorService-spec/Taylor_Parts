@@ -973,6 +973,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
              SELECT 'rc-sae2-' || r.id, $1, r.id, c.id, 'fixture', 'fixture', 'fixture' FROM eos_policy.roles r, eos_policy.capabilities c
               WHERE r.tenant_id = $1 AND r.key = 'f1bExemptRole' AND c.key = 'approval.selfApproval.exemptFinancials'`, [TENANT]);
     await dgrant(A.principalId, "approval.selfApproval.exemptAll");
+    await dgrant(R.principalId, "approval.selfApproval.exemptAll"); // R also holds the all-workflows key directly: the decision must cite the SCOPED Role grant, deterministically (F4)
     Object.assign(dsae, { D, R, A });
     // the SQL proof and the TypeScript seam agree for each grantee and for a non-grantee (the Owner of PR-1 is exempt by Rule 1, not by a grant)
     for (const [label, who, expected] of [["direct", D, true], ["role", R, true], ["all", A, true], ["plain", sae.people.lookalike, false], ["administrator", sae.people.administrator, false]]) {
@@ -984,7 +985,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     }
     const S = await issued({ price: 30000, account: "acct-a" });
     const S_HASH = await invoiceHash(S.invoice.id);
-    for (const [label, who, source] of [["direct", D, /^direct:/], ["role", R, /^role:f1bExemptRole$/], ["all", A, /^direct:/]]) {
+    for (const [label, who, source] of [["direct", D, /^direct:[^:]+:approval\.selfApproval\.exemptFinancials$/], ["role", R, /^role:f1bExemptRole:approval\.selfApproval\.exemptFinancials$/], ["all", A, /^direct:[^:]+:approval\.selfApproval\.exemptAll$/]]) {
       const c = ok(await request(who, { kind: "CREDIT_MEMO", invoiceId: S.invoice.id, amountMinor: 100, reason: `SAE-2 ${label}` }), `${label} req`).correction;
       const before = await state();
       const r = ok(await approve(who, c, { reason: "Delegated decision" }), `${label} delegated self-approval`);
@@ -1046,6 +1047,7 @@ test("F-1b invoice corrections over PostgreSQL", { skip: SKIP, concurrency: 1 },
     const dc = await pending(D);
     await drevoke(D.principalId, "approval.selfApproval.exemptFinancials");
     await refuseSelf("revoked direct grant", D, dc);
+    await drevoke(R.principalId, "approval.selfApproval.exemptAll");
     await q(`DELETE FROM eos_policy.role_capabilities WHERE tenant_id = $1 AND capability_id = (SELECT id FROM eos_policy.capabilities WHERE key = 'approval.selfApproval.exemptFinancials')`, [TENANT]);
     await refuseSelf("revoked Role grant", R, await pending(R));
     // a Role merely NAMED like a key carries nothing

@@ -539,7 +539,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        migration `1764716000000_protected-owner-secondary-approval-exemption` (SQL saved as a `.sql.txt`, written by the controller; no capability, no grant); F-1b (#2188). S1c runs in parallel and shares no file
 - Expected outcome:    the protected Owner can request and approve the same transaction in every EOS-native workflow with the basis recorded; every non-Owner keeps the two-person rule; Q-1 will reuse the seam
 - Protected boundaries:no capability, no grant, no Rules, deploy, Firebase, production or external-payment action; the Firestore-era self-approval sites are reported, not changed
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     merged #2190 (cd843df1)
 
 - Capability:          SAE Rule 2 — the DELEGATED self-approval exemption: seven `approval.selfApproval.exempt*` capabilities (Financials, Purchasing, Sales, Inventory, Service, Goals, All) granted ONLY by the verified protected Owner through the existing role / direct grant paths, GLOBAL scope (company scope = PR-3); a never-NULL SQL proof the database triggers consult; Owner ruling D3 (the grant confers only the second person).
 - Agent/session:       Claude Code lane SAE · Role: builder; controller merges and writes the migration
@@ -549,5 +549,5 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Shared paths req'd:  this registry · `docs/DECISIONS.md` (#SAE-2) · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/governance/precedence-sweep.json` · `docs/governance/owner-commercial-spec-rulings-2026-10-20.md` · `docs/training/administration-policy-and-access.md` · `docs/architecture/capability-graph.json` · `functions/test/adminPolicySuites.json` · `.github/ci/eos-admin-policy-paths.txt` · the migration-count pin tests
 - Dependencies:        migration `1764718000000_delegated-self-approval-exemption` (SQL saved as a `.sql.txt`, written by the controller; registers 7 capabilities with NO grants); SAE PR-1; S1c holders `1764717000000`
 - Expected outcome:    the Owner can delegate, and take back, the second-person exemption per workflow scope; nobody else can; every non-grantee keeps the two-person rule
-- Protected boundaries:no grants in the migration, no Rules, deploy, Firebase, production or external-payment action; existing tenants need the operator re-seed of the new Object (not done here)
+- Protected boundaries:no grants in the migration, no Rules, deploy, Firebase, production or external-payment action; the new Object reaches existing tenants through the migration (an idempotent INSERT ... SELECT), no operator step
 - Lifecycle stage:     SANDBOX BUILD (PR open, not merged)

@@ -24,7 +24,7 @@ type Db = Pick<PoolClient, "query">;
  */
 export async function delegatedExemptionGrants(db: Db, tenantId: string, principalId: string): Promise<readonly { scopeKey: SelfApprovalScope | "ALL"; source: string }[]> {
   const { rows } = await db.query(
-    `SELECT c.key, 'role:' || r.key AS source
+    `SELECT c.key, 'role:' || r.key || ':' || c.key AS source
        FROM eos_policy.user_role_assignments a
        JOIN eos_policy.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
        JOIN eos_policy.principals p ON p.id = a.principal_id AND p.status = 'active'
@@ -35,12 +35,13 @@ export async function delegatedExemptionGrants(db: Db, tenantId: string, princip
       WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND a.scope_type = 'global'
         AND a.access_version_at_grant <= coalesce(v.access_version, 0) AND c.key = ANY($3::text[])
      UNION ALL
-     SELECT c.key, 'direct:' || pc.id AS source
+     SELECT c.key, 'direct:' || pc.id || ':' || c.key AS source
        FROM eos_policy.principal_capabilities pc
        JOIN eos_policy.principals p ON p.id = pc.principal_id AND p.status = 'active'
        JOIN eos_policy.tenant_memberships m ON m.tenant_id = pc.tenant_id AND m.principal_id = pc.principal_id AND m.status = 'active'
        JOIN eos_policy.capabilities c ON c.id = pc.capability_id
-      WHERE pc.tenant_id = $1 AND pc.principal_id = $2 AND (pc.expires_at IS NULL OR pc.expires_at > now()) AND c.key = ANY($3::text[])`,
+      WHERE pc.tenant_id = $1 AND pc.principal_id = $2 AND (pc.expires_at IS NULL OR pc.expires_at > now()) AND c.key = ANY($3::text[])
+     ORDER BY 1, 2`, // DETERMINISTIC: the grant the decision records is the same on every call (the core prefers the site's scoped key over exemptAll, then takes the first in this order)
     [tenantId, principalId, [...SELF_APPROVAL_EXEMPT_KEY_LIST]]);
   return rows.flatMap((r) => { const scopeKey = scopeOfExemptKey(r.key); return scopeKey === null ? [] : [{ scopeKey, source: String(r.source) }]; });
 }

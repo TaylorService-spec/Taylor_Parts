@@ -1046,6 +1046,9 @@ export async function assignRole(
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
+    // SAE Rule 2, re-decided UNDER THE GOVERNANCE LOCK against the STORE: a grant of an exemption key to this Role that committed between the early check and the lock (grants take the
+    // same lock) must stop a non-Owner from staffing someone into it.
+    await requireOwnerToAssignExemptionCarryingRole(repo, actor, roleId);
     // NO CONFIGURATION THE RUNTIME IGNORES (lane SC), decided UNDER THE GOVERNANCE LOCK (Pass 9 S2): a scoped
     // assignment is stored only when the runtime decides it -- a consumed scope type, a governed value in THIS tenant,
     // a Role carrying at least one capability evaluable at that scope, and no Administration capability. Every
@@ -2232,7 +2235,7 @@ function conditionCell(input: GrantConditionCommandInput): { readonly scope: "RO
 export async function setGrantCondition(
   repo: PolicyRepository, actor: AdminActor, input: GrantConditionCommandInput,
 ): Promise<GrantConditionRecord> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey);
   const reason = requireReason(input.reason, "a grant condition");
   const cellRef = conditionCell(input);
   if (cellRef.scope === "PRINCIPAL") return setDirectExceptionCondition(repo, actor, input, cellRef.principalId, reason);
@@ -2273,7 +2276,7 @@ export async function setGrantCondition(
 export async function retireGrantCondition(
   repo: PolicyRepository, actor: AdminActor, input: GrantConditionCommandInput,
 ): Promise<GrantConditionRecord | null> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey);
   const reason = requireReason(input.reason, "retiring a grant condition");
   const cellRef = conditionCell(input);
   if (cellRef.scope === "PRINCIPAL") return retireDirectExceptionCondition(repo, actor, input, cellRef.principalId, reason);
@@ -2529,7 +2532,8 @@ export async function applyObjectWideRoleAuthority(
   input: { readonly objectKey: string; readonly roleKey: string; readonly mode: "GRANT" | "REVOKE";
     readonly actionKinds?: readonly string[] | null; readonly reason?: string | null },
 ): Promise<ObjectWideResult> {
-  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  // The exemption family's Object is the protected Owner's to grant or revoke from, whole-object included (SAE Rule 2); every other Object keeps today's gate.
+  await requireGrantAuthority(repo, actor, "editSecurityPolicy", input.objectKey);
   const reason = requireReason(input.reason, input.mode === "GRANT" ? "an object-wide grant" : "an object-wide revoke");
   const objectKey = nonEmpty(input.objectKey, "objectKey");
   const roleKey = nonEmpty(input.roleKey, "roleKey");
