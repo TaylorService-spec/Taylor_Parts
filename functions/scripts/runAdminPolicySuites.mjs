@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadMap, manifestProblems, mapProblems, totals } from "./adminPolicyPartitions.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FLAGS = Object.freeze({ offline: [], postgres: ["--test-concurrency=1"] });
