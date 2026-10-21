@@ -339,7 +339,8 @@ const SEARCH_KINDS: readonly SearchKind[] = Object.freeze([
            WHERE g.tenant_id = $1 AND (g.rental_agreement_number ILIKE $2 OR a.name ILIKE $2) ORDER BY g.created_at DESC LIMIT 8` },
   { kind: "reorderRequest", label: "Reorder Request", capabilities: ["reorder.request.read"], reach: "REORDER_QUEUE",
     sql: `SELECT r.id, r.reorder_request_number AS label, concat_ws(' · ', r.part_id, r.status::text) AS detail FROM eos_ops.reorder_requests r
-           WHERE r.tenant_id = $1 AND (r.reorder_request_number ILIKE $2 OR r.part_id ILIKE $2) AND r.operating_company_key = ANY($4) ORDER BY r.created_at DESC LIMIT 8` },
+           -- ($3 is bound but unused by this kind; the cast gives it a type so the driver can prepare the statement)
+           WHERE r.tenant_id = $1 AND (r.reorder_request_number ILIKE $2 OR r.part_id ILIKE $2) AND r.operating_company_key = ANY($4::text[]) AND ($3::text[] IS NULL OR TRUE) ORDER BY r.created_at DESC LIMIT 8` },
   // UI corrections item E (2026-10-08): a holder of employee.record.read only WITHIN operating-company scopes is searched
   // inside exactly those companies ($3), the same reach listEmployees / listWorkforceRoster apply; a flat holder is global.
   { kind: "employee", label: "Employee", capabilities: ["employee.record.read"], companyScopedBy: "employee.record.read",

@@ -114,7 +114,7 @@ test("Q-1a breadth: search, My Work, record ownership, coordinated visits, CRM a
     for (const [wo, so] of [["wo-t", "so-t"], ["wo-v", "so-v"]]) {
       await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('loc-1',$1,'acct-1','Downtown','f','f') ON CONFLICT DO NOTHING`, [T]);
       await q(`INSERT INTO eos_ops.work_orders (id, tenant_id, operating_company_key, work_order_number, status, work_order_type, priority, customer_id, location_id, sales_order_id, provenance, created_at, updated_at)
-               VALUES ($1,$2,'taylor',$3,$4,'SERVICE_CALL',3,'acct-1','loc-1',$5,'MIGRATED', now(), now())`, [wo, T, `WO-2026-${wo}`, status, so]);
+               VALUES ($1,$2,'taylor',$3,$4,'SERVICE_CALL',3,'acct-1','loc-1',$5,'MIGRATED', now(), now())`, [wo, T, `WO-2026-90000${wo === "wo-t" ? 1 : 2}`, status, so]);
       await q(`INSERT INTO eos_ops.work_order_sales_order_lines (tenant_id, work_order_id, sales_order_id, sales_order_line_id) VALUES ($1,$2,$3,'1')`, [T, wo, so]);
     }
     const read = (who) => coordinated.readCoordinatedOperations({ pool }, { tenantId: T, principalId: who, capabilities: new Set([coordinated.COORDINATED_VISIT_CAPABILITY.key]) });
