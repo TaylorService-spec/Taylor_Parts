@@ -193,16 +193,18 @@ async function requireAssignee(
 
 // THE QUEUE REACH lives in reorderQueueReach.ts (DECISIONS #224): the Employee's REORDER_QUEUE scopes plus protected
 // Administrator standing. Re-exported for the modules that already import it from here.
-export { queueReachKeys } from "./reorderQueueReach.js";
-import { queueReachKeys } from "./reorderQueueReach.js";
+export { queueReachKeys, queueReadReach } from "./reorderQueueReach.js";
+import { queueReachKeys, queueReadReach, reorderInReadReach, reorderReadReachSql } from "./reorderQueueReach.js";
 import { withActorAuthority } from "./administrationReach.js";
 
-async function requireQueueReach(db: Pick<PoolClient, "query">, actor: ReorderActor): Promise<readonly string[]> {
-  const keys = await queueReachKeys(db, actor);
-  if (keys.length === 0) {
+// The queue READ (PARTS-404 / RO-02): the company-keyed REORDER_QUEUE reach OR the caller's WAREHOUSE scopes inside its company
+// authority. Reads only -- the management commands keep queueReachKeys.
+async function requireQueueReach(db: Pick<PoolClient, "query">, actor: ReorderActor) {
+  const reach = await queueReadReach(db, actor);
+  if (reach.companyKeys.length === 0 && reach.warehouseIds.length === 0) {
     refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "reading the Reorder queue requires the REORDER_QUEUE Operational Scope");
   }
-  return keys;
+  return reach;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1027,7 +1029,7 @@ export async function readReorderQueue(
   deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown> = {},
 ): Promise<readonly ReorderQueueItem[]> {
   requireActor(actor, REORDER_READ);
-  const reachKeys = await requireQueueReach(deps.pool, actor);
+  const reach = await requireQueueReach(deps.pool, actor);
   const i = acceptOnly(input, ["statuses", "partId", "limit", "beforeCreatedAt", "beforeId"]);
 
   let statuses: string[] | null = null;
@@ -1067,10 +1069,10 @@ export async function readReorderQueue(
           AND ($3::text IS NULL OR r.part_id = $3)
           AND ($5::timestamptz IS NULL
                OR (r.created_at, r.id) < ($5::timestamptz, $6::text))
-          AND r.operating_company_key = ANY($7::text[])
+          AND ${reorderReadReachSql("r", { company: 7, warehouse: 8, warehouseCompany: 9 })}
         ORDER BY r.created_at DESC, r.id DESC
         LIMIT COALESCE($4::int, 500)`,
-      [actor.tenantId, statuses, i.partId ?? null, limit, beforeCreatedAt, beforeId, reachKeys]),
+      [actor.tenantId, statuses, i.partId ?? null, limit, beforeCreatedAt, beforeId, reach.companyKeys, reach.warehouseIds, reach.warehouseCompanyKeys]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
   ]);
   return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));
@@ -1083,15 +1085,16 @@ export async function readReorderRequest(
   requireActor(actor, REORDER_READ);
   const i = acceptOnly(input, ["reorderRequestId"]);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
-  const [{ rows }, mine, reachKeys] = await Promise.all([
+  const [{ rows }, mine, readReach] = await Promise.all([
     deps.pool.query(`${QUEUE_SELECT} WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, i.reorderRequestId]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
-    queueReachKeys(deps.pool, actor),
+    queueReadReach(deps.pool, actor),
   ]);
   const row = rows[0];
   // Two governed paths to one record: the queue scope for ITS company, or an active assignment of THIS record to the
   // caller. Neither -> refused, and refused identically whether or not the record exists, so the read is no oracle.
-  const inQueueReach = row !== undefined && reachKeys.includes(String(row.operating_company_key));
+  const inQueueReach = row !== undefined
+    && reorderInReadReach(readReach, String(row.operating_company_key), row.warehouse_id == null ? null : String(row.warehouse_id));
   if (!inQueueReach
       && !(await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string))) {
     refuse("OUTSIDE_READ_REACH", "FORBIDDEN", "this Reorder Request is neither in the caller's queue reach nor assigned to them");
@@ -1295,15 +1298,15 @@ export async function readMyReorderHistory(
   deps: { readonly pool: Pool }, actor: ReorderActor,
 ): Promise<readonly ReorderQueueItem[]> {
   requireActor(actor, REORDER_READ);
-  const reachKeys = await requireQueueReach(deps.pool, actor);
+  const reach = await requireQueueReach(deps.pool, actor);
   const [{ rows }, mine] = await Promise.all([
     deps.pool.query(
       `${QUEUE_SELECT}
         WHERE r.tenant_id = $1
           AND (r.reviewed_by_principal_id = $2 OR a.assigned_by_principal_id = $2)
-          AND r.operating_company_key = ANY($3::text[])
+          AND ${reorderReadReachSql("r", { company: 3, warehouse: 4, warehouseCompany: 5 })}
         ORDER BY r.created_at DESC, r.id`,
-      [actor.tenantId, actor.principalId, reachKeys]),
+      [actor.tenantId, actor.principalId, reach.companyKeys, reach.warehouseIds, reach.warehouseCompanyKeys]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
   ]);
   return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));

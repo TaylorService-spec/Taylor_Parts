@@ -12,7 +12,7 @@
 //   REORDER_REQUEST  reorder.request.read, narrowed to the caller's REORDER_QUEUE reach (an aggregate never exceeds the reads)
 // A refused family is refused on its own; it never hides another. Read-only. Assignment history stays history: only CURRENT
 // assignments are listed, and a reassignment never rewrites ownership or accountability.
-import { queueReachKeys } from "../../eosOps/reorderLifecycleCommands";
+import { queueReadReach } from "../../eosOps/reorderLifecycleCommands";
 import { acceptOnly, isoOf, refuse, requireEmployeeId, requirePageSize, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps } from "./employeeReadKernel";
 
 export const ASSIGNED_WORK_FAMILIES = Object.freeze(["WORK_ORDER", "REORDER_REQUEST"] as const);
@@ -49,15 +49,16 @@ export function listAssignedWorkForEmployee(deps: EmployeeReadDeps, actor: Emplo
             WHERE a.tenant_id = $1 AND a.assignee_employee_id = $2 AND a.effective_to IS NULL
             ORDER BY w.scheduled_start NULLS LAST, w.work_order_number LIMIT $3`, [tenantId, p.employeeId, p.limit + 1]));
       } else {
-        const reach = await queueReachKeys(db, { tenantId, principalId } as never);
-        if (reach.length === 0) refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "reading Reorder Requests requires the REORDER_QUEUE Operational Scope");
+        // PARTS-404 / RO-02: the company-keyed queue reach OR the caller's WAREHOUSE scopes inside its company authority.
+        const reach = await queueReadReach(db, { tenantId, principalId, capabilities: actor.capabilities });
+        if (reach.companyKeys.length === 0 && reach.warehouseIds.length === 0) refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "reading Reorder Requests requires the REORDER_QUEUE or a WAREHOUSE Operational Scope");
         ({ rows } = await db.query(
           `SELECT r.id, r.reorder_request_number AS number, r.part_id AS name, r.status::text AS state, a.effective_from, NULL::timestamptz AS scheduled_start,
                   r.operating_company_key AS operating_company_id
              FROM eos_ops.reorder_request_assignments a
              JOIN eos_ops.reorder_requests r ON r.tenant_id = a.tenant_id AND r.id = a.reorder_request_id
-            WHERE a.tenant_id = $1 AND a.assigned_employee_id = $2 AND a.effective_to IS NULL AND r.operating_company_key = ANY($3::text[])
-            ORDER BY r.reorder_request_number LIMIT $4`, [tenantId, p.employeeId, reach, p.limit + 1]));
+            WHERE a.tenant_id = $1 AND a.assigned_employee_id = $2 AND a.effective_to IS NULL AND (r.operating_company_key = ANY($3::text[]) OR (r.warehouse_id = ANY($5::text[]) AND r.operating_company_key = ANY($6::text[])))
+            ORDER BY r.reorder_request_number LIMIT $4`, [tenantId, p.employeeId, reach.companyKeys, p.limit + 1, reach.warehouseIds, reach.warehouseCompanyKeys]));
       }
       const items: AssignedWorkItem[] = rows.slice(0, p.limit).map((r) => ({
         family: p.family, recordId: String(r.id), recordNumber: r.number ?? null, name: r.name ?? null, state: r.state ?? null,

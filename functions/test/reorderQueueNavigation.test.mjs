@@ -177,6 +177,8 @@ test("the surface catalog gates the queue on capability plus SCOPE, and never on
     [
       { capabilityKey: "reorder.request.read.queue", predicates: [] },
       { capabilityKey: "reorder.request.read", predicates: [`OPERATIONAL_SCOPE:${QUEUE_SCOPE}`] },
+      // PARTS-404 / RO-02: the third path -- the same unscoped read through the caller's own WAREHOUSE scopes (queueReadReach).
+      { capabilityKey: "reorder.request.read", predicates: ["OPERATIONAL_SCOPE:WAREHOUSE"] },
     ],
   );
   // THE SEPARATION, ASSERTED AS AN ABSENCE. No path may require PARTS_OPERATIONS: that qualification

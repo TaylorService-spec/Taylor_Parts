@@ -27,3 +27,7 @@ After submitting, the request enters review. You can track it in the queues furt
 ## A part with nothing in the ledger
 
 A part with no stock and no recorded movement in your warehouses is exactly the part you may need to order, and it has no forecast to show. Its detail page now says so, and still offers **Request Reorder**: choose the warehouse, type the whole-number quantity you want, and submit. The same permission as for **Needs planning** parts applies (Administrator, Parts Manager or Warehouse Manager). The request enters review exactly like any other.
+
+## Seeing the requests for your warehouse (Warehouse Manager)
+
+A Warehouse Manager who has been given the Reorder Request read permission can open the Reorder Queue and see the requests raised for the warehouses they are assigned to. They see only those warehouses: another warehouse of the same company, and any other company, do not appear, and opening a request outside your warehouses is refused. If you have no warehouse assigned to you, the queue stays closed. Reading a request does not let you review, approve, assign or cancel it, and you still raise a reorder only for a warehouse you are assigned to.

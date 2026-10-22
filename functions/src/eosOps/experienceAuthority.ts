@@ -38,7 +38,8 @@
 // (dispatchNorthStarQuickGate.mjs, partsNorthStarQuickGate.mjs, ...). This catalog keeps that shape:
 // one entry per surface, each independently earned and independently refusable. There is no single
 // generic landing destination here and none should be added.
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { warehouseReadReach } from "./reorderQueueReach";
 import { resolveOperationalContext } from "./capabilityAuthority";
 import { administrationReachAll } from "./administrationReach";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
@@ -79,6 +80,12 @@ export interface SurfaceGrantPath {
    * surface, and on any (scopeType, capabilityKey, consumer) not registered in SCOPE_EVALUABLE_GRANTS.
    */
   readonly scopedConsumer?: { readonly scopeType: "salesChannel" | "operatingCompany"; readonly consumer: string };
+  /**
+   * PARTS-404 / RO-02: the path is earned only when the principal's WAREHOUSE scopes reach at least one warehouse INSIDE its operating-company
+   * authority (the `reorderWarehouseReach` dimension, reorderQueueReach.warehouseReadReach) -- so navigation never offers an empty,
+   * out-of-authority queue. Additional to the path's own capability and predicates.
+   */
+  readonly requiresReorderWarehouseReach?: true;
 }
 
 export interface ExperienceSurface {
@@ -249,6 +256,8 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("inventory.reorderQueue", "Reorder Queue", [
     { capabilityKey: "reorder.request.read.queue" },
     { capabilityKey: "reorder.request.read", predicates: [OPERATIONAL_SCOPE("REORDER_QUEUE")] },
+    // PARTS-404 / RO-02: the unscoped read is ALSO reached through the caller's own WAREHOUSE scopes (queueReadReach: its scoped warehouses inside its company authority).
+    { capabilityKey: "reorder.request.read", predicates: [OPERATIONAL_SCOPE("WAREHOUSE")], requiresReorderWarehouseReach: true },
   ]),
   surface("receiving.checkIn", "Receiving", [{ capabilityKey: "inventory.stock.receive" }]),
   surface("warehouse.management", "Warehouses", [
@@ -605,6 +614,15 @@ export interface PrincipalDimensions {
   readonly operationalScopes: readonly CurrentOperationalScope[];
   /** PROTECTED ADMINISTRATOR reach targets (DECISIONS #224); absent or empty for every other principal. */
   readonly administrationReach?: Readonly<Record<string, readonly string[]>>;
+  /** The warehouses the principal's WAREHOUSE scopes reach inside its company authority, for a holder of reorder.request.read (PARTS-404); absent or empty = none. */
+  readonly reorderWarehouseReach?: readonly string[];
+}
+
+/** PARTS-404 / RO-02: the dimension behind a `requiresReorderWarehouseReach` path -- the SAME reach the Reorder reads apply. */
+export async function reorderWarehouseReachDimension(
+  db: Pick<PoolClient, "query">, tenantId: string, principalId: string, capabilities: ReadonlySet<string>,
+): Promise<readonly string[]> {
+  return (await warehouseReadReach(db, { tenantId, principalId, capabilities })).warehouseIds;
 }
 
 /** The reach targets a principal's standing gives, per reachable scope type -- empty for everyone without standing. */
@@ -657,6 +675,7 @@ export async function grantedSurfaceKeys(
         // relocation or any other execution surface).
         administrationReach: true,
       });
+      if (decision.allowed && path.requiresReorderWarehouseReach && (dimensions.reorderWarehouseReach?.length ?? 0) === 0) continue;
       if (decision.allowed) {
         granted.add(entry.key);
         break;
@@ -729,7 +748,8 @@ export async function resolveExperienceContext(
   const workEligibility = employeeId ? await dimensionReader.listWorkEligibility(tenantId, employeeId) : [];
   const operationalScopes = employeeId ? await dimensionReader.listOperationalScopes(tenantId, employeeId) : [];
   const administrationReach = await administrationReachDimension(pool, tenantId, principalId);
-  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach };
+  const reorderWarehouseReach = await reorderWarehouseReachDimension(pool, tenantId, principalId, ctx.capabilities);
+  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach, reorderWarehouseReach };
 
   const surfaces = await grantedSurfaceKeys(
     { tenantId, principalId, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld },
