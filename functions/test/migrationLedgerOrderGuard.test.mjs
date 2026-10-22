@@ -228,8 +228,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 115 -> 116: 1764716000000 -- SAE protected-Owner secondary-approval exemption (2026-10-20): the SQL seam (eos_policy.protected_owner_employee), the invoice-correction people trigger, the adjustment / void gates and the Financial Policy decider trigger; no capability, no grant. APPENDED, an EXPLAINED pending migration.
 // 116 -> 117: 1764717000000 -- S1c holders (Owner ruling 2026-10-20): salesOrder.fulfill granted to generalManager, warehouseManager, fieldManager and partsManager (4 grants); no capability, no schema. APPENDED, an EXPLAINED pending migration.
 // 116 -> 117: 1764718000000 -- SAE Rule 2 delegated self-approval exemption (2026-10-20): seven capabilities (no grants), the SQL proof functions and the delegated branch of the people triggers. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 118;
-const TRACKED_MIGRATION_COUNT = 119; // the 118 runnable + the one deferred file
+// 118 -> 119: 1764719000000 -- CLC company-less record correction (2026-10-21): commercial.recordCompany.assign (one BUSINESS_ACTION capability, NO grants); no schema. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 119;
+const TRACKED_MIGRATION_COUNT = 120; // the 119 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -299,6 +300,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764716000000_protected-owner-secondary-approval-exemption",
   "1764717000000_sales-order-allocation-owner-holders",
   "1764718000000_delegated-self-approval-exemption",
+  "1764719000000_commercial-record-company-assign",
 ]);
 
 const repoMigrations = () =>

@@ -1211,6 +1211,7 @@
       "approval.selfApproval.exemptSales",
       "approval.selfApproval.exemptService",
       "audit.event.read",
+      "commercial.recordCompany.assign",
       "crm.activity.create",
       "crm.activity.read",
       "customer.governedField.write",

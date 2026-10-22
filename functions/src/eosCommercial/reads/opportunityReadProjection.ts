@@ -11,6 +11,7 @@
 import { OPPORTUNITY_STAGES } from "../../opportunity/opportunityLifecycle";
 import { fail } from "../commands/commercialCommandKernel";
 import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
+import { readOperatingCompanyAssignmentOffer, type OperatingCompanyAssignmentOffer } from "../recordCompanyOffer";
 import {
   COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, requireEnumFilter, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor, type CommercialReadDeps,
@@ -59,6 +60,8 @@ export interface OpportunitySummaryProjection {
 }
 
 export interface OpportunityDetailProjection extends OpportunitySummaryProjection {
+  /** CLC: present only when the server offers "Set operating company" (company-less, the caller may assign, a company it reaches). */
+  readonly operatingCompanyAssignment?: OperatingCompanyAssignmentOffer;
   readonly salesAgreement: CommercialLineageReference | null;
   readonly salesOrder: CommercialLineageReference | null;
 }
@@ -121,8 +124,10 @@ export function getOpportunityDetail(deps: CommercialReadDeps, actor: Commercial
       if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, r.sales_channel ?? null)) refuseOutsideReach("Opportunity");
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Opportunity was not created through a governed command and carries no lifecycle");
       const lines = await linesByOpportunity(db, tenantId, [r.id]);
+      const assignment = await readOperatingCompanyAssignmentOffer(db, tenantId, actor, reach.company, { operatingCompanyKey: r.operating_company_key ?? null });
       return {
         ...summaryOf(r, lines.get(r.id)!),
+        ...(assignment ? { operatingCompanyAssignment: assignment } : {}), // CLC: present only when the SERVER offers "Set operating company"
         // Pass 10 P10-4: lineage only where the reader could read the linked record (the Agreement's channel is this
         // Opportunity's; the Order's is its own). A global holder is unchanged.
         salesAgreement: r.agreement_id === null || r.agreement_company_ok !== true || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null) ? null

@@ -14,6 +14,7 @@ import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
 import { LinesEditor, buildLines, toEditorLines } from "./salesAgreementLines.jsx";
 import TradeInSection from "./TradeInSection.jsx";
+import SetOperatingCompany from "./SetOperatingCompany.jsx";
 import {
   salesAgreementHeader,
   salesAgreementLines,
@@ -398,6 +399,9 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
       />
 
       {/* No LifecycleBand. See the file header — SA-D2. */}
+
+      {/* CLC: shown ONLY when the server's own read of this record offers it (no operating company yet, the caller may set one, and its Opportunity has one). */}
+      <SetOperatingCompany family="SALES_AGREEMENT" recordId={view.id} assignment={view.operatingCompanyAssignment} onApplied={refresh} />
 
       {/* A COMMAND REFUSAL IS ITS OWN FACT, and never re-worded as a state or permission problem:
           this is the server's answer to an attempt, shown where the attempt was made. */}
