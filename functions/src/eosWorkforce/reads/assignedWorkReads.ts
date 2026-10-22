@@ -50,7 +50,7 @@ export function listAssignedWorkForEmployee(deps: EmployeeReadDeps, actor: Emplo
             ORDER BY w.scheduled_start NULLS LAST, w.work_order_number LIMIT $3`, [tenantId, p.employeeId, p.limit + 1]));
       } else {
         // PARTS-404 / RO-02: the company-keyed queue reach OR the caller's WAREHOUSE scopes inside its company authority.
-        const reach = await queueReadReach(db, { tenantId, principalId } as never);
+        const reach = await queueReadReach(db, { tenantId, principalId, capabilities: actor.capabilities });
         if (reach.companyKeys.length === 0 && reach.warehouseIds.length === 0) refuse("OUTSIDE_OPERATIONAL_SCOPE", "FORBIDDEN", "reading Reorder Requests requires the REORDER_QUEUE or a WAREHOUSE Operational Scope");
         ({ rows } = await db.query(
           `SELECT r.id, r.reorder_request_number AS number, r.part_id AS name, r.status::text AS state, a.effective_from, NULL::timestamptz AS scheduled_start,

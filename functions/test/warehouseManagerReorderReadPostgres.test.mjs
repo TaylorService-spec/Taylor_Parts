@@ -60,6 +60,12 @@ test("PARTS-404: the Warehouse Manager reads the Reorder Requests of its scoped 
   const wmNone = await person("uid-p404-wmn", ["warehouseManager"], { id: "e-p404-wmn", name: "Nia NoScope" });
   const assoc = await person("uid-p404-assoc", ["warehouseAssociate"], { id: "e-p404-assoc", name: "Alex Associate" });
   await scope("e-p404-assoc", "WAREHOUSE", A);
+  // Holds reorder.purchaseOrder.read (and, via General Manager, employee.record.read) but NOT reorder.request.read, plus a WAREHOUSE scope.
+  const waGm = await person("uid-p404-wagm", ["warehouseAssociate", "generalManager"], { id: "e-p404-wagm", name: "Gus Both" });
+  await scope("e-p404-wagm", "WAREHOUSE", A);
+  // A Warehouse Manager whose ONLY WAREHOUSE scope is over a Ventana warehouse: outside its Taylor company authority.
+  const wmOnlyV = await person("uid-p404-wmv", ["warehouseManager"], { id: "e-p404-wmv", name: "Vera OutOfAuthority" });
+  await scope("e-p404-wmv", "WAREHOUSE", V);
   const tech = await person("uid-p404-tech", ["technician"], { id: "e-p404-tech", name: "Tess Tech", technician: true });
   // A REAL MOBILE-only Technician: a MOBILE scope over a governed truck location (OD-T1), no WAREHOUSE and no REORDER_QUEUE scope.
   await q(`INSERT INTO eos_ops.mobile_locations (tenant_id, location_type, location_id, operating_company_key, display_label, active, created_by, updated_by)
@@ -205,6 +211,56 @@ test("PARTS-404: the Warehouse Manager reads the Reorder Requests of its scoped 
                           WHERE rc.tenant_id=$1 AND r.key='warehouseAssociate' AND c.key='reorder.request.read'`, [T])).rows.length);
   });
 
+  await t.test("BLOCKING FIX: a Warehouse Associate (purchaseOrder.read + WAREHOUSE scope, NO request.read) gets no request rows from analysis or search", async () => {
+    assert.ok((await grantsOf("warehouseAssociate")).length === 0 && !(await grantsOf("generalManager")).includes("reorder.request.read"));
+    assert.ok((await q(`SELECT 1 FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id=rc.role_id JOIN eos_policy.capabilities c ON c.id=rc.capability_id
+                         WHERE rc.tenant_id=$1 AND r.key='warehouseAssociate' AND c.key='reorder.purchaseOrder.read'`, [T])).rows.length === 1, "it does hold the Purchase Order read that passes the measure's any-of capability check");
+    const everyId = [rA, rA2, rB, rV];
+    const leak = (r) => everyId.filter((id) => JSON.stringify(r.body).includes(id));
+    // Analysis: the measure, direct and in the workspace.
+    const direct = await call(assoc, AN, "readMeasureAnalysis", { measureId: "purchasing.reorders.open", operatingCompanyId: "taylor" });
+    assert.deepEqual(leak(direct), [], "no request id from the direct measure read: " + JSON.stringify(direct.body).slice(0, 300));
+    assert.ok(direct.status !== 200 || direct.body.result?.measure?.status === "REFUSED" || (direct.body.result?.measure?.provenance?.sources ?? []).length === 0);
+    for (const area of ["purchasing", "warehouse"]) {
+      const w = await call(assoc, AN, "readAnalysisWorkspace", { area, operatingCompanyId: "taylor" });
+      assert.deepEqual(leak(w), [], area);
+      const open = w.body?.result?.measures?.find?.((x) => x.id === "purchasing.reorders.open");
+      if (open) assert.equal(open.status, "REFUSED");
+    }
+    // Search: the Reorder kind is not searched for it.
+    const sr = await search(assoc);
+    assert.deepEqual(sr.results.filter((x) => x.kind === "reorderRequest"), []);
+    assert.ok(sr.notSearched.includes("reorderRequest"));
+    // The same for the manager-with-GM combination and a WA with the GM Role (employee.record.read): the assigned-work reorder family needs request.read.
+    const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
+    const { postgresGrantConditionProvider } = require("../lib/eosOps/entitledActionAuthority.js");
+    const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
+    const ctx = await resolveOperationalContext(new PostgresPolicyRepository(pool), pool, { identityProvider: "firebase", externalSubject: waGm.subject, requestedTenantId: null }, postgresGrantConditionProvider(pool));
+    assert.ok(ctx.capabilities.has("employee.record.read") && ctx.capabilities.has("reorder.purchaseOrder.read") && !ctx.capabilities.has("reorder.request.read"));
+    await assert.rejects(listAssignedWorkForEmployee({ pool }, { tenantId: T, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements },
+      { employeeId: "e-p404-tech", family: "REORDER_REQUEST" }), (e) => /reorder.request.read/.test(e.message));
+    // The reach helper itself: the same principal, stated with and without the read.
+    const asPo = await life.queueReadReach(pool, { tenantId: T, principalId: assoc.principalId, capabilities: new Set(["reorder.purchaseOrder.read"]) });
+    assert.deepEqual([asPo.companyKeys, asPo.warehouseIds, asPo.warehouseCompanyKeys], [[], [], []]);
+    const asReader = await life.queueReadReach(pool, { tenantId: T, principalId: assoc.principalId, capabilities: new Set(["reorder.request.read"]) });
+    assert.deepEqual(asReader.warehouseIds, [A], "it is the capability, not the principal, that earns the basis");
+    const noCaps = await life.queueReadReach(pool, { tenantId: T, principalId: assoc.principalId });
+    assert.deepEqual(noCaps.warehouseIds, [], "an actor that states no capabilities has no warehouse basis");
+  });
+
+  await t.test("DOOR: the inventory.reorderQueue path needs the scope's warehouse inside the caller's company authority (no door to an empty queue)", async () => {
+    const { resolveExperienceContext } = require("../lib/eosOps/experienceAuthority.js");
+    const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
+    const surfacesOf = async (who) => (await resolveExperienceContext(new PostgresPolicyRepository(pool), pool, { identityProvider: "firebase", externalSubject: who.subject, requestedTenantId: null })).surfaces;
+    assert.ok((await surfacesOf(wm)).includes("inventory.reorderQueue"), "scoped to A inside its authority: the door");
+    assert.ok(!(await surfacesOf(wmOnlyV)).includes("inventory.reorderQueue"), "scoped only to a Ventana warehouse (outside a Taylor authority): no door");
+    assert.ok(!(await surfacesOf(wmNone)).includes("inventory.reorderQueue"), "no scope: no door");
+    assert.ok(!(await surfacesOf(assoc)).includes("inventory.reorderQueue"), "WAREHOUSE scope without the read: no door");
+    assert.ok((await surfacesOf(pm)).includes("inventory.reorderQueue"), "the queue scope still opens it");
+    // And the read behind it agrees: the out-of-authority manager reads nothing.
+    refused(await queue(wmOnlyV), 403, "FORBIDDEN");
+  });
+
   await t.test("UNCHANGED: a Technician holding ONLY a MOBILE scope (and reorder.request.read) is refused the queue and keeps its own assigned work", async () => {
     assert.ok((await grantsOf("technician")).includes("reorder.request.read"), "the Technician holds the read");
     const mobile = (await q(`SELECT scope_type, scope_id FROM eos_workforce.employee_operational_scopes WHERE tenant_id=$1 AND employee_id='e-p404-tech' ORDER BY 1`, [T])).rows;
@@ -289,7 +345,7 @@ test("PARTS-404: the Warehouse Manager reads the Reorder Requests of its scoped 
   });
 
   await t.test("the shared helper is the one rule: queueReadReach reports exactly the scoped, in-authority warehouses", async () => {
-    const reach = await life.queueReadReach(pool, { tenantId: T, principalId: wmCross.principalId });
+    const reach = await life.queueReadReach(pool, { tenantId: T, principalId: wmCross.principalId, capabilities: new Set(["reorder.request.read"]) });
     assert.deepEqual([reach.companyKeys, reach.warehouseIds, reach.warehouseCompanyKeys], [[], [A], ["taylor"]]);
     assert.deepEqual((await life.queueReachKeys(pool, { tenantId: T, principalId: wmCross.principalId })), [], "the command reach knows nothing of warehouses");
   });

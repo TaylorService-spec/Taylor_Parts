@@ -63,3 +63,15 @@ test("the management commands and the Purchase Order measure were NOT widened (s
   assert.match(measures, /id: "purchasing\.reorders\.open"[\s\S]*?warehouseReach: true/);
   assert.doesNotMatch(measures.slice(measures.indexOf('id: "purchasing.orders.placed"'), measures.indexOf('id: "purchasing.receipts.received"')), /warehouseReach/);
 });
+
+test("the warehouse basis is earned by reorder.request.read alone, decided inside the helper (static + pure)", async () => {
+  const text = src("eosOps/reorderQueueReach.ts");
+  const fn = text.slice(text.indexOf("export async function warehouseReadReach"), text.indexOf("export async function queueReadReach"));
+  assert.ok(fn.includes("capabilities.has(REORDER_READ_CAPABILITY)"));
+  // A db that must never be touched: with no read capability the helper returns before any query.
+  const db = { query: async () => { throw new Error("queried"); } };
+  for (const capabilities of [undefined, new Set(), new Set(["reorder.purchaseOrder.read"])]) {
+    const r = await reach.warehouseReadReach(db, { tenantId: "t", principalId: "p", capabilities });
+    assert.deepEqual([r.warehouseIds, r.warehouseCompanyKeys], [[], []]);
+  }
+});

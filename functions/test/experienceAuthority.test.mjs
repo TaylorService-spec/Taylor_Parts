@@ -281,8 +281,13 @@ test("OPERATIONAL SCOPE is the second path to the Reorder queue, and neither pat
 });
 
 test("PARTS-404 / RO-02: a WAREHOUSE scope is the third path to the Reorder queue door -- the unscoped read plus the scope, and neither alone", async () => {
-  const warehouse = { employeeId: "e-wm", workEligibility: [], operationalScopes: [{ scopeType: "WAREHOUSE", scopeId: "wh-a" }] };
+  // reorderWarehouseReach = the warehouses of those scopes inside the caller's company authority (reorderQueueReach.warehouseReadReach).
+  const warehouse = { employeeId: "e-wm", workEligibility: [], operationalScopes: [{ scopeType: "WAREHOUSE", scopeId: "wh-a" }], reorderWarehouseReach: ["wh-a"] };
   assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), warehouse)).includes("inventory.reorderQueue"), true);
+  // A WAREHOUSE scope over a warehouse OUTSIDE the caller's company authority reaches nothing: no door to an empty queue (reviewer, PARTS-404).
+  const outOfAuthority = { ...warehouse, reorderWarehouseReach: [] };
+  assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), outOfAuthority)).includes("inventory.reorderQueue"), false);
+  assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), { ...warehouse, reorderWarehouseReach: undefined })).includes("inventory.reorderQueue"), false, "absent dimension fails closed");
   // The scope alone confers nothing; the read alone (no scope) still does not open the door.
   assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.create.manual"]), warehouse)).includes("inventory.reorderQueue"), false);
   assert.equal((await grantedSurfaceKeys(actorWith(["reorder.request.read"]), { employeeId: "e-wm", workEligibility: [], operationalScopes: [] })).includes("inventory.reorderQueue"), false);

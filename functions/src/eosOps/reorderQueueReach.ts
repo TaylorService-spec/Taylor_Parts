@@ -48,23 +48,40 @@ export interface ReorderReadReach {
   readonly warehouseCompanyKeys: readonly string[];
 }
 
-export async function queueReadReach(
+export const REORDER_READ_CAPABILITY = "reorder.request.read";
+
+/**
+ * THE WAREHOUSE BASIS IS EARNED BY reorder.request.read AND BY NOTHING ELSE, decided HERE so no consumer can reach it through another
+ * capability (a holder of reorder.purchaseOrder.read -- the Warehouse Associate -- passes the analysis measure's any-of capability
+ * check, and must not thereby read the requests of its warehouses). `capabilities` is REQUIRED for the basis: an actor that does not
+ * state it, or does not hold the read, has no warehouse reach (fail closed).
+ */
+export async function warehouseReadReach(
   db: Pick<PoolClient, "query">,
-  actor: { readonly tenantId: string; readonly principalId: string },
-): Promise<ReorderReadReach> {
-  const companyKeys = await queueReachKeys(db, actor);
+  actor: { readonly tenantId: string; readonly principalId: string; readonly capabilities?: ReadonlySet<string> },
+): Promise<{ readonly warehouseIds: readonly string[]; readonly warehouseCompanyKeys: readonly string[] }> {
+  const none = Object.freeze({ warehouseIds: [] as string[], warehouseCompanyKeys: [] as string[] });
+  if (!(actor.capabilities instanceof Set) || !actor.capabilities.has(REORDER_READ_CAPABILITY)) return none;
   const reader = postgresPrincipalDimensionReader(db);
   const employeeId = await reader.linkedEmployeeId(actor.tenantId, actor.principalId);
   const scoped = employeeId === null ? [] : (await reader.listOperationalScopes(actor.tenantId, employeeId))
     .filter((x) => x.scopeType === "WAREHOUSE").map((x) => x.scopeId);
-  const none = Object.freeze({ companyKeys, warehouseIds: [] as string[], warehouseCompanyKeys: [] as string[] });
   if (scoped.length === 0) return none;
   const authority = (await resolveCompanyAuthority(db, actor.tenantId, actor.principalId)).companyKeys;
   if (authority.length === 0) return none;
   const { rows } = await db.query(
     `SELECT id FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = ANY($2::text[]) AND operating_company_key = ANY($3::text[])`,
     [actor.tenantId, [...new Set(scoped)], [...authority]]);
-  return Object.freeze({ companyKeys, warehouseIds: rows.map((r) => String(r.id)).sort(), warehouseCompanyKeys: [...authority] });
+  return Object.freeze({ warehouseIds: rows.map((r) => String(r.id)).sort(), warehouseCompanyKeys: [...authority] });
+}
+
+export async function queueReadReach(
+  db: Pick<PoolClient, "query">,
+  actor: { readonly tenantId: string; readonly principalId: string; readonly capabilities?: ReadonlySet<string> },
+): Promise<ReorderReadReach> {
+  const companyKeys = await queueReachKeys(db, actor);
+  const w = await warehouseReadReach(db, actor);
+  return Object.freeze({ companyKeys, warehouseIds: w.warehouseIds, warehouseCompanyKeys: w.warehouseIds.length === 0 ? [] : w.warehouseCompanyKeys });
 }
 
 /** Whether a request (its company and warehouse) is inside a read reach. The one rule the in-memory sites share. */

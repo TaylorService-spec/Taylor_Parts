@@ -46,7 +46,7 @@ import {
   snapshotContextualReader,
   type PrincipalDimensionReader,
 } from "./contextualAuthorization";
-import { administrationReachDimension, EXPERIENCE_SURFACES, grantedSurfaceKeys, type PrincipalDimensions } from "./experienceAuthority";
+import { administrationReachDimension, EXPERIENCE_SURFACES, grantedSurfaceKeys, reorderWarehouseReachDimension, type PrincipalDimensions } from "./experienceAuthority";
 import { listCurrentFunctionalRoles, type CurrentFunctionalRole } from "./functionalRoleFacts";
 
 /**
@@ -178,7 +178,8 @@ export async function explainEffectiveAccess(
   const workEligibility = employeeId ? await dimensionReader.listWorkEligibility(tenantId, employeeId) : [];
   const operationalScopes = employeeId ? await dimensionReader.listOperationalScopes(tenantId, employeeId) : [];
   const administrationReach = await administrationReachDimension(pool, tenantId, principalId);
-  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach };
+  const reorderWarehouseReach = await reorderWarehouseReachDimension(pool, tenantId, principalId, ctx.capabilities);
+  const dimensions: PrincipalDimensions = { employeeId, workEligibility, operationalScopes, administrationReach, reorderWarehouseReach };
   const actorBase = { tenantId, principalId, capabilities: ctx.capabilities };
   // scopedHeld: the SAME opt-in scoped doors resolveExperienceContext offers (P1-1), so surfaces stay equal to the runtime.
   const surfaces = await grantedSurfaceKeys({ ...actorBase, scopedHeld: ctx.scopedHeld }, dimensions);
