@@ -35,8 +35,8 @@ const require = createRequire(import.meta.url);
 const baseline = require("../lib/adminPolicy/roleCapabilityAuthorityBaseline.js");
 const pa = require("../lib/adminPolicy/protectedAdministrator.js");
 
-/** sha256 of test/fixtures/removalMatrix.pinned.json (origin/main a360020d; GRANT-1 re-pin 2026-10-19: serviceInboundWorkReviewer now holds workOrder.record.read, a removal-spec key). Move ONLY with a deliberate re-pin. */
-export const REMOVAL_MATRIX_PIN_DIGEST = "bb45a3eb0d9fab215287eb6479cb6c01a900ccc06e554485b4119e4144e9e578";
+/** sha256 of test/fixtures/removalMatrix.pinned.json (PARTS-404 / RO-02 re-pin 2026-10-21: warehouseManagerReorderReadDelta records the Owner-ruled Warehouse Manager grant of reorder.request.read, a removal-spec key; origin/main a360020d; GRANT-1 re-pin 2026-10-19: serviceInboundWorkReviewer now holds workOrder.record.read, a removal-spec key). Move ONLY with a deliberate re-pin. */
+export const REMOVAL_MATRIX_PIN_DIGEST = "8209bfb000ef9eb579abb99fee104ecbc8c3da29a38a2034de749d4a8b07b8d7";
 
 const onDisk = readFileSync(PIN_PATH, "utf8");
 const real = { baseline, pa, deltas: loadRecordedDeltas() };
