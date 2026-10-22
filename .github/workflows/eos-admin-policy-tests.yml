@@ -355,6 +355,12 @@ jobs:
         run: npx vitest run --maxWorkers=2 test/b2AuthContextEosOnly.test.jsx test/b2LazyScreensWithoutFirebase.test.jsx
         working-directory: field-ops-app-vite
 
+      # LANE NOAS: Sign Out on the governed No Access screen -- the shared logout revokes server-side, clears the client session
+      # and tab storage, works with no grants, and a second persona resolves its own identity.
+      - name: No Access screen Sign Out -- client (vitest + jsdom)
+        run: npx vitest run test/noAccessSignOut.test.jsx
+        working-directory: field-ops-app-vite
+
       # LANE GA: governed scope pickers -- Operational Scope targets and Sales Channel values come ONLY from the server;
       # no typed scope id; a type with no governed value is shown unavailable with the server's reason.
       - name: Governed scope pickers -- client (vitest + jsdom)

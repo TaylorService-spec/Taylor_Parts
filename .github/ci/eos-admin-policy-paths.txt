@@ -904,6 +904,7 @@ functions/scripts/populatePrincipalDisplayNames.js
 scripts/resolveEnvironment.mjs
 scripts/eosPersonaSession.mjs
 field-ops-app-vite/test/b2AuthContextEosOnly.test.jsx
+field-ops-app-vite/test/noAccessSignOut.test.jsx
 field-ops-app-vite/test/b2LazyScreensWithoutFirebase.test.jsx
 field-ops-app-vite/src/hooks/useInventoryActions.js
 field-ops-app-vite/src/auth/eosLoginClient.js
