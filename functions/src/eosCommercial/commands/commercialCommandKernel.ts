@@ -24,6 +24,7 @@ import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assig
 import { RESERVED_CAPABILITY_HOLDERS } from "../../adminPolicy/roleCapabilityAdministration";
 import { qualifyingGlobalRoles } from "../../eosOps/administrationReach";
 import { recordCommandAudit, wellFormed, type CommandAuditSpec } from "../../eosAudit/commandAuditEvent";
+import { resolveCompanyAuthority } from "../../eosOps/companyAuthority";
 import { resolveCommercialCompanyReach, type CommercialCompanyReach, type CommercialCompanyResolver } from "../commercialCompanyAuthority";
 
 export type CommercialFamily = "opportunity" | "salesAgreement" | "salesOrder";
@@ -432,6 +433,48 @@ export async function requireTenantEmployee(
     "NOT_FOUND",
     `${role === "OWNER" ? "the owner" : "the credited salesperson"} ${employeeId} is not an Employee of this tenant`,
   );
+}
+
+/**
+ * SAL-03(c) (P0, Owner security ruling 2026-10-21): OWNER ELIGIBILITY ON A COMPANY-LESS RECORD. A company-less Opportunity or Sales Agreement is visible to its owner
+ * (Q-1a), so naming an owner is granting reach. On CREATION or REASSIGNMENT of such a record the owner must be exactly one of:
+ *   1. the CREATOR's own linked Employee -- the authenticated actor at creation, the record's STORED creator (created_by) at reassignment; never client input; or
+ *   2. the Account's governed owner (an Agreement: its Opportunity's Account), when that Employee's home company lies inside the creator's company authority.
+ * Anything else, including an account owner of a company the creator does not reach, is refused with the words of an owner that does not exist
+ * (OWNER_NOT_FOUND), or -- when the owner was only INHERITED -- the words of an Account with nothing to inherit (OWNER_REQUIRED), so the refusal never says that
+ * a foreign Employee exists. Run it AFTER requireTenantEmployee, and only for a company-less record; a company-keyed record keeps today's behaviour (Q-1a
+ * decides it by company alone). A historical owner is never re-judged: callers invoke this only for a NEW owner value. Not in resolveCreationOwner, which is pure
+ * and shared with the Firebase path.
+ */
+export async function requireEligibleCompanylessOwner(
+  db: Queryable,
+  tenantId: string,
+  facts: { readonly recordCreatorPrincipalId: string | null; readonly accountId: string; readonly ownerEmployeeId: string; readonly inherited?: boolean },
+): Promise<void> {
+  const refuse = (): never => facts.inherited === true
+    ? fail("OWNER_REQUIRED", "INVALID_INPUT",
+      "No owner: none was supplied and the Account has no governed owner to inherit (no ownerEmployeeId). "
+      + "Ownership is never assigned to the caller, the creator, or an arbitrary employee.")
+    : fail("OWNER_NOT_FOUND", "NOT_FOUND", `the owner ${facts.ownerEmployeeId} is not an Employee of this tenant`);
+  const creator = facts.recordCreatorPrincipalId;
+  if (creator === null || creator.trim() === "") return refuse();
+  // 1. The creator's own Employee.
+  const own = await db.query<{ employee_id: string }>(
+    `SELECT employee_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`, [tenantId, creator]);
+  if (own.rows.some((r) => String(r.employee_id) === facts.ownerEmployeeId)) return;
+  // 2. The Account's governed owner, read here in the transaction (never taken from input).
+  const account = await db.query<{ owner_employee_id: string | null }>(
+    `SELECT owner_employee_id FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2`, [tenantId, facts.accountId]);
+  if (account.rows.length === 0 || account.rows[0].owner_employee_id !== facts.ownerEmployeeId) return refuse();
+  // ... and inheritance never crosses companies: the owner's HOME company must be inside the creator's company authority.
+  // EMPLOYEE-based authority only (home company + explicit company-access grants + operational company-scoped roles): never the protected Administrator's or
+  // protected Owner's unrestricted VISIBILITY basis (Owner ruling 2026-10-21: no Administrator exception). No usable Employee link = no authority = refusal.
+  const authority = await resolveCompanyAuthority(db, tenantId, creator);
+  const home = await db.query<{ operating_company_key: string }>(
+    `SELECT k.operating_company_key FROM eos_workforce.employees e
+       JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = e.tenant_id AND k.operating_company_id = e.operating_company_id AND k.status = 'ACTIVE'
+      WHERE e.tenant_id = $1 AND e.id = $2`, [tenantId, facts.ownerEmployeeId]);
+  if (!home.rows.some((r) => authority.companyKeys.includes(String(r.operating_company_key)))) return refuse(); // no home company bound = cannot show same-company: fail closed
 }
 
 /** The Account row, read in THIS tenant only. */

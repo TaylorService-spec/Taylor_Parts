@@ -120,6 +120,14 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
     idempotencyKey: key(), accountId: "acct-tay", salesChannel: "RETAIL", operatingCompanyId: "taylor", need: "Reach-in",
     lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }], ...over }));
   const companyless = (who, over = {}) => oppIn(who, { accountId: "acct-null", operatingCompanyId: undefined, need: "Company not yet chosen", ...over });
+  // REHEARSAL (#2199 x #2211): SAL-03(c) now refuses, at CREATION, a Ventana creator naming/inheriting a Taylor owner on a company-less record. #2199's scenarios need that record
+  // to EXIST (the CLC refusal COMPANY_TRANSFER_DECISION_REQUIRED is about exactly such pre-existing/legacy data; a historical owner is never re-judged), so the fixture creates it
+  // with the creator's own Employee and then writes the legacy foreign owner directly, as this file already does for Agreements.
+  const legacyForeignOwned = async (who, ownerEmployeeId = "e-tay") => {
+    const o = await companyless(who, { ownerEmployeeId: "e-vcreator" });
+    await q(`UPDATE eos_commercial.opportunities SET owner_employee_id = $1 WHERE id = $2`, [ownerEmployeeId, o.opportunityId]);
+    return o;
+  };
   const agreementIn = (who, opportunityId, over = {}) => sa.createSalesAgreement(wdeps, actor(who), {
     idempotencyKey: key(), opportunityId, ownerEmployeeId: "e-tay", isLease: false, fulfillmentIntent: "INSTALL",
     lines: [{ kind: "SERVICE", ref: "svc-install", quantity: 1, unitPrice: 50000, businessUnitId: "INSTALLATION" }], shippingMinor: 100, taxMinor: 50, ...over });
@@ -164,7 +172,7 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
   // ════════════════════ POSITIVE ════════════════════
 
   await t.test("(1) an OPPORTUNITY: set once, one audit row with the reason and the before (null) / after company; the record then follows normal Q-1a company authority", async () => {
-    const oN = await companyless(vcreator);
+    const oN = await legacyForeignOwned(vcreator);
     assert.deepEqual((await q(`SELECT operating_company_key AS k, owner_employee_id AS o, created_by AS c, edit_version AS v FROM eos_commercial.opportunities WHERE id = $1`, [oN.opportunityId])).rows[0],
       { k: null, o: "e-tay", c: vcreator, v: "1" });
     // Before: visible to its owner (tay) and its creator (vcreator), the protected Administrator and the protected Owner; nobody else.
@@ -533,7 +541,7 @@ test("CLC: the governed, audited, set-once correction of a company-less record, 
 
   await t.test("(17) CREATOR AUTHORITY allows: the creator's home company (by the Administrator or an authorized actor), either company for a dual-company creator, and Agreement inheritance when its creator holds the company; audit rows keep their shape", async () => {
     // The creator's home company, by the protected Administrator (Ventana creator, Ventana target).
-    const v = await companyless(vcreator);
+    const v = await legacyForeignOwned(vcreator);
     const byAdmin = await assign(admin, { recordId: v.opportunityId, operatingCompanyId: "ventana" });
     assert.equal(byAdmin.replayed, false);
     assert.equal(await keyOf("opportunities", v.opportunityId), "ventana-ops-t1");
