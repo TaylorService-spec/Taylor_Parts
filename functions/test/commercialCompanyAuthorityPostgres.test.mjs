@@ -29,6 +29,7 @@ const require = createRequire(import.meta.url);
 const opp = require("../lib/eosCommercial/commands/opportunityCommandService.js");
 const sa = require("../lib/eosCommercial/commands/salesAgreementCommandService.js");
 const so = require("../lib/eosCommercial/commands/salesOrderCommandService.js");
+const rc = require("../lib/eosCommercial/commands/commercialRecordCompanyService.js");
 const oppRead = require("../lib/eosCommercial/reads/opportunityReadProjection.js");
 const saRead = require("../lib/eosCommercial/reads/salesAgreementReadProjection.js");
 const soRead = require("../lib/eosCommercial/reads/salesOrderReadProjection.js");
@@ -420,6 +421,7 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
   await t.test("(m) ITEM 7: every Commercial entry point that takes a record id refuses a FOREIGN id and a NONEXISTENT id with the SAME code, category, message and error shape", async () => {
     const taylor = actor(tay);
     const ownerOfTaylor = actor(own, OWNER_CAPS);
+    const assigner = actor(tay, new Set([...ALL, "commercial.recordCompany.assign"]));
     const fulfil = { tenantId: T, principalId: tay, capabilities: new Set(["salesOrder.fulfill", "salesOrder.read", "crm.activity.create", "customer.record.read"]) };
     const alloc1 = { lineNumber: 1, operatingCompanyId: "taylor", warehouseId: "wh-none" };
     const crm = (extra) => crmActivity.createAccountActivity({ pool }, fulfil, { accountId: "acct-ven", type: "CALL", body: "probe", idempotencyKey: key(), ...extra });
@@ -442,6 +444,9 @@ test("Q-1a: operating-company authority on Commercial, in PostgreSQL", { skip: S
       transitionSalesOrder: [(id) => so.transitionSalesOrder(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, transition: "ADVANCE" }), sV.salesOrderId, "sor-missing"],
       authorizeSalesOrderServiceProvider: [(id) => so.authorizeSalesOrderServiceProvider(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, serviceOperatingCompanyId: "taylor", scopes: ["SERVICE"], reason: "r" }), sV.salesOrderId, "sor-missing"],
       revokeSalesOrderServiceProvider: [(id) => so.revokeSalesOrderServiceProvider(wdeps, taylor, { idempotencyKey: key(), salesOrderId: id, serviceOperatingCompanyId: "taylor", reason: "r" }), sV.salesOrderId, "sor-missing"],
+      // CLC: the company-less correction names a record id too (its lock carries the same Q-1a predicate).
+      assignRecordOperatingCompany: [(id) => rc.assignRecordOperatingCompany(wdeps, assigner, { idempotencyKey: key(), family: "OPPORTUNITY", recordId: id, operatingCompanyId: "taylor", reason: "r" }), oV.opportunityId, "opp-missing"],
+      "assignRecordOperatingCompany(SALES_AGREEMENT)": [(id) => rc.assignRecordOperatingCompany(wdeps, assigner, { idempotencyKey: key(), family: "SALES_AGREEMENT", recordId: id, operatingCompanyId: "taylor", reason: "r" }), aV.salesAgreementId, "sag-missing"],
       // Not on the Commercial transport, but they accept a Commercial id:
       createWorkOrder: [(id) => workOrderCreate.createWorkOrder({ pool }, { tenantId: T, principalId: tay, capabilities: new Set([workOrderCreate.WORK_ORDER_CREATE]), operatingCompanyId: "taylor" },
         { customerId: "acct-ven", locationId: "loc-x", workOrderType: "SERVICE_CALL", priority: 2, salesOrderId: id, salesOrderLines: [1] }), sV.salesOrderId, "sor-missing"],
