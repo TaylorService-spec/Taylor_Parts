@@ -44,6 +44,7 @@ import FinancialsSettlementsEos from "../src/modules/financials/FinancialsSettle
 import FinancialsReceivableDetailEos from "../src/modules/financials/FinancialsReceivableDetailEos.jsx";
 import FinancialsSettlementDetailEos from "../src/modules/financials/FinancialsSettlementDetailEos.jsx";
 import { FINANCE_READ_OPERATIONS } from "../src/services/financeApiClient.js";
+import { ISSUE_WAIT_MS } from "../src/modules/financials/InvoiceIssueQueue.jsx";
 
 const row = (over = {}) => ({
   id: "obl_aaaaaaaa-1", operatingCompanyId: "taylor", kind: "RECEIVABLE", currency: "USD", status: "OPEN", sourceDomain: "BILLING_PACKAGE", sourceRecordId: "bp-1",
@@ -361,6 +362,47 @@ describe("Receivables — Issue invoice: in flight and refused (F-1a-UI)", () =>
     await screen.findByText(/tax is not determined/);
     expect(container.textContent).not.toMatch(/ issued\./);
     expect(fb.ops.filter(([op]) => op === "listObligations").length).toBe(1);
+  });
+
+  // UAT SO-2026-000013: no governed terms -> the first issue is refused (DUE_DATE_REQUIRED); the retry names a date and a reason.
+  test("after a refusal the retry carries the date and reason under the SAME request key", async () => {
+    server();
+    const callApi = vi.fn(async (op, input) => {
+      if (op === "readMyFinanceCompanyAccess") return issueAdvice();
+      return input.dueOn ? { ok: true, result: { outcome: "issued", invoice: { invoiceNumber: "INV-2026-000002" } } }
+        : { ok: false, code: "INVALID_INPUT", message: "this customer has no governed payment terms for this company; state the due date and the reason" };
+    });
+    page({ hasCapability: holder, callApi });
+    await screen.findByRole("button", { name: "Issue invoice" });
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toMatch(/state the due date and the reason/);
+    fireEvent.change(screen.getByLabelText("Later due date"), { target: { value: "2026-11-30" } });
+    fireEvent.change(screen.getByLabelText("Reason for that date"), { target: { value: "Customer agreed net 40" } });
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+    await screen.findByText(/Invoice INV-2026-000002 issued/);
+    const issues = callApi.mock.calls.filter(([op]) => op === "issueInvoice");
+    expect(issues.length).toBe(2);
+    expect(issues[1][1]).toEqual({ billingPackageId: "bp-1", idempotencyKey: issues[0][1].idempotencyKey, dueOn: "2026-11-30", dueReason: "Customer agreed net 40" });
+  });
+
+  test("a request that never answers is shown as in flight, then as unresolved; the panel is not stuck", async () => {
+    server();
+    const callApi = vi.fn((op) => (op === "readMyFinanceCompanyAccess" ? Promise.resolve(issueAdvice()) : new Promise(() => {})));
+    page({ hasCapability: holder, callApi });
+    await screen.findByRole("button", { name: "Issue invoice" });
+    fireEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Issue invoice now" }));
+      expect(screen.getByRole("status").textContent).toMatch(/Issuing the invoice/);
+      expect(screen.getByRole("button", { name: "Cancel" }).disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(ISSUE_WAIT_MS + 1);
+    } finally { vi.useRealTimers(); }
+    expect((await screen.findByRole("alert")).textContent).toMatch(/not known whether the invoice was issued/);
+    expect(screen.getByRole("button", { name: "Issue invoice now" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel" }).disabled).toBe(false);
   });
 });
 
