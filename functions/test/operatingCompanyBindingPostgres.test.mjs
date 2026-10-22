@@ -215,14 +215,15 @@ test("operating company <-> eos_ops key binding", { skip: SKIP, concurrency: 1 }
     }
   });
 
-  await t.test("the governed key evidence names taylor -> taylor and keys no fixture partition", () => {
+  await t.test("the governed key evidence names taylor -> taylor and ventana -> ventana and keys no fixture partition", () => {
     const cli = require("../scripts/tenantOperatingCompanyKeyReconcileCli.js");
     const { bindings } = cli.loadKeyEvidence("platform-sandbox");
-    assert.deepEqual(bindings.map((b) => `${b.operatingCompanyId}->${b.operatingCompanyKey}`), ["taylor->taylor"]);
+    assert.deepEqual(bindings.map((b) => `${b.operatingCompanyId}->${b.operatingCompanyKey}`), ["taylor->taylor", "ventana->ventana"]);
     assert.equal(bindings[0].provenance, "MIGRATED");
+    assert.equal(bindings[1].provenance, "NATIVE");
     // Sample Company stays outside the governed business partition.
     assert.equal(bindings.some((b) => b.operatingCompanyKey === "sample-co-synthetic"), false);
-    // Ventana is authorized but deliberately unkeyed.
-    assert.equal(bindings.some((b) => b.operatingCompanyId === "ventana"), false);
+    // Ventana is keyed by one explicit Owner-ruled binding (2026-10-21), never by inference.
+    assert.equal(bindings.filter((b) => b.operatingCompanyId === "ventana").length, 1);
   });
 });
