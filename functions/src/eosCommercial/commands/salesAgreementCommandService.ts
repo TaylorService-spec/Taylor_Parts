@@ -36,7 +36,7 @@ const agreementLineRows = (lines: readonly { kind: string; ref: string; business
     condition: l.condition, warranty: l.warranty, estimatedArrivalMillis: l.estimatedArrivalMillis }));
 
 /** DQ-020: an Agreement's governing channel is its source Opportunity's stored channel (none -> null, admits no scoped caller). */
-async function sourceOpportunityChannel(db: Queryable, tenantId: string, agreement: AgreementRow): Promise<string | null> {
+export async function sourceOpportunityChannel(db: Queryable, tenantId: string, agreement: AgreementRow): Promise<string | null> {
   if (agreement.opportunityId === null) return null;
   const { rows } = await db.query<{ sales_channel: string | null }>(
     `SELECT sales_channel::text FROM eos_commercial.opportunities WHERE tenant_id = $1 AND id = $2`, [tenantId, agreement.opportunityId]);
