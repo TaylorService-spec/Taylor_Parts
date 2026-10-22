@@ -1060,6 +1060,8 @@ async function dispatch(
       } as never);
 
     case "createRole":
+      // CAPABILITY BEFORE VALIDATION (API-01): the command's own gate, asked before the input is read.
+      await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
       return createRole(repo, actor, {
         key: requireString(input.key, "key"),
         name: requireString(input.name, "name"),
@@ -1227,6 +1229,9 @@ async function authorityCommand(
   input: Record<string, unknown>,
   reason: string | null,
 ): Promise<unknown> {
+  // CAPABILITY BEFORE VALIDATION (API-01): every one of the authority changes is gated by a fixed key (AUTHORITY_CHANGE_GATE), so a caller who
+  // lacks it is refused before the input is read. The command's own gate (and the exemption family's Owner gate, which needs the input) still decide after.
+  await requireSecurityAdministrationCapability(repo, actor, AUTHORITY_CHANGE_GATE[operation]);
   switch (operation) {
     case "grantObjectActionToRole":
       // The reason must be STATED by the administrator; the request id alone is not a reason.
