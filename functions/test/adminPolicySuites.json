@@ -325,6 +325,7 @@
     "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
     "test/sal03CompanylessOwnerEligibilityPostgres.test.mjs",
     "test/saeDelegatedExemptionPostgres.test.mjs",
-    "test/commercialRecordCompanyPostgres.test.mjs"
+    "test/commercialRecordCompanyPostgres.test.mjs",
+    "test/clcSal03InteractionPostgres.test.mjs"
   ]
 }
