@@ -194,3 +194,126 @@ for (const operation of ["createRole", "assignRole", "grantCompanyAuthority", "c
     assert.equal(result.code, "INVALID_INPUT", `${operation}: ${result.message}`);
   });
 }
+
+// ======================================== the exemption family keeps ITS gate (security review of #2217) ========================================
+//
+// The self-approval exemption family is gated on the verified protected Owner (exemptionAdministration.requireGrantAuthority), NOT on admin.securityPolicy.write, which
+// the Owner does not hold. The early authority gate must apply the same decision the command applies next, through every door: dispatch, preview and the mandatory-preview commit.
+const core = require("../lib/access/secondaryApprovalExemptionCore.js");
+const SELF_OBJ = "selfApprovalExemption";
+const FAMILY_CAPS = [...core.SELF_APPROVAL_EXEMPT_KEY_LIST].map((key, i) => ({ id: `cap-fam-${i}`, key, objectKey: SELF_OBJ, actionKey: key.split(".").pop(), actionKind: "BUSINESS_ACTION" }));
+const ADMIN_CAPS = [
+  { id: "cap-sp", key: "admin.securityPolicy.write", objectKey: "rolesPermissions", actionKey: "write", actionKind: "BUSINESS_ACTION" },
+  { id: "cap-ra", key: "admin.roleAssignment.write", objectKey: "roleAssignment", actionKey: "write", actionKind: "BUSINESS_ACTION" },
+];
+/** Three principals: the verified protected Owner (holds roleAssignment.write only), an Administrator (holds both), and a plain member who holds nothing. */
+function gateRepo() {
+  const roles = [{ id: "r-owner", key: "owner", protected: true }, { id: "r-admin", key: "admin", protected: true }, { id: "r-plain", key: "plain", protected: false }];
+  const roleOf = { "p-owner": "r-owner", "p-admin": "r-admin", "p-plain": "r-plain" };
+  const principals = { "sub-owner": "p-owner", "sub-admin": "p-admin", "sub-plain": "p-plain" };
+  const grantsByRole = { "r-owner": ["cap-ra"], "r-admin": ["cap-sp", "cap-ra"], "r-plain": [] };
+  return {
+    getPrincipalBySubject: async (_idp, sub) => (principals[sub] ? { id: principals[sub], status: "active", externalSubject: sub } : null),
+    getPrincipal: async (id) => ({ id, status: "active" }),
+    listMembershipsForPrincipal: async (id) => [{ tenantId: TENANT, principalId: id, status: "active" }],
+    getMembership: async () => ({ status: "active" }),
+    getTenant: async () => ({ id: TENANT, status: "active" }),
+    getLinkedEmployeeAccessFact: async () => ({ employeeId: "e-1", employmentStatus: "ACTIVE" }),
+    listAssignmentsForPrincipal: async (_t, uid) => [{ id: `a-${uid}`, roleId: roleOf[uid], status: "active", scopeType: "global", accessVersionAtGrant: 1 }],
+    getAccessVersion: async () => ({ accessVersion: 1 }),
+    listRoles: async () => roles,
+    listObjects: async () => [],
+    listObjectPermissions: async () => [],
+    listFieldOverrides: async () => [],
+    listCapabilities: async () => [...FAMILY_CAPS, ...ADMIN_CAPS],
+    listRoleCapabilities: async (_t, ids) => ids.flatMap((roleId) => (grantsByRole[roleId] ?? []).map((capabilityId) => ({ roleId, capabilityId }))),
+    listPrincipalCapabilities: async () => [],
+    listGrantConditions: async () => [],
+    getObjectByKey: async () => ({ key: SELF_OBJ }),
+    getRoleByKey: async () => roles[2],
+    transact: async () => { throw new Error("the stub never opens a transaction"); },
+  };
+}
+const FAMILY = { roleKey: "plain", objectKey: SELF_OBJ, actionKey: "exemptFinancials", reason: "Owner decision" };
+const ORDINARY = { roleKey: "plain", objectKey: "workOrder", actionKey: "read", reason: "r" };
+const DIGEST = "a".repeat(64);
+const isGateDenial = (r) => r.ok === false && r.code === "FORBIDDEN";
+const runAdmin = (repo, subject, operation, input, extra = {}) =>
+  executeAdminOperation({ repo, ...extra }, { caller: { externalSubject: subject, identityProvider: "firebase" }, operation, input });
+
+for (const [label, mandatory] of [["dispatch", false], ["commit under the mandatory preview", true]]) {
+  // the committer stand-in runs the command against the repo the API handed it
+  const doors = (repo) => (mandatory ? { previewMandatory: true, commitAuthorityChange: (req) => req.run(repo) } : {});
+  const wrap = (i) => (mandatory ? { ...i, previewDigest: DIGEST } : i);
+
+  test(`exemption family via ${label}: the verified protected Owner is NOT refused by the early gate (it reaches the store, which the stub then stops)`, async () => {
+    for (const operation of ["grantObjectActionToRole", "revokeObjectActionFromRole"]) {
+      const repo = gateRepo();
+      const r = await runAdmin(repo, "sub-owner", operation, wrap(FAMILY), doors(repo));
+      assert.equal(isGateDenial(r), false, `${operation}: ${r.code} ${r.message}`);
+    }
+  });
+
+  test(`exemption family via ${label}: a non-Owner (with or without admin.securityPolicy.write) gets ExemptionAdministrationDenied, as on main`, async () => {
+    for (const subject of ["sub-admin", "sub-plain"]) {
+      const repo = gateRepo();
+      const r = await runAdmin(repo, subject, "grantObjectActionToRole", wrap(FAMILY), doors(repo));
+      assert.equal(r.code, "FORBIDDEN", subject);
+      assert.match(r.message, /only the governed protected Owner/, `${subject}: ${r.message}`);
+    }
+  });
+
+  test(`non-exemption authority change via ${label}: a non-holder gets the established capability refusal, the Owner (no securityPolicy.write) too, the Administrator passes`, async () => {
+    for (const subject of ["sub-plain", "sub-owner"]) {
+      const repo = gateRepo();
+      const r = await runAdmin(repo, subject, "grantObjectActionToRole", wrap(ORDINARY), doors(repo));
+      assert.equal(r.code, "FORBIDDEN", subject);
+      assert.doesNotMatch(r.message, /only the governed protected Owner/);
+    }
+    const repo = gateRepo();
+    assert.equal(isGateDenial(await runAdmin(repo, "sub-admin", "grantObjectActionToRole", wrap(ORDINARY), doors(repo))), false);
+  });
+}
+
+test("exemption family via previewAuthorityChange: the protected Owner previews (the simulated command passes the early gate); a non-Owner is refused before any simulation", async () => {
+  let ran = false;
+  const simulator = (repo) => async (req) => {
+    ran = true;
+    try { await req.run(repo); return { outcome: "WOULD_APPLY", busy: false, report: {} }; } catch (err) { return { outcome: "WOULD_REFUSE", error: err, busy: false, report: {} }; }
+  };
+  const owner = gateRepo();
+  const r = await runAdmin(owner, "sub-owner", "previewAuthorityChange", { change: { operation: "grantObjectActionToRole", input: FAMILY } }, { previewAuthorityChange: simulator(owner) });
+  assert.equal(r.ok, true, `${r.code} ${r.message}`);
+  assert.equal(ran, true);
+  assert.doesNotMatch(String(r.data.refusal?.message ?? ""), /only the governed protected Owner|not authorized/, "the Owner is not refused by any gate");
+  ran = false;
+  const plain = gateRepo();
+  const d = await runAdmin(plain, "sub-plain", "previewAuthorityChange", { change: { operation: "grantObjectActionToRole", input: FAMILY } }, { previewAuthorityChange: simulator(plain) });
+  assert.equal(d.code, "FORBIDDEN");
+  assert.equal(ran, false, "refused before any simulation");
+});
+
+test("assignment changes keep the plain capability gate whatever stray objectKey they carry (the Owner holds roleAssignment.write; a plain member does not)", async () => {
+  const stray = { principalId: "p-x", roleId: "r-plain", reason: "r", objectKey: SELF_OBJ };
+  const plain = await runAdmin(gateRepo(), "sub-plain", "assignRole", stray);
+  assert.equal(plain.code, "FORBIDDEN");
+  assert.doesNotMatch(plain.message, /only the governed protected Owner/);
+  assert.equal(isGateDenial(await runAdmin(gateRepo(), "sub-owner", "assignRole", stray)), false);
+});
+
+// ======================================== readWorkOrder: a key held only as a conditioned or scoped grant still passes the early gate ========================================
+test("readWorkOrder: a caller holding workOrder.record.read ONLY as a conditioned grant, or ONLY as a scoped grant, passes the early gate (the entitled decision then decides the record)", async () => {
+  const base = { tenantId: TENANT, principalId: PRINCIPAL, capabilities: new Set(), entitlements: () => Promise.resolve([]) };
+  const call = (operational) => EOS_WORK_ORDER_OPERATIONS.readWorkOrder({ pool: throwingPool(), reader: {} }, { actor: actorWith(), operational }, { bogus: true });
+  // held NOWHERE: the early gate refuses
+  assert.equal((await refusedWith(() => call({ ...base, conditionallyHeld: new Set(), scopedHeld: [] }))).code, "CAPABILITY_MISSING");
+  // conditioned or scoped holders get past it: the answer is the unchanged validation refusal for the unknown field, not an authorization one
+  for (const held of [
+    { ...base, conditionallyHeld: new Set(["workOrder.record.read"]), scopedHeld: [] },
+    { ...base, conditionallyHeld: new Set(), scopedHeld: [{ capabilityKey: "workOrder.record.read", scopeType: "operatingCompany", scopeValue: "taylor", sourceRole: "r", condition: null }] },
+  ]) {
+    const err = await refusedWith(() => call(held));
+    assert.equal(err.code, "INPUT_FIELD_NOT_ACCEPTED");
+    assert.equal(err.category, "INVALID_INPUT");
+  }
+});

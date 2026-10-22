@@ -114,7 +114,7 @@ import type {
 } from "./types";
 import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
-import { requireGrantAuthority } from "./exemptionAdministration";
+import { namesExemptionFamily, requireGrantAuthority } from "./exemptionAdministration";
 import {
   AUTHORITY_CHANGE_GATE,
   isAuthorityChangeOperation,
@@ -1230,8 +1230,11 @@ async function authorityCommand(
   reason: string | null,
 ): Promise<unknown> {
   // CAPABILITY BEFORE VALIDATION (API-01): every one of the authority changes is gated by a fixed key (AUTHORITY_CHANGE_GATE), so a caller who
-  // lacks it is refused before the input is read. The command's own gate (and the exemption family's Owner gate, which needs the input) still decide after.
-  await requireSecurityAdministrationCapability(repo, actor, AUTHORITY_CHANGE_GATE[operation]);
+  // lacks it is refused before the input is read. The one request this gate must NOT decide is the self-approval exemption family: that is the verified protected
+  // Owner's (who does not hold admin.securityPolicy.write), and the command's own requireGrantAuthority already decides it first, with its own refusal -- so it is left
+  // to that gate, byte-for-byte. Every other request (and the four assignment changes, whatever stray objectKey they carry) needs exactly the key the command needs.
+  const gate = AUTHORITY_CHANGE_GATE[operation];
+  if (gate !== "editSecurityPolicy" || !namesExemptionFamily(input.objectKey)) await requireSecurityAdministrationCapability(repo, actor, gate);
   switch (operation) {
     case "grantObjectActionToRole":
       // The reason must be STATED by the administrator; the request id alone is not a reason.
