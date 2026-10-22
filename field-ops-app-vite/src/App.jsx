@@ -126,6 +126,7 @@ const WarehouseManagerHome = lazy(() => import("./modules/inventoryRole/Warehous
 const PartsManagerHome = lazy(() => import("./modules/inventoryRole/PartsManagerHome"));
 const PartsAssociateHome = lazy(() => import("./modules/inventoryRole/PartsAssociateHome"));
 import { useAuth } from "./auth/AuthContext";
+import NoAccessScreen from "./auth/NoAccessScreen";
 import Login from "./auth/Login";
 // EOS native login (docs/architecture/eos-native-identity.md): the human front door, when the build enables it.
 import EosLogin from "./auth/EosLogin";
@@ -1497,39 +1498,8 @@ export default function App() {
   // under the EOS source therefore means the governed source ANSWERED and this principal holds no
   // surface that any destination shows -- which is a fact, not a fault.
   if (!hasAnyAccess) {
-    return (
-      <div className="fo-panel">
-        <h2>No access</h2>
-        {eosIsNavigationSource ? (
-          <>
-            <p className="fo-muted">
-              You're signed in as <strong>{user.email}</strong>. Your access was read from the
-              governed source and it grants no areas of the application.
-            </p>
-            <p className="fo-muted">
-              Access here comes from the Security Roles assigned to your EOS principal, and from your
-              work eligibility and operational scope — not from a role on your sign-in account. Ask
-              an administrator to review your role assignments in Administration, giving them the
-              email above. Once they are changed, choose <strong>Check again</strong>.
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="fo-muted">
-              You're signed in as <strong>{user.email}</strong>, but your account isn't
-              assigned a role with access yet.
-            </p>
-            <p className="fo-muted">
-              Ask an administrator to grant your account a role — giving them the email above
-              helps them find it. Once access is granted, choose <strong>Check again</strong>.
-            </p>
-          </>
-        )}
-        <Button type="button" variant="primary" onClick={() => window.location.reload()}>
-          Check again
-        </Button>
-      </div>
-    );
+    // The panel (and its Sign Out, which is AuthContext.logout) lives in auth/NoAccessScreen.jsx.
+    return <NoAccessScreen email={user.email} eosSource={eosIsNavigationSource} />;
   }
 
   return (
