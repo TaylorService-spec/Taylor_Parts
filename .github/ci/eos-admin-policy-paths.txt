@@ -1037,7 +1037,13 @@ functions/src/eosCommercial/commercialCompanyAuthority.ts
 functions/test/commercialCompanyAuthority.test.mjs
 functions/test/commercialCompanyAuthorityPostgres.test.mjs
 functions/test/commercialCompanyAuthorityBreadthPostgres.test.mjs
+functions/test/sal03CompanylessOwnerEligibilityPostgres.test.mjs
 functions/test/support/commercialCompanyReachFixture.mjs
 # FU-2 rebill trigger and Issue eligibility (2026-10-20): the suites; functions/src/eosFinance/** and the Finance client files are covered above.
 functions/test/fu2PrepareBillingPackage.test.mjs
 functions/test/fu2PrepareBillingPackagePostgres.test.mjs
+# CLC (2026-10-21): the governed, audited, set-once correction of a company-less Commercial record (the command and the read helper; commands/** and reads/** are covered above).
+functions/src/eosCommercial/recordCompanyOffer.ts
+functions/test/commercialRecordCompany.test.mjs
+functions/test/commercialRecordCompanyPostgres.test.mjs
+functions/test/clcSal03InteractionPostgres.test.mjs
