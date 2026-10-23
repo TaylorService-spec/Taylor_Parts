@@ -84,10 +84,14 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
   clientRef.current = deps?.client ?? reorderApiClient;
   const selectRef = useRef(select);
   selectRef.current = select;
-  const [state, setState] = useState({ data: select ? select([]) : [], loading: enabled, error: null });
+  // `key` names the read this state ANSWERS (null = none yet). It is what lets the hook say "loading" on the very first render in which a read is
+  // enabled -- including the render in which a gate flips from not-askable to askable -- rather than for one frame reporting the previous
+  // (disabled, empty, not-loading) state as an answer (PARTS-403d).
+  const [state, setState] = useState({ data: select ? select([]) : [], loading: enabled, error: null, key: null });
   // Inputs are compared by VALUE: callers build `{ statuses: [...] }` inline, so comparing by
   // identity would re-read forever.
   const inputKey = JSON.stringify(input ?? null);
+  const readKey = `${operation}|${inputKey}`;
   // REFRESH IS REAL. The onSnapshot listener these reads replaced re-rendered a screen after its own
   // write, so callers (PartDetail's review/assign/start/record actions) call refresh() after a
   // successful command. A missing refresh threw after the write had already succeeded, and the
@@ -101,7 +105,7 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
     const quiet = quietRef.current;
     quietRef.current = false;
     if (!enabled) {
-      setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: null });
+      setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: null, key: null });
       return undefined;
     }
     let cancelled = false;
@@ -112,20 +116,22 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
         if (!res.ok) {
           // The server's OWN reason is preserved where it gave one: "you hold no capability" and
           // "the service is unreachable" are different answers and screens render them differently.
-          setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: res.reason ?? res.code });
+          setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: res.reason ?? res.code, key: readKey });
           return;
         }
         const rows = Array.isArray(res.result) ? res.result : (res.result ? [res.result] : []);
-        setState({ data: selectRef.current ? selectRef.current(rows) : rows, loading: false, error: null });
+        setState({ data: selectRef.current ? selectRef.current(rows) : rows, loading: false, error: null, key: readKey });
       })
       .catch(() => {
-        if (!cancelled) setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: "unknown" });
+        if (!cancelled) setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: "unknown", key: readKey });
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- input is compared by value via inputKey
   }, [operation, inputKey, enabled, reloadKey]);
 
-  return { ...state, refresh };
+  // Enabled, and this state does not yet answer THIS read: it is loading, whatever the previous render left behind.
+  const { key, ...answer } = state;
+  return { ...answer, loading: answer.loading || (enabled && key !== readKey), refresh };
 }
 
 export function useReorderRequestsByStatus(status, enabled = true, deps = {}) {

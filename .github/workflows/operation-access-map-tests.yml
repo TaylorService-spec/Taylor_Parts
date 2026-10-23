@@ -1,0 +1,119 @@
+name: Operation Access Map Tests
+
+# Access map (Option A, piece 1). The browser asks ONE generated map of what the server requires for each operation before it asks the server,
+# so a page never calls an operation the session cannot authorize (the UAT background 403s: listEmployees, listWorkOrders, listPartAliases,
+# listLegacyInventoryActionNotes).
+#
+#   functions    the table is built from the constants the commands themselves check; the real commands are run against every row
+#                (offline, no database); the committed client file must equal what the generator produces from it.
+#   client       the gate's unit tests, and the request-graph guard: the REAL Parts pages, hooks and capability feed are walked as each persona
+#                with a recording fetch -- an operation missing from the map, a read that bypassed the gate, or a panel the persona may see
+#                that is no longer asked, fails.
+#
+# Offline: no emulator, deploy or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/eosOps/operationAccessMap.ts"
+      - "functions/src/catalogMaster/catalogHttp.ts"
+      - "functions/src/eosOps/partsReads.ts"
+      - "functions/src/eosOps/reorderLifecycleCommands.ts"
+      - "functions/src/eosOps/partSupplierTerms.ts"
+      - "functions/src/eosOps/legacyInventoryActionNotes.ts"
+      - "functions/src/eosOps/workOrderRecordRead.ts"
+      - "functions/src/eosOps/workOrderQueries.ts"
+      - "functions/src/eosOps/experienceAuthority.ts"
+      - "functions/src/eosWorkforce/reads/employeeDirectoryReads.ts"
+      - "functions/test/operationAccessMap.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "scripts/generateOperationAccessMap.mjs"
+      - "field-ops-app-vite/src/access/operationAccess.generated.js"
+      - "field-ops-app-vite/src/access/operationGate.js"
+      - "field-ops-app-vite/src/access/partsReadGates.js"
+      - "field-ops-app-vite/src/access/sessionAccess.js"
+      - "field-ops-app-vite/src/hooks/useInventoryLedger.js"
+      - "field-ops-app-vite/src/hooks/usePartBalance.js"
+      - "field-ops-app-vite/src/hooks/usePartIdentifiers.js"
+      - "field-ops-app-vite/src/hooks/usePartWorkOrderDemand.js"
+      - "field-ops-app-vite/src/hooks/useReorderRequests.js"
+      - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Receiving.jsx"
+      - "field-ops-app-vite/src/modules/receiving/RecentReceipts.jsx"
+      - "field-ops-app-vite/test/operationGate.test.mjs"
+      - "field-ops-app-vite/test/partsRequestGraph.test.jsx"
+      - "field-ops-app-vite/test/gatedReadHooks.test.jsx"
+      - "field-ops-app-vite/test/reorderReadFirstEnabledRender.test.jsx"
+      - "docs/uat/data/personas.csv"
+      - "docs/uat/data/role-capability-grants.csv"
+      - ".github/workflows/operation-access-map-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/eosOps/operationAccessMap.ts"
+      - "functions/src/catalogMaster/catalogHttp.ts"
+      - "functions/test/operationAccessMap.test.mjs"
+      - "scripts/generateOperationAccessMap.mjs"
+      - "field-ops-app-vite/src/access/operationAccess.generated.js"
+      - "field-ops-app-vite/src/access/operationGate.js"
+      - "field-ops-app-vite/test/operationGate.test.mjs"
+      - "field-ops-app-vite/test/partsRequestGraph.test.jsx"
+      - "field-ops-app-vite/test/gatedReadHooks.test.jsx"
+      - "field-ops-app-vite/test/reorderReadFirstEnabledRender.test.jsx"
+      - ".github/workflows/operation-access-map-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  access-map-server:
+    name: Access map -- table vs the real commands, and the generated client file is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Build, run the parity test, and check the generated client file
+        run: npm run test:operationAccessMap
+        working-directory: functions
+
+  access-map-client:
+    name: Access map -- the gate and the Parts request graph (node:test + vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: The gate (node:test)
+        run: node --test test/operationGate.test.mjs
+        working-directory: field-ops-app-vite
+      - name: The Parts request graph, by persona (vitest + jsdom)
+        run: npx vitest run test/partsRequestGraph.test.jsx test/gatedReadHooks.test.jsx test/reorderReadFirstEnabledRender.test.jsx test/partsReadGates.test.jsx test/partsReadGatesHooks.test.jsx test/warehouseAssociateInventoryReads.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/access/operationGate.js src/access/partsReadGates.js src/hooks/useInventoryLedger.js src/hooks/usePartBalance.js src/hooks/usePartIdentifiers.js src/hooks/usePartWorkOrderDemand.js src/modules/receiving/RecentReceipts.jsx
+        working-directory: field-ops-app-vite

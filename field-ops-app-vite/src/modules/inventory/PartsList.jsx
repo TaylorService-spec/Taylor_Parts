@@ -17,6 +17,7 @@ import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inv
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import { usePartsReadGates, REORDER_QUEUE_NOT_AVAILABLE_COPY } from "../../access/partsReadGates.js";
+import { useOperationGate } from "../../access/operationGate.js";
 import { useGovernedEmployeeDirectory } from "../../hooks/useGovernedEmployeeDirectory.js";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -388,7 +389,9 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
   // UAT RO-01: which of this page's AUTOMATIC reads can succeed for this person. A read the server is certain to refuse is not fired
   // (it took a 403 on every load and was then worded "try again shortly"); the panel it fed states the absence instead.
   const gates = usePartsReadGates();
-  const { healthEntries, loading, error: healthError } = useInventoryLedger();
+  // Access map: the stock reads are asked only when the session holds what the server requires of them (true / false = state the absence / null = loading).
+  const decide = useOperationGate();
+  const { healthEntries, loading, error: healthError } = useInventoryLedger({ readable: decide("readInventoryOnHand", "readInventoryMovements") });
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
   // searchParts; no new query surface). null until the first read
