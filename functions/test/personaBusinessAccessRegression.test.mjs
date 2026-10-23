@@ -1219,7 +1219,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // (`reporting.builder`, gated by the report.<object>.read the viewer holds), so the viewer resolves exactly those three doors and no other.
     assert.deepEqual([...resolved.surfaces].sort(), ["analysis.workspace", "reporting.builder", "reporting.savedReports"]);
     assert.ok(resolved.destinations.includes("analysis/analysis"));
-    assert.deepEqual(resolved.destinations.filter((d) => !["analysis/analysis", "reporting/builder", "reporting/savedReports"].includes(d)), []);
+    assert.deepEqual(resolved.destinations.filter((d) => !["analysis/analysis", "analysis/inventoryLifecycle", "reporting/builder", "reporting/savedReports"].includes(d)), []);
     // The workOrder Object capabilities exist and reportViewer holds none of them.
     const workOrderKeys = capabilityCatalog.filter((c) => c.objectKey === "workOrder").map((c) => c.key);
     assert.ok(workOrderKeys.length > 0);

@@ -13,7 +13,7 @@ const loadAdminClient = () => import("./adminPolicyApiClient.js");
 export const ANALYSIS_ROUTE = "/operations/analysis";
 
 /** Mirrors the server's EOS_ANALYSIS_OPERATIONS (closed, read-only). */
-export const ANALYSIS_OPERATIONS = Object.freeze(["readAnalysisCatalog", "readAnalysisWorkspace", "readMeasureAnalysis"]);
+export const ANALYSIS_OPERATIONS = Object.freeze(["readAnalysisCatalog", "readAnalysisWorkspace", "readMeasureAnalysis", "readInventoryLifecycle"]);
 const OPERATIONS = new Set(ANALYSIS_OPERATIONS);
 export const isAnalysisOperation = (name) => typeof name === "string" && OPERATIONS.has(name);
 

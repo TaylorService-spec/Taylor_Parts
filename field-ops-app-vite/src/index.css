@@ -9215,3 +9215,54 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-work-schedule__form { display: grid; gap: 10px; max-width: 760px; margin-top: 10px; }
 .fo-work-schedule__interval, .fo-work-schedule__inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-end: 8px; }
 .fo-work-schedule__actions { margin: 4px 0 16px; }
+
+/* ═══════════ EOS INSIGHT — chart tokens + dashboard layout (docs/design/eos-insight-inventory-lifecycle.md §5) ═══════════
+   Categorical slots are a FIXED order validated for colour-vision deficiency on the white surface (dataviz validator:
+   adjacent CVD ΔE ≥ 9.1, normal-vision ≥ 19.6). Slots 3–5 sit below 3:1 on white, so every chart carries a table view.
+   Ordinal = one blue hue, light → dark, for ordered buckets (stock age). Re-theme the kit here and re-run the validator. */
+:root {
+  --viz-series-1: #2a78d6;  /* blue    */
+  --viz-series-2: #eb6834;  /* orange  */
+  --viz-series-3: #1baf7a;  /* aqua    */
+  --viz-series-4: #eda100;  /* yellow  */
+  --viz-series-5: #e87ba4;  /* magenta */
+  --viz-ordinal-1: #86b6ef;
+  --viz-ordinal-2: #5598e7;
+  --viz-ordinal-3: #2a78d6;
+  --viz-ordinal-4: #1c5cab;
+  --viz-ordinal-5: #104281;
+  --viz-grid: #e4e8e6;      /* hairline, one step off the surface */
+  --viz-axis: #b9c1be;      /* baseline */
+}
+.ins-filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-4); margin: 0 0 var(--space-6); }
+.ins-filters .fo-input { min-width: 220px; }
+.ins-asof { color: var(--color-text-muted); font-size: 13px; padding-bottom: 10px; }
+.ins-body { transition: opacity 150ms ease; }
+.ins-body[aria-busy="true"] { opacity: 0.55; }
+.ins-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-4); margin: 0 0 var(--space-7); }
+.ins-kpi { display: grid; align-content: start; gap: 4px; padding: var(--space-4); border: 1px solid var(--viz-grid); border-radius: 8px; background: var(--color-surface-card); min-width: 0; }
+.ins-kpi__label { font-size: 13px; color: var(--color-text-secondary); }
+.ins-kpi__value { font-size: 28px; font-weight: 600; line-height: 1.15; color: var(--color-text-primary); }
+.ins-kpi__value--hero { font-size: 40px; }
+.ins-kpi__note { font-size: 12px; color: var(--color-text-muted); }
+.ins-kpi__spark { display: block; width: 100%; height: 28px; margin-top: 4px; }
+.ins-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-7) var(--space-8); }
+.ins-grid > .ns-section--wide { grid-column: 1 / -1; }
+.ins-chart { width: 100%; }
+.ins-question { margin: 0 0 var(--space-3); font-size: 13px; color: var(--color-text-muted); }
+.ins-table-view { margin-top: var(--space-2); font-size: 13px; }
+.ins-table-view > summary { cursor: pointer; color: var(--color-brand-secondary); width: fit-content; }
+.ins-table-view > table { margin-top: var(--space-2); }
+.ins-refused { color: var(--color-text-muted); font-size: 14px; padding: var(--space-6) 0; }
+.ins-defs { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--space-4); font-size: 13px; color: var(--color-text-secondary); margin: 0; }
+.ins-defs dt { font-weight: 600; color: var(--color-text-primary); }
+.ins-defs dd { margin: 0; }
+@media (max-width: 899.98px) {
+  .ins-grid { grid-template-columns: minmax(0, 1fr); }
+  .ins-kpi__value--hero { font-size: 32px; }
+  .ins-kpi__value { font-size: 24px; }
+  .ins-kpi { padding: var(--space-3); }
+  .ins-defs { grid-template-columns: 1fr; }
+}
+.ins-body .fo-table .ins-num { text-align: right; }
+.ins-kpis > [role="listitem"] { display: grid; }

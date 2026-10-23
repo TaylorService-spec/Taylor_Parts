@@ -18,6 +18,7 @@
     "verify:eos-only": "node test/verifyEosOnlyBuild.mjs"
   },
   "dependencies": {
+    "echarts": "6.1.0",
     "firebase": "^12.15.0",
     "jsbarcode": "^3.12.3",
     "lucide-react": "^1.32.0",

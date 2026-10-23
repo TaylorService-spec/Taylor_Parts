@@ -282,6 +282,11 @@ jobs:
         run: npx vitest run test/analysisWorkspace.test.jsx
         working-directory: field-ops-app-vite
 
+      # EOS Insight: the Inventory Lifecycle dashboard -- draws the server's figures, refusals stated, a table view per chart.
+      - name: Inventory Lifecycle dashboard (vitest + jsdom)
+        run: npx vitest run test/inventoryLifecycle.test.jsx
+        working-directory: field-ops-app-vite
+
       # Application Assembly (#209): the persona workspace and site-wide search -- the server's sections, refusals, people and
       # results; OWNER / ACCOUNTABLE / ASSIGNEE stay three answers; search exists only under EOS authority.
       - name: Persona workspace and site search (vitest + jsdom)
