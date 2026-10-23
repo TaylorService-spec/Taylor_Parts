@@ -322,6 +322,14 @@ jobs:
         run: npx vitest run test/adminControlPlane.test.jsx
         working-directory: field-ops-app-vite
 
+      # ACCESS EXPLAINED (Option A piece 3): the eleven gates drawn in the server's order, the first refusal shown in the
+      # server's own words with nothing after it reading as passed (a refusal at seven different gates), the proposal's layer
+      # names withheld until the server reports the Owner approved them, the question sent to the server, and a refusal or an
+      # unreadable payload shown as such. The decisions are proved in functions/test/accessGatesExplanationPostgres.test.mjs.
+      - name: Administration access explained -- client (vitest + jsdom)
+        run: npx vitest run test/employeeAccessExplained.test.jsx
+        working-directory: field-ops-app-vite
+
       # LANE DX: Employee > Direct Exceptions -- each direct exception labelled DIRECT EXCEPTION with its source,
       # reason, actor, creation, expiry, condition and evaluator result; grant / revoke / condition sent with a
       # reason, re-read on success, refusals verbatim.

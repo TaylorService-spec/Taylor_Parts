@@ -40,6 +40,8 @@ const READS = [
   "listSupportedAssignmentScopes",
   // DECISIONS #249: the Employee > Company access section.
   "listEmployeeCompanyAuthority",
+  // "Access explained": the eleven-gate chain for one person (read-only; the same authority as explainEffectiveAccess).
+  "explainAccessGates",
 ];
 const MUTATIONS = [
   // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the
