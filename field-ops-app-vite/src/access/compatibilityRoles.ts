@@ -251,7 +251,7 @@ const ADMIN_ALL_PERMISSIONS = [
 export const ADMIN_ROLE: Role = Object.freeze({
 
   id: "admin",
-  name: "Administrator (compatibility)",
+  name: "Systems Administrator",
   description:
     "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
   systemSeed: true,
