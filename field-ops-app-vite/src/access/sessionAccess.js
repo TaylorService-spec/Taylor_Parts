@@ -12,6 +12,7 @@
 // The provider lives in App.jsx; a screen rendered without one (a unit test, an error boundary) gets the default
 // below: not EOS-sourced, holds nothing -- which is the legacy path.
 import { createContext, useContext } from "react";
+import { OPERATION_ACCESS } from "./operationAccess.generated.js";
 
 export const NO_SESSION_ACCESS = Object.freeze({
   eosSource: false,
@@ -44,16 +45,7 @@ export const SESSION_GATE_KEYS = Object.freeze({
   workExecution: Object.freeze(["workOrder.execution.record"]),
   // Receiving > Recent Receipts > Correct (B3-x): the capability both receipt-correction commands enforce. Registered, granted to nobody by default.
   receiptCorrect: Object.freeze(["inventory.receipt.correct"]),
-  // UAT RO-01 (READ gates, not action gates): the capability a screen's AUTOMATIC mount read requires of the server. A screen that fires
-  // such a read for a principal who does not hold the capability takes a 403 on every load, so the read is not fired and the panel says so.
-  // Parts Catalog / Part detail -> Manufacturer names (catalogHttp listManufacturers: inventory.catalog.read AND inventory.manufacturer.read).
-  manufacturerRead: Object.freeze(["inventory.manufacturer.read"]),
-  // Parts Catalog -> the person's OWN assigned Reorders (readMyAssignedReorders: reorder.request.read ONLY, the OWN reach; no REORDER_QUEUE scope).
-  reorderRead: Object.freeze(["reorder.request.read"]),
-  // Receiving -> supplier names (partsReads listSuppliers: supplier.record.read).
-  supplierRead: Object.freeze(["supplier.record.read"]),
-  // Part detail -> Suppliers & Terms (partSupplierTerms listPartSupplierItems: inventory.supplierTerms.read).
-  supplierTermsRead: Object.freeze(["inventory.supplierTerms.read"]),
+  // READ gates (UAT RO-01) are NOT keys here: which capabilities a read needs is the server's answer, in the generated access map (access/operationGate.js).
 });
 
 /**
@@ -64,7 +56,8 @@ export const SESSION_GATE_KEYS = Object.freeze({
  * `reorder.request.read.queue`, the F1-0 parity candidate, is SUPERSEDED and held by no Role.
  */
 export const SESSION_GATE_SURFACES = Object.freeze({
-  reorderQueue: "inventory.reorderQueue",
+  // The surface the server's own map names for the Reorder queue read -- never retyped here.
+  reorderQueue: OPERATION_ACCESS.readReorderQueue.surface,
 });
 
 /** The Work Order office actions of the transition engine, and the EOS capability that authorises each (G4). */

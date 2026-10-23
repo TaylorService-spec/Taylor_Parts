@@ -1,0 +1,43 @@
+// GENERATED FILE -- DO NOT EDIT.
+//
+// What the SERVER requires of a session for each operation a page may ask. Generated from functions/src/eosOps/operationAccessMap.ts by
+// scripts/generateOperationAccessMap.mjs; CI fails on drift. The browser asks this map (access/operationGate.js) before it asks the server.
+// It grants nothing: the server re-decides every call, and decides company reach / record assignment / conditions that are not visible here.
+export const OPERATION_ACCESS = Object.freeze({
+  countParts: Object.freeze({"allOf":["inventory.catalog.read"]}),
+  getManufacturer: Object.freeze({"allOf":["inventory.catalog.read","inventory.manufacturer.read"]}),
+  listEmployees: Object.freeze({"allOf":["employee.record.read"]}),
+  listEquipmentModels: Object.freeze({"allOf":["inventory.catalog.read"]}),
+  listInventoryWarehouses: Object.freeze({"allOf":[],"anyOf":["inventory.transaction.read","warehouse.record.read"]}),
+  listLegacyInventoryActionNotes: Object.freeze({"allOf":["inventory.action.read"]}),
+  listManufacturers: Object.freeze({"allOf":["inventory.catalog.read","inventory.manufacturer.read"]}),
+  listPartAliases: Object.freeze({"allOf":["inventory.catalog.manage","inventory.catalog.read"]}),
+  listPartSupplierItems: Object.freeze({"allOf":["inventory.supplierTerms.read"]}),
+  listReceipts: Object.freeze({"allOf":["receivingOrder.record.read"]}),
+  listReceivableSupplierPurchaseOrders: Object.freeze({"allOf":[]}),
+  listReorderWarehouseOptions: Object.freeze({"allOf":["reorder.request.create.manual"]}),
+  listSuppliers: Object.freeze({"allOf":["supplier.record.read"]}),
+  listWorkOrders: Object.freeze({"allOf":["workOrder.record.read"]}),
+  listWorkflowWork: Object.freeze({"allOf":[]}),
+  lookupScannedPart: Object.freeze({"allOf":["inventory.catalog.read"]}),
+  probePartAlias: Object.freeze({"allOf":["inventory.catalog.manage","inventory.catalog.read"]}),
+  readInventoryMovements: Object.freeze({"allOf":["inventory.transaction.read"]}),
+  readInventoryOnHand: Object.freeze({"allOf":["inventory.transaction.read"]}),
+  readMyAssignedReorders: Object.freeze({"allOf":["reorder.request.read"]}),
+  readMyEmployeeProfile: Object.freeze({"allOf":[]}),
+  readMyWork: Object.freeze({"allOf":[]}),
+  readMyWorkOrderCapabilities: Object.freeze({"allOf":[]}),
+  readPart: Object.freeze({"allOf":["inventory.catalog.read"]}),
+  readPartBalance: Object.freeze({"allOf":["inventory.transaction.read"]}),
+  readPartsByIds: Object.freeze({"allOf":["inventory.catalog.read"]}),
+  readReceipt: Object.freeze({"allOf":["receivingOrder.record.read"]}),
+  readReorderPurchaseOrders: Object.freeze({"allOf":["reorder.request.read"]}),
+  readReorderQueue: Object.freeze({"allOf":["reorder.request.read"],"surface":"inventory.reorderQueue"}),
+  readReorderRequest: Object.freeze({"allOf":["reorder.request.read"]}),
+  resolveEmployeeDisplayNames: Object.freeze({"allOf":[]}),
+  resolveMyCapabilities: Object.freeze({"allOf":[]}),
+  resolveMyExperienceContext: Object.freeze({"allOf":[]}),
+  resolvePrincipalDisplayNames: Object.freeze({"allOf":[]}),
+  searchManufacturers: Object.freeze({"allOf":["inventory.catalog.read","inventory.manufacturer.read"]}),
+  searchParts: Object.freeze({"allOf":["inventory.catalog.read"]}),
+});

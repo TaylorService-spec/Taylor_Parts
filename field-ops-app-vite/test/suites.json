@@ -666,6 +666,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/operationGate.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/operationalRoleLanding.test.mjs",
       "runner": "node"
     },
