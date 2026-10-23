@@ -14,6 +14,8 @@
 //   warehouseOptions      listReorderWarehouseOptions -- reorder.request.create.manual.
 //   manufacturers         listManufacturers -- inventory.catalog.read AND inventory.manufacturer.read (the page's own door is catalog.read).
 //   suppliers             listSuppliers -- supplier.record.read.
+//   supplierTermsReadable listPartSupplierItems -- inventory.supplierTerms.read (Part detail, Suppliers & Terms). A separate answer, not a key of partsReadGates().
+//   Part detail's own Reorder request is read on `queue` when found by part (readReorderQueue) and on `myAssigned` when found by id (readReorderRequest).
 //
 // Where EOS is not the session source every answer is TRUE: the legacy behaviour is unchanged (access/sessionAccess.js). These are READ
 // gates. They never grant anything, and the server re-decides every call.
@@ -42,6 +44,13 @@ export function usePartsReadGates() {
   return partsReadGates(useSessionAccess());
 }
 
+/** Pure, for tests: may Part detail ask for this Part's supplier terms (listPartSupplierItems)? Kept out of partsReadGates() so that answer's shape is unchanged. */
+export const supplierTermsReadable = (access) => sessionDecision(access, SESSION_GATE_KEYS.supplierTermsRead, true);
+
 /** What a panel says in place of a queue the person does not hold. A statement of absence, never "none" or "try again". */
 export const REORDER_QUEUE_NOT_AVAILABLE_COPY =
   "The shared Reorder request queues are shown to people with Reorder Queue access. Your account does not have it, so they were not requested.";
+
+/** What Part detail says in place of a Reorder request status the person cannot read. A statement of absence, never "could not be loaded". */
+export const PART_REORDER_STATUS_NOT_AVAILABLE_COPY =
+  "Reorder requests for this part are shown to people with Reorder Queue access. Your account does not have it, so the part's reorder status was not requested.";

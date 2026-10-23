@@ -208,10 +208,13 @@ function TermsTable({ items, label, stockingUnit, busy, canEdit, statusControls,
   );
 }
 
-export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
+// `readable` false (R2.2 PARTS-403): the session says the person does not hold inventory.supplierTerms.read, so the read is not sent and the
+// section shows the same stated denial the server's refusal produced -- a denial, not an empty list. `null`: the session answer has not arrived yet, so
+// nothing is asked and nothing is claimed ("Loading"). Default true: every other caller is unchanged.
+export default function PartSupplierTermsSection({ partId, partNumber, deps, readable = true }) {
   // TEST SEAM ONLY: the transport options the real client passes to callReorderApi (baseUrl, getIdToken, fetchImpl).
   const callOptions = deps?.callOptions;
-  const [state, setState] = useState({ status: "loading", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null, message: null });
+  const [state, setState] = useState({ status: readable === false ? "denied" : "loading", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null, message: null });
   const [outcome, setOutcome] = useState(null);
   const [busy, setBusy] = useState(null);
   const [form, setForm] = useState(null); // null | { mode: "create" } | { mode: "edit", item }
@@ -219,6 +222,10 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
   const label = partNumber || partId || "this part";
 
   const load = useCallback(async () => {
+    if (readable !== true) {
+      setState({ status: readable === false ? "denied" : "loading", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null, message: null });
+      return;
+    }
     if (!partId) {
       setState({ status: "ready", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null, message: null });
       return;
@@ -235,7 +242,7 @@ export default function PartSupplierTermsSection({ partId, partNumber, deps }) {
       setState({ status: err?.code === "FORBIDDEN" ? "denied" : "failed", items: [], supplierOptions: null, fieldAccess: null, recordAccess: null, stockingUnit: null,
         message: err?.code === "FORBIDDEN" ? null : outcomeFromError(err, "read").message });
     }
-  }, [partId, callOptions]);
+  }, [partId, callOptions, readable]);
 
   useEffect(() => {
     load();

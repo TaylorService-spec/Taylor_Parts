@@ -52,6 +52,8 @@ export const SESSION_GATE_KEYS = Object.freeze({
   reorderRead: Object.freeze(["reorder.request.read"]),
   // Receiving -> supplier names (partsReads listSuppliers: supplier.record.read).
   supplierRead: Object.freeze(["supplier.record.read"]),
+  // Part detail -> Suppliers & Terms (partSupplierTerms listPartSupplierItems: inventory.supplierTerms.read).
+  supplierTermsRead: Object.freeze(["inventory.supplierTerms.read"]),
 });
 
 /**
