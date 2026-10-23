@@ -373,6 +373,19 @@ export async function transitionWorkOrder(
 }
 
 /**
+ * CAPABILITY BEFORE VALIDATION (API-01). An edge a command NAMES (markReady, schedule, dispatch, accept, close, cancel...) has a
+ * fixed capability, so a caller who lacks it is refused before the request body is read at all and learns nothing about its shape.
+ * The same code, category and wording authorizeEdgeOrRefuse gives a holder-less caller; the record context (own assignment) is
+ * still decided there, after validation, because it needs the input.
+ */
+export function requireEdgeCapability(actor: LifecycleActor, from: WorkOrderStatus, to: WorkOrderStatus): void {
+  const { capability } = transitionRuleFor(from, to);
+  if (actor?.capabilities instanceof Set && !actor.capabilities.has(capability)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `this transition requires ${capability}`);
+  }
+}
+
+/**
  * Validate the request shape and authorize the edge -- capability first, then only the predicates that edge
  * declares -- or throw the governed refusal. Shared by the generic transition and every command edge, so there
  * is ONE authorization path for the lifecycle.
