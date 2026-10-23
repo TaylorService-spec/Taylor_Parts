@@ -51,6 +51,9 @@ on:
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
       - "field-ops-app-vite/test/adminPermissionPreview.test.jsx"
       - "field-ops-app-vite/test/adminUiTruthfulness.test.jsx"
+      - "field-ops-app-vite/test/deniedDirectRoute.test.jsx"
+      - "field-ops-app-vite/src/navigation/DeniedDestination.jsx"
+      - "field-ops-app-vite/src/navigation/firstAuthorizedDestination.js"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
       # DQ-029: the truck location -> warehouse scope section of Warehouse Racking.
       - "field-ops-app-vite/test/truckLocationScopeBindings.test.jsx"
@@ -101,6 +104,9 @@ on:
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
       - "field-ops-app-vite/test/adminPermissionPreview.test.jsx"
       - "field-ops-app-vite/test/adminUiTruthfulness.test.jsx"
+      - "field-ops-app-vite/test/deniedDirectRoute.test.jsx"
+      - "field-ops-app-vite/src/navigation/DeniedDestination.jsx"
+      - "field-ops-app-vite/src/navigation/firstAuthorizedDestination.js"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
       # DQ-029: the truck location -> warehouse scope section of Warehouse Racking.
       - "field-ops-app-vite/test/truckLocationScopeBindings.test.jsx"
@@ -175,6 +181,7 @@ jobs:
           test/adminRolesPermissionsDeclined.test.jsx
           test/adminPermissionPreview.test.jsx
           test/adminUiTruthfulness.test.jsx
+          test/deniedDirectRoute.test.jsx
           test/adminWarehouseRacking.test.jsx
           test/truckLocationScopeBindings.test.jsx
           test/rackingLayoutGenerator.test.jsx
