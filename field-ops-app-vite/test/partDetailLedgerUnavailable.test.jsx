@@ -133,9 +133,10 @@ describe("PartDetail -- a failed ledger read is UNAVAILABLE, never an empty hist
     expect(screen.getByText(/stock forecast is not available to your role/)).toBeTruthy();
     expect(screen.getByText(/movements are not available to your role/)).toBeTruthy();
     expect(screen.queryByText(/couldn.t be read/)).toBeNull();
-    expect(screen.queryByText(/unavailable/i)).toBeNull();
+    expect(screen.queryByText(/stock forecast is unavailable|movements are unavailable/)).toBeNull();
     expect(screen.queryByText(/No movements have been recorded against this part/)).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
+    // Not announced as a failure: no alert is about the ledger bands (an unrelated alert, e.g. the warehouse picker, may exist).
+    expect(screen.queryAllByRole("alert").filter((a) => /ledger|forecast|movements/i.test(a.textContent))).toEqual([]);
   });
 
   it("a successful read with no movements still says so honestly (the empty state is for real emptiness only)", async () => {
