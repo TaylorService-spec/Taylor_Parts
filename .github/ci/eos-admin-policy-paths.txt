@@ -644,6 +644,11 @@ functions/test/roleChangeReasonContract.test.mjs
 functions/test/administrationControlPlanePostgres.test.mjs
 functions/src/eosOps/effectiveAccessExplanation.ts
 functions/test/effectiveAccessExplanationPostgres.test.mjs
+# ACCESS EXPLAINED (Option A piece 3): the gate-by-gate explanation, its Postgres suite, the panel and its component suite.
+functions/src/eosOps/accessGatesExplanation.ts
+functions/test/accessGatesExplanationPostgres.test.mjs
+field-ops-app-vite/src/modules/administration/EmployeeAccessExplained.jsx
+field-ops-app-vite/test/employeeAccessExplained.test.jsx
 functions/test/administrationControlPlaneSecurityPostgres.test.mjs
 # LANE SC (2026-09-26): Security Role ASSIGNMENT SCOPE runtime -- scope-qualified holdings, business-context
 # admission, assignRole scope validation, listSupportedAssignmentScopes, the scoped Employee directory reads.
