@@ -6,7 +6,8 @@
 // listEmployees, listWorkOrders, listPartAliases, listLegacyInventoryActionNotes).
 //
 // HOW IT STAYS TRUE. Every capability below is the exported constant the command itself checks, imported from the command's own module --
-// never a retyped string. A renamed or re-keyed constant changes this table; the generated client file then drifts and
+// never a retyped string, with ONE exception stated at its row (employee.record.read: the Workforce read layer is import-fenced to its
+// transport by an existing source guard (employeeRuntimeReads.test.mjs), so this file may not name it; the parity test runs the real listEmployees against the row). A renamed or re-keyed constant changes this table; the generated client file then drifts and
 // `node scripts/generateOperationAccessMap.mjs --check` (CI) fails until it is regenerated and reviewed. The catalog reads are taken whole from
 // the transport's own table (CATALOG_READ_REQUIREMENTS). functions/test/operationAccessMap.test.mjs proves, against the real commands, that
 // each row is the check the command applies.
@@ -20,7 +21,6 @@ import { INVENTORY_ON_HAND_READ, RECEIPT_READ, SUPPLIER_READ, WAREHOUSE_READ } f
 import { REORDER_CREATE_MANUAL, REORDER_READ } from "./reorderLifecycleCommands.js";
 import { SUPPLIER_TERMS_READ_CAPABILITY } from "./partSupplierTerms.js";
 import { LEGACY_NOTES_READ_CAPABILITY } from "./legacyInventoryActionNotes.js";
-import { EMPLOYEE_RECORD_READ } from "../eosWorkforce/reads/employeeDirectoryReads.js";
 import { WORK_ORDER_RECORD_READ } from "./workOrderRecordRead.js";
 import { EXPERIENCE_SURFACE_KEYS } from "./experienceAuthority.js";
 
@@ -79,7 +79,8 @@ export const OPERATION_ACCESS: Readonly<Record<string, OperationAccess>> = Objec
   listReorderWarehouseOptions: holds(REORDER_CREATE_MANUAL),
 
   // ── Other domains the Parts pages touch ─────────────────────────────────────────────────────────────────────────────────────────────────
-  listEmployees: holds(EMPLOYEE_RECORD_READ),
+  // Retyped on purpose: the Workforce read layer may be imported only by its transport. The parity test proves this key against the real listEmployees.
+  listEmployees: holds("employee.record.read"),
   listWorkOrders: holds(WORK_ORDER_RECORD_READ),
 
   // ── Self reads: any signed-in principal; each guards its own sections or answers only for the caller ────────────────────────────────────
