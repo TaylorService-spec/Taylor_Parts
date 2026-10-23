@@ -325,8 +325,11 @@ export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, curs
 // heuristic (no cheap total-count query exists); isEndOfHistory is the
 // same signal, exposed under the Specification's own name for the
 // "Load More is hidden or disabled, not silently absent" state.
-export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageImpl = fetchReorderRequestsHistoryPage }) {
-  const [state, setState] = useState({ data: [], loading: true, error: null, hasMore: false, isEndOfHistory: false });
+//
+// `enabled` (UAT RO-01): false reads nothing and settles at an empty, not-loading, no-error answer. The caller states WHY nothing is shown
+// (the person does not hold the Reorder queue); this hook does not claim "no history".
+export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageImpl = fetchReorderRequestsHistoryPage, enabled = true }) {
+  const [state, setState] = useState({ data: [], loading: enabled, error: null, hasMore: false, isEndOfHistory: false });
   const lastVisibleRef = useRef(null);
   const statusesKey = statuses.join(",");
 
@@ -359,9 +362,13 @@ export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageIm
 
   useEffect(() => {
     lastVisibleRef.current = null;
+    if (!enabled) {
+      setState({ data: [], loading: false, error: null, hasMore: false, isEndOfHistory: true });
+      return;
+    }
     fetchPage(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusesKey, pageSize, fetchPageImpl]);
+  }, [statusesKey, pageSize, fetchPageImpl, enabled]);
 
   const loadMore = useCallback(() => fetchPage(true), [fetchPage]);
 

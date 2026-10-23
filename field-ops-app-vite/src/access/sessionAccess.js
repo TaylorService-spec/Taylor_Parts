@@ -44,6 +44,14 @@ export const SESSION_GATE_KEYS = Object.freeze({
   workExecution: Object.freeze(["workOrder.execution.record"]),
   // Receiving > Recent Receipts > Correct (B3-x): the capability both receipt-correction commands enforce. Registered, granted to nobody by default.
   receiptCorrect: Object.freeze(["inventory.receipt.correct"]),
+  // UAT RO-01 (READ gates, not action gates): the capability a screen's AUTOMATIC mount read requires of the server. A screen that fires
+  // such a read for a principal who does not hold the capability takes a 403 on every load, so the read is not fired and the panel says so.
+  // Parts Catalog / Part detail -> Manufacturer names (catalogHttp listManufacturers: inventory.catalog.read AND inventory.manufacturer.read).
+  manufacturerRead: Object.freeze(["inventory.manufacturer.read"]),
+  // Parts Catalog -> the person's OWN assigned Reorders (readMyAssignedReorders: reorder.request.read ONLY, the OWN reach; no REORDER_QUEUE scope).
+  reorderRead: Object.freeze(["reorder.request.read"]),
+  // Receiving -> supplier names (partsReads listSuppliers: supplier.record.read).
+  supplierRead: Object.freeze(["supplier.record.read"]),
 });
 
 /**
