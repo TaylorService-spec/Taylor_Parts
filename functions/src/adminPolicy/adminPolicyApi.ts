@@ -114,7 +114,7 @@ import type {
 } from "./types";
 import { hasProtectedAdministratorStanding, isImpliedForProtectedAdministrator, protectedAdministratorImpliedKeys } from "./protectedAdministrator";
 import { ADMIN_ROLE_KEY, isDesignatedAdministratorRole } from "./administrationAuthority";
-import { namesExemptionFamily, requireGrantAuthority } from "./exemptionAdministration";
+import { requireGrantAuthority } from "./exemptionAdministration";
 import {
   AUTHORITY_CHANGE_GATE,
   isAuthorityChangeOperation,
@@ -1229,12 +1229,12 @@ async function authorityCommand(
   input: Record<string, unknown>,
   reason: string | null,
 ): Promise<unknown> {
-  // CAPABILITY BEFORE VALIDATION (API-01): every one of the authority changes is gated by a fixed key (AUTHORITY_CHANGE_GATE), so a caller who
-  // lacks it is refused before the input is read. The one request this gate must NOT decide is the self-approval exemption family: that is the verified protected
-  // Owner's (who does not hold admin.securityPolicy.write), and the command's own requireGrantAuthority already decides it first, with its own refusal -- so it is left
-  // to that gate, byte-for-byte. Every other request (and the four assignment changes, whatever stray objectKey they carry) needs exactly the key the command needs.
+  // CAPABILITY BEFORE VALIDATION (API-01): every authority change is gated before its input is read, by the SAME function and key the command applies next:
+  // requireGrantAuthority (the verified protected Owner for the self-approval exemption family -- who does not hold admin.securityPolicy.write -- else the fixed key
+  // AUTHORITY_CHANGE_GATE names). The four assignment changes (admin.roleAssignment.write) ignore any stray objectKey and keep the plain capability gate.
   const gate = AUTHORITY_CHANGE_GATE[operation];
-  if (gate !== "editSecurityPolicy" || !namesExemptionFamily(input.objectKey)) await requireSecurityAdministrationCapability(repo, actor, gate);
+  if (gate === "editSecurityPolicy") await requireGrantAuthority(repo, actor, gate, input.objectKey);
+  else await requireSecurityAdministrationCapability(repo, actor, gate);
   switch (operation) {
     case "grantObjectActionToRole":
       // The reason must be STATED by the administrator; the request id alone is not a reason.

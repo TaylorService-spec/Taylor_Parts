@@ -57,7 +57,7 @@ const refusedWith = async (fn) => {
   return assert.fail("expected a refusal, got a result");
 };
 
-// ---- the 27 operations: [operation, capability held by the authorized caller, established refusal code, caller factory] ----
+// ---- the 27 UAT-R2 operations plus openCycleCountLine / cancelCycleCountLine (API01b):[operation, capability held by the authorized caller, established refusal code, caller factory] ----
 // `run(actor, input, pool)` invokes the command exactly as the transport does.
 const ACTIVE = { postgresState: "ACTIVE" };
 const wo = (op) => (actor, input, pool) => EOS_WORK_ORDER_OPERATIONS[op](
@@ -74,7 +74,9 @@ const OPERATIONS = Object.freeze([
   ["createPerformanceGoalDraft", "performance.goal.create", "CAPABILITY_REQUIRED", (a, i, p) => goals.createPerformanceGoalDraft({ pool: p }, a, i)],
   // /operations/cycle-count
   ["createCycleCountSheet", "inventory.cycleCount.create", "CAPABILITY_MISSING", cc("createCycleCountSheet")],
+  ["openCycleCountLine", "inventory.cycleCount.create", "CAPABILITY_MISSING", cc("openCycleCountLine")],
   ["submitCycleCountLine", "inventory.cycleCount.submit", "CAPABILITY_MISSING", cc("submitCycleCountLine")],
+  ["cancelCycleCountLine", "inventory.cycleCount.cancel", "CAPABILITY_MISSING", cc("cancelCycleCountLine")],
   ["reconcileCycleCountLine", "inventory.cycleCount.reconcile", "CAPABILITY_MISSING", cc("reconcileCycleCountLine")],
   ["closeCycleCountSheet", "inventory.cycleCount.close", "CAPABILITY_MISSING", cc("closeCycleCountSheet")],
   ["cancelCycleCountSheet", "inventory.cycleCount.cancel", "CAPABILITY_MISSING", cc("cancelCycleCountSheet")],
@@ -275,7 +277,41 @@ for (const [label, mandatory] of [["dispatch", false], ["commit under the mandat
   });
 }
 
-test("exemption family via previewAuthorityChange: the protected Owner previews (the simulated command passes the early gate); a non-Owner is refused before any simulation", async () => {
+// API01b: the early gate for the exemption family is requireGrantAuthority itself, so a non-Owner is refused BEFORE actionKey/roleKey are read (no input-shape oracle),
+// and the protected Owner -- who is allowed through -- still gets the unchanged validation answer.
+const SHAPES = [
+  ["missing actionKey/roleKey", { objectKey: SELF_OBJ }],
+  ["malformed actionKey/roleKey", { objectKey: SELF_OBJ, actionKey: 123, roleKey: { x: 1 }, bogus: true }],
+  ["empty-string actionKey/roleKey", { objectKey: ` ${SELF_OBJ} `, actionKey: "", roleKey: "" }],
+];
+for (const operation of ["grantObjectActionToRole", "revokeObjectActionFromRole"]) {
+  for (const [label, input] of SHAPES) {
+    test(`exemption family ${operation} with ${label}: a non-Owner (plain or Administrator) is refused FORBIDDEN (ExemptionAdministrationDenied), never a validation error`, async () => {
+      for (const subject of ["sub-plain", "sub-admin"]) {
+        const r = await runAdmin(gateRepo(), subject, operation, input);
+        assert.equal(r.ok, false);
+        assert.equal(r.code, "FORBIDDEN", `${subject}: ${r.code} ${r.message}`);
+        assert.match(r.message, /only the governed protected Owner/, `${subject}: ${r.message}`);
+      }
+    });
+  }
+  test(`exemption family ${operation}: the protected Owner with a missing actionKey still gets the unchanged INVALID_INPUT, and valid input passes the gate`, async () => {
+    const missing = await runAdmin(gateRepo(), "sub-owner", operation, { objectKey: SELF_OBJ, roleKey: "plain", reason: "Owner decision" });
+    assert.equal(missing.code, "INVALID_INPUT", `${missing.code} ${missing.message}`);
+    assert.match(missing.message, /actionKey/);
+    assert.equal(isGateDenial(await runAdmin(gateRepo(), "sub-owner", operation, FAMILY)), false);
+  });
+}
+
+test("a missing or malformed objectKey keeps the generic capability gate: a non-holder is refused FORBIDDEN without learning whether a family exists", async () => {
+  for (const objectKey of [undefined, 123, "", "noSuchFamily"]) {
+    const r = await runAdmin(gateRepo(), "sub-plain", "grantObjectActionToRole", { objectKey });
+    assert.equal(r.code, "FORBIDDEN", String(objectKey));
+    assert.doesNotMatch(r.message, /only the governed protected Owner/);
+  }
+});
+
+test("exemption family via previewAuthorityChange:the protected Owner previews (the simulated command passes the early gate); a non-Owner is refused before any simulation", async () => {
   let ran = false;
   const simulator = (repo) => async (req) => {
     ran = true;
