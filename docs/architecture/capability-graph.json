@@ -1637,10 +1637,11 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/sessionAccess.js"
         ],
         "serverReferenceCount": 8,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -2118,11 +2119,12 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/access/scanWorkflows.js"
         ],
         "serverReferenceCount": 8,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -2151,10 +2153,11 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 6,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -2207,12 +2210,13 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/metadata/definitions/warehouse.js"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3411,10 +3415,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
         ],
         "serverReferenceCount": 9,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3677,11 +3682,12 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/metadata/administration/profiles/part.js"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3741,10 +3747,11 @@
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
         ],
         "serverReferenceCount": 10,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
