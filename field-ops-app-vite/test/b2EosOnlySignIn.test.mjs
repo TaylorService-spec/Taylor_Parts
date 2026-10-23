@@ -175,6 +175,25 @@ test("the harness signs an ENROLLED persona in through the same front door: RFC 
   await assert.rejects(loginEosPersona("dispatcher", { credentialsFile: file, baseUrl: "https://eos-api-nonprod.onrender.com", fetch: refused, origin: "https://verenwardeos.vercel.app" }), (e) => /LOGIN_REFUSED/.test(e.message) && !e.message.includes("pw-value"));
 });
 
+test("an EOS-only build also aliases the Firebase SDK packages to a stand-in that exports every name src imports from them", () => {
+  const config = readFileSync(join(HERE, "..", "vite.config.js"), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(config.includes("find: /^firebase\\/(?:app|auth|firestore|functions)$/,"), "the SDK alias is present");
+  assert.ok(config.includes("replacement: resolvePath(CONFIG_DIR, 'src/firebase/firebaseSdkAbsent.js')"));
+  const stand = read("firebase/firebaseSdkAbsent.js");
+  assert.doesNotMatch(stand, /^\s*import\b/m, "the SDK stand-in imports nothing");
+  assert.doesNotMatch(stand, /from ["']firebase\//, "the SDK stand-in imports no Firebase SDK");
+  // Every `import { a, b } from "firebase/<pkg>"` in src must link against the stand-in, or a new import would reach an undefined export.
+  const exported = new Set([...stand.matchAll(/^export const (\w+)/gm)].map((m) => m[1]));
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : /\.(jsx?|tsx?)$/.test(e.name) ? [join(dir, e.name)] : []));
+  const missing = [];
+  for (const f of walk(SRC)) {
+    for (const m of readFileSync(f, "utf8").matchAll(/import\s*\{([^}]*)\}\s*from\s*["']firebase\/(?:app|auth|firestore|functions)["']/g)) {
+      for (const name of m[1].split(",").map((s) => s.trim().split(/\s+as\s+/)[0]).filter(Boolean)) if (!exported.has(name)) missing.push(`${f}: ${name}`);
+    }
+  }
+  assert.deepEqual(missing, [], "the stand-in lacks a name src imports from the Firebase SDK");
+});
+
 function readdirSyncSafe(dir) {
   try { return readdirSync(dir, { withFileTypes: true }); } catch { return []; }
 }

@@ -21,6 +21,7 @@
     "test/adminPolicyNoOpAudit.test.mjs",
     "test/eosOpsNoFirebase.test.mjs",
     "test/eosOpsApiShape.test.mjs",
+    "test/authorizationBeforeValidationOffline.test.mjs",
     "test/inventoryWriterCapabilityCensus.test.mjs",
     "test/inventoryCapabilityParityHarnessClassification.test.mjs",
     "test/inventoryCapabilityParityHarness.test.mjs",

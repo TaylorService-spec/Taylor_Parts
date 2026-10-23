@@ -261,6 +261,8 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
   }
   // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
   if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
+  // CAPABILITY BEFORE VALIDATION (API-01): refused before the input is read, so a caller without the key learns nothing about the request's shape.
+  if (!actor.capabilities.has(EOS_PLACEMENT_RECORD_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_PLACEMENT_RECORD_CAPABILITY}`);
   // The EOS request is CLOSED (Controller INVENTORY reconciliation, 2026-10-01; DQ-038 "no company inference"): a field the
   // put-away does not define -- an operating company above all -- is refused, never silently ignored. Checked before the
   // shared shape validator, which stays the Firestore command's rules verbatim (binPlacementParity.test.mjs).
@@ -274,7 +276,6 @@ export async function recordEosPutAway(deps: PlacementOperationDeps, actor: Plac
   const serials = req.serialNumbers ?? [];
 
   return inTransaction(deps.pool, async (db) => {
-    if (!actor.capabilities.has(EOS_PLACEMENT_RECORD_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_PLACEMENT_RECORD_CAPABILITY}`);
     // COMPANY AUTHORITY (#235 / #237): capability first, then company -- none at all is refused before any row is read, and a warehouse of a
     // company outside the caller's reads EXACTLY as a nonexistent one (a warehouse scope never reaches into another company's warehouse).
     const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
