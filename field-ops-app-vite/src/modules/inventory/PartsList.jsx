@@ -4,6 +4,7 @@ import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { searchParts, isCatalogReadRefused } from "../../services/partMasterQueries";
 import { buildPartsCatalogRows, canonicalNameBySku, partNamesBoundaryKey, selectCanonicalReadForKey, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import {
   useReorderRequests,
   useReorderRequestsByStatus,
@@ -391,7 +392,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
   const gates = usePartsReadGates();
   // Access map: the stock reads are asked only when the session holds what the server requires of them (true / false = state the absence / null = loading).
   const decide = useOperationGate();
-  const { healthEntries, loading, error: healthError } = useInventoryLedger({ readable: decide("readInventoryOnHand", "readInventoryMovements") });
+  const { healthEntries, loading, error: healthError, denied: ledgerDenied } = useInventoryLedger({ readable: decide("readInventoryOnHand", "readInventoryMovements") });
 
   // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
   // searchParts; no new query surface). null until the first read
@@ -784,6 +785,9 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
             <p className="fo-muted" data-reorder-request-unavailable="true">Requesting a reorder needs the Request Reorder permission, which your account does not have.</p>
           )}
           {reorderError && <p className="fo-muted">{reorderError}</p>}
+          {ledgerDenied ? (
+            <HonestState state={HONEST_STATE.DENIED} subject="The operational queue" detail="The stock position behind the operational queue is not available to your role." />
+          ) : (
           <LoadingEmptyState
             loading={loading}
             failed={!!healthError}
@@ -803,6 +807,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
               emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
             />
           </LoadingEmptyState>
+          )}
         </details>
 
         {/* UAT RO-01: the SHARED queue disclosures (Parts Manager Queue, Team Work, History) are fed by reads the server refuses to
@@ -1261,6 +1266,9 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
       <>
 
 
+      {ledgerDenied ? (
+        <HonestState state={HONEST_STATE.DENIED} subject="Stock position" detail="The stock position is not available to your role." />
+      ) : (
       <LoadingEmptyState
         loading={loading}
         failed={!!healthError}
@@ -1422,6 +1430,7 @@ export default function PartsList({ accessVersion, writeDeps, hasCapability } = 
               the defect this removes; nothing is lost, because the (i) carries a superset of it. */}
         </>
       </LoadingEmptyState>
+      )}
       </>
       )}
       </div>

@@ -207,6 +207,7 @@
     "test/employeeJobRoleOperatorPostgres.test.mjs",
     "test/administrationControlPlanePostgres.test.mjs",
     "test/effectiveAccessExplanationPostgres.test.mjs",
+    "test/accessGatesExplanationPostgres.test.mjs",
     "test/administrationControlPlaneSecurityPostgres.test.mjs",
     "test/workflowControlPlanePostgres.test.mjs",
     "test/workflowRoleHoldersPostgres.test.mjs",

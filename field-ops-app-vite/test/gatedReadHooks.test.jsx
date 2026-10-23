@@ -21,6 +21,15 @@ describe("useInventoryLedger({ readable })", () => {
     expect(d.fetchInventoryMovements).not.toHaveBeenCalled();
     expect(result.current).toMatchObject({ loading: false, transactions: [], healthEntries: [] });
     expect(result.current.error).toMatchObject({ code: "FORBIDDEN" });
+    expect(result.current.denied).toBe(true); // lets a screen state the absence ("not available to your role") rather than a read failure
+  });
+
+  it("a real read failure is an error and is NOT denied (screens keep the failure copy)", async () => {
+    const d = { fetchInventoryPosition: vi.fn(async () => { throw new Error("network down"); }), fetchInventoryMovements: vi.fn(async () => ({ items: [] })) };
+    const { result } = renderHook(() => useInventoryLedger({ deps: d }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.denied).toBeFalsy();
   });
 
   it("null: nothing is asked; loading", () => {

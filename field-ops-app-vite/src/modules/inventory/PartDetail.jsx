@@ -1382,7 +1382,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // made about EVERY part. The two ledger bands below render an explicit unavailable state instead.
   // Access map: ONE gate (access/operationGate.js) answers, per read, "may this session ask?" -- true / false (state the absence) / null (loading).
   const decide = useOperationGate();
-  const { transactions, healthEntries, loading, error: ledgerError } = useInventoryLedger({ readable: decide("readInventoryOnHand", "readInventoryMovements") });
+  const { transactions, healthEntries, loading, error: ledgerError, denied: ledgerDenied } = useInventoryLedger({ readable: decide("readInventoryOnHand", "readInventoryMovements") });
   const ledgerUnavailable = !loading && Boolean(ledgerError);
   // B3-x: the governed balance (on hand / reserved / available / on order, by warehouse). OFF where the environment has not switched the
   // read on, in which case nothing is asked and the stated "not available" sentences below stand.
@@ -1759,6 +1759,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   request it gates can still be raised. */}
               {loading ? (
                 <HonestState state={HONEST_STATE.LOADING} subject="the stock forecast" />
+              ) : ledgerDenied ? (
+                <HonestState state={HONEST_STATE.DENIED} subject="the stock forecast" detail="The stock forecast is not available to your role." />
               ) : ledgerUnavailable ? (
                 <HonestState
                   state={HONEST_STATE.UNAVAILABLE}
@@ -2098,6 +2100,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         <RuledSection id="part-activity" title="Activity" meta={PART_ACTIVITY_SCOPE_NOTE}>
           {loading ? (
             <HonestState state={HONEST_STATE.LOADING} subject="this part's movements" />
+          ) : ledgerDenied ? (
+            <HonestState state={HONEST_STATE.DENIED} subject="this part's movements" detail="This part's movements are not available to your role." />
           ) : ledgerUnavailable ? (
             <HonestState
               state={HONEST_STATE.UNAVAILABLE}

@@ -128,6 +128,16 @@ describe("PartDetail -- a failed ledger read is UNAVAILABLE, never an empty hist
     expect(screen.queryByRole("button", { name: "Request Reorder" })).toBeNull();
   });
 
+  it("a ledger the session may not read is an ABSENCE (not available to your role), not the failure copy", async () => {
+    await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: new Error("denied"), denied: true });
+    expect(screen.getByText(/stock forecast is not available to your role/)).toBeTruthy();
+    expect(screen.getByText(/movements are not available to your role/)).toBeTruthy();
+    expect(screen.queryByText(/couldn.t be read/)).toBeNull();
+    expect(screen.queryByText(/unavailable/i)).toBeNull();
+    expect(screen.queryByText(/No movements have been recorded against this part/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("a successful read with no movements still says so honestly (the empty state is for real emptiness only)", async () => {
     await renderWithLedger({ transactions: [], healthEntries: [], loading: false, error: null });
     expect(screen.getByText(/No ledger movements have been recorded for this part/)).toBeTruthy();

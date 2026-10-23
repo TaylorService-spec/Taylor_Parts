@@ -178,6 +178,9 @@ const WALK = [
 // What each page asks when the session may be told: the two-sided half of the guard.
 const PART_DETAIL_READS = ["readInventoryOnHand", "readInventoryMovements", "readPartBalance", "listPartAliases", "listLegacyInventoryActionNotes", "listWorkOrders", "listPartSupplierItems"];
 
+// What Receiving asks when the session may be told: receipts, the warehouse labels that name them, the receivable POs and the Supplier names.
+const RECEIVING_READS = ["listReceipts", "listInventoryWarehouses", "listReceivableSupplierPurchaseOrders", "listSuppliers"];
+
 beforeEach(() => { vi.unstubAllGlobals(); resetGovernedEmployeeDirectory(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -187,9 +190,13 @@ describe("the Parts pages ask only what the session may be told (access map)", (
       const sent = installServer(authority);
       render(<MemoryRouter initialEntries={["/inventory"]}><Shell authority={authority} /></MemoryRouter>);
       await settle(sent);
+      let receivingFrom = 0;
+      let receivingTo = 0;
       for (const [, path] of WALK.slice(1)) {
+        if (path === "/inventory/receiving") receivingFrom = sent.length;
         await act(async () => { navigate(path); });
         await settle(sent);
+        if (path === "/inventory/receiving") receivingTo = sent.length;
       }
       await act(async () => { window.dispatchEvent(new Event("focus")); });
       await settle(sent);
@@ -212,6 +219,12 @@ describe("the Parts pages ask only what the session may be told (access map)", (
         } else {
           expect(askedOnDetail.has(op), `${authority.key} is not authorised for ${op} but the page asked it`).toBe(false);
         }
+      }
+
+      // Authorised -> unchanged, on Receiving too: the reads asked while Receiving was the page are exactly those this person may be told.
+      const askedOnReceiving = new Set(sent.slice(receivingFrom, receivingTo).map((s) => s.operation));
+      for (const op of RECEIVING_READS) {
+        expect(askedOnReceiving.has(op), `${authority.key}: Receiving ${mayAsk(authority, op) ? "no longer asks" : "asked"} ${op}`).toBe(mayAsk(authority, op));
       }
     }, 120_000);
   }

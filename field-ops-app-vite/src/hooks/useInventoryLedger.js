@@ -31,9 +31,10 @@ export const toLedgerTransaction = (m) => ({
 
 // `readable` (access map): false = the session does not hold what readInventoryOnHand / readInventoryMovements require, so NOTHING is asked and the
 // hook settles at a stated, not-loading failure (the existing "unavailable" the screens already render); null = the session answer has not arrived,
-// so it is loading. true (the default) is every other caller, unchanged.
+// so it is loading. `denied: true` on the returned state lets a screen say "not available to your role" (an absence) instead of the read-failure copy,
+// which stays for real network / server failures (`denied` is then absent). true (the default) is every other caller, unchanged.
 const LEDGER_NOT_READABLE = Object.freeze(Object.assign(new Error("the stock ledger is not shown to this account"), { code: "FORBIDDEN" }));
-const LEDGER_DENIED = Object.freeze({ transactions: Object.freeze([]), healthEntries: Object.freeze([]), loading: false, error: LEDGER_NOT_READABLE, integrity: null });
+const LEDGER_DENIED = Object.freeze({ transactions: Object.freeze([]), healthEntries: Object.freeze([]), loading: false, error: LEDGER_NOT_READABLE, integrity: null, denied: true });
 const LEDGER_WAITING = Object.freeze({ transactions: Object.freeze([]), healthEntries: Object.freeze([]), loading: true, error: null, integrity: null });
 
 const COMPLETE = Object.freeze({ state: LEDGER_INTEGRITY_STATE.COMPLETE, reason: null, unavailablePartIds: Object.freeze([]), unreadableRows: 0, unattributableRows: 0 });

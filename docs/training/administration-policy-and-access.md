@@ -265,11 +265,11 @@ responsibility.*
 
 ### 11. Staff the Administrator (Owner only)
 
-The **Owner** can give the protected **Administrator (compatibility)** Security Role to **another** person, and
+The **Owner** can give the protected **Systems Administrator** Security Role to **another** person, and
 remove it from another person, using `admin.administratorRole.assign`.
 
 1. Signed in as the Owner, open the **other** person's record → **Security Roles**.
-2. Choose **Administrator (compatibility)**. Scope stays **All (global)** — scoped choices are shown *not
+2. Choose **Systems Administrator**. Scope stays **All (global)** — scoped choices are shown *not
    available for this Role*.
 3. Type the reason and **Assign Security Role**. To remove it, use **Remove** on that assignment with a reason.
 
