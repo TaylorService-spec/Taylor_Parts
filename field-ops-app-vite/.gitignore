@@ -28,3 +28,6 @@ dist-ssr
 # was swept. Evidence for a moment, not a record of the codebase.
 sweep-output/
 sweep-*.log
+
+# Parts browser network test output (e2e/partsNetworkGraph.spec.mjs) -- generated evidence, never committed.
+e2e-output/
