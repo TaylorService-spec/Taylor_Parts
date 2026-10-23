@@ -77,13 +77,13 @@ export type AnalysisArea = keyof typeof ANALYSIS_AREAS;
 
 // tenantCompanyIds = every ACTIVE company of the tenant, kept ONLY so the Finance rule (consolidated needs every company) is not
 // relaxed by the narrower authorized union; it is never a data scope.
-interface Scope { readonly consolidated: boolean; readonly companyIds: string[]; readonly companyKeys: string[]; readonly keyToId: Map<string, string>; readonly tenantCompanyIds: string[] }
+export interface Scope { readonly consolidated: boolean; readonly companyIds: string[]; readonly companyKeys: string[]; readonly keyToId: Map<string, string>; readonly tenantCompanyIds: string[] }
 
 // COMPANY ISOLATION (EOS Core Company Authority V1, DECISIONS #235): the scope is drawn ONLY from the companies the caller is
 // authorized for (eosOps/companyAuthority.ts). Consolidated / omitted = the union of those companies, never every active
 // company; an explicit company outside them is refused exactly like an unknown one (out of scope == unknown); no authority
 // refuses outright. Measure, channel, warehouse and queue rules and the Finance per-key rule still apply on top.
-async function companyScope(db: Queryable, actor: AnalysisActor, raw: unknown): Promise<Scope> {
+export async function companyScope(db: Queryable, actor: AnalysisActor, raw: unknown): Promise<Scope> {
   const authority = await resolveCompanyAuthority(db, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");

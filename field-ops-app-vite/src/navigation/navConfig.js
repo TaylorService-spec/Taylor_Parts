@@ -233,6 +233,9 @@ export const NAV_DOMAINS = [
     path: "analysis",
     subnav: [
       { key: "analysis", label: "Analysis", path: "" },
+      // EOS Insight (docs/design/eos-insight-inventory-lifecycle.md): the inventory lifecycle dashboard. Same door as the workspace;
+      // the server decides every section on its own existing read (inventory.transaction.read + WAREHOUSE scope, and so on).
+      { key: "inventoryLifecycle", label: "Inventory Lifecycle", path: "inventory-lifecycle" },
       // Goals (G-1, DECISIONS #G-1): author, approve and retire performance goals (targets). Its door is the `analysis.goals` surface, earned by the
       // performance.goal authoring capabilities; no `legacyKey` -- a goal is authored on EOS only.
       { key: "goals", label: "Goals", path: "goals" },
@@ -792,6 +795,7 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "rental/rental": ["rental.workspace"],
   // Analysis & Reporting (#208)
   "analysis/analysis": ["analysis.workspace"],
+  "analysis/inventoryLifecycle": ["analysis.workspace"],
   "analysis/goals": ["analysis.goals"],
   // Inventory
   "inventory/parts": ["inventory.catalog"],

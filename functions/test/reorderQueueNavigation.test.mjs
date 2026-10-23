@@ -224,6 +224,8 @@ test("POSITIVE -- capability + PARTS_OPERATIONS + REORDER_QUEUE opens the queue 
   assert.ok(surfaces.includes(SURFACE));
   assert.deepEqual(destinationsFor(surfaces), [
     "analysis/analysis",
+
+    "analysis/inventoryLifecycle",
     "dashboard/operationsDashboard",
     // Manufacturers R-1 Option A (Firebase exit F5): inventory.catalog.read earns the inventory.catalog surface, which now
     // also opens Inventory > Manufacturers.

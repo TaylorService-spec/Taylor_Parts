@@ -4,6 +4,7 @@
 // capability (and, for Sales, the caller's salesChannel-scoped holdings); actions are offered, never performed, here.
 import type { WorkOrderCaller, WorkOrderOperationDeps } from "../eosOps/workOrderOperationTypes";
 import { readAnalysisCatalog, readAnalysisWorkspace, readMeasureAnalysis, type AnalysisActor } from "./analysis";
+import { readInventoryLifecycle } from "./inventoryLifecycle";
 
 export const ANALYSIS_ROUTE = "/operations/analysis";
 
@@ -16,6 +17,8 @@ export const EOS_ANALYSIS_OPERATIONS: Readonly<Record<string, Op>> = Object.free
   readAnalysisCatalog: async (_deps, caller) => readAnalysisCatalog(actorOf(caller)),
   readAnalysisWorkspace: async (deps, caller, input) => readAnalysisWorkspace(deps.pool, actorOf(caller, deps.financeSelfTeamVisibilityActive), input, deps.now),
   readMeasureAnalysis: async (deps, caller, input) => readMeasureAnalysis(deps.pool, actorOf(caller, deps.financeSelfTeamVisibilityActive), input, deps.now),
+  // EOS Insight: the inventory lifecycle dashboard (docs/design/eos-insight-inventory-lifecycle.md). Same chain, same reach.
+  readInventoryLifecycle: async (deps, caller, input) => readInventoryLifecycle(deps.pool, actorOf(caller), input, deps.now),
 });
 export const ANALYSIS_OPERATIONS = Object.freeze(Object.keys(EOS_ANALYSIS_OPERATIONS));
 export const isAnalysisOperation = (name: unknown): name is string => typeof name === "string" && Object.prototype.hasOwnProperty.call(EOS_ANALYSIS_OPERATIONS, name);

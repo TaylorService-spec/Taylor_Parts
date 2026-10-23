@@ -243,10 +243,12 @@ test("PRODUCTION: the one destination this branch adds is invisible under the le
   // 90 -> 91: Administration > Permissions (Owner decision 2026-10-08, DECISIONS #212) -- a second door onto
   // administration.objects, governed-source only, invisible under the legacy source like Rental and Analysis.
   // 91 -> 92: Analysis > Goals (G-1, DECISIONS #G-1) -- earned by analysis.goals only (the performance.goal authoring capabilities), invisible under the legacy source.
-  assert.equal(destinations().length, 92, "the nav tree size moved by something other than Sales Agreements, the #204 configuration destinations, Rental, Analysis, Administration Permissions and Analysis Goals");
+  // 92 -> 93: Analysis > Inventory Lifecycle (EOS Insight) -- a second door onto analysis.workspace, invisible under the legacy source.
+  assert.equal(destinations().length, 93, "the nav tree size moved by something other than Sales Agreements, the #204 configuration destinations, Rental, Analysis, Administration Permissions, Analysis Goals and Inventory Lifecycle");
   for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "owner", "salesperson", null]) {
     assert.equal(isNavItemVisible(itemAt("rental/rental"), role, keysFor(role), legacy), false, `Rental opened for the legacy role "${role}"`);
     assert.equal(isNavItemVisible(itemAt("analysis/analysis"), role, keysFor(role), legacy), false, `Analysis opened for the legacy role "${role}"`);
+    assert.equal(isNavItemVisible(itemAt("analysis/inventoryLifecycle"), role, keysFor(role), legacy), false, `Inventory Lifecycle opened for the legacy role "${role}"`);
     assert.equal(isNavItemVisible(itemAt("analysis/goals"), role, keysFor(role), legacy), false, `Analysis Goals opened for the legacy role "${role}"`);
     assert.equal(isNavItemVisible(itemAt("administration/permissions"), role, keysFor(role), legacy), false, `Administration Permissions opened for the legacy role "${role}"`);
   }

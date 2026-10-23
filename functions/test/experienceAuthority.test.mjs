@@ -480,6 +480,8 @@ test("every persona in the governed manifest gets a destination set earned entir
     surfaces: ["analysis.workspace", "field.myWorkOrders", "service.workOrders"],
     destinations: [
       "analysis/analysis",
+
+      "analysis/inventoryLifecycle",
       "service/coordinatedMission",
       "service/jobAssignments",
       "service/scan",
@@ -521,6 +523,8 @@ test("every persona in the governed manifest gets a destination set earned entir
     surfaces: ["analysis.workspace", "inventory.catalog", "inventory.reorderQueue", "purchasing.purchaseOrders"],
     destinations: [
       "analysis/analysis",
+
+      "analysis/inventoryLifecycle",
       "dashboard/operationsDashboard",
       "inventory/manufacturers",
       "inventory/parts",

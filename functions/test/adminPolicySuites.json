@@ -259,6 +259,7 @@
     "test/financialPolicyFoundationPostgres.test.mjs",
     "test/rentalPostgres.test.mjs",
     "test/analysisPostgres.test.mjs",
+    "test/inventoryLifecyclePostgres.test.mjs",
     "test/myWorkPostgres.test.mjs",
     "test/administratorReorderQueuePostgres.test.mjs",
     "test/protectedAdministratorPostgres.test.mjs",

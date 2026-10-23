@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          EOS Insight (2026-10-23) — in-house visual analytics; first dashboard Inventory Lifecycle (DECISIONS #INSIGHT-1)
+- Agent/session:       Claude Code (Owner session) · Role: builder
+- Branch / worktree:   `feat/eos-insight-inventory-lifecycle` · `D:/eos-insight`
+- Base commit:         `968bc84d` (integrating current main before PR)
+- Owned paths:         functions/src/eosAnalysis/inventoryLifecycle.ts; functions/test/inventoryLifecyclePostgres.test.mjs; field-ops-app-vite/src/modules/analysis/InventoryLifecycle.jsx; field-ops-app-vite/src/shared/ui/charts/**; field-ops-app-vite/test/inventoryLifecycle.test.jsx; docs/design/eos-insight-inventory-lifecycle.md
+- Shared paths req'd:  analysis.ts / partsReads.ts (export only); analysisOperations.ts; navConfig.js; App.jsx; index.css (appended block); analysisApiClient.js; suites + CI path lists; pinned persona destination tests
+- Dependencies:        none
+- Expected outcome:    governed Inventory Lifecycle dashboard behind analysis.workspace; reusable chart kit
+- Protected boundaries:none (no migration, capability, grant, Rules, deploy or production change)
+- Lifecycle stage:     SANDBOX VERIFIED → INTEGRATION (PR)
+
 - Capability:          Lane HAR (2026-10-21) — persona harness target allowlist: `scripts/eosPersonaSession.mjs` (password + MFA login AND nonprod persona issuer) sends a secret ONLY to an exact, normalised, registered nonproduction EOS API / application origin from `config/environments.json`, same environment, validated before anything is sent, no redirect followed; results carry `proof: "login-mfa" | "issuer-api"` (Owner review "CODEX UAT SECURITY PREREQUISITE")
 - Agent/session:       Claude Code Lane HAR · Role: builder; controller merges
 - Branch / worktree:   `har/persona-harness-target-allowlist` · `.claude/worktrees/agent-a159114919f1cc303`

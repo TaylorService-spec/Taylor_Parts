@@ -55,7 +55,7 @@ function requireCapability(actor: ReorderActor, key: string): void {
   if (!actor || !(actor.capabilities instanceof Set) || !actor.capabilities.has(key)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `this read requires ${key}`);
 }
 
-async function withReadSnapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> {
+export async function withReadSnapshot<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
   try {
     await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
