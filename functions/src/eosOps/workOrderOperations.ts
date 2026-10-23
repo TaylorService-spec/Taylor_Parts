@@ -15,12 +15,13 @@
 import { SELF_SCHEDULING_READ_OPERATIONS, SELF_SCHEDULING_WORK_ORDER_OPERATIONS } from "./selfScheduling";
 import { createWorkOrder } from "./workOrderCreateCommand";
 import {
-  transitionWorkOrder, WorkOrderLifecycleError, WORK_ORDER_STATUSES, type LifecycleActor, type WorkOrderStatus,
+  transitionWorkOrder, requireEdgeCapability, WorkOrderLifecycleError, WORK_ORDER_STATUSES, type LifecycleActor, type WorkOrderStatus,
 } from "./workOrderLifecycle";
 import {
   scheduleWorkOrder, unscheduleWorkOrder, rescheduleWorkOrder, dispatchWorkOrder, completeWorkOrder, setWorkOrderEstimatedDuration,
 } from "./workOrderScheduling";
 import { recordWorkOrderExecution } from "./workOrderExecution";
+import { requireWorkOrderRecordReadKey } from "./workOrderRecordRead";
 import { setPartsPlan } from "./workOrderPartsPlanAuthority";
 import { readWorkOrderDetail, listWorkOrders, describeWorkOrderListQuery, listMyAssignedWorkOrders, listWorkOrderTechnicians, listWorkOrderOperatingCompanies } from "./workOrderQueries";
 import type { WorkOrderOp as Op } from "./workOrderOperationTypes";
@@ -43,6 +44,8 @@ function only(input: Record<string, unknown>, allowed: readonly string[]): void 
 
 /** A status-only edge, bound to its named operation so a caller never states a raw target status. */
 const edge = (from: WorkOrderStatus | null, to: WorkOrderStatus): Op => (deps, caller, input) => {
+  // CAPABILITY BEFORE VALIDATION (API-01). Cancel names no fixed source status, but every cancel edge carries the same capability.
+  requireEdgeCapability(caller.actor, from ?? "CREATED", to);
   only(input, from === null ? ["workOrderId", "expectedStatus", "note"] : ["workOrderId", "note"]);
   const expectedStatus = (from ?? input.expectedStatus) as WorkOrderStatus;
   if (from === null && !(WORK_ORDER_STATUSES as readonly string[]).includes(expectedStatus)) {
@@ -54,7 +57,7 @@ const edge = (from: WorkOrderStatus | null, to: WorkOrderStatus): Op => (deps, c
 
 export const EOS_WORK_ORDER_OPERATIONS = Object.freeze({
   // ── reads ──
-  readWorkOrder: (deps, caller, input) => (only(input, ["workOrderId"]),
+  readWorkOrder: (deps, caller, input) => (requireWorkOrderRecordReadKey(caller.operational), only(input, ["workOrderId"]),
     readWorkOrderDetail({ pool: deps.pool, reader: deps.reader }, caller.operational, input)),
   listWorkOrders: (deps, caller, input) => listWorkOrders({ pool: deps.pool }, caller.actor, input),
   describeWorkOrderListQuery: (deps, caller, input) => describeWorkOrderListQuery({ pool: deps.pool }, caller.actor, input),

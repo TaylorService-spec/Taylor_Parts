@@ -142,6 +142,13 @@ function onlyKeys(input: Input, allowed: readonly string[]): void {
   const extra = Object.keys(input).filter((k) => !allowed.includes(k));
   if (extra.length > 0) refuse("UNKNOWN_FIELD", "INVALID_INPUT", `unknown field(s): ${extra.sort().join(", ")}`);
 }
+/**
+ * CAPABILITY BEFORE VALIDATION (API-01): the key a command requires is fixed by the command, not by its input, so a caller who does not hold it is
+ * refused before the input is read -- it learns nothing about the command's shape. Same code and wording requireCompanyKeys uses for a holder-less caller.
+ */
+function requireHeld(actor: CycleCountActor, capabilityKey: string): void {
+  if (!actor?.capabilities?.has(capabilityKey)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${capabilityKey}`);
+}
 function requireId(v: unknown, name: string): string {
   if (typeof v !== "string" || !SAFE_ID.test(v)) refuse("INVALID_INPUT", "INVALID_INPUT", `${name} is required and must be a plain id`);
   return v as string;
@@ -338,6 +345,7 @@ function mapRepositoryError(err: unknown): never {
 
 export async function createEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.create);
   onlyKeys(input, ["location", "idempotencyKey"]);
   const location = input.location;
   if (!isPlain(location)) return refuse("INVALID_INPUT", "INVALID_INPUT", "location is required");
@@ -375,6 +383,7 @@ export async function createEosCycleCountSheet(deps: CycleCountOperationDeps, ac
 
 export async function openEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.create);
   onlyKeys(input, ["sheetId", "partId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -404,6 +413,7 @@ export async function openEosCycleCountLine(deps: CycleCountOperationDeps, actor
 
 export async function submitEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.submit);
   onlyKeys(input, ["sheetId", "partId", "countedQuantity", "countedSerialNumbers"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -442,6 +452,7 @@ export async function submitEosCycleCountLine(deps: CycleCountOperationDeps, act
 
 export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.reconcile);
   onlyKeys(input, ["sheetId", "partId", "decision", "reason"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -504,6 +515,7 @@ export async function reconcileEosCycleCountLine(deps: CycleCountOperationDeps, 
 
 export async function cancelEosCycleCountLine(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.cancel);
   onlyKeys(input, ["sheetId", "partId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   const partId = requireId(input.partId, "partId");
@@ -523,6 +535,7 @@ export async function cancelEosCycleCountLine(deps: CycleCountOperationDeps, act
 
 export async function closeEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.close);
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   return inTransaction(deps.pool, async (db) => {
@@ -539,6 +552,7 @@ export async function closeEosCycleCountSheet(deps: CycleCountOperationDeps, act
 
 export async function cancelEosCycleCountSheet(deps: CycleCountOperationDeps, actor: CycleCountActor, input: Input) {
   await requireActive(deps, actor.tenantId);
+  requireHeld(actor, EOS_CYCLE_COUNT_CAPABILITY.cancel);
   onlyKeys(input, ["sheetId"]);
   const sheetId = requireId(input.sheetId, "sheetId");
   return inTransaction(deps.pool, async (db) => {

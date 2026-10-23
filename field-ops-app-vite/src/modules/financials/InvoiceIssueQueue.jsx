@@ -33,6 +33,23 @@ export function useIssuableCompanies(callApi, enabled = true) {
   return access;
 }
 
+/** The longest the browser waits for the issue command: longer than the server's own 30s statement bound (policyDatabase.ts), so a server answer always wins. */
+export const ISSUE_WAIT_MS = 45_000;
+export const ISSUE_UNRESOLVED_MESSAGE = "The invoice request did not finish in time, so it is not known whether the invoice was issued. Re-read the register to check. Issuing again from this panel is safe: the same request key is reused, so it can never issue twice.";
+
+/** `issueInvoice` that always settles: a request that never answers (or a transport that throws) becomes a refusal value, never a panel stuck "in flight" with Cancel disabled. */
+async function callIssueWithin(callApi, input, waitMs = ISSUE_WAIT_MS) {
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => { resolve({ ok: false, message: ISSUE_UNRESOLVED_MESSAGE }); }, waitMs); });
+  try {
+    return await Promise.race([callApi("issueInvoice", input), timeout]);
+  } catch {
+    return { ok: false, message: ISSUE_UNRESOLVED_MESSAGE };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * The one issue step, shared by the Billing Queue and the Receivables register: the optional later due date (with its reason) and the `issueInvoice`
  * command. ONE idempotency key per opened panel; a refusal stays here in the server's own words with nothing changed. `onIssued(invoice)` is the
@@ -47,7 +64,7 @@ export function IssuePanel({ callApi, billingPackageId, subject, amountText, onI
   const issue = async () => {
     setBusy(true); onBusyChange?.(true); setRefusal(null);
     const reason = dueReason.trim();
-    const res = await callApi("issueInvoice", { billingPackageId, idempotencyKey: key, ...(dueOn ? { dueOn, ...(reason ? { dueReason: reason } : {}) } : {}) });
+    const res = await callIssueWithin(callApi, { billingPackageId, idempotencyKey: key, ...(dueOn ? { dueOn, ...(reason ? { dueReason: reason } : {}) } : {}) });
     setBusy(false); onBusyChange?.(false);
     if (!res.ok) { setRefusal(res.message ?? "The invoice was not issued."); return; }
     onIssued(res.result.invoice);
@@ -64,7 +81,8 @@ export function IssuePanel({ callApi, billingPackageId, subject, amountText, onI
       <Field label="Reason for that date">
         <input className="fo-input" aria-label="Reason for that date" maxLength={500} value={dueReason} onChange={(e) => setDueReason(e.target.value)} />
       </Field>
-      {refusal && <StatusIndicator tone="danger">{refusal}</StatusIndicator>}
+      {busy && <p className="fo-muted" role="status">Issuing the invoice — waiting for the server…</p>}
+      {refusal && <div role="alert"><StatusIndicator tone="danger">{refusal}</StatusIndicator></div>}
       <Button disabled={busy} onClick={issue}>Issue invoice now</Button>{" "}
       <Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>
     </div>

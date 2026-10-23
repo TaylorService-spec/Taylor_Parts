@@ -899,3 +899,36 @@ test("purchasing.purchaseOrders is earned by supplier.purchaseOrder.read alone, 
     assert.equal(await has(...caps), false, `${caps.join(",") || "nothing"} does not open Purchase Orders`);
   }
 });
+
+// NAV-PARTS-01 (UAT-R2.1): Global Search linked a Part to /inventory/parts/PRT-1001, which is not a route and fell through to the dashboard.
+// Every href the server's My Work / Global Search route builder emits must be a route the client actually registers. The client's routes are
+// declared in App.jsx (dynamic segments) and navConfig.js (static doors), so each kind is pinned to its canonical href AND to the declaration.
+test("every My Work / Global Search href kind resolves to a route the client registers (App.jsx / navConfig.js)", async () => {
+  const { pathFor, PATH_KINDS } = await import("../lib/eosExperience/myWork.js");
+  const app = readFileSync(path.join(here, "..", "..", "field-ops-app-vite", "src", "App.jsx"), "utf8");
+  const nav = readFileSync(path.join(here, "..", "..", "field-ops-app-vite", "src", "navigation", "navConfig.js"), "utf8");
+  const PINNED = {
+    workOrder: ["/service/work-orders/ID", app, 'path="work-orders/:workOrderId"'],
+    opportunity: ["/customers/opportunities/ID", app, 'path="opportunities/:opportunityId"'],
+    salesOrder: ["/customers/opportunities/sales-order/ID", app, 'path="opportunities/sales-order/:salesOrderId"'],
+    salesAgreement: ["/customers/opportunities/sales-agreement/ID", app, 'path="opportunities/sales-agreement/:salesAgreementId"'],
+    account: ["/customers/ID", app, 'path=":accountId"'],
+    equipment: ["/equipment/ID", app, 'path=":equipmentId"'],
+    part: ["/inventory/ID", app, 'path=":partId"'],
+    employee: ["/administration/users/ID", app, 'path="users/:employeeId"'],
+    reorderRequest: ["/inventory/reorder-queue", nav, 'path: "reorder-queue"'],
+    transferOrder: ["/inventory/transfers", nav, 'path: "transfers"'],
+    rentalAgreement: ["/rental", nav, 'key: "rental"'],
+    fleetUnit: ["/rental", nav, 'key: "rental"'],
+    obligation: ["/financials", nav, 'key: "financials"'],
+    settlement: ["/financials", nav, 'key: "financials"'],
+  };
+  assert.deepEqual([...PATH_KINDS].sort(), Object.keys(PINNED).sort(), "a new href kind must be pinned to its client route here");
+  for (const [kind, [href, source, declaration]] of Object.entries(PINNED)) {
+    assert.equal(pathFor(kind, "ID"), href, `${kind} href`);
+    assert.ok(source.includes(declaration), `${kind}: client route declaration ${declaration} not found`);
+  }
+  assert.equal(pathFor("part", "PRT-1001"), "/inventory/PRT-1001");
+  assert.equal(pathFor("part", "a/b"), "/inventory/a%2Fb");
+  assert.ok(!PATH_KINDS.some((k) => pathFor(k, "X").startsWith("/inventory/parts/")), "/inventory/parts/* is not a client route");
+});

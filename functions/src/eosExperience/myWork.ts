@@ -78,7 +78,8 @@ const PATH = Object.freeze({
   salesAgreement: (id: string) => `/customers/opportunities/sales-agreement/${id}`,
   account: (id: string) => `/customers/${id}`,
   equipment: (id: string) => `/equipment/${id}`,
-  part: (id: string) => `/inventory/parts/${encodeURIComponent(id)}`,
+  // App.jsx `<Route path=":partId">` under the inventory domain. `/inventory/parts/*` is NOT a route (it fell through to the dashboard: NAV-PARTS-01).
+  part: (id: string) => `/inventory/${encodeURIComponent(id)}`,
   reorderRequest: () => "/inventory/reorder-queue",
   transferOrder: () => "/inventory/transfers",
   rentalAgreement: () => "/rental",
@@ -87,6 +88,7 @@ const PATH = Object.freeze({
   settlement: () => "/financials",
   employee: (id: string) => `/administration/users/${id}`,
 } as Record<string, (id: string) => string>);
+export const PATH_KINDS: readonly string[] = Object.freeze(Object.keys(PATH));
 export const pathFor = (kind: string, id: string): string | null => (PATH[kind] ? PATH[kind](id) : null);
 
 /** A reorder request is named by its number; one raised before numbering (null) or with an empty number says so, never its storage key. */

@@ -86,6 +86,8 @@ export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze([
   "authorizeSalesOrderServiceProvider",
   // Owner ruling #204: the business decision on a proposed trade-in value (salesAgreement.tradeIn.approve).
   "approveSalesAgreementTradeIn",
+  // CLC (DECISIONS #CLC): the governed, audited, set-once correction of a company-less Opportunity / Sales Agreement (commercial.recordCompany.assign).
+  "assignRecordOperatingCompany",
   "closeOpportunityAsWon",
   "createOpportunity",
   "createSalesAgreement",

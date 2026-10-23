@@ -162,6 +162,10 @@ export async function recordWorkOrderExecution(
   if (!ID_SHAPE(actor?.tenantId) || !ID_SHAPE(actor?.principalId) || !(actor.capabilities instanceof Set)) {
     refuse("ACTOR_INVALID", "INVALID_INPUT", "an actor is a Principal within a tenant");
   }
+  // CAPABILITY BEFORE VALIDATION (API-01): the key is fixed by the command, so a caller without it is refused before the input is read.
+  if (!actor.capabilities.has(WORK_ORDER_EXECUTION_RECORD)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `recording execution requires ${WORK_ORDER_EXECUTION_RECORD}`);
+  }
   const workOrderId = (input as { workOrderId?: unknown } | null)?.workOrderId;
   if (!ID_SHAPE(workOrderId)) refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "a workOrderId is required");
   // CAPABILITY, THEN OWN ASSIGNMENT -- before the request body is interpreted any further.

@@ -18,7 +18,7 @@ import { stageCommercialOwnershipTransfer } from "../commercialOwnershipReposito
 import { allocateCommercialNumber } from "../commercialNumbering";
 import { lineFacts, pickFields } from "../../eosAudit/commandAuditEvent";
 import {
-  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveSalesChannel, requireActiveTenantAccount, requireTenantEmployee, runCommercialCommand,
+  ADMINISTRATIVE_HANDOFF_SOURCES, COMMERCIAL_CAPABILITIES, OWNERSHIP_HANDOFF_CORRECT_CAPABILITY, fail, requireCatalogReferences, requireActiveSalesChannel, requireActiveTenantAccount, requireEligibleCompanylessOwner, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps, type CommercialWriteScope,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -52,6 +52,12 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
     scope.admitChannel(built.salesChannel); // DQ-020: the channel it is created in
     await requireActiveSalesChannel(db, actor.tenantId, built.salesChannel);
     await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
+    // SAL-03(c): a company-less record is visible to its owner, so its owner is the creator (the authenticated actor) or the Account's governed owner inside the creator's companies.
+    if (built.operatingCompanyId === null) {
+      const named = typeof fields.ownerEmployeeId === "string" && fields.ownerEmployeeId.trim() !== "";
+      await requireEligibleCompanylessOwner(db, actor.tenantId,
+        { recordCreatorPrincipalId: actor.principalId, accountId: account.id, ownerEmployeeId: built.ownerEmployeeId, inherited: !named });
+    }
     if (built.creditedSalespersonId !== null) await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
     // New product references pass the catalog authority before any number is allocated or row written.
     await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
@@ -162,6 +168,12 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
     let ownershipHandoffId: string | null = null;
     if ("ownerEmployeeId" in patch) {
       const newOwner = await requireTenantEmployee(db, actor.tenantId, patch.ownerEmployeeId as string, "OWNER");
+      // SAL-03(c): reassigning a company-less record's owner is judged against the record's STORED creator, never the editor and never client input.
+      if (current.operatingCompanyKey === null) {
+        const stored = await db.query<{ created_by: string | null }>(`SELECT created_by FROM eos_commercial.opportunities WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, current.id]);
+        await requireEligibleCompanylessOwner(db, actor.tenantId,
+          { recordCreatorPrincipalId: stored.rows[0]?.created_by ?? null, accountId: (patch.accountId as string | undefined) ?? current.accountId, ownerEmployeeId: newOwner });
+      }
       const recorded = await stageCommercialOwnershipTransfer(db, actor.tenantId, actor.principalId, {
         kind: "OPPORTUNITY", recordId: current.id, newOwnerEmployeeId: newOwner, source: handoffSource as never,
         reason: handoffReason,
