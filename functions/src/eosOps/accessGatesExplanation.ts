@@ -14,7 +14,8 @@
 //   6 door                explainEffectiveAccess.surfaces    -- grantedSurfaceKeys, the runtime's own projection
 //   7 object, 9 record    explainEffectiveAccess.questionDecision -- authorizeOperationalAction, the runtime evaluator
 //   8 field               NOT COVERED: field groups are defined per command module; there is no registry to ask
-//   10 process            deriveWorkflowResponsibilities     -- the same derivation as listPrincipalWorkflowResponsibilities
+//   10 process            deriveWorkflowResponsibilities     -- the same derivation as listPrincipalWorkflowResponsibilities;
+//                         INFORMATIONAL only (a binding is enforced just on workflow-instance transitions), never a refusal
 //   11 system             NOT COVERED: the protected rules apply to a concrete change, not to a standing question
 // The chain stops at the FIRST refusal (section 3A.1): later gates are NOT_EVALUATED.
 //
@@ -33,7 +34,8 @@ import { EXPERIENCE_SURFACES } from "./experienceAuthority";
 import { explainEffectiveAccess, type EffectiveAccessExplanation, type ExplainOptions } from "./effectiveAccessExplanation";
 
 export type GateStatus = "PASS" | "FAIL" | "NOT_APPLICABLE" | "NOT_EVALUATED" | "NOT_COVERED";
-export type AccessVerdict = "OVERVIEW" | "ALLOWED" | "BLOCKED" | "NEEDS_RECORD";
+/** ALLOWED = every gate passed or was not applicable. ALLOWED_AS_CHECKED = nothing refused, but `notCoveredCount` gates could not be checked. */
+export type AccessVerdict = "OVERVIEW" | "ALLOWED" | "ALLOWED_AS_CHECKED" | "BLOCKED" | "NEEDS_RECORD";
 
 export interface GateSetting {
   /** Appendix G register id of the proposal ("1.1"). */
@@ -70,6 +72,8 @@ export interface AccessGatesExplanation {
   readonly question: { readonly kind: "PERSON" | "ACTION" | "PAGE"; readonly capabilityKey: string | null; readonly surfaceKey: string | null;
     readonly label: string | null; readonly businessContext: BusinessContext };
   readonly verdict: AccessVerdict;
+  /** How many gates are NOT_COVERED (cannot be checked from here). */
+  readonly notCoveredCount: number;
   /** Always the eleven gates, in order. */
   readonly gates: readonly AccessGate[];
   readonly firstFailure: { readonly step: number; readonly key: string; readonly label: string; readonly text: string } | null;
@@ -411,11 +415,16 @@ export async function explainAccessGates(
         const derived = deriveWorkflowResponsibilities(principalId, active, explanation as unknown as ExplainedAuthority);
         const mine = derived.responsibilities.filter((r) => r.capabilityKey && caps.includes(r.capabilityKey) && r.source !== "FUNCTIONAL_ROLE_BINDING_ONLY");
         const settings = [s("7.2", "Process steps using this action", steps.map((x) => `${x.workflow}: ${x.action}`).join("; "), "eos_policy.workflow_role_bindings")];
+        // INFORMATIONAL, NEVER A REFUSAL. "A binding never grants" (adminPolicy/types.ts:410), and the runtime enforces a binding
+        // ONLY on a workflow-instance transition: authorizeWorkflowAction (adminPolicy/workflowEngine.ts:244) is called solely from
+        // transitionWorkflowInstance (adminPolicy/workflowInstances.ts:186, reached via eosOps/workflowRuntimeOperations.ts:100).
+        // No domain command calls it yet (workflowInstances.ts:11-16, "No domain command calls these yet"), so an action is refused
+        // for lack of its capability (the Object gate), never for lack of a binding. Reporting BLOCKED here would claim a refusal
+        // the runtime does not make. If a domain command is switched to the engine, restore FAIL and cite that call site.
         if (mine.length > 0) {
           set("process", "PASS", `Can move: ${mine.map((r) => `${r.workflowName}, ${r.actionLabel}`).join("; ")}.`, settings);
         } else {
-          set("process", "FAIL", "No process step using this action is bound to a role they hold.", settings,
-            `${steps.map((x) => `${x.workflow}: ${x.action}`).join("; ")} can only be moved by a bound role, and none of their roles (${list(explanation.securityRoleKeys)}) is bound.`);
+          set("process", "NOT_APPLICABLE", "No stage responsibility is bound to a role this person holds; the action is decided by its permission.", settings);
         }
       }
     }
@@ -442,12 +451,14 @@ export async function explainAccessGates(
   }));
   const failed = gates.find((g) => g.status === "FAIL") ?? null;
   const needsRecord = gates.some((g) => g.key === "record" && g.status === "NOT_EVALUATED" && kind === "ACTION");
-  const verdict: AccessVerdict = failed ? "BLOCKED" : kind === "PERSON" ? "OVERVIEW" : needsRecord ? "NEEDS_RECORD" : "ALLOWED";
+  const notCoveredCount = gates.filter((g) => g.status === "NOT_COVERED").length;
+  const verdict: AccessVerdict = failed ? "BLOCKED" : kind === "PERSON" ? "OVERVIEW" : needsRecord ? "NEEDS_RECORD"
+    : notCoveredCount > 0 ? "ALLOWED_AS_CHECKED" : "ALLOWED";
 
   return Object.freeze({
     tenantId, principalId,
     question: Object.freeze({ kind, capabilityKey: q.capabilityKey, surfaceKey: q.surfaceKey, label, businessContext: q.businessContext }),
-    verdict,
+    verdict, notCoveredCount,
     gates: Object.freeze(gates),
     firstFailure: failed ? Object.freeze({ step: failed.step, key: failed.key, label: failed.label, text: `Blocked at: ${failed.label}. ${failed.failure ?? failed.summary}` }) : null,
     layerNamesApproved: false as const,

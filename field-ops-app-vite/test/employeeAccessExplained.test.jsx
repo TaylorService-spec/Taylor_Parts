@@ -38,7 +38,8 @@ function answer({ fail = null, passes = ["signIn", "principal", "employment", "c
   return {
     tenantId: "t-1", principalId: "pr-9",
     question: question ?? { kind: "PERSON", capabilityKey: null, surfaceKey: null, label: null, businessContext: {} },
-    verdict: fail ? "BLOCKED" : question ? "ALLOWED" : "OVERVIEW",
+    verdict: fail ? "BLOCKED" : question ? "ALLOWED_AS_CHECKED" : "OVERVIEW",
+    notCoveredCount: gates.filter((g) => g.status === "NOT_COVERED").length,
     gates,
     firstFailure: fail ? { step: failIndex + 1, key: fail.key, label: GATES[failIndex][1], text: `Blocked at: ${GATES[failIndex][1]}. ${fail.failure}` } : null,
     layerNamesApproved: approved,
@@ -97,7 +98,6 @@ const FAILURES = [
   { key: "company", summary: "The record's company ventana is outside this person's reach.", failure: "Their company reach is taylor; this record belongs to ventana." },
   { key: "object", summary: "Dispatch is not granted.", failure: "None of their Security Roles (fieldManager) or direct exceptions grants Dispatch." },
   { key: "record", summary: "The record is outside the scope this access is held in.", failure: "They are scoped to warehouse SC-WH-MAIN; this record is in SC-WH-SERVICE." },
-  { key: "process", summary: "No process step using this action is bound to a role they hold.", failure: "Work Order: Dispatch can only be moved by a bound role, and none of their roles (fieldManager) is bound." },
 ];
 describe("Access explained -- a refusal at each gate", () => {
   it.each(FAILURES)("blocks at $key with the server's own words and nothing after it reads as passed", async (fail) => {
@@ -121,6 +121,15 @@ describe("Access explained -- a refusal at each gate", () => {
     await ready();
     expect(within(gateEl("activation")).getByText("Not covered")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+    // Not a bare "Allowed": the headline admits what was not checked.
+    expect(document.querySelector("[data-access-verdict]").getAttribute("data-access-verdict")).toBe("ALLOWED_AS_CHECKED");
+    expect(screen.getByText("Allowed as far as EOS can check. 1 check is not covered yet.")).toBeTruthy();
+  });
+
+  it("says a bare Allowed only when the server says every gate passed or does not apply", async () => {
+    mount(makeApi({ ...answer({ question: { kind: "ACTION", capabilityKey: "x.y", surfaceKey: null, label: "X", businessContext: {} } }), verdict: "ALLOWED", notCoveredCount: 0 }));
+    await ready();
+    expect(screen.getByText("Allowed. Every gate passed or does not apply.")).toBeTruthy();
   });
 });
 

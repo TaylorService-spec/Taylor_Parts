@@ -36,7 +36,8 @@ function Headline({ data }) {
     return <p className="fo-warning" role="alert" data-access-verdict="BLOCKED" data-first-failure={data.firstFailure.key}>{data.firstFailure.text}</p>;
   }
   const text = {
-    ALLOWED: "Every gate that can be checked passes. Gates marked Not covered could not be checked here.",
+    ALLOWED: "Allowed. Every gate passed or does not apply.",
+    ALLOWED_AS_CHECKED: `Allowed as far as EOS can check. ${data.notCoveredCount} check${data.notCoveredCount === 1 ? " is" : "s are"} not covered yet.`,
     NEEDS_RECORD: "No gate refuses so far. The rest depends on the particular record: name its company, warehouse or channel, or see the Record access gate.",
     OVERVIEW: "Sign-in, principal, employment, company and door for this person. Choose an action or a page to check the rest.",
   }[data.verdict];

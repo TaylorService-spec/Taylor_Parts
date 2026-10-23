@@ -140,7 +140,10 @@ test("Access explained, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(gate(data, "activation").status, "NOT_COVERED");
     assert.equal(gate(data, "field").status, "NOT_COVERED");
     assert.equal(data.firstFailure, null);
-    assert.ok(["ALLOWED", "NEEDS_RECORD"].includes(data.verdict), data.verdict);
+    // Gates were not covered, so the verdict may never say a bare ALLOWED.
+    assert.ok(["ALLOWED_AS_CHECKED", "NEEDS_RECORD"].includes(data.verdict), data.verdict);
+    assert.ok(data.notCoveredCount >= 2, "activation and field are not covered");
+    assert.equal(data.notCoveredCount, data.gates.filter((g) => g.status === "NOT_COVERED").length);
   });
 
   await t.test("9. a page question: Door fails for a page the person is not offered, and says what it needs", async () => {
@@ -180,7 +183,7 @@ test("Access explained, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(undecided.verdict, "NEEDS_RECORD");
   });
 
-  await t.test("10b. gate 10 Process: a bound role can move the step; a role that holds the key but is not bound is blocked here", async () => {
+  await t.test("10b. gate 10 Process: a bound role can move the step; a role that holds the key but is not bound is told so, not blocked", async () => {
     // A Workflow Administrator (the Pass 8 bootstrap path) applies and publishes the Work Order seed.
     const made = await admin("createRole", { key: "workflowAdministrator", name: "Workflow Administrator", reason: "gates test" });
     assert.equal(made.ok, true, made.message);
@@ -201,13 +204,33 @@ test("Access explained, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.match(gate(bound, "process").summary, /Can move: .*Dispatch/);
 
     const fm = await person("uid-fieldmgr", ["fieldManager"], { id: "e-fm", name: "Fran Field" });
+    // The runtime enforces a binding only on a workflow-instance transition (workflowInstances.ts:186), never on the
+    // command itself: holding the key is what decides the action, so an unbound holder is NOT blocked, and the Process
+    // gate says so in plain words instead of claiming a refusal.
     const unbound = await explain(fm, { capabilityKey: dispatchCap });
     assert.equal(gate(unbound, "object").status, "PASS", "fieldManager holds the key");
-    assert.equal(unbound.firstFailure.key, "process");
-    assert.match(unbound.firstFailure.text, /^Blocked at: Process\. .*Dispatch.* none of their roles \(fieldManager\) is bound/);
-    assert.equal(gate(unbound, "system").status, "NOT_EVALUATED");
+    assert.equal(gate(unbound, "process").status, "NOT_APPLICABLE");
+    assert.match(gate(unbound, "process").summary, /No stage responsibility is bound .* decided by its permission/);
+    assert.equal(gate(unbound, "process").failure, null);
+    assert.equal(unbound.firstFailure, null);
+    assert.notEqual(unbound.verdict, "BLOCKED");
+    assert.ok(Object.values(statuses(unbound)).every((x) => x !== "FAIL"));
     // An action no published step uses is simply not a process question.
     assert.equal(gate(await explain(healthy, { capabilityKey: "customer.record.read" }), "process").status, "NOT_APPLICABLE");
+  });
+
+  await t.test("10c. gate 11 System: an administration action reports NOT_COVERED, and the verdict says so", async () => {
+    const adm = await person("uid-adm2", ["admin"], { id: "e-adm2", name: "Ada Admin" });
+    const data = await explain(adm, { capabilityKey: "admin.principalAccess.read" });
+    assert.equal(gate(data, "object").status, "PASS", JSON.stringify(gate(data, "object")));
+    assert.equal(gate(data, "system").status, "NOT_COVERED");
+    assert.match(gate(data, "system").summary, /^Not covered: the protected rules/);
+    assert.ok(gate(data, "system").settings.some((x) => x.id === "1.13"));
+    assert.equal(data.firstFailure, null);
+    assert.equal(data.verdict, "ALLOWED_AS_CHECKED");
+    assert.ok(data.notCoveredCount >= 3, "activation, field and system");
+    // A non-administration action never reports System as not covered.
+    assert.equal(gate(await explain(healthy, { capabilityKey: "customer.record.read" }), "system").status, "NOT_APPLICABLE");
   });
 
   await t.test("11. an unknown action, page or shape is refused as INVALID_INPUT, never ignored", async () => {

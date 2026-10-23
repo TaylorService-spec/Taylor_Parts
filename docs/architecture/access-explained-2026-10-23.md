@@ -36,7 +36,7 @@ Every gate is read off the resolver that already decides it:
 | 7 | Object | `authorizeOperationalAction` through `explainEffectiveAccess` `questionDecision` (4.1, 4.7) | yes |
 | 8 | Field | field groups are defined per command module; no registry to ask | **no** |
 | 9 | Record access | the same decision with the record's business context (scoped assignments 4.1; operational scopes, work eligibility 4.2, 2.3). Per-record assignment (`RECORD_ASSIGNMENT`) is reported as "decided per record" | partly |
-| 10 | Process | `deriveWorkflowResponsibilities` over the active workflow definitions (7.2) | yes |
+| 10 | Process | `deriveWorkflowResponsibilities` over the active workflow definitions (7.2). **Informational, never FAIL**: a binding is enforced only by `authorizeWorkflowAction` on a workflow-instance transition (`workflowInstances.ts:186`, via `workflowRuntimeOperations.ts:100`); no domain command calls it (`workflowInstances.ts:11-16`), so a missing binding never refuses an action | yes |
 | 11 | System | protected rules apply to a concrete change | **no** (admin actions are marked Not covered) |
 
 `explainEffectiveAccess` gained one optional input (`options.question`) and one optional output field (`questionDecision`); it
@@ -46,7 +46,8 @@ is otherwise unchanged and its parity suite passes.
 
 `gates[]`, always eleven, each `{ step, key, label, proposedLayer, status, summary, failure, settings[] }` with `status` one of
 PASS, FAIL, NOT_APPLICABLE, NOT_EVALUATED, NOT_COVERED, and `settings[]` rows `{ id (Appendix G), label, value, authority }`.
-`proposedLayer` carries the proposal's layer name per gate (section 3A.1) so a layer view needs no server change; the payload
+`verdict` is OVERVIEW, BLOCKED, NEEDS_RECORD, ALLOWED (every gate passed or not applicable) or ALLOWED_AS_CHECKED (nothing
+refused, `notCoveredCount` gates not covered). `proposedLayer` carries the proposal's layer name per gate (section 3A.1) so a layer view needs no server change; the payload
 says `layerNamesApproved: false` and the page does not show the column until the server sets it true. No mapping beyond the
 proposal's own table is invented. `firstFailure.text` is the "Blocked at: <gate>. <plain words>" sentence.
 

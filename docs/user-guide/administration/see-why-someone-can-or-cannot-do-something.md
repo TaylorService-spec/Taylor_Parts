@@ -32,6 +32,9 @@ checks after it say **Not evaluated**.
 | Not evaluated | An earlier check already refused, or you have not asked a question that needs it yet. |
 | Not covered | EOS cannot answer this check here yet. It is not a pass. |
 
+The top line is **Allowed** only when every check passed or does not apply. When nothing refuses but some checks are Not
+covered, it reads **Allowed as far as EOS can check. N checks are not covered yet.**
+
 At the top, a red line names the first refusal in plain words, for example:
 
 > Blocked at: Record access. They are scoped to sales channel RETAIL; this record is in NATIONAL_ACCOUNTS.
@@ -51,7 +54,7 @@ EOS Sign-in, Employee profile, and so on).
 7. **Object**: a role or a direct exception grants the action.
 8. **Field**: whether a field is restricted. **Not covered today.**
 9. **Record access**: the record is inside the person's reach (the channel, company or other scope they hold it in).
-10. **Process**: for a step in a published process, a role the person holds is bound to that step.
+10. **Process**: for a step in a published process, whether a role the person holds is bound to that step. This is information only and never refuses: an action is decided by its permission (check 7), and a binding is enforced only when a workflow item is moved from the Workflow work list.
 11. **System**: protected-administrator rules. **Not covered today**, because those rules apply when a change is made.
 
 ## If the page says it is unavailable
