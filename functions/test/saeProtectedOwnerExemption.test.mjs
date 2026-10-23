@@ -509,7 +509,7 @@ test("RULE 2 / D3 / D1: the Owner is STILL refused granting the exemption to a R
   assert.match(cmds, /a principal may not grant a capability to a Role it holds/, "unconditional");
   assert.match(cmds, /requireDirectGrantee/, "the direct-grant self rule stays");
   const api = code("adminPolicy/adminPolicyApi.ts");
-  assert.equal((api.match(/requireGrantAuthority\(/g) ?? []).length, 2, "the preview gate and the commit gate both route through the family-aware gate");
+  assert.equal((api.match(/requireGrantAuthority\(/g) ?? []).length, 3, "the preview gate, the commit gate and the authorityCommand early gate (API-01) all route through the family-aware gate");
   assert.doesNotMatch(api, /requireSecurityAdministrationCapability\(deps\.repo, actor, AUTHORITY_CHANGE_GATE/, "no front gate bypasses it");
   const ex = code("adminPolicy/exemptionAdministration.ts");
   assert.doesNotMatch(ex, /exemptionRecord|decideSecondaryApprovalExemption\([^)]*delegated/, "the Owner check reads Rule 1 only");

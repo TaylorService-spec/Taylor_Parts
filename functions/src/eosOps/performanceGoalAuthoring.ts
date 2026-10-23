@@ -268,6 +268,11 @@ const rethrowGoalError = (err: unknown): never => {
  * unit, direction, currency?, effectiveFrom, effectiveTo?, supersedesGoalId?, idempotencyKey }. The goal id and the version are the server's.
  */
 export async function createPerformanceGoalDraft(deps: GoalAuthoringDeps, actor: RecordsActor, input: Record<string, unknown>) {
+  // CAPABILITY BEFORE VALIDATION (API-01): which of the two keys applies depends on `supersedesGoalId`, so a caller holding NEITHER is refused here,
+  // before the input is read. The verb-specific requireCapability below still decides a holder of only one of them.
+  if (!(actor?.capabilities instanceof Set) || !(actor.capabilities.has(GOAL_CREATE) || actor.capabilities.has(GOAL_SUPERSEDE))) {
+    requireCapability(actor, (input as { supersedesGoalId?: unknown } | null | undefined)?.supersedesGoalId ? GOAL_SUPERSEDE : GOAL_CREATE);
+  }
   const i = acceptOnly(input, ["metricId", "targetScopeType", "targetScopeId", "targetValue", "unit", "direction", "currency", "effectiveFrom", "effectiveTo", "supersedesGoalId", "idempotencyKey"]);
   const key = requireIdempotencyKey(i.idempotencyKey);
   const supersedes = typeof i.supersedesGoalId === "string" && i.supersedesGoalId !== "" ? i.supersedesGoalId : null;

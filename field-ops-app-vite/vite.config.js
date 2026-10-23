@@ -132,6 +132,10 @@ export default defineConfig({
         alias: [{
           find: /^(?:\.{1,2}\/)+firebase\/firebase(?:\.js)?$/,
           replacement: resolvePath(CONFIG_DIR, 'src/firebase/firebaseAbsent.js'),
+        }, {
+          // The SDK packages themselves (imported directly by ~18 files): an EOS-only bundle ships no Firebase SDK code.
+          find: /^firebase\/(?:app|auth|firestore|functions)$/,
+          replacement: resolvePath(CONFIG_DIR, 'src/firebase/firebaseSdkAbsent.js'),
         }],
       }
     : {},
