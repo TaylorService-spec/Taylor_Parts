@@ -220,15 +220,17 @@ export function useMyAssignedReorderRequests(status, enabled = true, deps = {}) 
 // r4 C, Fix 2 -- previously always `null`, silently indistinguishable from
 // "no request exists yet"). Existing callers that don't destructure `error`
 // are unaffected either way.
-export function useReorderRequestForPart(partId, requestId, deps = {}) {
+export function useReorderRequestForPart(partId, requestId, deps = {}, enabled = true) {
   // Two shapes, one read. With a known id it is that request; without, it is the most recent request
   // for the part. The id branch still proves the request belongs to the part asked about -- a
   // mismatch is a DIFFERENT fact from "no request exists", and the caller distinguishes them.
   const byId = useGovernedReorderRead("readReorderRequest", { reorderRequestId: requestId },
-    !!requestId, deps, (rows) => rows[0] ?? null);
+    enabled && !!requestId, deps, (rows) => rows[0] ?? null);
   const byPart = useGovernedReorderRead("readReorderQueue", { partId },
-    !requestId && !!partId, deps, (rows) => rows[0] ?? null);
+    enabled && !requestId && !!partId, deps, (rows) => rows[0] ?? null);
 
+  // `enabled` false (the caller states the person cannot read it): nothing was asked, so nothing is "not found". The caller says why.
+  if (!enabled) return { data: null, loading: false, error: null, refresh: byId.refresh };
   if (requestId) {
     const { refresh } = byId;
     if (byId.loading || byId.error) return { data: null, loading: byId.loading, error: byId.error, refresh };

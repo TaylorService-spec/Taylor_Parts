@@ -42,7 +42,8 @@ import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL, LEGACY_NOTES_ARCHIVE_NOT_LOADED, LEGACY_NOTES_NONE_FOR_PART } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
-import { usePartsReadGates } from "../../access/partsReadGates.js";
+import { usePartsReadGates, supplierTermsReadable, PART_REORDER_STATUS_NOT_AVAILABLE_COPY } from "../../access/partsReadGates.js";
+import { useSessionAccess } from "../../access/sessionAccess.js";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
@@ -1381,16 +1382,23 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // further down, after `canonicalPart` resolves.
   // UAT RO-01: a read the server is certain to refuse for this person is not fired (see access/partsReadGates.js). The Manufacturer
   // catalog settles at its existing "denied" state, so the raw manufacturerId fallback below is unchanged.
+  const sessionAccess = useSessionAccess();
   const gates = usePartsReadGates();
   const manufacturerCatalog = useManufacturerCatalog(gates.manufacturers);
+  // The Part's own Reorder request: found by Part it is a QUEUE read (reorder.request.read + the REORDER_QUEUE scope); found by id it is readReorderRequest
+  // (reorder.request.read, then queue reach or assignment). Not held: not asked, and the absence is STATED below (R2.2 PARTS-403).
+  const reorderRequestReadable = requestId ? gates.myAssigned : gates.queue;
   const {
     data: reorderRequest,
-    loading: reorderRequestLoading,
+    loading: reorderRequestHookLoading,
     error: reorderRequestError,
     // refreshReorderRequest RE-READS the request (an EOS fetch, not a live subscription), so each
     // action card below calls it after its command succeeds and the page shows the new status.
     refresh: refreshReorderRequest,
-  } = useReorderRequestForPart(partId, requestId);
+  } = useReorderRequestForPart(partId, requestId, undefined, reorderRequestReadable);
+  // Until the session answer settles the read is neither permitted nor refused: that is "loading", not "no request" (which would offer Request Reorder).
+  const reorderRequestLoading = reorderRequestHookLoading || !gates.settled;
+  const reorderRequestUnreadable = gates.settled && !reorderRequestReadable;
   // Firebase exit F4 (DECISIONS #247): the Reorder Request is an EOS row, and the only person it names is its assignee, by
   // EMPLOYEE id (assignedEmployeeId). That id is named by the governed resolveEmployeeDisplayNames, never by the Firestore
   // employee directory (which is keyed by Firebase uid and could not name it). The actor columns the legacy request carried
@@ -1552,7 +1560,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // BAND (ND-28: sharing a card does not make the informational number above it the authority for the command). B3-x: one entry, used both
   // under a forecast and -- for a Part the ledger has nothing on -- under the honest empty state.
   const reorderEntry = (recommendation, noHistory) =>
-    !reorderRequestLoading && !reorderRequestError && (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) ? (
+    !reorderRequestLoading && !reorderRequestError && !reorderRequestUnreadable && (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) ? (
       <>
         {reorderError && <p className="ns-state--na">{reorderError}</p>}
         {/* WORKSTREAM 2B. The request names a governed Warehouse, and the trusted command derives its operating company from that. A part
@@ -1684,6 +1692,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       />
       {canonicalPart && catalogMutationHeld && <CatalogMutationPausedNotice />}
 
+      {reorderRequestUnreadable && <p className="fo-muted" role="status" data-reorder-status-unavailable>{PART_REORDER_STATUS_NOT_AVAILABLE_COPY}</p>}
       {reorderRequestError && (
         <LoadingEmptyState
           loading={false}
@@ -2055,7 +2064,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             through the governed PostgreSQL command layer. The section asks the server and renders its answer: a reader
             without the supplier-terms read permission sees a denial, never an empty list. */}
         <section className="ns-band ns-band--reference">
-          <PartSupplierTermsSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
+          <PartSupplierTermsSection partId={resolvedPartId} partNumber={part.internalPartNumber} readable={gates.settled ? supplierTermsReadable(sessionAccess) : null} />
         </section>
 
         {/* ── ACTIVITY ──────────────────────────────────────────────────────────────────────
