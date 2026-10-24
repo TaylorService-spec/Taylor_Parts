@@ -22,6 +22,6 @@ import PageHeader from "./primitives/PageHeader.jsx";
 // route-change screen-reader landmark/focus target (outside this
 // component's scope) -- that is a distinct, non-visual navigation aid,
 // not a second visible page title, so it does not compete with this one.
-export default function WorkspaceHeader({ title, children }) {
-  return <PageHeader title={title} actions={children} />;
+export default function WorkspaceHeader({ title, help, children }) {
+  return <PageHeader title={title} help={help} actions={children} />;
 }
