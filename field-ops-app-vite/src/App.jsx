@@ -131,7 +131,7 @@ import Login from "./auth/Login";
 // EOS native login (docs/architecture/eos-native-identity.md): the human front door, when the build enables it.
 import EosLogin from "./auth/EosLogin";
 import { eosHumanLoginEnabled } from "./auth/eosLoginClient.js";
-// A session that owes a second factor can use /auth/* only: it gets the authenticator setup screen, not the app.
+// A session that owes a second factor can use the sign-in routes only: it gets the authenticator setup screen, not the app.
 import { useMfaEnrollmentRequired } from "./auth/useMfaEnrollmentRequired.js";
 const MfaEnrollmentGate = lazy(() => import("./auth/MfaEnrollmentGate.jsx"));
 // FIREBASE EXIT B2: in an EOS-only sign-in build a screen whose batch has not migrated cannot reach Firebase; its failure
@@ -1431,7 +1431,7 @@ export default function App() {
     );
   }
 
-  // BEFORE every read that would be refused: the server answers MFA_ENROLLMENT_REQUIRED to all but /auth/*, so the identity,
+  // BEFORE every read that would be refused: the server answers MFA_ENROLLMENT_REQUIRED to all but the sign-in routes, so the identity,
   // experience and access reads below all fail for this session. Client-only; the server gate is unchanged.
   if (mfaEnrollmentRequired && user) {
     return (
