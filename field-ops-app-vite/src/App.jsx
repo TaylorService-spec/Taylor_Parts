@@ -207,7 +207,7 @@ import {
   EXPERIENCE_UNAVAILABLE_REASON,
   useExperienceContext,
 } from "./hooks/useExperienceContext.js";
-import EmptyState from "./shared/ui/EmptyState.jsx";
+import DeniedDestination from "./navigation/DeniedDestination.jsx";
 import { Button } from "./shared/ui/primitives";
 
 // Sprint 2.0.1 -- Navigation Foundation (Release 2.0, Platform
@@ -987,6 +987,7 @@ function WarehouseWorkspaceSurface({ role }) {
 // render and re-run every route memo that depends on it.
 const NO_LEGACY_KEYS = Object.freeze([]);
 
+// Exported (at the end of this file) for the route-level tests (test/deniedDirectRoute.test.jsx); App() remains the only production caller.
 function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   // ════════════ WAVE 16 / LANE BQ -- THE CUTOVER, WHERE THE ROUTES ARE DECIDED ════════════
   //
@@ -1084,6 +1085,9 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               shape existed on /customers/:accountId and /equipment/:equipmentId.
               A static segment outranks a dynamic one in the router's own ranking, so simply
               emitting these routes takes the path back from the record lookup.
+              The refusal is DeniedDestination (UAT AUTH-UI-01): the governed denial in the shell plus a
+              link to the first destination this principal can open -- it used to be a bare "no results"
+              empty state with no way onward.
               Access is unchanged -- this only gives the refusal somewhere to be said. */}
           {domain.subnav
             .filter((item) => !isNavItemVisible(item, navRole, navAllowedLegacyKeys, operationalContext))
@@ -1093,10 +1097,11 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 path={item.path || undefined}
                 index={item.path === ""}
                 element={
-                  <EmptyState
-                    variant="filtered"
-                    title={`${item.label} isn't available to your role`}
-                    message="Your account doesn't have access to this area. Contact an administrator if you believe this is an error."
+                  <DeniedDestination
+                    label={item.label}
+                    role={navRole}
+                    allowedLegacyKeys={navAllowedLegacyKeys}
+                    operationalContext={operationalContext}
                   />
                 }
               />
@@ -1560,3 +1565,7 @@ export default function App() {
     </SessionAccessContext.Provider>
   );
 }
+
+// A named export at the END rather than `export function` above: the static Scan guard (test/useInventoryScanCapabilities.test.jsx)
+// slices each surface at the next top-level `function` line, so an export keyword on AppRoutes would widen the slice it checks.
+export { AppRoutes };
