@@ -191,7 +191,8 @@ Setup and reset codes are returned **once** to the administrator, to hand over i
   - A refused refresh ends the in-memory session and notifies `AuthContext`, which signs the person out.
 - **`auth/EosLogin.jsx`** shows sign-in, then the second factor, then the setup/reset code form. `App.jsx` renders it instead of `Login.jsx` **only** when the build sets `VITE_EOS_HUMAN_LOGIN=enabled` and is not a production build.
 - **`AuthContext.jsx`** restores a session silently from the refresh token, once per page load. It re-resolves identity after login and revokes on logout. The Firebase path is unchanged.
-- **`modules/account/AccountSecurity.jsx`** (`/account/security`) covers password, authenticator enrollment with an `otpauth://` link plus a manual key, recovery codes, and sessions.
+- **`modules/account/AccountSecurity.jsx`** (`/account/security`) covers password, authenticator enrollment (a QR drawn in the browser from the `otpauth://` URI, with the link and manual key as fallback), recovery codes, and sessions.
+- **`auth/MfaEnrollmentGate.jsx`** is what `App.jsx` renders (ahead of every other read) while the session's `mfaEnrollmentRequired` is true: the server lets that session call `/auth/*` only, so the person gets AccountSecurity plus Sign out instead of a refused app. Client-only; the server gate is unchanged. Done = code confirmed and recovery codes saved, then a reload restores the now-verified session from the cookie.
 - **`modules/administration/EmployeeLoginAccount.jsx`** adds the "EOS Sign-in" section in User detail > Roles & Access. It covers create, setup/reset code, unlock, sign out everywhere (confirmed), reset two-step, require two-step, enable/disable, and remove (confirmed), plus recent activity.
 
 ### (f) Multi-tenant identity — Owner ruling D-12 (2026-10-12)

@@ -369,6 +369,12 @@ jobs:
         run: npx vitest run test/noAccessSignOut.test.jsx
         working-directory: field-ops-app-vite
 
+      # LANE QR-SETUP: authenticator enrollment draws a QR in the browser (the key never leaves it), keeps the tap link and key as
+      # the fallback, gives the phone-clock hint; a session that owes a second factor sees the setup screen and Sign out, not the app.
+      - name: Authenticator setup QR and forced enrollment -- client (vitest + jsdom)
+        run: npx vitest run test/authenticatorSetup.test.jsx
+        working-directory: field-ops-app-vite
+
       # LANE GA: governed scope pickers -- Operational Scope targets and Sales Channel values come ONLY from the server;
       # no typed scope id; a type with no governed value is shown unavailable with the server's reason.
       - name: Governed scope pickers -- client (vitest + jsdom)

@@ -911,6 +911,10 @@ scripts/resolveEnvironment.mjs
 scripts/eosPersonaSession.mjs
 field-ops-app-vite/test/b2AuthContextEosOnly.test.jsx
 field-ops-app-vite/test/noAccessSignOut.test.jsx
+field-ops-app-vite/test/authenticatorSetup.test.jsx
+field-ops-app-vite/src/auth/MfaEnrollmentGate.jsx
+field-ops-app-vite/src/auth/useMfaEnrollmentRequired.js
+field-ops-app-vite/src/modules/account/AccountSecurity.jsx
 field-ops-app-vite/test/b2LazyScreensWithoutFirebase.test.jsx
 field-ops-app-vite/src/hooks/useInventoryActions.js
 field-ops-app-vite/src/auth/eosLoginClient.js

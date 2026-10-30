@@ -33,6 +33,22 @@ sign-in above to the EOS sign-in. You can tell by the field name: it says **Sign
 3. The first time (or after a reset) you have no password yet. Click **Have a setup or reset code?**, enter the code
    your administrator gave you in person or by phone, choose a password of at least 12 characters, then sign in.
 
+### Setting up two-step verification (first time, or after your administrator resets it)
+
+If your administrator requires two-step verification and you have not set it up, signing in takes you straight to a
+**Set up two-step verification** screen instead of the app. Use **Sign out** there if you need to leave.
+
+1. Type your password under **Your current password** and click **Set up an authenticator app**.
+2. A square **QR code** appears. On your phone, open an authenticator app such as **Google Authenticator**, add an
+   account, and choose to scan a QR code. Point the camera at the code on your screen. You do not type anything long.
+3. Type the **six-digit code** the app now shows and click **Turn on**.
+4. Save the **recovery codes** it shows (they are shown once, and each works once if you lose your phone), then click
+   **I have saved them**. The app opens.
+
+Setting up on the phone itself, or cannot scan? Tap **Open it in the authenticator app**, or type the key shown under the
+code into the app by hand. If the code is refused again and again, set your phone's date and time to **automatic**:
+the codes depend on the time, and a wrong phone clock is the most common cause.
+
 There is no "email me a reset link" in this workspace. If you forget your password, ask your administrator for a
 **reset code**; it works once and expires. Five wrong tries in a row lock the account for a few minutes — wait, or ask
 your administrator to unlock it.
