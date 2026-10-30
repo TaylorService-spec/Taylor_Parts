@@ -131,6 +131,9 @@ import Login from "./auth/Login";
 // EOS native login (docs/architecture/eos-native-identity.md): the human front door, when the build enables it.
 import EosLogin from "./auth/EosLogin";
 import { eosHumanLoginEnabled } from "./auth/eosLoginClient.js";
+// A session that owes a second factor can use the sign-in routes only: it gets the authenticator setup screen, not the app.
+import { useMfaEnrollmentRequired } from "./auth/useMfaEnrollmentRequired.js";
+const MfaEnrollmentGate = lazy(() => import("./auth/MfaEnrollmentGate.jsx"));
 // FIREBASE EXIT B2: in an EOS-only sign-in build a screen whose batch has not migrated cannot reach Firebase; its failure
 // is contained to the content area (components/RouteErrorBoundary.jsx) rather than replacing the whole app.
 import { EOS_AUTH_ONLY } from "./auth/authSource.js";
@@ -1353,6 +1356,7 @@ const ROUTER_BASENAME = routerBasenameFrom(import.meta.env.BASE_URL);
 
 export default function App() {
   const { user, role, loading, operationalRoles, employmentStatus, identityError, retryIdentityResolution } = useAuth();
+  const mfaEnrollmentRequired = useMfaEnrollmentRequired();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
   // Issue #325 -- capability gating from the TRUSTED effective-access feed (Inventory's
   // resolveEffectiveAccess callable), never from the raw role. The hook asks the callable for a
@@ -1423,6 +1427,16 @@ export default function App() {
     return (
       <Suspense fallback={<div className="fo-panel">Loading...</div>}>
         <CustomerSchedulingPage token={selfScheduleToken} />
+      </Suspense>
+    );
+  }
+
+  // BEFORE every read that would be refused: the server answers MFA_ENROLLMENT_REQUIRED to all but the sign-in routes, so the identity,
+  // experience and access reads below all fail for this session. Client-only; the server gate is unchanged.
+  if (mfaEnrollmentRequired && user) {
+    return (
+      <Suspense fallback={<div className="fo-panel">Loading...</div>}>
+        <MfaEnrollmentGate />
       </Suspense>
     );
   }

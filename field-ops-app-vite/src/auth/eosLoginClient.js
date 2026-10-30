@@ -156,7 +156,8 @@ export function createEosLoginClient(deps = {}) {
   function adopt(session) {
     const d = describeAccessToken(session?.accessToken ?? "");
     if (!d) throw new EosLoginError("UNAVAILABLE");
-    access = d;
+    // `mfaEnrollmentRequired` is the server's word that this session owes a second factor and may use /auth/* only.
+    access = Object.freeze({ ...d, mfaEnrollmentRequired: session?.mfaEnrollmentRequired === true });
     notify();
     return d;
   }
@@ -269,11 +270,14 @@ export const eosLoginClient = createEosLoginClient();
 // (a Firebase-signed-in user's calls never trigger an EOS refresh).
 setHumanEosTokenSource(() => (eosHumanLoginEnabled() && eosLoginClient.currentSession() ? eosLoginClient.freshAccessToken() : null));
 
+/** Why a correct-looking code is refused most often: the phone's clock. Shown wherever a six-digit code is asked for. */
+export const CLOCK_HINT = "Codes depend on the time, so set your phone's date and time to automatic.";
+
 /** Words for the codes a person can act on. Never echoes a value back. */
 export function eosLoginMessage(code, detail) {
   switch (code) {
     case "LOGIN_REFUSED": return "Sign-in failed. Check your sign-in name and password, or ask your administrator.";
-    case "MFA_CODE_REFUSED": return "That code was not accepted. Enter the current code from your authenticator app.";
+    case "MFA_CODE_REFUSED": return `That code was not accepted. Enter the current code from your authenticator app. ${CLOCK_HINT}`;
     case "MFA_CHALLENGE_INVALID": return "This sign-in step expired. Start again.";
     case "MFA_KEY_UNAVAILABLE": return "Two-step verification is temporarily unavailable. Contact your administrator.";
     case "RATE_LIMITED": return "Too many attempts. Wait a minute and try again.";
