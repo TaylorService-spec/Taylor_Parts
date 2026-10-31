@@ -37,18 +37,21 @@ export function useIssuableCompanies(callApi, enabled = true) {
 export const ISSUE_WAIT_MS = 45_000;
 export const ISSUE_UNRESOLVED_MESSAGE = "The invoice request did not finish in time, so it is not known whether the invoice was issued. Re-read the register to check. Issuing again from this panel is safe: the same request key is reused, so it can never issue twice.";
 
-/** `issueInvoice` that always settles: a request that never answers (or a transport that throws) becomes a refusal value, never a panel stuck "in flight" with Cancel disabled. */
-async function callIssueWithin(callApi, input, waitMs = ISSUE_WAIT_MS) {
+export const REBILL_UNRESOLVED_MESSAGE = "The rebill request did not finish in time, so it is not known whether the new billing package was prepared. Re-read the register to check. Preparing again from this panel is safe: the same request key is reused, so it can never prepare twice.";
+
+/** A command that always settles: a request that never answers (or a transport that throws) becomes a refusal value, never a panel stuck "in flight" with Cancel disabled. The request itself is NOT cancelled, so the outcome is unknown, never "failed". */
+async function callWithin(callApi, operation, input, unresolvedMessage, waitMs = ISSUE_WAIT_MS) {
   let timer;
-  const timeout = new Promise((resolve) => { timer = setTimeout(() => { resolve({ ok: false, message: ISSUE_UNRESOLVED_MESSAGE }); }, waitMs); });
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => { resolve({ ok: false, message: unresolvedMessage }); }, waitMs); });
   try {
-    return await Promise.race([callApi("issueInvoice", input), timeout]);
+    return await Promise.race([callApi(operation, input), timeout]);
   } catch {
-    return { ok: false, message: ISSUE_UNRESOLVED_MESSAGE };
+    return { ok: false, message: unresolvedMessage };
   } finally {
     clearTimeout(timer);
   }
 }
+const callIssueWithin = (callApi, input) => callWithin(callApi, "issueInvoice", input, ISSUE_UNRESOLVED_MESSAGE);
 
 /**
  * The one issue step, shared by the Billing Queue and the Receivables register: the optional later due date (with its reason) and the `issueInvoice`
@@ -100,7 +103,7 @@ export function RebillPanel({ callApi, salesOrderId, subject, onPrepared, onCanc
   const [refusal, setRefusal] = useState(null);
   const prepare = async () => {
     setBusy(true); onBusyChange?.(true); setRefusal(null);
-    const res = await callApi("prepareBillingPackage", { salesOrderId, idempotencyKey: key });
+    const res = await callWithin(callApi, "prepareBillingPackage", { salesOrderId, idempotencyKey: key }, REBILL_UNRESOLVED_MESSAGE);
     setBusy(false); onBusyChange?.(false);
     if (!res.ok) { setRefusal(res.message ?? "The rebill was not prepared."); return; }
     onPrepared(res.result);
@@ -111,7 +114,8 @@ export function RebillPanel({ callApi, salesOrderId, subject, onPrepared, onCanc
         Prepare a new billing package for {subject}, so it can be invoiced again under a NEW invoice number.
         The voided invoice keeps its number. Nothing is issued until you issue the new receivable.
       </p>
-      {refusal && <StatusIndicator tone="danger">{refusal}</StatusIndicator>}
+      {busy && <p className="fo-muted" role="status">Preparing the rebill — waiting for the server…</p>}
+      {refusal && <div role="alert"><StatusIndicator tone="danger">{refusal}</StatusIndicator></div>}
       <Button disabled={busy} onClick={prepare}>Prepare rebill now</Button>{" "}
       <Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>
     </div>
