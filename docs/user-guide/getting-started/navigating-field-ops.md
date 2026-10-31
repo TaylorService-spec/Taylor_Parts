@@ -27,6 +27,7 @@
 - **Some destinations open a "This area isn't built yet" page.** That's expected. The navigation shows the platform's full planned shape, but a few sections are still placeholders that are **not yet available**. Sections that are live today include CRM/Sales, Work Orders, Dispatch, Parts, and the areas covered by the other guides in this section.
 - **A destination you expected is missing.** Destinations are filtered by role (and sometimes by a specific granted permission). If you can't see an area you need, your role may not include it — contact an admin.
 - Typing a web address for an area your role can't reach sends you back to the Dashboard rather than showing an error.
+- **The small ⓘ icons.** Some screens keep their background explanation behind an info icon next to the title, a field label or a list row, so the work is what you see first. Hover over it, tab to it with the keyboard, or tap it on a phone to read the explanation; press **Esc**, or tap anywhere else, to close it. Warnings, errors, "not available to you" messages and required instructions are never hidden this way; they always show on the screen.
 - The rail can stay open on more than one area at once — opening a new one doesn't close the last one you had open, so you can keep two related areas (like Inventory and Purchasing) both expanded at the same time.
 
 ## Related

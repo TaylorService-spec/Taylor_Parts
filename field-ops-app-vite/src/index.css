@@ -2768,6 +2768,21 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fo-scan-workflows > li > button { width: auto; align-self: flex-start; }
 }
 
+/* Compact UX Standard (docs/design/compact-ux-standard.md §5): on a desk the CHOOSER is a list, not a
+   grid of cards -- one row per workflow, its button beside its description, hairline between rows.
+   The phone layout above is unchanged: full-width 52px targets for a gloved thumb. Pick and Transfer
+   lists reuse .fo-scan-workflows without the modifier and are not affected. */
+@media (min-width: 700px) {
+  .fo-scan-workflows--menu { display: block; margin-top: var(--space-2); border-top: 1px solid var(--color-border); }
+  .fo-scan-workflows--menu > li {
+    display: grid; grid-template-columns: 17rem 1fr; align-items: center; gap: var(--space-4);
+    background: none; border: 0; border-bottom: 1px solid var(--color-border); border-radius: 0;
+    padding: var(--space-2) 0;
+  }
+  .fo-scan-workflows--menu > li > button { min-height: 44px; font-size: var(--font-size-base); justify-self: start; }
+}
+.fo-scan-section { margin-top: var(--space-5); }
+
 /* ---------------------------------------------------------------------------
    LOOKUP-ONLY SCANNING
    ---------------------------------------------------------------------------
@@ -3774,7 +3789,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-page-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
   flex-wrap: wrap;
-  margin-bottom: var(--space-5);
+  /* Compact UX Standard §1: 12px between the page header and the work, was 20px site-wide. */
+  margin-bottom: var(--space-3);
 }
 .fo-page-header__text { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .fo-page-header__eyebrow {
@@ -3798,6 +3814,56 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    It still refuses to GROW (flex-grow stays 0, which is what `flex: none` was protecting); it may
    now shrink and, since it already wraps, its contents fall onto their own line instead. */
 .fo-page-header__actions { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
+
+/* --- Compact UX Standard (docs/design/compact-ux-standard.md) ---------------------------------
+   Title row with an InfoTip beside it; the InfoTip itself (hover + focus + tap, see InfoTip.jsx);
+   a Field label row with field help; the compact surface list. The bubble is position:fixed and
+   placed from the trigger in JS, so a .fo-panel's overflow never clips it; z-index sits above
+   modal overlays (100) so field help also works inside dialogs. */
+.fo-page-header__title-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.fo-infotip { display: inline-flex; vertical-align: middle; flex: none; }
+.fo-infotip__trigger {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--color-text-muted); cursor: help; font: inherit;
+}
+/* 44x44 hit area around the 24px glyph -- touch is a first-class way to open it. */
+.fo-infotip__trigger::before { content: ""; position: absolute; inset: -10px; }
+.fo-infotip__trigger:hover { color: var(--color-brand-primary); background: var(--color-surface-sunken); }
+.fo-infotip__trigger:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: 2px; }
+.fo-infotip__bubble {
+  position: fixed; z-index: 110; max-width: min(36ch, calc(100vw - 16px));
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  background: var(--color-brand-primary); color: var(--color-text-inverse);
+  font-family: var(--font-interface); font-size: var(--font-size-sm); font-weight: 400; line-height: 1.45;
+  text-transform: none; letter-spacing: normal; text-align: left; white-space: normal;
+  box-shadow: var(--shadow-overlay);
+}
+.fo-infotip__bubble[hidden] { display: none; }
+.fo-form-field__label-row { display: flex; align-items: center; gap: var(--space-1); }
+
+/* A compact list of destinations or records: one row each, name + one-line purpose, info on demand.
+   Replaces a stack of prose cards (standard §5). Rows stay >= 44px for touch. */
+.fo-compact-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--color-border); }
+.fo-compact-list__row {
+  display: grid; grid-template-columns: minmax(10rem, 14rem) auto 1fr; align-items: center;
+  gap: var(--space-3); min-height: 44px; padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border);
+}
+.fo-compact-list__name { font-weight: var(--font-weight-semibold); }
+.fo-compact-list__summary { color: var(--color-text-secondary); font-size: var(--font-size-sm); min-width: 0; }
+.fo-compact-list__row > .fo-infotip { justify-self: start; }
+@media (max-width: 640px) {
+  .fo-compact-list__row { grid-template-columns: 1fr auto; row-gap: 0; padding: var(--space-2) 0; }
+  .fo-compact-list__summary { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Key/value facts on one line each, label left, value right -- for small status blocks that were
+   written as sentences (standard §5). */
+.fo-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: 0; }
+.fo-facts dt { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.fo-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.fo-admin-version { margin-top: var(--space-5); }
+.fo-admin-version .fo-section-header__title { font-size: var(--font-size-md); }
 
 .fo-section-header {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
