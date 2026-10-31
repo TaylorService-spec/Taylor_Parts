@@ -106,7 +106,7 @@ export function createEosLoginClient(deps = {}) {
   const listeners = new Set();
   const notify = () => { for (const l of listeners) { try { l(access); } catch { /* a listener's fault is its own */ } } };
 
-  async function post(path, body, accessToken = null) {
+  async function post(path, body, accessToken = null, { keepalive = false } = {}) {
     const base = apiBase(deps.baseUrl);
     if (!base || !fetchImpl) throw new EosLoginError("NOT_CONFIGURED");
     // EVERY REQUEST IS BOUNDED. A server that never answers (a cold start, a dropped connection) must end as the existing
@@ -130,6 +130,7 @@ export function createEosLoginClient(deps = {}) {
         // The refresh cookie rides on every /auth/* call; it is HttpOnly, so this code never sees it.
         credentials: "include",
         cache: "no-store",
+        ...(keepalive ? { keepalive: true } : {}),
         ...(controller ? { signal: controller.signal } : {}),
       });
       sent.catch(() => {});
@@ -218,14 +219,24 @@ export function createEosLoginClient(deps = {}) {
     return (await refresh()) ?? null;
   }
 
-  async function logout() {
-    forget();
-    try {
-      // Server-side revocation: the session row is revoked and the cookie cleared by the response.
-      await post("/auth/logout", {});
-    } catch {
-      // The local session is gone either way; an unreachable server leaves only an idle-expiring session.
-    }
+  // ORDER MATTERS: revoke FIRST, forget AFTER. Forgetting notifies the UI, which flips to signed out; if that ran before the POST
+  // settled, a reload right after Sign Out would abort the POST (the server logged 499) and the cookie would restore the session.
+  // `keepalive` lets the POST outlive a reload or tab close. The access token rides as Bearer so the server can revoke by session
+  // as well as by cookie. LIMIT: if the server is unreachable the session stays alive server-side until idle expiry, and a reload
+  // could restore it; the local session still ends. Single-flight, so a second click shares the first attempt.
+  let inflightLogout = null;
+  function logout() {
+    inflightLogout ??= (async () => {
+      try {
+        await post("/auth/logout", {}, access?.token ?? null, { keepalive: true });
+      } catch {
+        // Never thrown: the local session ends below either way.
+      } finally {
+        forget();
+        inflightLogout = null;
+      }
+    })();
+    return inflightLogout;
   }
 
   const authed = async (path, body) => {
