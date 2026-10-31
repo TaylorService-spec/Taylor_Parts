@@ -51,6 +51,9 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   stock at a warehouse you choose, give it back, and what the system refuses.
 - [Which sales records you can see](./sales/which-sales-records-you-can-see.md) — records belong to one
   operating company: what is hidden, why a missing deal is not an error, and records with no company yet.
+- [Set the company on a record that has none](./sales/set-the-company-on-a-record-that-has-none.md) — who may set
+  the operating company of an Opportunity or Sales Agreement saved without one, that it happens once with a
+  reason, and what happens to who can see it afterwards.
 
 ## Administration
 
@@ -70,6 +73,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [View an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record (read-only; changing hours is not switched on yet)
 - [Give someone Finance access to a company](./administration/give-finance-access-to-a-company.md) — a Role's "Finance access only" setting, so a Finance company assignment does not add the company to everyday work
 - [Give an Employee access to another company](./administration/give-an-employee-access-to-another-company.md) — explicit company access for one Employee: reach to a company, no permissions, no Finance access
+- [See why someone can or cannot do something](./administration/see-why-someone-can-or-cannot-do-something.md) — the Access explained tab on an Employee: every check in order, the first refusal in plain words, and the setting that decides it (read-only)
 - [Integrations](./administration/integrations-guide.md)
 
 ## Invoicing

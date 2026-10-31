@@ -80,6 +80,12 @@ export function resolveObjectAction(
   return match[0];
 }
 
+/**
+ * CLC (DECISIONS #CLC): capabilities that are NEVER conferred by an object-wide grant -- they are granted only by naming them (grantObjectActionToRole /
+ * grantObjectActionToPrincipal). The action stays listed on its Object, so it can be named.
+ */
+export const NAMED_ONLY_GRANT_CAPABILITIES: readonly string[] = Object.freeze(["commercial.recordCompany.assign"]);
+
 /** Every action one Object governs, in a stable order: CRUD first, then business, then admin. */
 const KIND_ORDER: Record<string, number> = {
   CREATE: 0, READ: 1, EDIT: 2, DELETE: 3, BUSINESS_ACTION: 4, ADMIN_ACTION: 5,

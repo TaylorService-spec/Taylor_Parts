@@ -13,8 +13,11 @@ import { INVENTORY_BALANCE_READ_READY } from "../config/inventoryBalanceReadines
 //   FAILED   the read did not complete -- not a statement about the stock
 export const BALANCE_STATUS = Object.freeze({ OFF: "OFF", LOADING: "LOADING", READY: "READY", DENIED: "DENIED", FAILED: "FAILED" });
 
-export function usePartBalance(partId, { ready = INVENTORY_BALANCE_READ_READY, fetchBalance = null } = {}) {
-  const asked = ready === true && typeof partId === "string" && partId !== "";
+// `readable` (access map): false = the session does not hold what readPartBalance requires -> DENIED without asking; null = the session answer
+// has not arrived -> LOADING without asking; true (the default) is every other caller.
+export function usePartBalance(partId, { ready = INVENTORY_BALANCE_READ_READY, fetchBalance = null, readable = true } = {}) {
+  const eligible = ready === true && typeof partId === "string" && partId !== "";
+  const asked = eligible && readable === true;
   const [state, setState] = useState({ partId: null, status: BALANCE_STATUS.OFF, balance: null });
 
   useEffect(() => {
@@ -31,6 +34,7 @@ export function usePartBalance(partId, { ready = INVENTORY_BALANCE_READ_READY, f
     return () => { cancelled = true; };
   }, [asked, partId, fetchBalance]);
 
+  if (eligible && readable !== true) return { status: readable === false ? BALANCE_STATUS.DENIED : BALANCE_STATUS.LOADING, balance: null };
   if (!asked) return { status: BALANCE_STATUS.OFF, balance: null };
   // An answer for another Part is not this Part's answer: it is LOADING until this Part's own arrives.
   return state.partId === partId ? { status: state.status, balance: state.balance } : { status: BALANCE_STATUS.LOADING, balance: null };

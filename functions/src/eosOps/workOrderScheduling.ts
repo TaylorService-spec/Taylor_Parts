@@ -31,7 +31,7 @@ import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import type { ContextualReader } from "./contextualAuthorization";
 import {
-  applyTransitionWithinTransaction, authorizeEdgeOrRefuse, WorkOrderLifecycleError,
+  applyTransitionWithinTransaction, authorizeEdgeOrRefuse, requireEdgeCapability, WorkOrderLifecycleError,
   WORK_ORDER_LIFECYCLE_SCHEDULE, type LifecycleActor, type TransitionResult,
 } from "./workOrderLifecycle";
 import {
@@ -253,6 +253,7 @@ async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<
  * the SAME assignment rule set as every other assignment (assignWithinTransaction), never a weaker copy.
  */
 export async function scheduleWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<ScheduleResult> {
+  requireEdgeCapability(actor, "READY_TO_DISPATCH", "SCHEDULED"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "employeeId", "scheduledStart", "scheduledEnd", "reason", "note"]);
   if (!ID_SHAPE(i.employeeId)) refuse("EMPLOYEE_ID_REQUIRED", "INVALID_INPUT", "employeeId is required and must be a governed Employee id");
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "READY_TO_DISPATCH" as const, toStatus: "SCHEDULED" as const,
@@ -296,6 +297,7 @@ export interface UnscheduleResult {
 }
 
 export async function unscheduleWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<UnscheduleResult> {
+  requireEdgeCapability(actor, "SCHEDULED", "READY_TO_DISPATCH"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "reason"]);
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "SCHEDULED" as const, toStatus: "READY_TO_DISPATCH" as const };
   await authorizeEdgeOrRefuse(deps, actor, edge);
@@ -403,6 +405,7 @@ export interface DispatchResult {
 }
 
 export async function dispatchWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<DispatchResult> {
+  requireEdgeCapability(actor, "SCHEDULED", "DISPATCHED"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "employeeId", "reassignReason", "note"]);
   if (i.employeeId !== undefined && !ID_SHAPE(i.employeeId)) refuse("EMPLOYEE_ID_INVALID", "INVALID_INPUT", "employeeId must be a governed Employee id");
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "SCHEDULED" as const, toStatus: "DISPATCHED" as const,
@@ -474,6 +477,7 @@ export interface CompleteResult {
  * STALE_WORK_ORDER_STATE conflict, and every fulfillment row is unique per (Work Order, Sales Order line).
  */
 export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<CompleteResult> {
+  requireEdgeCapability(actor, "WORK_IN_PROGRESS", "COMPLETED"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "note"]);
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "WORK_IN_PROGRESS" as const, toStatus: "COMPLETED" as const,
     note: i.note as string | undefined };

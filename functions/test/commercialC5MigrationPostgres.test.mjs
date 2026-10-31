@@ -279,6 +279,13 @@ test("commercial C5, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) =
 
   await t.test("after the copy, the governed C2 create allocates the next number with no collision -- and the new row makes a rerun refuse", async () => {
     const deps = { pool, now: () => new Date("2026-09-15T12:00:00Z"), companyReach: ALL_COMPANIES };
+    // SAL-03(c) SETUP ONLY: a company-less create inherits the Account's owner only when the creator is a real Employee whose company authority covers it.
+    // p1 gets a valid Employee link (the Account's owner, home company taylor) and taylor is a governed, key-bound company in t1.
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1','taylor','ACTIVE','test-fixture','fixture','fixture') ON CONFLICT DO NOTHING`);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+             VALUES ('t1','taylor','taylor','ACTIVE','MIGRATED','test-fixture','fixture','fixture') ON CONFLICT DO NOTHING`);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+             VALUES ('l-p1','t1','p1',$1,'taylor','OPERATOR_ASSERTED','fixture','test','active')`, [EMP.owner]);
     const actor = { tenantId: "t1", principalId: "p1", capabilities: new Set(["opportunity.write"]) };
     const created = await opportunityCommands.createOpportunity(deps, actor, { idempotencyKey: "c5-next", accountId: "acct-1", salesChannel: "RETAIL" });
     assert.equal(created.opportunityNumber, "OPP-2026-000010");
