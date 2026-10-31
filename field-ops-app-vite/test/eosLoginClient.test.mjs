@@ -166,6 +166,64 @@ test("logout revokes FIRST (keepalive, Bearer, cookie) and tells listeners signe
   assert.deepEqual(outs[0].body, {});
 });
 
+test("sign out then sign in: the second session is held, a second sign out works, listeners see each change", async () => {
+  let n = 0;
+  const { fetchImpl, calls } = fakeServer({
+    "/auth/login": () => [200, { ok: true, status: "AUTHENTICATED", session: session(++n) }],
+    "/auth/logout": () => [200, { ok: true }],
+  });
+  const c = createEosLoginClient({ fetchImpl, baseUrl: "https://api.test", now: () => NOW, locks: null });
+  const seen = [];
+  c.subscribe((s) => seen.push(s?.token ?? null));
+  await c.login("a", "b");
+  await c.logout();
+  assert.equal(c.currentSession(), null);
+  await c.login("a", "b");
+  assert.equal(c.currentSession().token, accessToken(NOW + 300_000, 2));
+  await c.logout();
+  assert.equal(c.currentSession(), null);
+  assert.equal(calls.filter((x) => x.path === "/auth/logout").length, 2, "the second sign out is a real request, not the first one's leftover");
+  assert.deepEqual(seen, [accessToken(NOW + 300_000, 1), null, accessToken(NOW + 300_000, 2), null]);
+});
+
+test("sign out racing an in-flight refresh: the late answer is not adopted, and does not clobber a newer sign-in", async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let logins = 0;
+  const { fetchImpl } = fakeServer({
+    "/auth/login": () => [200, { ok: true, status: "AUTHENTICATED", session: logins++ === 0 ? session(1, NOW + 10_000) : session(3) }],
+    "/auth/refresh": async () => { await gate; return [200, { ok: true, session: session(2) }]; },
+    "/auth/logout": () => [200, { ok: true }],
+  });
+  const c = createEosLoginClient({ fetchImpl, baseUrl: "https://api.test", now: () => NOW, locks: null });
+  await c.login("a", "b"); // about to lapse, so the next token request refreshes
+  const pending = c.freshAccessToken();
+  await new Promise((r) => setTimeout(r, 5));
+  await c.logout();
+  assert.equal(c.currentSession(), null);
+  await c.login("a", "b"); // a new person signs in while the old refresh is still waiting
+  release();
+  assert.equal(await pending, null, "the stale exchange reports no token");
+  assert.equal(c.currentSession().token, accessToken(NOW + 300_000, 3), "and leaves the newer session alone");
+  await c.logout();
+  // sign out alone, with the refresh answer arriving AFTER forget(): still nothing re-adopted
+  let release2;
+  const gate2 = new Promise((r) => { release2 = r; });
+  const second = fakeServer({
+    "/auth/login": () => [200, { ok: true, status: "AUTHENTICATED", session: session(1, NOW + 10_000) }],
+    "/auth/refresh": async () => { await gate2; return [200, { ok: true, session: session(2) }]; },
+    "/auth/logout": () => [200, { ok: true }],
+  });
+  const d = createEosLoginClient({ fetchImpl: second.fetchImpl, baseUrl: "https://api.test", now: () => NOW, locks: null });
+  await d.login("a", "b");
+  const late = d.freshAccessToken();
+  await new Promise((r) => setTimeout(r, 5));
+  await d.logout();
+  release2();
+  assert.equal(await late, null);
+  assert.equal(d.currentSession(), null, "access stays cleared: the UI and the client agree");
+});
+
 test("keepalive is logout-only: other requests do not set it", async () => {
   const inits = [];
   const fetchImpl = async (_u, init) => { inits.push(init); return { ok: true, status: 200, json: async () => ({ ok: true, status: "AUTHENTICATED", session: session(1) }) }; };

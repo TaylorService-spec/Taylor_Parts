@@ -914,6 +914,12 @@ field-ops-app-vite/test/noAccessSignOut.test.jsx
 field-ops-app-vite/test/authenticatorSetup.test.jsx
 field-ops-app-vite/src/auth/MfaEnrollmentGate.jsx
 field-ops-app-vite/src/auth/useMfaEnrollmentRequired.js
+field-ops-app-vite/src/auth/useSignOut.js
+# authenticatorSetup.test.jsx reads App.jsx as source (the forced-enrollment gate ahead of every refused read) and renders the `qrcode`
+# dependency the app pins in package.json / package-lock.json: an edit to any of the three alone must reach that suite.
+field-ops-app-vite/src/App.jsx
+field-ops-app-vite/package.json
+field-ops-app-vite/package-lock.json
 field-ops-app-vite/src/modules/account/AccountSecurity.jsx
 field-ops-app-vite/test/b2LazyScreensWithoutFirebase.test.jsx
 field-ops-app-vite/src/hooks/useInventoryActions.js

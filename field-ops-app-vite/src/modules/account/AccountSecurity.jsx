@@ -89,7 +89,8 @@ export default function AccountSecurity({ onEnrolled = undefined } = {}) {
     }
   };
 
-  if (loadError) {
+  // A reload that fails right after a confirm must not replace the one-time recovery codes: keep them on screen, show the error above.
+  if (loadError && !codes) {
     return (
       <div className="ns-page">
         <PageHeader title="Account security" />
@@ -104,7 +105,7 @@ export default function AccountSecurity({ onEnrolled = undefined } = {}) {
   return (
     <div className="ns-page">
       <PageHeader title="Account security" description={`Signed in as ${account.loginIdentifier}`} />
-      <Message error={error} notice={notice} />
+      <Message error={error ?? (codes ? loadError : null)} notice={notice} />
 
       <section className="fo-panel">
         <SectionHeader title="Password" description={account.passwordChangedAt ? `Last changed ${new Date(account.passwordChangedAt).toLocaleString()}` : null} />
@@ -133,7 +134,7 @@ export default function AccountSecurity({ onEnrolled = undefined } = {}) {
             : account.mfaRequired ? "Required by your administrator. Set it up to continue using the system." : "Off"}
         />
         {!account.mfaConfigured ? <p>Two-step verification is not available on this system yet.</p> : null}
-        {account.mfaConfigured && !totp && !enroll ? (
+        {account.mfaConfigured && !totp && !enroll && !codes ? (
           <form onSubmit={(e) => { e.preventDefault(); act(async () => { setEnroll(await eosLoginClient.beginTotp(setupPassword)); setSetupPassword(""); }); }}
             style={{ display: "grid", gap: 10 }}>
             <Field label="Your current password"><input className="fo-input" type="password" autoComplete="current-password" value={setupPassword} onChange={(e) => setSetupPassword(e.target.value)} required /></Field>
