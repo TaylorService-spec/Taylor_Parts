@@ -103,6 +103,9 @@ export function createEosLoginClient(deps = {}) {
   const locks = deps.locks === undefined ? defaultLocks() : deps.locks;
   let access = null; // { token, subject, expiresAtMs } -- memory only
   let inflightRefresh = null;
+  // Bumped when Sign Out starts and when the session is forgotten. A refresh that began under an older value must not adopt its
+  // answer: logout does not wait for an in-flight refresh, and adopting after forget() would leave a session set while the UI shows login.
+  let generation = 0;
   const listeners = new Set();
   const notify = () => { for (const l of listeners) { try { l(access); } catch { /* a listener's fault is its own */ } } };
 
@@ -164,6 +167,7 @@ export function createEosLoginClient(deps = {}) {
   }
 
   function forget() {
+    generation += 1;
     access = null;
     notify();
   }
@@ -185,25 +189,28 @@ export function createEosLoginClient(deps = {}) {
     return { status: "AUTHENTICATED", mfaEnrollmentRequired: r.session.mfaEnrollmentRequired === true };
   }
 
-  async function exchangeOnce() {
+  async function exchangeOnce(startedAt) {
     const r = await post("/auth/refresh", {});
+    if (startedAt !== generation) return null; // signed out (or the session was dropped) while this exchange was in flight
     return adopt(r.session).token;
   }
 
   /** Exchange the cookie for a fresh access token, or null. Single-flight in this tab, serialised across tabs. */
   function refresh() {
     if (inflightRefresh) return inflightRefresh;
+    const startedAt = generation;
+    const forgetIfCurrent = () => { if (startedAt === generation) forget(); };
     const run = async () => {
       // Another tab may have refreshed while this one waited for the lock: its cookie is already the successor.
       try {
-        return await exchangeOnce();
+        return await exchangeOnce(startedAt);
       } catch (err) {
         if (err instanceof EosLoginError && err.code === "REFRESH_SUPERSEDED") {
-          try { return await exchangeOnce(); } catch (again) { if (again?.code !== "NETWORK") forget(); return null; }
+          try { return await exchangeOnce(startedAt); } catch (again) { if (again?.code !== "NETWORK") forgetIfCurrent(); return null; }
         }
         // A refused refresh means no session (the server already cleared the cookie). A network failure keeps the
         // in-memory token for whatever life it has left.
-        if (!(err instanceof EosLoginError) || err.code !== "NETWORK") forget();
+        if (!(err instanceof EosLoginError) || err.code !== "NETWORK") forgetIfCurrent();
         return null;
       }
     };
@@ -227,6 +234,7 @@ export function createEosLoginClient(deps = {}) {
   let inflightLogout = null;
   function logout() {
     inflightLogout ??= (async () => {
+      generation += 1;
       try {
         await post("/auth/logout", {}, access?.token ?? null, { keepalive: true });
       } catch {
