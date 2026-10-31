@@ -1,4 +1,4 @@
-import { useAuth } from "./AuthContext";
+import { useSignOut } from "./useSignOut.js";
 import AccountSecurity from "../modules/account/AccountSecurity.jsx";
 import { Button } from "../shared/ui/primitives";
 
@@ -13,13 +13,13 @@ import { Button } from "../shared/ui/primitives";
 // this session verified, so a reload restores it from the cookie with the flag clear and the app loads as normal. Nothing is pasted.
 
 export default function MfaEnrollmentGate() {
-  const { logout } = useAuth() ?? {};
+  const { signingOut, signOut } = useSignOut();
   return (
     <main>
       <div className="ns-page">
         <h2>Set up two-step verification</h2>
         <p>Your administrator requires two-step verification on this account. Set it up below to continue.</p>
-        <div><Button type="button" variant="secondary" onClick={() => logout?.()}>Sign out</Button></div>
+        <div><Button type="button" variant="secondary" onClick={signOut} loading={signingOut}>Sign out</Button></div>
       </div>
       <AccountSecurity onEnrolled={() => window.location.reload()} />
     </main>

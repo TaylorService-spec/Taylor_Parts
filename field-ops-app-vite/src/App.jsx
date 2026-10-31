@@ -132,7 +132,7 @@ import Login from "./auth/Login";
 import EosLogin from "./auth/EosLogin";
 import { eosHumanLoginEnabled } from "./auth/eosLoginClient.js";
 // A session that owes a second factor can use the sign-in routes only: it gets the authenticator setup screen, not the app.
-import { useMfaEnrollmentRequired } from "./auth/useMfaEnrollmentRequired.js";
+import { mfaGateActive, useMfaEnrollmentRequired } from "./auth/useMfaEnrollmentRequired.js";
 const MfaEnrollmentGate = lazy(() => import("./auth/MfaEnrollmentGate.jsx"));
 // FIREBASE EXIT B2: in an EOS-only sign-in build a screen whose batch has not migrated cannot reach Firebase; its failure
 // is contained to the content area (components/RouteErrorBoundary.jsx) rather than replacing the whole app.
@@ -1431,9 +1431,10 @@ export default function App() {
     );
   }
 
-  // BEFORE every read that would be refused: the server answers MFA_ENROLLMENT_REQUIRED to all but the sign-in routes, so the identity,
-  // experience and access reads below all fail for this session. Client-only; the server gate is unchanged.
-  if (mfaEnrollmentRequired && user) {
+  // Ahead of the loading and identity-error screens and of the identity read below: the server answers MFA_ENROLLMENT_REQUIRED to all
+  // but the sign-in routes, so those fail for this session. The access and experience hooks above still fire their reads (refused,
+  // harmless). Client-only; the server gate is unchanged.
+  if (mfaGateActive(mfaEnrollmentRequired, user)) {
     return (
       <Suspense fallback={<div className="fo-panel">Loading...</div>}>
         <MfaEnrollmentGate />
