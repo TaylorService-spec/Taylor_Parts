@@ -42,7 +42,8 @@ import SupplierPicker from "../../shared/supplier/SupplierPicker";
 import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, LEGACY_INVENTORY_NOTES_LABEL, LEGACY_NOTES_ARCHIVE_NOT_LOADED, LEGACY_NOTES_NONE_FOR_PART } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
-import { usePartsReadGates } from "../../access/partsReadGates.js";
+import { usePartsReadGates, PART_REORDER_STATUS_NOT_AVAILABLE_COPY, LEGACY_NOTES_NOT_AVAILABLE_COPY } from "../../access/partsReadGates.js";
+import { useOperationGate } from "../../access/operationGate.js";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
@@ -1238,18 +1239,23 @@ const INVENTORY_ACTION_LABEL = {
 // and a client-supplied `createdBy` that Rules never bind to request.auth.uid. Removing the form
 // closes the only path the product offered; closing the RULE is a Tier-2 change this presentation
 // ruling does not authorize.
-function InventoryActionsPanel({ partId }) {
+function InventoryActionsPanel({ partId, readable = true }) {
   // W2 (hooks/useInventoryActions.js): the read preserves a failed read
   // (permission-denied/unavailable/etc.) distinctly from a genuinely-empty log --
   // `actionsError` is threaded to LoadingEmptyState below so a read failure no
   // longer renders as "No inventory actions logged yet."
-  const { data: recentActions, loading, error: actionsError, archiveLoaded } = useInventoryActionsForPart(partId);
+  // Access map: `readable` false = the session does not hold what listLegacyInventoryActionNotes requires (inventory.action.read), so the archive is NOT
+  // requested (a null part id is the hook's own "nothing to read") and the panel STATES the absence; null = the session answer has not arrived (loading).
+  const { data: recentActions, loading: notesLoading, error: actionsError, archiveLoaded } = useInventoryActionsForPart(readable === true ? partId : null);
+  const loading = notesLoading || readable === null;
   // WHO WROTE A NOTE. A legacy note stores the acting FIREBASE uid. Where Firebase is the source the Firestore directory names it
   // (as before). Where EOS is the source the governed resolvePrincipalDisplayNames names it, by external subject, for exactly the
   // uids on the notes (no Firestore employees listen, no Employee-name fallback); a refusal reads "Unknown user". Both hooks are
   // always called; the one that is not the source is disabled and reads nothing.
   const firebaseDirectory = useEmployeeDirectory({ enabled: !EOS_SESSION_SOURCE });
-  const governedDirectory = useGovernedEmployeeDirectory({ enabled: EOS_SESSION_SOURCE, actorSubjects: recentActions.map((a) => a.createdBy) });
+  // `employeeIds: []`: this panel names ACTORS only (byUserId, below). Omitting employeeIds reads the WHOLE Employee directory (listEmployees,
+  // employee.record.read) and discards it -- a read the person is refused unless they administer Employees, on every Part detail load.
+  const governedDirectory = useGovernedEmployeeDirectory({ enabled: EOS_SESSION_SOURCE && readable === true, employeeIds: [], actorSubjects: recentActions.map((a) => a.createdBy) });
   const employeeDirectory = EOS_SESSION_SOURCE ? governedDirectory.byUserId : firebaseDirectory.byUserId;
   // UI corrections item C: the ten most recent notes (the read's order is the default) sort on the client.
   const latestActions = useMemo(() => recentActions.slice(0, 10), [recentActions]);
@@ -1273,6 +1279,8 @@ function InventoryActionsPanel({ partId }) {
         what was recorded, not as a record of what moved. New notes are no longer accepted here.
       </p>
         {/* A GENUINELY EMPTY HISTORY IS NOT A FAILURE, and says so in its own sentence. */}
+      {readable === false && <p className="fo-muted" role="status" data-legacy-notes-unavailable>{LEGACY_NOTES_NOT_AVAILABLE_COPY}</p>}
+      {readable !== false && (
       <LoadingEmptyState
         loading={loading}
         failed={!!actionsError}
@@ -1307,6 +1315,7 @@ function InventoryActionsPanel({ partId }) {
           </tbody>
         </table>
       </LoadingEmptyState>
+      )}
     </RuledSection>
   );
 }
@@ -1371,11 +1380,13 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // ledger: rendering "No ledger movements have been recorded" over a read that did not complete is a
   // false statement about this part, and once the hook fails closed on ONE unreadable row it would be
   // made about EVERY part. The two ledger bands below render an explicit unavailable state instead.
-  const { transactions, healthEntries, loading, error: ledgerError } = useInventoryLedger();
+  // Access map: ONE gate (access/operationGate.js) answers, per read, "may this session ask?" -- true / false (state the absence) / null (loading).
+  const decide = useOperationGate();
+  const { transactions, healthEntries, loading, error: ledgerError, denied: ledgerDenied } = useInventoryLedger({ readable: decide("readInventoryOnHand", "readInventoryMovements") });
   const ledgerUnavailable = !loading && Boolean(ledgerError);
   // B3-x: the governed balance (on hand / reserved / available / on order, by warehouse). OFF where the environment has not switched the
   // read on, in which case nothing is asked and the stated "not available" sentences below stand.
-  const partBalance = usePartBalance(resolvedPartId);
+  const partBalance = usePartBalance(resolvedPartId, { readable: decide("readPartBalance") });
   // Wave 6 Owner Decision (2026-08-15) -- must be called unconditionally, before any early
   // return below, per the Rules of Hooks; the derived name-lookup map itself is computed
   // further down, after `canonicalPart` resolves.
@@ -1383,14 +1394,20 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // catalog settles at its existing "denied" state, so the raw manufacturerId fallback below is unchanged.
   const gates = usePartsReadGates();
   const manufacturerCatalog = useManufacturerCatalog(gates.manufacturers);
+  // The Part's own Reorder request: found by Part it is a QUEUE read (reorder.request.read + the REORDER_QUEUE scope); found by id it is readReorderRequest
+  // (reorder.request.read, then queue reach or assignment). Not held: not asked, and the absence is STATED below (R2.2 PARTS-403).
+  const reorderRequestReadable = requestId ? gates.myAssigned : gates.queue;
   const {
     data: reorderRequest,
-    loading: reorderRequestLoading,
+    loading: reorderRequestHookLoading,
     error: reorderRequestError,
     // refreshReorderRequest RE-READS the request (an EOS fetch, not a live subscription), so each
     // action card below calls it after its command succeeds and the page shows the new status.
     refresh: refreshReorderRequest,
-  } = useReorderRequestForPart(partId, requestId);
+  } = useReorderRequestForPart(partId, requestId, undefined, reorderRequestReadable);
+  // Until the session answer settles the read is neither permitted nor refused: that is "loading", not "no request" (which would offer Request Reorder).
+  const reorderRequestLoading = reorderRequestHookLoading || !gates.settled;
+  const reorderRequestUnreadable = gates.settled && !reorderRequestReadable;
   // Firebase exit F4 (DECISIONS #247): the Reorder Request is an EOS row, and the only person it names is its assignee, by
   // EMPLOYEE id (assignedEmployeeId). That id is named by the governed resolveEmployeeDisplayNames, never by the Firestore
   // employee directory (which is keyed by Firebase uid and could not name it). The actor columns the legacy request carried
@@ -1552,7 +1569,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // BAND (ND-28: sharing a card does not make the informational number above it the authority for the command). B3-x: one entry, used both
   // under a forecast and -- for a Part the ledger has nothing on -- under the honest empty state.
   const reorderEntry = (recommendation, noHistory) =>
-    !reorderRequestLoading && !reorderRequestError && (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) ? (
+    !reorderRequestLoading && !reorderRequestError && !reorderRequestUnreadable && (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) ? (
       <>
         {reorderError && <p className="ns-state--na">{reorderError}</p>}
         {/* WORKSTREAM 2B. The request names a governed Warehouse, and the trusted command derives its operating company from that. A part
@@ -1684,6 +1701,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       />
       {canonicalPart && catalogMutationHeld && <CatalogMutationPausedNotice />}
 
+      {reorderRequestUnreadable && <p className="fo-muted" role="status" data-reorder-status-unavailable>{PART_REORDER_STATUS_NOT_AVAILABLE_COPY}</p>}
       {reorderRequestError && (
         <LoadingEmptyState
           loading={false}
@@ -1741,6 +1759,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   request it gates can still be raised. */}
               {loading ? (
                 <HonestState state={HONEST_STATE.LOADING} subject="the stock forecast" />
+              ) : ledgerDenied ? (
+                <HonestState state={HONEST_STATE.DENIED} subject="the stock forecast" detail="The stock forecast is not available to your role." />
               ) : ledgerUnavailable ? (
                 <HonestState
                   state={HONEST_STATE.UNAVAILABLE}
@@ -1920,7 +1940,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             <div className="ns-band__col">
               {/* PLANNED DEMAND, NEVER A RESERVATION -- the section's own header says so. Existing
                   governed read over fieldops_wos; unchanged. */}
-              <PartWorkOrderDemandSection partId={resolvedPartId} />
+              <PartWorkOrderDemandSection partId={resolvedPartId} readable={decide("listWorkOrders")} />
             </div>
             {/* PURCHASING CONTEXT.
                 ND-27 (Owner, 2026-08-30): no cost row. The metadata register blocks unitCost from
@@ -2047,7 +2067,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             the projection has never carried under that name -- so it was always undefined and the
             section silently labelled itself with the document id. */}
         <section className="ns-band ns-band--reference">
-          <PartIdentifiersSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
+          <PartIdentifiersSection partId={resolvedPartId} partNumber={part.internalPartNumber} readable={decide("listPartAliases")} />
         </section>
 
         {/* ── SUPPLIERS & TERMS · reference tier (remediation SUP-1) ─────────────────────────────
@@ -2055,7 +2075,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
             through the governed PostgreSQL command layer. The section asks the server and renders its answer: a reader
             without the supplier-terms read permission sees a denial, never an empty list. */}
         <section className="ns-band ns-band--reference">
-          <PartSupplierTermsSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
+          <PartSupplierTermsSection partId={resolvedPartId} partNumber={part.internalPartNumber} readable={decide("listPartSupplierItems")} />
         </section>
 
         {/* ── ACTIVITY ──────────────────────────────────────────────────────────────────────
@@ -2080,6 +2100,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         <RuledSection id="part-activity" title="Activity" meta={PART_ACTIVITY_SCOPE_NOTE}>
           {loading ? (
             <HonestState state={HONEST_STATE.LOADING} subject="this part's movements" />
+          ) : ledgerDenied ? (
+            <HonestState state={HONEST_STATE.DENIED} subject="this part's movements" detail="This part's movements are not available to your role." />
           ) : ledgerUnavailable ? (
             <HonestState
               state={HONEST_STATE.UNAVAILABLE}
@@ -2131,7 +2153,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         <section className="ns-band ns-band--reference">
           <details className="ns-parts-rail__item">
             <summary>{EOS_SESSION_SOURCE ? LEGACY_INVENTORY_NOTES_LABEL : "Inventory Action History"}</summary>
-            <InventoryActionsPanel partId={resolvedPartId} />
+            <InventoryActionsPanel partId={resolvedPartId} readable={decide("listLegacyInventoryActionNotes")} />
           </details>
         </section>
       </div>

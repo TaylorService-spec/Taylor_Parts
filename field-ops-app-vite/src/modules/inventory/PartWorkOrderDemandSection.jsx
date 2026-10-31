@@ -42,8 +42,8 @@ function formatQty(n) {
   return typeof n === "number" ? n : <span className="fo-muted">Unknown</span>;
 }
 
-export default function PartWorkOrderDemandSection({ partId }) {
-  const demandRead = usePartWorkOrderDemand(partId);
+export default function PartWorkOrderDemandSection({ partId, readable = true }) {
+  const demandRead = usePartWorkOrderDemand(partId, { readable });
 
   // Hoisted out of the render branch below so the account resolver can see the ids BEFORE the
   // table renders -- one batched read for the whole table rather than one per row.

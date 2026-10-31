@@ -269,7 +269,7 @@ function IdentifierRow({ alias, onDeactivate, onReactivate, pending, mutationHel
   );
 }
 
-export default function PartIdentifiersSection({ partId, partNumber, deps }) {
+export default function PartIdentifiersSection({ partId, partNumber, deps, readable = true }) {
   const {
     status,
     mutationHeld,
@@ -284,7 +284,7 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
     reactivate,
     probe,
     reload,
-  } = usePartIdentifiers(partId, deps);
+  } = usePartIdentifiers(partId, deps, readable);
 
   const label = partNumber || partId || "this part";
 

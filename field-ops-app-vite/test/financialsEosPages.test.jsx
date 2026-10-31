@@ -323,6 +323,55 @@ describe("Receivables — Prepare rebill (FU-2)", () => {
     await screen.findByText(/only an order ELIGIBLE in full/);
     expect(second.container.textContent).not.toMatch(/was prepared for/);
   });
+
+  // FIN-02: the Rebill panel had the same unbounded await #2209 removed from the Issue panel.
+  const openRebill = async (callApi) => {
+    server({ listObligations: { scope: "consolidated", items: [voidedRow()] } });
+    page({ hasCapability: holder, callApi });
+    await screen.findByRole("button", { name: "Prepare rebill" });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill" }));
+  };
+
+  test("a rebill request that never answers is shown as in flight, then as UNKNOWN (never as failed); retry reuses the same key", async () => {
+    let hang = true;
+    const callApi = vi.fn((op) => {
+      if (op === "readMyFinanceCompanyAccess") return Promise.resolve(adviceOk);
+      return hang ? new Promise(() => {}) : Promise.resolve({ ok: true, result: { outcome: "replayed", packageId: "bpk_2", version: 2, status: "READY", readinessExceptions: [], totalMinor: "3000" } });
+    });
+    await openRebill(callApi);
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Prepare rebill now" }));
+      expect(screen.getByRole("status").textContent).toMatch(/Preparing the rebill/);
+      expect(screen.getByRole("button", { name: "Cancel" }).disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(ISSUE_WAIT_MS + 1);
+    } finally { vi.useRealTimers(); }
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/not known whether the new billing package was prepared/);
+    expect(alert.textContent).toMatch(/Re-read the register to check/);
+    expect(alert.textContent).not.toMatch(/was not prepared|failed/i);
+    expect(screen.getByRole("button", { name: "Prepare rebill now" }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel" }).disabled).toBe(false);
+    hang = false;
+    fireEvent.click(screen.getByRole("button", { name: "Prepare rebill now" }));
+    await screen.findByText(/A new billing package was prepared for SO-9/);
+    const prepares = callApi.mock.calls.filter(([op]) => op === "prepareBillingPackage");
+    expect(prepares.length).toBe(2);
+    expect(prepares[1][1].idempotencyKey).toBe(prepares[0][1].idempotencyKey);
+  });
+
+  test("a slow rebill that does answer inside the wait is reported as what the server said, not as failed", async () => {
+    const callApi = vi.fn((op) => (op === "readMyFinanceCompanyAccess" ? Promise.resolve(adviceOk)
+      : new Promise((resolve) => setTimeout(() => resolve({ ok: true, result: { outcome: "recorded", packageId: "bpk_2", version: 2, status: "READY", readinessExceptions: [], totalMinor: "3000" } }), ISSUE_WAIT_MS - 5_000))));
+    await openRebill(callApi);
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Prepare rebill now" }));
+      await vi.advanceTimersByTimeAsync(ISSUE_WAIT_MS - 4_000);
+    } finally { vi.useRealTimers(); }
+    await screen.findByText(/A new billing package was prepared for SO-9/);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 describe("Receivables — Issue invoice: in flight and refused (F-1a-UI)", () => {
