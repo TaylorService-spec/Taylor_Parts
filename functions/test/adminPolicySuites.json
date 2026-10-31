@@ -132,6 +132,7 @@
     "test/salesOrderAllocationOffline.test.mjs",
     "test/saeProtectedOwnerExemption.test.mjs",
     "test/commercialCompanyAuthority.test.mjs",
+    "test/adminPolicyPartitions.test.mjs",
     "test/commercialRecordCompany.test.mjs"
   ],
   "postgres": [

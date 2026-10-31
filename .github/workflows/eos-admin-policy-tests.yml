@@ -125,29 +125,104 @@ jobs:
           done
           node scripts/adminPolicyCiRelevance.mjs --base "$BASE" --head "$HEAD" | tee -a "$GITHUB_OUTPUT"
 
+  # ============================ THE ENGINE LANE, SPLIT (CI performance Phase 1, lane CIP) ============================
+  #
+  # The `policy` job used to run everything in ONE job, serially: build, offline proofs, then ~190 PostgreSQL suites one after the
+  # other against one database (17-26 minutes, median about 26, most of it the PostgreSQL step). It is now THREE kinds of job:
+  #
+  #   policy-offline    build + the offline proofs + the seed-snapshot check. No database.
+  #   policy-postgres   a matrix of 5 partitions, each with its OWN postgres service container, each running the files that the
+  #                     committed map (.github/ci/eos-admin-policy-postgres-partitions.json) assigns it, serialized within the
+  #                     partition exactly as before (several suites reset the schema of the database they own).
+  #   policy            the GATE. It keeps the job id AND the check name the branch-protection rule requires, so no setting
+  #                     changes: the required check "Admin policy engine -- ..." is now the aggregate verdict. It fails unless
+  #                     every upstream job succeeded AND the manifests each partition wrote prove that every registered suite ran
+  #                     exactly once, none ran empty, none failed, and the only skips are the ones the map names.
+  #
+  # Nothing is weakened: the same suites, the same assertions, the same migration up/down and zero-trace proofs, in the same order
+  # within a partition. What changed is only how many databases run them at once. docs/engineering/ci-performance.md has the
+  # measurements; functions/scripts/adminPolicyPartitions.mjs is the guard.
+
   # KNOWN WINDOW (M3 review, finding 3 -- documented, not engineered away): `!cancelled()` is false for
   # every job once a run is cancelled, so a MANUAL cancel issued while `changes` is still running leaves
   # `policy` without a real verdict for that sha (skipped/cancelled rather than run). Treat a cancelled
   # run as no evidence: re-run the workflow before merging; never merge on the strength of it.
-  policy:
-    name: Admin policy engine -- authorization, workflow, tenancy, schema, seed
+  policy-offline:
+    name: Admin policy offline proofs and seed snapshot
     needs: changes
-    # JOB-LEVEL, so an irrelevant change yields a SKIPPED check run under this exact name (a required
-    # check treats skipped as passing). `!= 'false'` rather than `== 'true'`: if `changes` failed or
-    # produced nothing, this runs -- it never skips itself green. !cancelled() lets it run past a failed
-    # `changes` while still honouring a superseded-run cancellation.
+    # The same JOB-LEVEL, fail-closed gate as `policy` and `surfaces` (see the header): an irrelevant change skips it.
     if: ${{ !cancelled() && needs.changes.outputs.relevant != 'false' }}
     runs-on: ubuntu-latest
-    # 20 -> 35 (2026-10-13): measured, not padded. main itself took 18m10s (run 38325325281, 9ae2d9a9) and EOS
-    # native identity adds its two PostgreSQL suites (~2 min), so 20 cancelled the PostgreSQL step mid-run (run
-    # 38327799193). A cap is a hang detector, and 35 still catches one well inside a full gate's local ~42 min.
-    timeout-minutes: 35
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      # Build first: the proofs import the compiled lib/, so a type error must fail the lane rather
+      # than leave the tests running against a stale build that still passes.
+      - name: Typecheck and build
+        run: npm run build
+        working-directory: functions
+
+      # Offline first: if the pure engine is broken, a database failure underneath it is noise.
+      - name: Admin policy proofs -- offline (build + run)
+        run: npm run test:adminPolicy
+        working-directory: functions
+        env:
+          # Deliberately UNSET here, so this step also proves the suites skip cleanly without a
+          # database rather than silently depending on one.
+          POLICY_TEST_DATABASE_URL: ""
+          # The run also writes what it executed, per file; the runner checks it (nothing missing, empty, failed or unexpectedly
+          # skipped) and the gate job re-checks it together with every partition.
+          ADMIN_POLICY_MANIFEST_OUT: manifest-offline.json
+
+      # The snapshot is GENERATED from the client metadata registry. A definition change that was
+      # not re-snapshotted would seed a stale model, and this is what says so.
+      - name: Seed snapshot is not stale
+        run: node scripts/buildAdminPolicySeedSnapshot.mjs --check
+
+      - name: Keep the offline manifest for the gate
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-offline
+          path: functions/manifest-offline.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  policy-postgres:
+    name: Admin policy PostgreSQL partition ${{ matrix.partition }} of 5
+    needs: changes
+    # The same JOB-LEVEL, fail-closed gate as `policy` and `surfaces` (see the header): an irrelevant change skips it.
+    if: ${{ !cancelled() && needs.changes.outputs.relevant != 'false' }}
+    runs-on: ubuntu-latest
+    # Measured, not padded: each partition runs about 5-6 minutes. A cap is a hang detector; 20 still catches one with room for a
+    # re-balance that has not happened yet (the whole serialized gate was 25 minutes).
+    timeout-minutes: 20
+    strategy:
+      # One failing partition must not hide the verdicts of the others: the gate reports every partition's result.
+      fail-fast: false
+      matrix:
+        # Must equal "partitions" in .github/ci/eos-admin-policy-postgres-partitions.json (functions/test/adminPolicyPartitions.test.mjs
+        # fails otherwise), and the "of 5" in the job name.
+        partition: [1, 2, 3, 4, 5]
 
     # A REAL POSTGRESQL, not an emulator. The migration, the unique indexes, the foreign keys, the
     # CHECK constraints and transactional rollback are properties of the database itself; something
     # that approximates them proves nothing about the one that will actually hold the policy.
     #
-    # Ephemeral, empty, and local to the job -- it holds no data anybody owns.
+    # Ephemeral, empty, and local to the job -- it holds no data anybody owns. EACH PARTITION HAS ITS OWN: no database state is
+    # shared between partitions, so the isolation and zero-trace assertions of every suite run exactly as they did serially.
     services:
       postgres:
         image: postgres:16
@@ -179,34 +254,83 @@ jobs:
         run: npm ci --no-audit --no-fund
         working-directory: functions
 
-      # Build first: the proofs import the compiled lib/, so a type error must fail the lane rather
-      # than leave the tests running against a stale build that still passes.
-      - name: Typecheck and build
-        run: npm run build
-        working-directory: functions
-
-      # Offline first: if the pure engine is broken, a database failure underneath it is noise.
-      - name: Admin policy proofs -- offline (build + run)
-        run: npm run test:adminPolicy
-        working-directory: functions
-        env:
-          # Deliberately UNSET here, so this step also proves the suites skip cleanly without a
-          # database rather than silently depending on one.
-          POLICY_TEST_DATABASE_URL: ""
-
-      # The ACTIVATION proofs run inside this command, not beside it: test:adminPolicyPostgres is
-      # the registered authority for "everything that needs a real database", and a second
-      # invocation here would be a second list to keep in step with the first.
-      - name: Migration, schema, tenancy, bootstrap and activation -- real PostgreSQL
-        run: npm run test:adminPolicyPostgres
+      # The ACTIVATION proofs run inside this command, not beside it: test:adminPolicyPostgres is the registered authority for
+      # "everything that needs a real database". `--partition N` runs the files the map assigns to this partition (the runner
+      # refuses to start if the map does not cover the registry exactly once), after the one-lane-one-database isolation
+      # pretest and a fresh build, serialized within the partition. `--isolate-databases` re-creates this job's database EMPTY
+      # before each file: the first run of this split showed that two files had been passing only on what an earlier file left in
+      # the one shared database, which a different predecessor (or none) does not provide.
+      - name: Migration, schema, tenancy, bootstrap and activation -- real PostgreSQL (partition ${{ matrix.partition }})
+        run: npm run test:adminPolicyPostgres -- --partition ${{ matrix.partition }} --isolate-databases
         working-directory: functions
         env:
           POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy
+          ADMIN_POLICY_MANIFEST_OUT: manifest-postgres-${{ matrix.partition }}.json
 
-      # The snapshot is GENERATED from the client metadata registry. A definition change that was
-      # not re-snapshotted would seed a stale model, and this is what says so.
-      - name: Seed snapshot is not stale
-        run: node scripts/buildAdminPolicySeedSnapshot.mjs --check
+      - name: Keep this partition's manifest for the gate
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-postgres-${{ matrix.partition }}
+          path: functions/manifest-postgres-${{ matrix.partition }}.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  # THE GATE. Job id and check name are UNCHANGED, because the required status check on main is this name; branch protection is
+  # not touched. A required check treats a SKIPPED job as passing, so the job-level `if` below is the same one the old single
+  # `policy` job carried: skipped exactly when `changes` positively answered 'false', run (and able to fail) otherwise.
+  policy:
+    name: Admin policy engine -- authorization, workflow, tenancy, schema, seed
+    needs: [changes, policy-offline, policy-postgres]
+    # JOB-LEVEL, so an irrelevant change yields a SKIPPED check run under this exact name (a required
+    # check treats skipped as passing). `!= 'false'` rather than `== 'true'`: if `changes` failed or
+    # produced nothing, this runs -- it never skips itself green. !cancelled() lets it run past a failed
+    # `changes` while still honouring a superseded-run cancellation.
+    if: ${{ !cancelled() && needs.changes.outputs.relevant != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Every upstream job must have SUCCEEDED. 'skipped' is a failure here: when this job runs at all, the lane was relevant, so a
+      # skipped partition is a missing partition, and a missing partition must never read as green.
+      - name: Every offline and PostgreSQL job succeeded
+        shell: bash
+        env:
+          OFFLINE: ${{ needs.policy-offline.result }}
+          POSTGRES: ${{ needs.policy-postgres.result }}
+        run: |
+          set -eu
+          bad=0
+          for pair in "policy-offline=$OFFLINE" "policy-postgres (all 5 partitions)=$POSTGRES"; do
+            if [ "${pair##*=}" != "success" ]; then
+              echo "::error::${pair%%=*} finished '${pair##*=}', not 'success'. The required check fails."
+              bad=1
+            fi
+          done
+          exit "$bad"
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Collect the manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: manifest-*
+          path: manifests
+          merge-multiple: true
+
+      # The manifests are what each run EXECUTED, per file. This proves the split lost nothing: every registered suite ran in
+      # exactly one place, none ran zero tests, none failed or was cancelled, and every skip is one the partition map names.
+      # Plain node, no install: the guard imports only node built-ins.
+      - name: Every registered suite ran exactly once -- none missing, duplicated, empty or unexpectedly skipped
+        shell: bash
+        run: |
+          set -eu
+          node functions/scripts/adminPolicyPartitions.mjs check-map
+          node functions/scripts/adminPolicyPartitions.mjs aggregate manifests | tee -a "$GITHUB_STEP_SUMMARY"
 
   surfaces:
     name: Admin policy surfaces -- view model, entity registry, rendered grid
