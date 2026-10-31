@@ -34,7 +34,7 @@ import {
   judgeAbsenceProvenance, judgeScanCompleteness, matchesFilter, projectDoc, rawFieldPath, sortRows, type Doc,
 } from "../reporting/reportPipeline.js";
 import { resolveCompanyAuthority } from "./companyAuthority.js";
-import { acceptOnly, inTransaction, recordsAudit, refuse, ID_SHAPE, type RecordsActor } from "./recordsSupport.js";
+import { acceptOnly, inTransaction, isPlainObject, recordsAudit, refuse, ID_SHAPE, type RecordsActor } from "./recordsSupport.js";
 
 const SCHEMA = "eos_ops";
 
@@ -171,6 +171,12 @@ function requireRead(actor: RecordsActor): void {
   if (!actor.capabilities.has(REPORT_DEFINITION_CAPABILITIES.read)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this requires ${REPORT_DEFINITION_CAPABILITIES.read}`);
 }
 
+/** The audit target of a denial that is decided BEFORE the input is validated (API-01): the id the caller stated if it is well formed, else a fixed placeholder. */
+const statedDefinitionId = (input: unknown): string => {
+  const id = isPlainObject(input) ? input.definitionId : undefined;
+  return ID_SHAPE(id) ? id : "unspecified";
+};
+
 /** Someone else's definition. Returned (not audited here) so the audit is written AFTER the transaction ends: never a second pool connection while one is held. */
 const FOREIGN = Symbol("foreign-definition");
 
@@ -193,12 +199,12 @@ async function denyForeign(pool: Pool, actor: RecordsActor, action: string, defi
 }
 
 export async function createSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
-  const i = acceptOnly(input, ["name", "definition"]);
   assertActor(actor);
-  assertValidName(i.name);
   const id = `rpt_${randomUUID()}`;
-  // The CAPABILITY gate is the cheap check, so it runs before the definition is walked: a caller without the capability learns nothing about validation and costs nothing.
+  // The CAPABILITY gate runs FIRST (API-01), before the input is read at all: a caller without the capability learns nothing about validation and costs nothing.
   await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.create, "createReportDefinition", id);
+  const i = acceptOnly(input, ["name", "definition"]);
+  assertValidName(i.name);
   // Structural validation next: a malformed definition is refused before any write.
   const definition = assertValidDefinition(i.definition);
   return inTransaction(deps.pool, "write", async (c) => {
@@ -238,12 +244,12 @@ export async function listSavedReportDefinitions(deps: { readonly pool: Pool }, 
 }
 
 export async function renameSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
-  const i = acceptOnly(input, ["definitionId", "name"]);
   assertActor(actor);
+  await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.rename, "renameReportDefinition", statedDefinitionId(input));
+  const i = acceptOnly(input, ["definitionId", "name"]);
   assertValidName(i.name);
   if (!ID_SHAPE(i.definitionId)) refuse("DEFINITION_ID_REQUIRED", "INVALID_INPUT", "definitionId is required");
   const definitionId = i.definitionId as string;
-  await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.rename, "renameReportDefinition", definitionId);
   const result = await inTransaction(deps.pool, "write", async (c) => {
     const current = await loadOwned(c, actor, definitionId, true);
     if (current === FOREIGN) return FOREIGN;
@@ -258,12 +264,12 @@ export async function renameSavedReportDefinition(deps: { readonly pool: Pool },
 }
 
 export async function duplicateSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
-  const i = acceptOnly(input, ["definitionId", "name"]);
   assertActor(actor);
+  await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.duplicate, "duplicateReportDefinition", statedDefinitionId(input));
+  const i = acceptOnly(input, ["definitionId", "name"]);
   if (!ID_SHAPE(i.definitionId)) refuse("DEFINITION_ID_REQUIRED", "INVALID_INPUT", "definitionId is required");
   if (i.name !== undefined && typeof i.name !== "string") refuse("NAME_INVALID", "INVALID_INPUT", "name must be a string when present");
   const definitionId = i.definitionId as string;
-  await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.duplicate, "duplicateReportDefinition", definitionId);
   const result = await inTransaction(deps.pool, "write", async (c) => {
     const source = await loadOwned(c, actor, definitionId, false);
     if (source === FOREIGN) return FOREIGN;
@@ -283,11 +289,11 @@ export async function duplicateSavedReportDefinition(deps: { readonly pool: Pool
 }
 
 export async function deleteSavedReportDefinition(deps: { readonly pool: Pool }, actor: RecordsActor, input: Record<string, unknown>) {
-  const i = acceptOnly(input, ["definitionId"]);
   assertActor(actor);
+  await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.delete, "deleteReportDefinition", statedDefinitionId(input));
+  const i = acceptOnly(input, ["definitionId"]);
   if (!ID_SHAPE(i.definitionId)) refuse("DEFINITION_ID_REQUIRED", "INVALID_INPUT", "definitionId is required");
   const definitionId = i.definitionId as string;
-  await requireMutationCapability(deps.pool, actor, REPORT_DEFINITION_CAPABILITIES.delete, "deleteReportDefinition", definitionId);
   const result = await inTransaction(deps.pool, "write", async (c) => {
     const current = await loadOwned(c, actor, definitionId, true);
     if (current === FOREIGN) return FOREIGN;

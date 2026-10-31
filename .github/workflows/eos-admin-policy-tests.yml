@@ -446,6 +446,14 @@ jobs:
         run: npx vitest run test/adminControlPlane.test.jsx
         working-directory: field-ops-app-vite
 
+      # ACCESS EXPLAINED (Option A piece 3): the eleven gates drawn in the server's order, the first refusal shown in the
+      # server's own words with nothing after it reading as passed (a refusal at seven different gates), the proposal's layer
+      # names withheld until the server reports the Owner approved them, the question sent to the server, and a refusal or an
+      # unreadable payload shown as such. The decisions are proved in functions/test/accessGatesExplanationPostgres.test.mjs.
+      - name: Administration access explained -- client (vitest + jsdom)
+        run: npx vitest run test/employeeAccessExplained.test.jsx
+        working-directory: field-ops-app-vite
+
       # LANE DX: Employee > Direct Exceptions -- each direct exception labelled DIRECT EXCEPTION with its source,
       # reason, actor, creation, expiry, condition and evaluator result; grant / revoke / condition sent with a
       # reason, re-read on success, refusals verbatim.
@@ -477,6 +485,18 @@ jobs:
       # for a token. The seam is mocked true; every Firebase entry point is a spy that must not be reached.
       - name: EOS-only sign-in AuthContext -- client (vitest + jsdom)
         run: npx vitest run --maxWorkers=2 test/b2AuthContextEosOnly.test.jsx test/b2LazyScreensWithoutFirebase.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE NOAS: Sign Out on the governed No Access screen -- the shared logout revokes server-side, clears the client session
+      # and tab storage, works with no grants, and a second persona resolves its own identity.
+      - name: No Access screen Sign Out -- client (vitest + jsdom)
+        run: npx vitest run test/noAccessSignOut.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE QR-SETUP: authenticator enrollment draws a QR in the browser (the key never leaves it), keeps the tap link and key as
+      # the fallback, gives the phone-clock hint; a session that owes a second factor sees the setup screen and Sign out, not the app.
+      - name: Authenticator setup QR and forced enrollment -- client (vitest + jsdom)
+        run: npx vitest run test/authenticatorSetup.test.jsx test/useSignOut.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE GA: governed scope pickers -- Operational Scope targets and Sales Channel values come ONLY from the server;

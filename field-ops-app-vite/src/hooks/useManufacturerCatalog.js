@@ -5,10 +5,17 @@ import { fetchManufacturerCatalog } from "../services/manufacturerCatalogClient.
 // hooks/useSalesOrder.js's shape) so a slow/failed/denied read never blocks or misrepresents
 // the Part surfaces that consume it -- callers fall back to raw manufacturerId display when
 // this hasn't resolved to READY, never fabricate a name.
-export function useManufacturerCatalog() {
-  const [state, setState] = useState({ loading: true, errorStatus: null, result: null });
+//
+// `enabled` (UAT RO-01): false asks nothing and settles at the same "denied" answer a refused read produces, so a screen whose
+// caller is known not to hold inventory.manufacturer.read does not take a 403 on every load for an answer it already has.
+export function useManufacturerCatalog(enabled = true) {
+  const [state, setState] = useState(enabled ? { loading: true, errorStatus: null, result: null } : { loading: false, errorStatus: "denied", result: null });
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ loading: false, errorStatus: "denied", result: null });
+      return undefined;
+    }
     let cancelled = false;
     setState({ loading: true, errorStatus: null, result: null });
     fetchManufacturerCatalog().then(({ result, errorStatus }) => {
@@ -18,7 +25,7 @@ export function useManufacturerCatalog() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   return state;
 }

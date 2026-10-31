@@ -104,6 +104,7 @@ functions/src/eosOps/**
 functions/test/eosOpsPostgres.test.mjs
 functions/test/eosOpsNoFirebase.test.mjs
 functions/test/eosOpsApiShape.test.mjs
+functions/test/authorizationBeforeValidationOffline.test.mjs
 functions/test/eosOpsOperatingCompanyCustody.test.mjs
 functions/test/eosOpsOperatingCompanyCustodyPostgres.test.mjs
 functions/scripts/bootstrapEosTenant.mjs
@@ -643,6 +644,11 @@ functions/test/roleChangeReasonContract.test.mjs
 functions/test/administrationControlPlanePostgres.test.mjs
 functions/src/eosOps/effectiveAccessExplanation.ts
 functions/test/effectiveAccessExplanationPostgres.test.mjs
+# ACCESS EXPLAINED (Option A piece 3): the gate-by-gate explanation, its Postgres suite, the panel and its component suite.
+functions/src/eosOps/accessGatesExplanation.ts
+functions/test/accessGatesExplanationPostgres.test.mjs
+field-ops-app-vite/src/modules/administration/EmployeeAccessExplained.jsx
+field-ops-app-vite/test/employeeAccessExplained.test.jsx
 functions/test/administrationControlPlaneSecurityPostgres.test.mjs
 # LANE SC (2026-09-26): Security Role ASSIGNMENT SCOPE runtime -- scope-qualified holdings, business-context
 # admission, assignRole scope validation, listSupportedAssignmentScopes, the scoped Employee directory reads.
@@ -904,6 +910,18 @@ functions/scripts/populatePrincipalDisplayNames.js
 scripts/resolveEnvironment.mjs
 scripts/eosPersonaSession.mjs
 field-ops-app-vite/test/b2AuthContextEosOnly.test.jsx
+field-ops-app-vite/test/noAccessSignOut.test.jsx
+field-ops-app-vite/test/authenticatorSetup.test.jsx
+field-ops-app-vite/test/useSignOut.test.jsx
+field-ops-app-vite/src/auth/MfaEnrollmentGate.jsx
+field-ops-app-vite/src/auth/useMfaEnrollmentRequired.js
+field-ops-app-vite/src/auth/useSignOut.js
+# authenticatorSetup.test.jsx reads App.jsx as source (the forced-enrollment gate ahead of every refused read) and renders the `qrcode`
+# dependency the app pins in package.json / package-lock.json: an edit to any of the three alone must reach that suite.
+field-ops-app-vite/src/App.jsx
+field-ops-app-vite/package.json
+field-ops-app-vite/package-lock.json
+field-ops-app-vite/src/modules/account/AccountSecurity.jsx
 field-ops-app-vite/test/b2LazyScreensWithoutFirebase.test.jsx
 field-ops-app-vite/src/hooks/useInventoryActions.js
 field-ops-app-vite/src/auth/eosLoginClient.js
@@ -1037,6 +1055,7 @@ functions/src/eosCommercial/commercialCompanyAuthority.ts
 functions/test/commercialCompanyAuthority.test.mjs
 functions/test/commercialCompanyAuthorityPostgres.test.mjs
 functions/test/commercialCompanyAuthorityBreadthPostgres.test.mjs
+functions/test/sal03CompanylessOwnerEligibilityPostgres.test.mjs
 functions/test/support/commercialCompanyReachFixture.mjs
 # FU-2 rebill trigger and Issue eligibility (2026-10-20): the suites; functions/src/eosFinance/** and the Finance client files are covered above.
 functions/test/fu2PrepareBillingPackage.test.mjs
@@ -1047,3 +1066,8 @@ functions/test/fu2PrepareBillingPackagePostgres.test.mjs
 functions/scripts/adminPolicyPartitions.mjs
 functions/scripts/adminPolicyManifestReporter.mjs
 functions/test/adminPolicyPartitions.test.mjs
+# CLC (2026-10-21): the governed, audited, set-once correction of a company-less Commercial record (the command and the read helper; commands/** and reads/** are covered above).
+functions/src/eosCommercial/recordCompanyOffer.ts
+functions/test/commercialRecordCompany.test.mjs
+functions/test/commercialRecordCompanyPostgres.test.mjs
+functions/test/clcSal03InteractionPostgres.test.mjs

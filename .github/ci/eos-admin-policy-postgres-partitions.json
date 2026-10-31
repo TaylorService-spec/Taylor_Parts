@@ -87,7 +87,8 @@
       "test/a6AccountBalanceSummaryPostgres.test.mjs",
       "test/q1CommercialCrmAuditPostgres.test.mjs",
       "test/f1aInvoiceIssuePostgres.test.mjs",
-      "test/salesOrderAllocationPostgres.test.mjs"
+      "test/salesOrderAllocationPostgres.test.mjs",
+      "test/clcSal03InteractionPostgres.test.mjs"
     ],
     "3": [
       "test/employeePrincipalLinkPostgres.test.mjs",
@@ -128,7 +129,8 @@
       "test/partBalancePostgres.test.mjs",
       "test/g1GoalAuthoringPostgres.test.mjs",
       "test/fu2PrepareBillingPackagePostgres.test.mjs",
-      "test/commercialCompanyAuthorityPostgres.test.mjs"
+      "test/commercialCompanyAuthorityPostgres.test.mjs",
+      "test/commercialRecordCompanyPostgres.test.mjs"
     ],
     "4": [
       "test/adminPolicyPostgres.test.mjs",
@@ -169,7 +171,8 @@
       "test/supplierPurchaseOrderAuthoringPostgres.test.mjs",
       "test/f1bInvoiceCorrectionDownPostgres.test.mjs",
       "test/saeProtectedOwnerExemptionPostgres.test.mjs",
-      "test/saeDelegatedExemptionPostgres.test.mjs"
+      "test/saeDelegatedExemptionPostgres.test.mjs",
+      "test/sal03CompanylessOwnerEligibilityPostgres.test.mjs"
     ],
     "5": [
       "test/eosOpsPostgres.test.mjs",
@@ -209,7 +212,8 @@
       "test/inventoryNeighboursIsolationPostgres.test.mjs",
       "test/offlinePrecheckReadsPostgres.test.mjs",
       "test/grant1OwnerPolicyGrantsPostgres.test.mjs",
-      "test/commercialCompanyAuthorityBreadthPostgres.test.mjs"
+      "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
+      "test/accessGatesExplanationPostgres.test.mjs"
     ]
   },
   "measuredSeconds": {

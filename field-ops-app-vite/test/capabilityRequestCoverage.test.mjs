@@ -165,6 +165,10 @@ const NON_GATE_ALLOWLIST = {
   // asked of the caller's EOS capability set (access/useEosCapabilityFeed.js), never of the Firebase feed, so no Firebase request
   // set could or should ask about them; test/f1SessionAccess.test.mjs proves each is a registered EOS key.
   "access/sessionAccess.js": ["workOrder.create", "customer.governedField.write", "reorder.request.create.manual"],
+  // (g) Access map (DECISIONS #MAP): the GENERATED statement of what the server requires per operation. Its ids are asked of the caller's EOS
+  // capability set through access/operationGate.js, never of the Firebase feed; test/operationGate.test.mjs pins its shape and
+  // functions/test/operationAccessMap.test.mjs proves every row against the real commands.
+  "access/operationAccess.generated.js": "*",
 };
 
 function allowed(rel, id) {

@@ -12,7 +12,8 @@ vi.mock("../src/data/partsCatalog", () => ({
   PARTS_CATALOG: [{ sku: "TST-9001", name: "STATIC-CATALOG-NAME-A", category: "Valves", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }],
   getCatalogItem: () => undefined,
 }));
-vi.mock("../src/hooks/useInventoryLedger", () => ({ useInventoryLedger: () => ({ healthEntries: [], loading: false, error: null }) }));
+const ledger = vi.hoisted(() => ({ current: { healthEntries: [], loading: false, error: null } }));
+vi.mock("../src/hooks/useInventoryLedger", () => ({ useInventoryLedger: () => ledger.current }));
 vi.mock("../src/hooks/useReorderRequests", () => {
   const r = () => ({ data: [], loading: false, hasMore: false, loadMore: () => {}, refresh: () => {}, error: null });
   return {
@@ -41,7 +42,7 @@ vi.mock("react-router-dom", async (orig) => {
 import { searchParts } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; ledger.current = { healthEntries: [], loading: false, error: null }; });
 
 const latestResolve = (id) => captured[captured.length - 1](id);
 const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: [] };
@@ -95,5 +96,27 @@ describe("PartsList + InventoryHealthPanel (OD-3)", () => {
     await screen.findByText("CANONICAL-NAME-A");
     expect(latestResolve("TST-9001")).toBe("CANONICAL-NAME-A");
     expect(screen.queryByText("STALE-OLD-NAME")).toBeNull();
+  });
+});
+
+// A stock ledger the session may not read is an ABSENCE ("not available to your role"); a real network/server failure keeps the failure copy.
+// useInventoryLedger marks the gate refusal `denied: true`. Two sites: the operational queue and the stock position.
+describe("PartsList -- the unreadable stock ledger", () => {
+  it("denied: the absence copy in the operational queue and the stock position, never the failure copy", async () => {
+    ledger.current = { healthEntries: [], loading: false, error: new Error("not shown"), denied: true };
+    searchParts.mockResolvedValue(READY);
+    render(<PartsList accessVersion={1} />);
+    expect(await screen.findByText(/The stock position is not available to your role/)).toBeTruthy();
+    expect(screen.getByText(/stock position behind the operational queue is not available to your role/)).toBeTruthy();
+    expect(screen.queryByText(/Unable to load (stock position|the operational queue)/)).toBeNull();
+  });
+
+  it("a real read failure keeps the failure copy and is not stated as a role absence", async () => {
+    ledger.current = { healthEntries: [], loading: false, error: new Error("network down") };
+    searchParts.mockResolvedValue(READY);
+    render(<PartsList accessVersion={1} />);
+    expect(await screen.findByText(/Unable to load stock position right now/)).toBeTruthy();
+    expect(screen.getByText(/Unable to load the operational queue right now/)).toBeTruthy();
+    expect(screen.queryByText(/not available to your role/)).toBeNull();
   });
 });
