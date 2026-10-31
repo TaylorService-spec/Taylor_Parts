@@ -13,6 +13,7 @@
 
 ## Tips / common problems
 - **Always sign out on a shared or public computer.** The app remembers your sign-in between visits until you log out, so the next person would otherwise land in your account.
+- Wait for the sign-in screen to appear before you close or reload the tab. The app tells the server to end your session first, then shows the sign-in screen. If your connection is down at that moment you are still signed out on this device, but the server keeps the session until it times out from inactivity, so reloading could bring it back. Sign out again once you are back online.
 - If you're switching users on the same device, click **Logout** first, then sign in with the other account — this makes sure the new person's role and screens load cleanly.
 
 ## Related
