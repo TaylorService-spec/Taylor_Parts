@@ -1,0 +1,2948 @@
+{
+ "at": "2026-10-12T05:29:34.705Z",
+ "baseUrl": "https://eos-api-nonprod.onrender.com",
+ "personas": {
+  "administrator": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 99
+  },
+  "ownerExecutive": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 66
+  },
+  "generalManager": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 45
+  },
+  "serviceManager": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 32
+  },
+  "dispatcher": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 38
+  },
+  "serviceTechnician": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 11
+  },
+  "partsManager": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 29
+  },
+  "partsAssociate": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 23
+  },
+  "warehouseManager": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 25
+  },
+  "warehouseAssociate": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 20
+  },
+  "retailSales": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 4
+  },
+  "nationalAccountsSales": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 4
+  },
+  "officeManager": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 11
+  },
+  "financeAccounting": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 25
+  },
+  "reportingAnalyst": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 1
+  },
+  "generalEmployee": {
+   "capabilitiesResolved": true,
+   "capabilityCount": 0
+  }
+ },
+ "fixtures": {
+  "partId": "ACC-NQX1QO-1",
+  "otherWorkOrderAssignee": "synthetic-np-emp-contract-technician",
+  "serviceTechnicianEmployee": "synthetic-np-emp-service-technician-a",
+  "ownWorkOrderOfServiceTechnician": "wo_72a1a009-54f8-46a7-8f75-4178afaa272e",
+  "otherWorkOrder": "wo_b8a45311-fd76-4182-8dfd-43035d4da30f",
+  "listMine": "200 ",
+  "listAll": "200 "
+ },
+ "rows": [
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "administrator",
+   "probe": "createPart{part:{}}",
+   "expected": "HTTP_400_INVALID_INPUT",
+   "actual": "HTTP_400_INVALID_INPUT",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "administrator",
+   "probe": "changePartStatus{no such part}",
+   "expected": "HTTP_404_NOT_FOUND",
+   "actual": "HTTP_404_NOT_FOUND",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "listPartAliases",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "probePartAlias",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=false (expected false)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "listSuppliers",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "administrator",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": [
+    "HTTP_404_NOT_FOUND",
+    "HTTP_404_SUPPLIER_NOT_FOUND"
+   ],
+   "actual": "HTTP_404_NOT_FOUND",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "administrator",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "administrator",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "ownerExecutive",
+   "probe": "createPart{part:{}}",
+   "expected": "HTTP_400_INVALID_INPUT",
+   "actual": "HTTP_400_INVALID_INPUT",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "ownerExecutive",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "listPartAliases",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "probePartAlias",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "ownerExecutive",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "ownerExecutive",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "ownerExecutive",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "generalManager",
+   "probe": "createPart{part:{}}",
+   "expected": "HTTP_400_INVALID_INPUT",
+   "actual": "HTTP_400_INVALID_INPUT",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "generalManager",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "listPartAliases",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "probePartAlias",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "generalManager",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "generalManager",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "generalManager",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "serviceManager",
+   "probe": "createPart{part:{}}",
+   "expected": "HTTP_400_INVALID_INPUT",
+   "actual": "HTTP_400_INVALID_INPUT",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "serviceManager",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "listPartAliases",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "probePartAlias",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "serviceManager",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "serviceManager",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "serviceManager",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "dispatcher",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "dispatcher",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "listSuppliers",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "dispatcher",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "dispatcher",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "dispatcher",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "serviceTechnician",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "serviceTechnician",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=false (expected false)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "serviceTechnician",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "serviceTechnician",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "serviceTechnician",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "partsManager",
+   "probe": "createPart{part:{}}",
+   "expected": "HTTP_400_INVALID_INPUT",
+   "actual": "HTTP_400_INVALID_INPUT",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "partsManager",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "listPartAliases",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "probePartAlias",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=false (expected false)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "listSuppliers",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "partsManager",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "partsManager",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "partsManager",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "partsAssociate",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "partsAssociate",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=false (expected false)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "listSuppliers",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "partsAssociate",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "partsAssociate",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "partsAssociate",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": [
+    "ALLOWED",
+    "REFUSED"
+   ],
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "record.read holder: scope/condition-dependent, recorded"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "warehouseManager",
+   "probe": "createPart{part:{}}",
+   "expected": "HTTP_400_INVALID_INPUT",
+   "actual": "HTTP_400_INVALID_INPUT",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "warehouseManager",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "listPartAliases",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "probePartAlias",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=false (expected false)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "warehouseManager",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "warehouseManager",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "warehouseManager",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "warehouseAssociate",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "warehouseAssociate",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=false (expected false)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "warehouseAssociate",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "warehouseAssociate",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "warehouseAssociate",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "retailSales",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "retailSales",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "retailSales",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "retailSales",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "retailSales",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "nationalAccountsSales",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "nationalAccountsSales",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "nationalAccountsSales",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "nationalAccountsSales",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "nationalAccountsSales",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "searchParts",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "readPart",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "officeManager",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "officeManager",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "lookupScannedPart",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "officeManager",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "officeManager",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "officeManager",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "searchParts",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "readPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "financeAccounting",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "financeAccounting",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "lookupScannedPart",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": "aliasDenied=true (expected true)"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "financeAccounting",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "financeAccounting",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "ALLOWED",
+   "actual": "ALLOWED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "financeAccounting",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "searchParts",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "readPart",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "reportingAnalyst",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "reportingAnalyst",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "lookupScannedPart",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "reportingAnalyst",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "reportingAnalyst",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "reportingAnalyst",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "searchParts",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "readPart",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "generalEmployee",
+   "probe": "createPart{part:{}}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "empty part: validation refuses before any write, so no record can change"
+  },
+  {
+   "capability": "Part Master",
+   "gate": "C write authority (refusal probe)",
+   "persona": "generalEmployee",
+   "probe": "changePartStatus{no such part}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent part: nothing can change"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "listPartAliases",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "probePartAlias",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part identifiers (scanner)",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "lookupScannedPart",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "listSuppliers",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "listSupplierOrganizationOptions",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "C write authority (refusal probe)",
+   "persona": "generalEmployee",
+   "probe": "setSupplierStatus{no such supplier}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": "nonexistent supplier: nothing can change"
+  },
+  {
+   "capability": "Put-away visibility",
+   "gate": "B (screen gate)",
+   "persona": "generalEmployee",
+   "probe": "resolveMyCapabilities: placement.record+location.bin.read",
+   "expected": "ANY",
+   "actual": "NOT_OFFERED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "listInventoryLocations{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Put-away reads",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "readInventoryOnHand{taylor-main}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "readWorkOrderLabor{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "readWorkOrderFieldContext{own WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "readWorkOrderLabor{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Work Order Field Context (F5)",
+   "gate": "B/C read",
+   "persona": "generalEmployee",
+   "probe": "readWorkOrderFieldContext{other WO}",
+   "expected": "REFUSED",
+   "actual": "REFUSED",
+   "verdict": "PASS",
+   "note": null
+  },
+  {
+   "capability": "Part Master",
+   "gate": "write",
+   "persona": "-",
+   "probe": "createPart / updatePart / changePartStatus success paths would create or change a Part",
+   "expected": "-",
+   "actual": "-",
+   "verdict": "NOT EXECUTED",
+   "note": "needs separate mutation authorization"
+  },
+  {
+   "capability": "Part identifiers",
+   "gate": "write",
+   "persona": "-",
+   "probe": "create / deactivate / reactivate would change identifiers",
+   "expected": "-",
+   "actual": "-",
+   "verdict": "NOT EXECUTED",
+   "note": "needs separate mutation authorization"
+  },
+  {
+   "capability": "Supplier maintenance",
+   "gate": "write",
+   "persona": "-",
+   "probe": "createSupplier / updateSupplier / status change would change suppliers",
+   "expected": "-",
+   "actual": "-",
+   "verdict": "NOT EXECUTED",
+   "note": "needs separate mutation authorization"
+  },
+  {
+   "capability": "Part-supplier terms (SUP-1)",
+   "gate": "write",
+   "persona": "-",
+   "probe": "PR #2064 is HELD (cost-visibility decision) and not deployed; every operation is new",
+   "expected": "-",
+   "actual": "-",
+   "verdict": "NOT EXECUTED",
+   "note": "needs separate mutation authorization"
+  },
+  {
+   "capability": "Work Order Labor",
+   "gate": "write",
+   "persona": "-",
+   "probe": "recordWorkOrderLabor / correction would submit labor",
+   "expected": "-",
+   "actual": "-",
+   "verdict": "NOT EXECUTED",
+   "note": "needs separate mutation authorization"
+  },
+  {
+   "capability": "Put-away",
+   "gate": "write",
+   "persona": "-",
+   "probe": "recordPutAway / relocateStock would mutate inventory placement",
+   "expected": "-",
+   "actual": "-",
+   "verdict": "NOT EXECUTED",
+   "note": "needs separate mutation authorization"
+  }
+ ]
+}
