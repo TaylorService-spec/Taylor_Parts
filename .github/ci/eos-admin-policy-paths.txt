@@ -912,6 +912,7 @@ scripts/eosPersonaSession.mjs
 field-ops-app-vite/test/b2AuthContextEosOnly.test.jsx
 field-ops-app-vite/test/noAccessSignOut.test.jsx
 field-ops-app-vite/test/authenticatorSetup.test.jsx
+field-ops-app-vite/test/useSignOut.test.jsx
 field-ops-app-vite/src/auth/MfaEnrollmentGate.jsx
 field-ops-app-vite/src/auth/useMfaEnrollmentRequired.js
 field-ops-app-vite/src/auth/useSignOut.js
