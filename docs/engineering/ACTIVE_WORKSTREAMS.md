@@ -36,7 +36,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    a refused target never receives a password, MFA code, issuer credential or token; Codex UAT can use the harness safely
 - Protected boundaries:none (tooling only; no product code, no deploy, no credentials read)
-- Lifecycle stage:     INTEGRATION (PR open, controller merges)
+- Lifecycle stage:     MERGED `96530fe3` (#2201) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Lane FU-2 (2026-10-20) — Finance completion: `prepareBillingPackage { salesOrderId, idempotencyKey }` on `/operations/finance` (the governed rebill trigger after an approved void; wraps the existing preparation; REUSES `finance.invoice.issue`), the server-derived `issuable` / `rebill` verdicts on the receivable read (one predicate, `issueBlocker`, shared with `issueInvoice`), and the Receivables Prepare rebill control; Issue is never offered on a financed sale
 - Agent/session:       Claude Code Lane FU-2 · Role: builder; controller merges
@@ -157,7 +157,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        #2110 and Scheduling PR-2 merged; guides verified against the deployed app
 - Expected outcome:    end-user guides match the shipped behavior
 - Protected boundaries:none
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `ad2cae77` (#2122) (docs) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Firebase exit lane (O-1, DECISIONS #234) — PR-A unrouted Technicians chain, PR-B dormant / flag-dead clients, PR-C Timestamp-only types; read-only investigations of the 27 no-client write callables, the bin dual path and the operator inventory checklist (Owner decisions 2026-10-15)
 - Agent/session:       Claude Code Firebase-exit lane session · Role: builder; Lane D: independent reviewer
@@ -267,7 +267,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    Cloud Agents install and boot a working non-Firebase sandbox (Postgres, EOS API `/health`, Vite)
 - Protected boundaries:no production credentials, no Firebase, no deploy
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `fc8baf26` (#2090) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Workflow Assignments / Workflow Builder separation (Owner approved 2026-10-08)
 - Agent/session:       Codex · Role: builder
@@ -278,7 +278,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        existing immutable workflow version commands and policy reads
 - Expected outcome:    Main workflow page focuses on role assignments; authoring/validation/lifecycle are a separate Builder page
 - Protected boundaries:no live assignments, grants, migrations, Firebase work, merge or deployment
-- Lifecycle stage:     OWNER REVIEW — local tests/build passed; rendered acceptance and independent integration review pending; not deployed
+- Lifecycle stage:     MERGED `eab6d3dd` (#2035) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Administration IA redesign — Phase 1 navigation regroup (DECISIONS #211) + Permissions destination (#212, branch `feat/admin-permissions-destination`, stacked)
 - Agent/session:       Claude (Claude Code, 2026-10-08) · Role: builder
@@ -289,7 +289,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    Administration rail shows the approved IA; no route, gate or surface change
 - Protected boundaries:none crossed; the Permissions destination's surface-map row is deferred to an Owner decision
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED Phase 1 `cf9d111d` (#2026) and Permissions destination `82de2ab5` (#2027) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Email Connections phase 2 — REAL Microsoft 365 / Google Workspace delivery and attachment byte custody, on top of the phase 1 intake capability (PR #1811)
 - Agent/session:       Claude (Claude Code, 2026-09-05) · Role: builder
@@ -300,7 +300,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        PR #1811 must merge first — this branch contains its commits. It adds NO capability, NO Role and NO firestore.rules change of its own.
 - Expected outcome:    a real mailbox is connected through a consented, read-only OAuth grant; new mail reaches Service → Inbound Work automatically with its attachment bytes held by EOS; Accept still produces exactly one governed Work Order; failures are visible, classified and retryable.
 - Protected boundaries:reached and NOT crossed — NO `firestore.rules` edit. `storage.rules` is NEW and denies every client (strictest possible), wired into firebase.json but NOT deployed. NO production OAuth binding, NO production polling, NO production attachment ingestion: every transport callable and the scheduler refuse the production project from the runtime's own identity before authority is evaluated. NO deploy, NO capability activation, NO grant, NO production data touched, NO Certification fixture altered.
-- Lifecycle stage:     **SANDBOX BUILD** — proven locally against the Firestore emulator as `eos-platform-sandbox` (37 offline + 23 delivery end-to-end assertions, phase 1's 31 + 33 still green, 15 + 13 client assertions, production build clean). Real tenant binding is an external administrator action, documented in `docs/deployment/email-provider-setup.md` and NOT performed.
+- Lifecycle stage:     MERGED `32bd8270` (#1813, which superseded #1812); repo-only, no tenant binding, no deploy -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Email Connections + Inbound Work — base EOS email intake: connect a Microsoft 365 / Google Workspace mailbox, review what arrives, accept it into one governed Work Order without re-typing it
 - Agent/session:       Claude (Claude Code, 2026-09-05) · Role: builder
@@ -311,7 +311,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none — composes the existing governed Work Order create core, the trusted effective-access feed, the audit writer, and the Work Order wizard's own customer / location / equipment pickers
 - Expected outcome:    an authorized Service employee takes a sandbox inbound warranty email through review to exactly one governed Work Order, with the message, attachments, warranty reference and matched records carried across, full audit evidence, thread and duplicate protection, and base EOS working with no VDX
 - Protected boundaries:reached and NOT crossed — NO `firestore.rules` edit (all four new collections are denied to every client by rule absence, the same posture `performance_goals` and `crm_activities` already have). NO deploy, NO production activation, NO capability grant executed against a live environment, NO production data touched, NO Certification fixture or evidence altered. All six capabilities registered `active:false`; sandbox activation is declared in the repository only and its deploy is Owner-executed.
-- Lifecycle stage:     **SANDBOX BUILD** — proven locally against the Firestore emulator running as `eos-platform-sandbox` (31 end-to-end + 33 offline backend assertions, 23 client assertions, production build clean). Not deployed anywhere. Real Microsoft 365 / Google Workspace tenant binding is an external configuration dependency, recorded in the architecture document rather than faked.
+- Lifecycle stage:     MERGED `c051af0c` (#1811); repo-only, not deployed -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          EOS dashboard personalization + performance management — the Performance Goal Authority, the persona dashboard framework, and the sandbox operating story behind them
 - Agent/session:       Claude (Claude Code, 2026-09-02) · Role: builder
@@ -336,7 +336,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        the accepted pilot `ba4ce623`; merged Financials P1 composition through PR #1723
 - Expected outcome:    ONE coherent EOS presentation system inherited globally from `:root` and the shared primitives — no family seam, no page-local palettes — plus the canonical North Star schema document and the conformance tests that keep a future design from silently reverting to the off-white, low-contrast palette
 - Protected boundaries:sandbox Hosting deploy ONLY (Owner-authorized for the final reviewed commit). NO Functions, Rules, indexes, extensions, data/fixtures, production Hosting, or any other Firebase project. No capability/grant/role change, no route, workflow, data-model or state-machine change. NO MERGE — stop at `AWAITING_OWNER_VISUAL_ACCEPTANCE`
-- Lifecycle stage:     SANDBOX BUILD → awaiting Owner visual review
+- Lifecycle stage:     CLOSED WITHOUT MERGE 2026-10-13 (#1724; Owner-authorized backlog cleanup, superseded by the later accepted UI implementation) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Overnight Tier-1 program — Opportunity write paths, Sales Order fulfillment view, Part identifiers, roadmap reconciliation
 - Agent/session:       Claude (overnight autonomous program, 2026-08-20) · Role: builder
@@ -347,7 +347,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none blocking; ran sequentially so no two writers shared a branch or checkout
 - Expected outcome:    governed Opportunity edit + atomic close-as-WON, Sales Order index mounted, fulfillment progression, Part identifier surface, roadmap truthful against main
 - Protected boundaries:reached and NOT crossed — no deploy, no capability activation, no role grant, no Rules change, no provisioning, no sandbox or production data mutation. The emulator was local only and stopped.
-- Lifecycle stage:     SANDBOX BUILD (repo-only; nothing deployed or activated)
+- Lifecycle stage:     MERGED #1341 and #1342 (2026-08-20); repo-only, nothing deployed or activated -- reconciled 2026-10-23 from GitHub PR state
 
 
 - Capability:          EOS cost/capacity semantic correction (#831 regression)
@@ -359,7 +359,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Durable #831 status/result and existing provider-neutral capacity contracts
 - Expected outcome:    Billed spend, modeled cost, and provider capacity remain distinct; synthetic Claude dollars cannot stop uncapped subscription work
 - Protected boundaries:No #831 rerun, provider activation, credential, routing, integration, deployment, or automatic merge
-- Lifecycle stage:     RELEASE CANDIDATE
+- Lifecycle stage:     MERGED `f7b5b390` (#832) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Cortex EOS provider adapter pilot (read-only, provider-neutral)
 - Agent/session:       Codex `/root` · Role: builder
@@ -370,7 +370,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Existing AgentRequest, AgentResult, Verifier, and governed work-intake result contracts
 - Expected outcome:    One bounded READ_ONLY_PILOT Cortex worker can return attributable, verified, durable EOS results without changing Claude
 - Protected boundaries:No live provider activation, credential use, mutation, approval, integration, deployment, or merge
-- Lifecycle stage:     RELEASE CANDIDATE
+- Lifecycle stage:     MERGED `f155d04e` (#828) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          EOS implementation write-back isolation + governed patch integration
 - Agent/session:       Codex `/root` · Role: builder/integration
@@ -381,7 +381,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        PR #814 artifact-only guard; recovered #818/#819 sessions under `D:/Taylor_Parts-diagnostics-818-819/`
 - Expected outcome:    Isolated Claude mutations become governed report/patch artifacts; only separately approved exact patches may integrate
 - Protected boundaries:No automatic patch application, force push, permission expansion, blind stash, Claude rerun, or merge before independent review
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `9b9540b8` (#821) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          [CLOSED — DONE 2026-08-12] GitHub Issue → EOS runtime write-back hardening after Issue #813; PR #814 merged; fresh Issue #815 COMPLETE
 - Agent/session:       Codex `/root` · Role: builder/integration
@@ -414,7 +414,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Reuses the merged work-intake resolver, selector, Wake Supervisor, aiExchange, review artifacts, and GitHub source-of-truth; OpenAI MCP/OAuth contract
 - Expected outcome:    Deterministic resolution of F1–F4, compact content-addressed evidence, then one bounded FACT_BASED delta review
 - Protected boundaries:Exactly one delta provider review only after deterministic evidence is complete; no deployment, credential provisioning, production action, or authorization grant
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     MERGED `1a496939` (#790) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          [CLOSED — DONE WHEN THIS CHANGE MERGES] Governed Owner/ChatGPT work-intake bridge (repo-safe minimum)
 - Agent/session:       Codex `/root` · Role: builder
@@ -425,7 +425,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Reuses `selectNextWork`, Wake Supervisor state contract, Agent Result lifecycle, `aiExchange`, review artifacts, and GitHub-backed provenance; no new runtime or queue
 - Expected outcome:    Hash-pinned durable work artifact resolves by ID + location + SHA-256 into the existing selector; compact content-addressed result pointers return to the same durable orchestration surfaces
 - Protected boundaries:No live OpenAI/Claude call, deployment, production write, policy/rules/auth change, or unattended runtime activation
-- Lifecycle stage:     RELEASE CANDIDATE → DONE on merge
+- Lifecycle stage:     MERGED `12fe75aa` (#789) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          [CLOSED — DONE 2026-08-09] Owner Roadmap Projection (Continuous Workstream Orchestrator Phase 2; Tier-1 repo-only read-only projection; Owner-directed). Structured durable roadmap model (`docs/orchestration/lib/roadmapModel.mjs`) + pure 8-view projection lib + 14 node:test + drift-guarded CI + committed read-only snapshot (`docs/orchestration/roadmap/ROADMAP.md`) + contract (`roadmap-projection.md`). EOS→Domain→Capability→Milestone→WorkItem→Evidence; preserves IMPLEMENTED≠ACTIVATED / MERGED≠DEPLOYED / BACKEND-COMPLETE≠USER-OPERABLE / UX-COMPLETE≠BACKEND-ACTIVE / PERSONA-FINDING≠PRODUCT-DECISION; no invented %; single source of truth (projections not a 2nd roadmap). NO capability/grant/collection/Rule/UI/DB. Owner opted no Option B.
 - Capability:          [CLOSED — DONE 2026-08-09] Continuous Workstream Backlog & Orchestrator (Tier-1 repo-only process governance; Owner-directed). Design + seeded backlog (#703) + Option A `/loop` continuation driver with tested pure selector + zero-dep CI + blocker-decomposition correction (#710) + bounded two-class tool-permission policy (#712). Both returned Owner decisions RATIFIED: Option A adopted (B deferred w/ its design checklist); permission policy ratified. Selection rule run post-merge → terminal CHECKPOINT (no authorized READY; R-1 R1-A prerequisite already exists + CI-enforced, remainder protected). NO capability/grant/collection/Rule. Keystone upstream contribution of the reusable methodology remains a separate-repo follow-up.
@@ -469,7 +469,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none (read-only; no capability, migration or grant)
 - Expected outcome:    `financeReadCallableClient` has no consumer the EOS path cannot serve; the F-1 decisions are numbered for the Owner
 - Protected boundaries:none reached (F-1 build waits on the Owner's answers)
-- Lifecycle stage:     PR 1 MERGED `2f8be86f` (#2168); PR 2 (the F-1 invoicing specification) is tracked with F-1a `5c1fe280` (#2184) -- confirm before closing this row -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
+- Lifecycle stage:     PR 1 MERGED `2f8be86f` (#2168); PR 2, the F-1 invoicing specification, is still OPEN as #2175 (F-1a #2184 implemented separately; this row stays open) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Lane Q-1 — quotes and approvals: PR 1 audit on every applied Commercial and CRM command (build); PR 2 the quote / discount approval specification (docs, Owner decisions; nothing of the workflow is built) (B5 matrix stage 6; scenarios A and E)
 - Agent/session:       Claude Code lane Q-1 · Role: builder; controller merges
@@ -480,7 +480,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        none
 - Expected outcome:    every applied Commercial / CRM command is audited; the quote and discount approval choices are numbered Owner decisions
 - Protected boundaries:none reached (no capability, no grant, no migration, no Firebase, no production)
-- Lifecycle stage:     PR 1 MERGED `237b4897` (#2169); PR 2 (specification) not confirmed merged by the git log since 2026-10-19 -- reconciled 2026-10-21 by lane UAT from git log (docs/uat/08-active-workstreams-reconciliation.md)
+- Lifecycle stage:     PR 1 MERGED `237b4897` (#2169); PR 2, the specification, is still OPEN as #2172 -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Account page honest refusal wording (UX-2) · a refused work-order read (403 / FORBIDDEN) reads "Not available to you" in Work order attention, Open work orders (standing strip) and Service activity; "Couldn't be read" stays for genuine failures
 - Agent/session:       Claude Code lane UX-2 · Role: builder; controller reviews and merges
@@ -537,7 +537,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        the controller's read-only nonprod census (`D:/eos-lanes/evidence/uat-nonprod-census-2026-10-21.json`); Codex handoff requires #2201 merged; rows marked `after #2200` / `after #2199` depend on DWO / CLC
 - Expected outcome:    Codex can run an independent persona-by-persona browser and authorization test against nonprod with exact expectations, and every UNDETERMINED expectation is an Owner question
 - Protected boundaries:none reached — no product code, grant, migration, deploy, credential, Postgres run or nonprod write; the Ventana script is run by the controller, not by this lane
-- Lifecycle stage:     INTEGRATION (docs PR open; not merged)
+- Lifecycle stage:     MERGED `b433d396` (#2202) (docs) -- reconciled 2026-10-23 from GitHub PR state
 
 ## Ready for assignment
 
@@ -576,7 +576,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        migration `1764700000000_invoice-issue` (SQL reviewed, written by the controller); F-2 (#2168), F-1 spec (#2175)
 - Expected outcome:    a READY package's receivable gets exactly one invoice with an `INV-YYYY-######` number; issuing is one step for an authorized person
 - Protected boundaries:none reached (no capability, grant, Rules, deploy or production change)
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     MERGED `5c1fe280` (#2184) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Finance F-1b — governed credits, write-offs, adjustments, refunds and eligible voids of an issued invoice: request then separate-Employee approval at a $0 threshold; refund RECORDS only (no cash-out); void only before any money moves. Not the screen.
 - Agent/session:       Claude Code lane F-1b · Role: builder; controller merges and writes the migration
@@ -587,7 +587,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        migration `1764712000000_invoice-corrections` (SQL saved as a `.txt`, written by the controller; registers the approval capabilities with NO grants); F-1a (#2184)
 - Expected outcome:    every money correction of an issued invoice is requested by one Employee and applied only on a different Employee's approval; outstanding stays derived from the receivable
 - Protected boundaries:capability registration only, NO grants (Owner-only proposal recorded, unapplied); no production, Rules, deploy, Firebase or external-payment action
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     MERGED `5671c167` (#2188) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          SAE — the protected Owner is exempt from secondary approval and self-approval separation of duties, platform-wide, through ONE TypeScript seam and ONE SQL seam (Rule 1); the seam is shaped for the delegated exemption (Rule 2, PR-2). Removes ONLY the second person; every capability, company, state, integrity, reason, idempotency and audit rule still applies.
 - Agent/session:       Claude Code lane SAE · Role: builder; controller merges and writes the migration
@@ -598,7 +598,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        migration `1764716000000_protected-owner-secondary-approval-exemption` (SQL saved as a `.sql.txt`, written by the controller; no capability, no grant); F-1b (#2188). S1c runs in parallel and shares no file
 - Expected outcome:    the protected Owner can request and approve the same transaction in every EOS-native workflow with the basis recorded; every non-Owner keeps the two-person rule; Q-1 will reuse the seam
 - Protected boundaries:no capability, no grant, no Rules, deploy, Firebase, production or external-payment action; the Firestore-era self-approval sites are reported, not changed
-- Lifecycle stage:     merged #2190 (cd843df1)
+- Lifecycle stage:     MERGED `cd843df1` (#2190) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          SAE Rule 2 — the DELEGATED self-approval exemption: seven `approval.selfApproval.exempt*` capabilities (Financials, Purchasing, Sales, Inventory, Service, Goals, All) granted ONLY by the verified protected Owner through the existing role / direct grant paths, GLOBAL scope (company scope = PR-3); a never-NULL SQL proof the database triggers consult; Owner ruling D3 (the grant confers only the second person).
 - Agent/session:       Claude Code lane SAE · Role: builder; controller merges and writes the migration
@@ -609,7 +609,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        migration `1764718000000_delegated-self-approval-exemption` (SQL saved as a `.sql.txt`, written by the controller; registers 7 capabilities with NO grants); SAE PR-1; S1c holders `1764717000000`
 - Expected outcome:    the Owner can delegate, and take back, the second-person exemption per workflow scope; nobody else can; every non-grantee keeps the two-person rule
 - Protected boundaries:no grants in the migration, no Rules, deploy, Firebase, production or external-payment action; the new Object reaches existing tenants through the migration (an idempotent INSERT ... SELECT), no operator step
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     MERGED `1732a445` (#2193) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          Q-1a (2026-10-20) — operating-company authority on Commercial reads, writes, approvals, records and exports (Owner ruling Q1-11): capability -> company authority -> channel / ownership reach; a foreign-company record is NONEXISTENT with zero trace; a company-less Opportunity / Agreement is visible only to its owner or creator, the protected Administrator and the protected Owner; the protected Administrator's reach is unchanged (before/after diff); National Accounts stay a channel. ONE shared Sales Order visibility decision also gates Sales Order allocation
 - Agent/session:       Claude Code lane Q-1a · Role: builder; controller reviews and merges
@@ -620,7 +620,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        S1c (#2189) for the allocation file; SAE (#2190) untouched; F-1b / SAE PR-2 / FU-1 run in parallel and share no file
 - Expected outcome:    a seller sees and changes only the records of the companies it reaches; nothing about another company's record, count or timing leaks; the Administrator and National Accounts behaviour are unchanged
 - Protected boundaries:no migration, no capability, no grant, no Rules, deploy, Firebase or production action
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     MERGED `835e5982` (#2194) -- reconciled 2026-10-23 from GitHub PR state
 
 - Capability:          CLC (2026-10-21) — the governed, audited, set-once correction of a COMPANY-LESS Opportunity or Sales Agreement (Owner review 2026-10-20, direction 2026-10-21; closes the #Q-1a-company design gap): `assignRecordOperatingCompany` (capability -> record visible under the null-company rule -> caller reaches the target company -> still company-less -> lineage), one new capability `commercial.recordCompany.assign` registered with NO grants, one audit row per applied command, and Agreement inheritance in the same transaction, a named-only grant, and a server-gated "Set operating company" control on the Opportunity and Sales Agreement record pages
 - Agent/session:       Claude Code lane CLC · Role: builder; controller reviews and merges
@@ -631,4 +631,4 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        Q-1a (#2194) for the reach resolver and the null-company rule; lane DWO (Dispatch Work Order company boundary) runs in parallel and shares no file
 - Expected outcome:    a company-less Opportunity or Agreement can be given its company, once, by a holder of the new key who can see it and reaches the company; nothing else about reach, grants or visibility changes; no one holds the key until the Owner grants it
 - Protected boundaries:no grant, no Rules, deploy, Firebase or production action; the migration file is the controller's
-- Lifecycle stage:     SANDBOX BUILD (PR open, not merged)
+- Lifecycle stage:     MERGED `b05dfe33` (#2199) -- reconciled 2026-10-23 from GitHub PR state
