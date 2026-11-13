@@ -824,10 +824,12 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
   const by = (a: string) => fleet.filter((f) => f.availability === a);
   // Going out: RESERVED units whose agreement has an INSTALL Work Order not yet completed (delivery scheduled / in progress).
   const { rows: goingOut } = await pool.query(
-    `SELECT s.fleet_unit_id, w.id AS work_order_id, w.work_order_number, w.status::text AS status FROM eos_rental.rental_assignments s
+    `SELECT s.fleet_unit_id,
+            CASE WHEN ${woReach.sql("w.operating_company_key", 3, { assignment: false })} THEN w.id END AS work_order_id,
+            CASE WHEN ${woReach.sql("w.operating_company_key", 3, { assignment: false })} THEN w.work_order_number END AS work_order_number,
+            CASE WHEN ${woReach.sql("w.operating_company_key", 3, { assignment: false })} THEN w.status::text END AS status FROM eos_rental.rental_assignments s
        JOIN eos_ops.work_orders w ON w.tenant_id = s.tenant_id AND w.rental_agreement_id = s.agreement_id AND w.work_order_type = 'INSTALL'
                                  AND w.equipment_id IS NULL AND w.status::text NOT IN ('COMPLETED', 'CANCELLED', 'CLOSED')
-                                 AND ${woReach.sql("w.operating_company_key", 3, { assignment: false })}
       WHERE s.tenant_id = $1 AND s.status = 'RESERVED'
         AND ($2::text[] IS NULL OR EXISTS (SELECT 1 FROM eos_rental.rental_agreements g WHERE g.tenant_id = s.tenant_id AND g.id = s.agreement_id AND g.operating_company_key = ANY($2::text[])))`, [t, ck, ...woReach.sqlParams()]);
   const { rows: due } = await pool.query(
@@ -871,7 +873,9 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
     // Point-in-time utilization: units at a customer over the fleet (Analysis derives time-weighted utilization from the event log).
     utilization: { unitsOut: deployedOrOut, fleet: fleet.length },
     available: by("AVAILABLE"), reserved: by("RESERVED"),
-    goingOut: goingOut.map((g) => ({ fleetUnitId: String(g.fleet_unit_id), workOrderId: String(g.work_order_id), workOrderNumber: String(g.work_order_number), status: String(g.status) })),
+    // The unit is going out whether or not the caller reaches the INSTALL Work Order; the Work Order columns are then empty (never the number or status of a foreign Work Order).
+    goingOut: goingOut.map((g) => ({ fleetUnitId: String(g.fleet_unit_id), workOrderId: g.work_order_id === null ? null : String(g.work_order_id),
+      workOrderNumber: g.work_order_number === null ? null : String(g.work_order_number), status: g.status === null ? null : String(g.status) })),
     onRent: by("ON_RENT"), serviceHold: by("SERVICE_HOLD"), returnPending: by("RETURN_PENDING"), inspection: by("INSPECTION"), unavailable: by("UNAVAILABLE"),
     dueBack, billingExceptions,
   });

@@ -240,7 +240,7 @@ test("the deployed server supplies no company seam of its own: the governed reso
 
 test("A10: Rental three Work Order reads carry the office-side reach, and assigned work on the Employee record keeps the My Work assignment branch", () => {
   const rental = source("eosRental/rental.ts");
-  assert.equal([...rental.matchAll(/woReach\.sql\("(?:w\.)?operating_company_key", 3, \{ assignment: false \}\)/g)].length, 3, "return check, agreement Work Order list, workspace going-out join");
+  assert.equal([...rental.matchAll(/woReach\.sql\("(?:w\.)?operating_company_key", 3, \{ assignment: false \}\)/g)].length, 5, "return check, agreement Work Order list, workspace going-out (a CASE per column, so the unit stays listed)");
   assert.match(rental, /RETURN_WORK_ORDER_MISMATCH/);
   assert.doesNotMatch(source("eosWorkforce/reads/assignedWorkReads.ts"), /assignment:\s*false/, "same rule as listMyAssignedWorkOrders");
 });

@@ -263,6 +263,7 @@ functions/test/employeeCompanyAuthorityGrants.test.mjs
 functions/test/employeeCompanyAuthorityGrantsPostgres.test.mjs
 functions/test/previewCompanyAuthorityBudgetPostgres.test.mjs
 functions/test/rentalPostgres.test.mjs
+functions/test/rentalWorkOrderCompanyPostgres.test.mjs
 functions/test/analysisPostgres.test.mjs
 functions/test/myWorkPostgres.test.mjs
 functions/test/adminControlPlaneWorkforcePostgres.test.mjs
