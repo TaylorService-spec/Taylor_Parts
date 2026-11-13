@@ -2,6 +2,7 @@ import SortableHeader from "../shared/ui/sorting/SortableHeader.jsx";
 import { nextSort } from "../shared/ui/sorting/useTableSort.js";
 import { sortableFieldIds } from "./MetadataListControls.jsx";
 import { useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import LoadingState from "../shared/ui/LoadingState";
 import EmptyState from "../shared/ui/EmptyState";
 import FailureState from "../shared/ui/FailureState";
@@ -95,6 +96,10 @@ export default function MetadataListGrid({
   // the Sort menu edits, so the query (not this page) orders the complete result. Absent = plain headers, unchanged.
   sorting = null,
   onRowClick,
+  // OPTIONAL real address for a row: (rowKey) => href|null. When given, the first cell is a genuine link to it, so the
+  // destination is visible, copyable, openable in a new tab and discoverable by assistive tech and test drivers --
+  // not only a click handler on a <tr>. Needs a Router ancestor ONLY when supplied; absent = unchanged.
+  rowHref,
   onLoadMore,
   onViewAll,
   onRetry,
@@ -324,7 +329,10 @@ export default function MetadataListGrid({
                           isNumeric ? "fo-tabular-nums ns-num" : null,
                         ].filter(Boolean).join(" ") || undefined}
                       >
-                        {cell.value}
+                        {cellIndex === 0 && rowHref && rowHref(row.key) ? (
+                          // stopPropagation: the row's own click/Enter handler would otherwise navigate a second time.
+                          <Link to={rowHref(row.key)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>{cell.value}</Link>
+                        ) : cell.value}
                       </td>
                     );
                   })}

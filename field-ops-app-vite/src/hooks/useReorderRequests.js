@@ -84,10 +84,14 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
   clientRef.current = deps?.client ?? reorderApiClient;
   const selectRef = useRef(select);
   selectRef.current = select;
-  const [state, setState] = useState({ data: select ? select([]) : [], loading: enabled, error: null });
+  // `key` names the read this state ANSWERS (null = none yet). It is what lets the hook say "loading" on the very first render in which a read is
+  // enabled -- including the render in which a gate flips from not-askable to askable -- rather than for one frame reporting the previous
+  // (disabled, empty, not-loading) state as an answer (PARTS-403d).
+  const [state, setState] = useState({ data: select ? select([]) : [], loading: enabled, error: null, key: null });
   // Inputs are compared by VALUE: callers build `{ statuses: [...] }` inline, so comparing by
   // identity would re-read forever.
   const inputKey = JSON.stringify(input ?? null);
+  const readKey = `${operation}|${inputKey}`;
   // REFRESH IS REAL. The onSnapshot listener these reads replaced re-rendered a screen after its own
   // write, so callers (PartDetail's review/assign/start/record actions) call refresh() after a
   // successful command. A missing refresh threw after the write had already succeeded, and the
@@ -101,7 +105,7 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
     const quiet = quietRef.current;
     quietRef.current = false;
     if (!enabled) {
-      setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: null });
+      setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: null, key: null });
       return undefined;
     }
     let cancelled = false;
@@ -112,20 +116,22 @@ function useGovernedReorderRead(operation, input, enabled, deps, select) {
         if (!res.ok) {
           // The server's OWN reason is preserved where it gave one: "you hold no capability" and
           // "the service is unreachable" are different answers and screens render them differently.
-          setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: res.reason ?? res.code });
+          setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: res.reason ?? res.code, key: readKey });
           return;
         }
         const rows = Array.isArray(res.result) ? res.result : (res.result ? [res.result] : []);
-        setState({ data: selectRef.current ? selectRef.current(rows) : rows, loading: false, error: null });
+        setState({ data: selectRef.current ? selectRef.current(rows) : rows, loading: false, error: null, key: readKey });
       })
       .catch(() => {
-        if (!cancelled) setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: "unknown" });
+        if (!cancelled) setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: "unknown", key: readKey });
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- input is compared by value via inputKey
   }, [operation, inputKey, enabled, reloadKey]);
 
-  return { ...state, refresh };
+  // Enabled, and this state does not yet answer THIS read: it is loading, whatever the previous render left behind.
+  const { key, ...answer } = state;
+  return { ...answer, loading: answer.loading || (enabled && key !== readKey), refresh };
 }
 
 export function useReorderRequestsByStatus(status, enabled = true, deps = {}) {
@@ -220,15 +226,17 @@ export function useMyAssignedReorderRequests(status, enabled = true, deps = {}) 
 // r4 C, Fix 2 -- previously always `null`, silently indistinguishable from
 // "no request exists yet"). Existing callers that don't destructure `error`
 // are unaffected either way.
-export function useReorderRequestForPart(partId, requestId, deps = {}) {
+export function useReorderRequestForPart(partId, requestId, deps = {}, enabled = true) {
   // Two shapes, one read. With a known id it is that request; without, it is the most recent request
   // for the part. The id branch still proves the request belongs to the part asked about -- a
   // mismatch is a DIFFERENT fact from "no request exists", and the caller distinguishes them.
   const byId = useGovernedReorderRead("readReorderRequest", { reorderRequestId: requestId },
-    !!requestId, deps, (rows) => rows[0] ?? null);
+    enabled && !!requestId, deps, (rows) => rows[0] ?? null);
   const byPart = useGovernedReorderRead("readReorderQueue", { partId },
-    !requestId && !!partId, deps, (rows) => rows[0] ?? null);
+    enabled && !requestId && !!partId, deps, (rows) => rows[0] ?? null);
 
+  // `enabled` false (the caller states the person cannot read it): nothing was asked, so nothing is "not found". The caller says why.
+  if (!enabled) return { data: null, loading: false, error: null, refresh: byId.refresh };
   if (requestId) {
     const { refresh } = byId;
     if (byId.loading || byId.error) return { data: null, loading: byId.loading, error: byId.error, refresh };
@@ -325,8 +333,11 @@ export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, curs
 // heuristic (no cheap total-count query exists); isEndOfHistory is the
 // same signal, exposed under the Specification's own name for the
 // "Load More is hidden or disabled, not silently absent" state.
-export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageImpl = fetchReorderRequestsHistoryPage }) {
-  const [state, setState] = useState({ data: [], loading: true, error: null, hasMore: false, isEndOfHistory: false });
+//
+// `enabled` (UAT RO-01): false reads nothing and settles at an empty, not-loading, no-error answer. The caller states WHY nothing is shown
+// (the person does not hold the Reorder queue); this hook does not claim "no history".
+export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageImpl = fetchReorderRequestsHistoryPage, enabled = true }) {
+  const [state, setState] = useState({ data: [], loading: enabled, error: null, hasMore: false, isEndOfHistory: false });
   const lastVisibleRef = useRef(null);
   const statusesKey = statuses.join(",");
 
@@ -359,9 +370,13 @@ export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageIm
 
   useEffect(() => {
     lastVisibleRef.current = null;
+    if (!enabled) {
+      setState({ data: [], loading: false, error: null, hasMore: false, isEndOfHistory: true });
+      return;
+    }
     fetchPage(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusesKey, pageSize, fetchPageImpl]);
+  }, [statusesKey, pageSize, fetchPageImpl, enabled]);
 
   const loadMore = useCallback(() => fetchPage(true), [fetchPage]);
 

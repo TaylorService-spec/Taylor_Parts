@@ -40,6 +40,7 @@ import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
 import EmployeeCompanyAccess from "./EmployeeCompanyAccess.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
+import EmployeeAccessExplained from "./EmployeeAccessExplained.jsx";
 import EmployeeExperiencePreview from "./EmployeeExperiencePreview.jsx";
 import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
@@ -58,7 +59,7 @@ import { EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY } from "../../domain/employeeJobRole
 // The tab ids (?tab=); the first is the default. Labels are rendered by the page.
 // "schedule" (Scheduling PR-2): Administration → Employee record → Work Schedule, reading EOS Core through its own
 // governed read (SCH-D2: scheduling capability AND employee.record.read AND company authority, decided server-side).
-const EMPLOYEE_TAB_DEFS = Object.freeze(["overview", "access", "assignments", "schedule", "workflows", "activity"].map((id) => ({ id })));
+const EMPLOYEE_TAB_DEFS = Object.freeze(["overview", "access", "explained", "assignments", "schedule", "workflows", "activity"].map((id) => ({ id })));
 import {
   RUNTIME_DEPENDENCIES,
   WORKFORCE_READS,
@@ -398,6 +399,16 @@ export default function UserDetail({
             hasCapability={hasCapability}
             client={client}
           />
+        </RuledSection>
+      </div>
+    ) },
+    { id: "explained", label: "Access explained", render: () => (
+      <div data-employee-tab-body="explained">
+        {/* ACCESS EXPLAINED: why this person can or cannot do X, gate by gate, decided by the server (read-only). */}
+        <RuledSection title="Access explained" meta="Every gate in order, with the setting that decides it">
+          <PrincipalGate linked={linked} principalLink={principalLink}>
+            <EmployeeAccessExplained api={controlPlane} principalId={principalId} key={`explained-${accessReadKey}`} />
+          </PrincipalGate>
         </RuledSection>
       </div>
     ) },

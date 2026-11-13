@@ -21,6 +21,7 @@
     "test/adminPolicyNoOpAudit.test.mjs",
     "test/eosOpsNoFirebase.test.mjs",
     "test/eosOpsApiShape.test.mjs",
+    "test/authorizationBeforeValidationOffline.test.mjs",
     "test/inventoryWriterCapabilityCensus.test.mjs",
     "test/inventoryCapabilityParityHarnessClassification.test.mjs",
     "test/inventoryCapabilityParityHarness.test.mjs",
@@ -131,6 +132,8 @@
     "test/salesOrderAllocationOffline.test.mjs",
     "test/saeProtectedOwnerExemption.test.mjs",
     "test/commercialCompanyAuthority.test.mjs",
+    "test/workOrderCompanyAuthority.test.mjs",
+    "test/adminPolicyPartitions.test.mjs",
     "test/commercialRecordCompany.test.mjs"
   ],
   "postgres": [
@@ -206,6 +209,7 @@
     "test/employeeJobRoleOperatorPostgres.test.mjs",
     "test/administrationControlPlanePostgres.test.mjs",
     "test/effectiveAccessExplanationPostgres.test.mjs",
+    "test/accessGatesExplanationPostgres.test.mjs",
     "test/administrationControlPlaneSecurityPostgres.test.mjs",
     "test/workflowControlPlanePostgres.test.mjs",
     "test/workflowRoleHoldersPostgres.test.mjs",
@@ -327,6 +331,7 @@
     "test/saeDelegatedExemptionPostgres.test.mjs",
     "test/commercialRecordCompanyPostgres.test.mjs",
     "test/clcSal03InteractionPostgres.test.mjs",
-    "test/operatingCompanyBindingPostgres.test.mjs"
+    "test/operatingCompanyBindingPostgres.test.mjs",
+    "test/workOrderCompanyBoundaryPostgres.test.mjs"
   ]
 }

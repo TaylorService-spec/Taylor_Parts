@@ -31,7 +31,7 @@ import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import type { ContextualReader } from "./contextualAuthorization";
 import {
-  applyTransitionWithinTransaction, authorizeEdgeOrRefuse, WorkOrderLifecycleError,
+  applyTransitionWithinTransaction, authorizeEdgeOrRefuse, requireEdgeCapability, WorkOrderLifecycleError,
   WORK_ORDER_LIFECYCLE_SCHEDULE, type LifecycleActor, type TransitionResult,
 } from "./workOrderLifecycle";
 import {
@@ -43,7 +43,7 @@ import { prepareBillingPackageOn, type BillingPackageOutcome } from "../eosFinan
 import { FinanceFoundationError } from "../eosFinance/financeFoundation";
 import { isQuarantined, notQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
 import { withActorAuthority } from "./administrationReach";
-import { resolveCompanyAuthority } from "./companyAuthority";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 
 const SCHEMA = "eos_ops";
 
@@ -173,24 +173,22 @@ interface LockedWorkOrder {
 }
 
 /**
- * `companyOf` (D-248-1, Owner confirmed security defect; DECISIONS #237/#235): the PRINCIPAL whose EOS Core company authority
- * bounds the command. Schedule, reschedule and dispatch pass it; the capability was already checked by the caller (capability
+ * `scope.principalId` (D-248-1, Owner confirmed security defect; DECISIONS #237/#235; DWO-company for Unschedule / Complete): the PRINCIPAL whose EOS Core company authority
+ * bounds the command. Every command that locks a Work Order here passes it; the capability was already checked by the caller (capability
  * FIRST, then company). No authority at all is COMPANY_AUTHORITY_REQUIRED, decided before the row is read; a Work Order of a
  * company outside the caller's is refused exactly like one that does not exist (same code, category and message), before the
  * quarantine and status checks can disclose it. Every refusal precedes any write.
  */
-async function lockWorkOrder(client: PoolClient, tenantId: string, workOrderId: string, expectedStatus: string, companyOf?: string): Promise<LockedWorkOrder> {
-  let reachedKeys: readonly string[] | null = null;
-  if (companyOf !== undefined) {
-    const authority = await resolveCompanyAuthority(client, tenantId, companyOf);
-    if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
-    reachedKeys = authority.companyKeys;
-  }
+async function lockWorkOrder(client: PoolClient, tenantId: string, workOrderId: string, expectedStatus: string,
+  scope: { readonly principalId: string; readonly administrator: "OWN" | "UNRESTRICTED"; readonly assignment: boolean }): Promise<LockedWorkOrder> {
+  // DWO-company: ONE predicate for every command that locks a Work Order here. `administrator` is the recorded mode of the entry point: Schedule / Reschedule / Dispatch
+  // were already bounded by the Administrator's OWN company authority (D-248-1) and stay so; Unschedule / Complete were tenant-wide and stay so (UNRESTRICTED).
+  const reach = await requireWorkOrderCompanyReach(client, tenantId, scope.principalId, refuse, { administrator: scope.administrator, message: "no operating-company authority" });
   const { rows } = await client.query(
     `SELECT status::text AS status, operating_company_key, scheduled_start, scheduled_end, sales_order_id
-       FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-    [tenantId, workOrderId]);
-  if (rows.length === 0 || (reachedKeys !== null && !reachedKeys.includes(String(rows[0].operating_company_key)))) {
+       FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: scope.assignment })} FOR UPDATE`,
+    [tenantId, workOrderId, ...reach.sqlParams()]);
+  if (rows.length === 0) {
     refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${workOrderId} in this tenant`);
   }
   if (await isQuarantined(client, tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
@@ -253,6 +251,7 @@ async function inTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<
  * the SAME assignment rule set as every other assignment (assignWithinTransaction), never a weaker copy.
  */
 export async function scheduleWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<ScheduleResult> {
+  requireEdgeCapability(actor, "READY_TO_DISPATCH", "SCHEDULED"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "employeeId", "scheduledStart", "scheduledEnd", "reason", "note"]);
   if (!ID_SHAPE(i.employeeId)) refuse("EMPLOYEE_ID_REQUIRED", "INVALID_INPUT", "employeeId is required and must be a governed Employee id");
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "READY_TO_DISPATCH" as const, toStatus: "SCHEDULED" as const,
@@ -263,7 +262,7 @@ export async function scheduleWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
   const employeeId = i.employeeId as string;
 
   return inTransaction(deps.pool, async (client) => {
-    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus, actor.principalId);
+    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus, { principalId: actor.principalId, administrator: "OWN", assignment: false });
     // A job already carrying a DIFFERENT open assignee is being re-pointed, and a re-pointing states why.
     const repoints = wo.currentAssignee !== null && wo.currentAssignee.employeeId !== employeeId;
     const reason = repoints ? requireReason(i.reason, "REASSIGN_REASON_REQUIRED") : null;
@@ -296,6 +295,7 @@ export interface UnscheduleResult {
 }
 
 export async function unscheduleWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<UnscheduleResult> {
+  requireEdgeCapability(actor, "SCHEDULED", "READY_TO_DISPATCH"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "reason"]);
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "SCHEDULED" as const, toStatus: "READY_TO_DISPATCH" as const };
   await authorizeEdgeOrRefuse(deps, actor, edge);
@@ -303,7 +303,7 @@ export async function unscheduleWorkOrder(deps: SchedulingDeps, actor: Lifecycle
   const now = (deps.now ?? (() => new Date()))();
 
   return inTransaction(deps.pool, async (client) => {
-    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus);
+    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus, { principalId: actor.principalId, administrator: "UNRESTRICTED", assignment: false });
     // The technician given up is recorded by ENDING their interval with the reason -- the interval is the
     // durable record of who the job was scheduled for, once the Work Order no longer says.
     if (wo.currentAssignee) {
@@ -361,7 +361,7 @@ export async function rescheduleWorkOrder(deps: SchedulingDeps, actor: Lifecycle
   const workOrderId = i.workOrderId as string;
 
   return inTransaction(deps.pool, async (client) => {
-    const wo = await lockWorkOrder(client, actor.tenantId, workOrderId, "SCHEDULED", actor.principalId);
+    const wo = await lockWorkOrder(client, actor.tenantId, workOrderId, "SCHEDULED", { principalId: actor.principalId, administrator: "OWN", assignment: false });
     if (!wo.scheduledStart || wo.scheduledStart.getTime() !== expected.getTime()) {
       refuse("STALE_SCHEDULE", "CONFLICT", "the scheduled window changed since it was read; reload before moving it");
     }
@@ -403,6 +403,7 @@ export interface DispatchResult {
 }
 
 export async function dispatchWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<DispatchResult> {
+  requireEdgeCapability(actor, "SCHEDULED", "DISPATCHED"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "employeeId", "reassignReason", "note"]);
   if (i.employeeId !== undefined && !ID_SHAPE(i.employeeId)) refuse("EMPLOYEE_ID_INVALID", "INVALID_INPUT", "employeeId must be a governed Employee id");
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "SCHEDULED" as const, toStatus: "DISPATCHED" as const,
@@ -411,7 +412,7 @@ export async function dispatchWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
   const now = (deps.now ?? (() => new Date()))();
 
   return inTransaction(deps.pool, async (client) => {
-    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus, actor.principalId);
+    const wo = await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus, { principalId: actor.principalId, administrator: "OWN", assignment: false });
     const target = (i.employeeId as string | undefined) ?? wo.currentAssignee?.employeeId;
     if (!target) refuse("ASSIGNEE_REQUIRED", "PRECONDITION_FAILED", "a Work Order is dispatched TO someone; it has no assignee");
     await lockEmployeePlacement(client, actor.tenantId, target!);
@@ -474,6 +475,7 @@ export interface CompleteResult {
  * STALE_WORK_ORDER_STATE conflict, and every fulfillment row is unique per (Work Order, Sales Order line).
  */
 export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleActor, input: unknown): Promise<CompleteResult> {
+  requireEdgeCapability(actor, "WORK_IN_PROGRESS", "COMPLETED"); // capability before validation (API-01)
   const i = acceptOnly(input, ["workOrderId", "note"]);
   const edge = { workOrderId: i.workOrderId as string, expectedStatus: "WORK_IN_PROGRESS" as const, toStatus: "COMPLETED" as const,
     note: i.note as string | undefined };
@@ -481,7 +483,7 @@ export async function completeWorkOrder(deps: SchedulingDeps, actor: LifecycleAc
   const now = (deps.now ?? (() => new Date()))();
 
   return inTransaction(deps.pool, async (client) => {
-    await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus);
+    await lockWorkOrder(client, actor.tenantId, edge.workOrderId, edge.expectedStatus, { principalId: actor.principalId, administrator: "UNRESTRICTED", assignment: true });
     const transition = await applyTransitionWithinTransaction(client, actor, edge, now);
     let fulfillment: WorkOrderFulfillmentOutcome;
     try {
@@ -541,9 +543,10 @@ export async function setWorkOrderEstimatedDuration(
   const workOrderId = i.workOrderId as string;
   const now = (deps.now ?? (() => new Date()))();
   return inTransaction(deps.pool, async (client) => {
+    const reach = await requireWorkOrderCompanyReach(client, actor.tenantId, actor.principalId, refuse);
     const { rows } = await client.query(
-      `SELECT status::text AS status, estimated_duration_minutes FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-      [actor.tenantId, workOrderId]);
+      `SELECT status::text AS status, estimated_duration_minutes FROM ${SCHEMA}.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: false })} FOR UPDATE`,
+      [actor.tenantId, workOrderId, ...reach.sqlParams()]);
     if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
     if (await isQuarantined(client, actor.tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
     if (["COMPLETED", "CLOSED", "CANCELLED"].includes(rows[0].status)) {

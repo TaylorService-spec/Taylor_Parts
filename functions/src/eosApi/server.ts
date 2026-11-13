@@ -34,6 +34,7 @@ import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
+import { explainAccessGates } from "../eosOps/accessGatesExplanation";
 import { createAuthorityChangePreview } from "../eosOps/authorityChangePreview";
 import { createAuthorityChangeCommit } from "../eosOps/authorityChangeCommit";
 import { adminPreviewMandatoryFrom } from "../adminPolicy/authorityChangeCommitPort";
@@ -256,6 +257,8 @@ export async function startEosApi(
     repo,
     // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
     explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
+    // "Access explained": the eleven-gate chain over the same evaluator, same read authority (explainAccessGates).
+    explainAccessGates: (tenantId, principalId, question, readSignIn) => explainAccessGates(repo, pool, { tenantId, principalId, question, readSignIn }),
     // The grant-impact preview (PR 3, advisory): the unchanged authority commands simulated on ONE pooled connection
     // inside BEGIN..ROLLBACK, with the registered governed field-group definitions in the before/after snapshots.
     previewAuthorityChange: createAuthorityChangePreview({ pool, fieldGroups: [PART_SUPPLIER_TERMS_FIELD_GROUPS] }),

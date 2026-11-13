@@ -21,6 +21,9 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   see (and which you do not).
 - [Read the Dispatch & Scheduling board](./dispatch/read-the-dispatch-board.md) — lane colours, time zone,
   keeping your place.
+- [Which work orders you can see](./work-orders/which-work-orders-you-can-see.md) — work orders belong to
+  one operating company: what is hidden, why a missing work order is not an error, and work done for another
+  company's sale.
 
 ## Inventory and scanning
 
@@ -73,6 +76,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [View an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record (read-only; changing hours is not switched on yet)
 - [Give someone Finance access to a company](./administration/give-finance-access-to-a-company.md) — a Role's "Finance access only" setting, so a Finance company assignment does not add the company to everyday work
 - [Give an Employee access to another company](./administration/give-an-employee-access-to-another-company.md) — explicit company access for one Employee: reach to a company, no permissions, no Finance access
+- [See why someone can or cannot do something](./administration/see-why-someone-can-or-cannot-do-something.md) — the Access explained tab on an Employee: every check in order, the first refusal in plain words, and the setting that decides it (read-only)
 - [Integrations](./administration/integrations-guide.md)
 
 ## Invoicing

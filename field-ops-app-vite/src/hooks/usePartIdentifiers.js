@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { partAliasCallableClient, NOT_READY_STATUS } from "../services/partAliasCallableClient.js";
 import { outcomeFromErrorCode } from "../domain/partIdentifiers.js";
+import { PART_IDENTIFIERS_NOT_AVAILABLE_COPY } from "../access/partsReadGates.js";
 import {
   CATALOG_MUTATION_HOLD, CATALOG_MUTATION_HELD_CODE, CATALOG_MUTATION_HELD_OUTCOME,
 } from "../config/catalogMutationHold.js";
@@ -34,15 +35,26 @@ function newIdempotencyKey(prefix) {
  * resolve to CATALOG_MUTATION_HELD_OUTCOME with ZERO client calls; a server CATALOG_MUTATION_HELD refusal maps to the
  * same outcome. The list and the scan-test probe are READS and are unaffected.
  */
-export function usePartIdentifiers(partId, deps) {
+export function usePartIdentifiers(partId, deps, readable = true) {
   const client = deps?.client ?? partAliasCallableClient;
   const mutationHeld = CATALOG_MUTATION_HOLD.held !== false;
-  const [state, setState] = useState({ status: "loading", aliases: [], truncated: false });
+  // R2.2.1: `readable` false = the session says the person does not hold catalog.read AND catalog.manage (what listPartAliases requires), so the list is
+  // NOT requested and the panel states a denial (never an empty list). `null` = the session answer has not arrived: nothing is asked or claimed ("loading").
+  // Default true: every other caller is unchanged.
+  const [state, setState] = useState(readable === false
+    ? { status: "denied", aliases: [], truncated: false, message: PART_IDENTIFIERS_NOT_AVAILABLE_COPY }
+    : { status: "loading", aliases: [], truncated: false });
   const [pending, setPending] = useState({});
   const [outcome, setOutcome] = useState(null);
   const keysRef = useRef({});
 
   const load = useCallback(async () => {
+    if (readable !== true) {
+      setState(readable === false
+        ? { status: "denied", aliases: [], truncated: false, message: PART_IDENTIFIERS_NOT_AVAILABLE_COPY }
+        : { status: "loading", aliases: [], truncated: false });
+      return;
+    }
     if (!partId) {
       setState({ status: "ready", aliases: [], truncated: false });
       return;
@@ -70,7 +82,7 @@ export function usePartIdentifiers(partId, deps) {
       truncated: result?.truncated === true,
       limit: result?.limit ?? null,
     });
-  }, [client, partId]);
+  }, [client, partId, readable]);
 
   useEffect(() => {
     load();

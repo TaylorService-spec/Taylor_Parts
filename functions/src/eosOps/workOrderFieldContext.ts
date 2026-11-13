@@ -35,6 +35,7 @@ import type { ContextualReader } from "./contextualAuthorization";
 import type { OperationalActor } from "./entitledActionAuthority";
 import { WorkOrderLifecycleError } from "./workOrderLifecycle";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import { authorizeWorkOrderRecordRead, readWorkOrderPartsPlanGoverned } from "./workOrderRecordRead";
 import { readWorkOrderExecution } from "./workOrderExecution";
 import { readPartsByIds, PART_BY_IDS_MAX } from "../catalogMaster/postgresCatalogReads";
@@ -82,6 +83,8 @@ export async function readAuthorizedWorkOrderRow(
   const workOrderId = input?.workOrderId as string;
   const decision = await authorizeWorkOrderRecordRead(deps.reader, actor, workOrderId);
   if (!decision.allowed) refuse(String(decision.outcome), "FORBIDDEN", "this Work Order may not be read by this caller");
+  // DWO-company: the entitled record read first (above), then the caller's operating companies, inside the SELECT below.
+  const reach = await requireWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId, refuse);
   const { rows } = await deps.pool.query(
     `SELECT w.id, w.work_order_number, w.status::text AS status, w.work_order_type::text AS work_order_type, w.priority,
             w.severity::text AS severity, w.complaint, w.diagnosis, w.resolution, w.scheduled_start, w.scheduled_end,
@@ -96,8 +99,8 @@ export async function readAuthorizedWorkOrderRow(
        LEFT JOIN eos_workforce.employees e ON e.tenant_id = a.tenant_id AND e.id = a.assignee_employee_id
        LEFT JOIN eos_crm.accounts acct ON acct.tenant_id = w.tenant_id AND acct.id = w.customer_id
        LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = w.tenant_id AND loc.id = w.location_id
-      WHERE w.tenant_id = $1 AND w.id = $2`,
-    [actor.tenantId, workOrderId]);
+      WHERE w.tenant_id = $1 AND w.id = $2 AND ${reach.sql("w.operating_company_key", 3)}`,
+    [actor.tenantId, workOrderId, ...reach.sqlParams()]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
   if (await isQuarantined(deps.pool, actor.tenantId, workOrderId)) refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
   return { workOrderId, row: rows[0] };

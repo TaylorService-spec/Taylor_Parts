@@ -60,6 +60,10 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
   const T = "t1";
 
   await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [T]);
+  // DWO-company: the installing technician reaches the Work Order only through the company it works for, which needs the company and its key binding.
+  await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [T]);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+           VALUES ($1,'taylor','taylor','ACTIVE','NATIVE','fixture','fixture','fixture')`, [T]);
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-1',$1,'Cust','ACTIVE','f','f')`, [T]);
   // The Work Order's site is a governed CRM site of its customer (an install verifies it -- Controller OD-1, 2026-10-01).
   await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('crmloc-1',$1,'acct-1','Site','f','f')`, [T]);
@@ -75,6 +79,11 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
     await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
              VALUES ($1,$2,$3,$4,'taylor','OPERATOR_ASSERTED','active','fixture','install fixture')`, [`lnk-${pid}`, T, pid, eid]);
   }
+  // DWO-company: the parts planner plans only within a company it works for, so it is a Taylor Employee (prn-admin stays unlinked: the install authority tests need it so).
+  await principal("prn-planner");
+  await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number) VALUES ('emp-planner',$1,'ACTIVE','taylor','emp-planner')`, [T]);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+           VALUES ('lnk-prn-planner',$1,'prn-planner','emp-planner','taylor','OPERATOR_ASSERTED','active','fixture','install fixture')`, [T]);
   const part = (id, { control = "STANDARD", whole = false } = {}) => q(
     `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
        control_type, stocking_class, expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
@@ -166,7 +175,7 @@ test("Work Order equipment installation against the PostgreSQL catalog", { skip:
 
   // ── DQ-034 journey 4: the EOS parts plan resolves Parts from the PostgreSQL catalog ──
   await t.test("J4 PARTS PLAN: planned against the PG catalog; the legacy SKU_UNRESOLVED case is impossible by schema", async () => {
-    const planner = { tenantId: T, principalId: "prn-admin", capabilities: new Set(["workOrder.parts.plan"]) };
+    const planner = { tenantId: T, principalId: "prn-planner", capabilities: new Set(["workOrder.parts.plan"]) };
     const r = await partsPlan.setPartsPlan({ pool }, planner, { workOrderId: "wo-inst", plan: [{ partId: "p-component", qtyPlanned: 2 }] });
     assert.deepEqual(r.added, ["p-component"]);
     // A Part that exists only in the frozen Firebase catalog is unknown here: refused, whole plan.

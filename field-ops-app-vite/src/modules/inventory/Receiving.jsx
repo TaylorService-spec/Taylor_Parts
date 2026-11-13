@@ -12,7 +12,8 @@ import { fetchAcquireWarehouseOptions } from "../../services/inventoryLocationCl
 import { useReorderRequestsByStatuses } from "../../hooks/useReorderRequests";
 import { usePurchaseOrdersByIds } from "../../hooks/usePurchaseOrdersByIds";
 import { useSuppliers } from "../../hooks/useSuppliers";
-import { buildPurchaseOrdersView } from "../../domain/purchaseOrdersView";
+import { buildPurchaseOrdersView, PURCHASE_ORDERS_STATUS } from "../../domain/purchaseOrdersView";
+import { usePartsReadGates } from "../../access/partsReadGates.js";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import {
   buildReceivingWorkspaceQueue,
@@ -50,15 +51,22 @@ import SortableHeader from "../../shared/ui/sorting/SortableHeader.jsx";
 // NON_PO_ACQUISITION), so it is not a queue row and not a journey — it sits apart, after the
 // queue, named for what it does, and is ABSENT (not disabled) without the acquire capability.
 const ORDERED_ONLY = [REORDER_REQUEST_STATUS.ORDERED];
+// The Reorder source for a person who does not hold the Reorder queue: BLOCKED_PERMISSION is what buildReceivingWorkspaceQueue reads as DENIED.
+const REORDER_SOURCE_NOT_PERMITTED = Object.freeze({ status: PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION, rows: Object.freeze([]), summary: Object.freeze({ total: 0, open: 0, received: 0, voided: 0, orphan: 0, receiptCandidates: 0 }) });
 
 export default function Receiving({ deps }) {
   // ── the two governed candidate reads the queue composes ──────────────────────────────
-  const requestsRead = useReorderRequestsByStatuses(ORDERED_ONLY);
+  // UAT RO-01: the Reorder journey's queue read (readReorderQueue) is refused to anyone without the inventory.reorderQueue surface
+  // (reorder.request.read AND the REORDER_QUEUE scope) -- a Warehouse Associate, who receives against Supplier POs, holds neither. The read
+  // is not fired for them, and the Reorder source is stated as NOT PERMITTED -- the existing "you are not authorized to read them" notice,
+  // never an empty list and never "could not be loaded".
+  const gates = usePartsReadGates();
+  const requestsRead = useReorderRequestsByStatuses(ORDERED_ONLY, gates.queue);
   const ids = useMemo(() => requestsRead.data.map((r) => r.id), [requestsRead.data]);
   const purchaseOrdersRead = usePurchaseOrdersByIds(ids);
   const reorderView = useMemo(
-    () => buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }),
-    [requestsRead, purchaseOrdersRead]
+    () => (gates.queue ? buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }) : REORDER_SOURCE_NOT_PERMITTED),
+    [gates.queue, requestsRead, purchaseOrdersRead]
   );
 
   const [supplierList, setSupplierList] = useState({ pending: true });
@@ -77,7 +85,9 @@ export default function Receiving({ deps }) {
 
   // Supplier NAMES only — enrichment through the existing suppliers read. Its failure degrades a
   // cell to a stated absence; it never blocks or reclassifies the queue, so its error is unused.
-  const suppliersRead = useSuppliers(0);
+  // Supplier names need supplier.record.read, which the receiving roles do not all hold (a Warehouse Associate holds supplier.purchaseOrder.read
+  // only). Not held: not asked; the row says "Supplier not resolved", as it already does for a refused read.
+  const suppliersRead = useSuppliers(0, gates.suppliers);
   const supplierNamesById = useMemo(() => {
     const map = {};
     for (const s of suppliersRead.suppliers) {

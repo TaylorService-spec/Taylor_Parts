@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, PageHeader, SectionHeader } from "../../shared/ui/primitives/index.js";
-import { eosLoginClient, eosLoginMessage } from "../../auth/eosLoginClient.js";
+import { CLOCK_HINT, eosLoginClient, eosLoginMessage } from "../../auth/eosLoginClient.js";
 
 // ACCOUNT SECURITY -- the account holder's own EOS login: password, two-step verification, recovery codes, sessions.
 // docs/architecture/eos-native-identity.md, 3(c). Every action is a call to /auth/* with the holder's own session; the
@@ -21,6 +21,24 @@ function Message({ error, notice }) {
   return null;
 }
 
+// The QR is drawn in this browser from the otpauth URI. The key never goes to any network host. The library is loaded on
+// demand so it stays out of the main bundle.
+function AuthenticatorQr({ uri }) {
+  const [state, setState] = useState({ status: "loading", src: null });
+  useEffect(() => {
+    let live = true;
+    setState({ status: "loading", src: null });
+    import("qrcode")
+      .then((m) => (m.default ?? m).toDataURL(uri, { margin: 2, width: 220, errorCorrectionLevel: "M" }))
+      .then((src) => { if (live) setState({ status: "ready", src }); })
+      .catch(() => { if (live) setState({ status: "failed", src: null }); });
+    return () => { live = false; };
+  }, [uri]);
+  if (state.status === "failed") return <p role="alert" className="fo-inline-error">The QR code could not be shown. Use the link or the key below instead.</p>;
+  if (state.status === "loading") return <p role="status">Preparing your QR code…</p>;
+  return <img src={state.src} width={220} height={220} alt="QR code for adding this account to your authenticator app" style={{ maxWidth: "100%", height: "auto", background: "#fff" }} />;
+}
+
 function RecoveryCodes({ codes, onDone }) {
   return (
     <div className="fo-panel" style={{ marginTop: 12 }}>
@@ -31,7 +49,8 @@ function RecoveryCodes({ codes, onDone }) {
   );
 }
 
-export default function AccountSecurity() {
+// `onEnrolled` is for the forced-setup screen (auth/MfaEnrollmentGate): called once the person has saved their recovery codes.
+export default function AccountSecurity({ onEnrolled = undefined } = {}) {
   const [account, setAccount] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
@@ -70,7 +89,8 @@ export default function AccountSecurity() {
     }
   };
 
-  if (loadError) {
+  // A reload that fails right after a confirm must not replace the one-time recovery codes: keep them on screen, show the error above.
+  if (loadError && !codes) {
     return (
       <div className="ns-page">
         <PageHeader title="Account security" />
@@ -85,7 +105,7 @@ export default function AccountSecurity() {
   return (
     <div className="ns-page">
       <PageHeader title="Account security" description={`Signed in as ${account.loginIdentifier}`} />
-      <Message error={error} notice={notice} />
+      <Message error={error ?? (codes ? loadError : null)} notice={notice} />
 
       <section className="fo-panel">
         <SectionHeader title="Password" description={account.passwordChangedAt ? `Last changed ${new Date(account.passwordChangedAt).toLocaleString()}` : null} />
@@ -114,7 +134,7 @@ export default function AccountSecurity() {
             : account.mfaRequired ? "Required by your administrator. Set it up to continue using the system." : "Off"}
         />
         {!account.mfaConfigured ? <p>Two-step verification is not available on this system yet.</p> : null}
-        {account.mfaConfigured && !totp && !enroll ? (
+        {account.mfaConfigured && !totp && !enroll && !codes ? (
           <form onSubmit={(e) => { e.preventDefault(); act(async () => { setEnroll(await eosLoginClient.beginTotp(setupPassword)); setSetupPassword(""); }); }}
             style={{ display: "grid", gap: 10 }}>
             <Field label="Your current password"><input className="fo-input" type="password" autoComplete="current-password" value={setupPassword} onChange={(e) => setSetupPassword(e.target.value)} required /></Field>
@@ -133,13 +153,16 @@ export default function AccountSecurity() {
             }}
             style={{ display: "grid", gap: 10 }}
           >
-            <p>Add this account to your authenticator app. On a phone, <a href={enroll.otpauthUri}>open it in the app</a>; otherwise enter the key by hand:</p>
+            <p>On your phone, open an authenticator app such as Google Authenticator, add an account, and scan this code with the camera.</p>
+            <AuthenticatorQr uri={enroll.otpauthUri} />
+            <p className="fo-muted">Setting up on the phone itself, or cannot scan? <a href={enroll.otpauthUri}>Open it in the authenticator app</a>, or type this key in by hand:</p>
             <code style={{ fontSize: "1.05rem", letterSpacing: "0.08em", wordBreak: "break-all" }}>{enroll.secret.match(/.{1,4}/g).join(" ")}</code>
             <Field label="Then enter the six-digit code it shows"><input className="fo-input" inputMode="numeric" autoComplete="one-time-code" value={enrollCode} onChange={(e) => setEnrollCode(e.target.value)} required /></Field>
+            <p className="fo-muted">{CLOCK_HINT}</p>
             <div><Button type="submit" loading={busy}>Turn on</Button> <Button variant="secondary" onClick={() => setEnroll(null)}>Cancel</Button></div>
           </form>
         ) : null}
-        {codes ? <RecoveryCodes codes={codes} onDone={() => setCodes(null)} /> : null}
+        {codes ? <RecoveryCodes codes={codes} onDone={() => { setCodes(null); onEnrolled?.(); }} /> : null}
         {totp && !codes ? (
           <form onSubmit={(e) => e.preventDefault()} style={{ display: "grid", gap: 10, marginTop: 8 }}>
             <p>To change two-step verification, confirm your password and a current code.</p>

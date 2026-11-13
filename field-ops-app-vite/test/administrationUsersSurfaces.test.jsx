@@ -243,7 +243,7 @@ describe("User Detail is read-only by default", () => {
     const header = document.querySelector(".ns-identity");
     for (const fact of ["Employee ID", "Job Role", "Operating Company"]) expect(within(header).getByText(fact), fact).toBeTruthy();
     expect(within(header).getByText("TAZ-0042")).toBeTruthy();
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Overview", "Roles & Access", "Assignments", "Work Schedule", "Workflows", "Activity"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Overview", "Roles & Access", "Access explained", "Assignments", "Work Schedule", "Workflows", "Activity"]);
     const tabSections = {
       Overview: ["Identity & Contact", "Employment & Business Context", "Job Role"],
       "Roles & Access": ["Security Roles", "Effective Access", "Operational Scope", "Work Eligibility", "Direct Exceptions", "View As User", "User Access"],

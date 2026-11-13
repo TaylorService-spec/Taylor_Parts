@@ -29,6 +29,14 @@ export const toLedgerTransaction = (m) => ({
   warehouseId: m.warehouseId,
 });
 
+// `readable` (access map): false = the session does not hold what readInventoryOnHand / readInventoryMovements require, so NOTHING is asked and the
+// hook settles at a stated, not-loading failure (the existing "unavailable" the screens already render); null = the session answer has not arrived,
+// so it is loading. `denied: true` on the returned state lets a screen say "not available to your role" (an absence) instead of the read-failure copy,
+// which stays for real network / server failures (`denied` is then absent). true (the default) is every other caller, unchanged.
+const LEDGER_NOT_READABLE = Object.freeze(Object.assign(new Error("the stock ledger is not shown to this account"), { code: "FORBIDDEN" }));
+const LEDGER_DENIED = Object.freeze({ transactions: Object.freeze([]), healthEntries: Object.freeze([]), loading: false, error: LEDGER_NOT_READABLE, integrity: null, denied: true });
+const LEDGER_WAITING = Object.freeze({ transactions: Object.freeze([]), healthEntries: Object.freeze([]), loading: true, error: null, integrity: null });
+
 const COMPLETE = Object.freeze({ state: LEDGER_INTEGRITY_STATE.COMPLETE, reason: null, unavailablePartIds: Object.freeze([]), unreadableRows: 0, unattributableRows: 0 });
 
 /**
@@ -45,13 +53,14 @@ export async function loadEosInventoryHealth(deps = {}) {
   return { transactions, healthEntries: generateInventoryHealthDashboard(transactions, stockSnapshots), integrity: COMPLETE };
 }
 
-export function useInventoryLedger({ allowPartial = false, deps = {} } = {}) {
+export function useInventoryLedger({ allowPartial = false, deps = {}, readable = true } = {}) {
   void allowPartial; // the governed read is always COMPLETE; kept so existing callers need no change
   const [state, setState] = useState({ transactions: [], healthEntries: [], loading: true, error: null, integrity: null });
   const position = deps.fetchInventoryPosition ?? fetchInventoryPosition;
   const movements = deps.fetchInventoryMovements ?? fetchInventoryMovements;
 
   useEffect(() => {
+    if (readable !== true) return undefined;
     let cancelled = false;
     loadEosInventoryHealth({ fetchInventoryPosition: position, fetchInventoryMovements: movements })
       .then(({ transactions, healthEntries, integrity }) => {
@@ -64,7 +73,9 @@ export function useInventoryLedger({ allowPartial = false, deps = {} } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [position, movements]);
+  }, [position, movements, readable]);
 
+  if (readable === false) return LEDGER_DENIED;
+  if (readable === null) return LEDGER_WAITING;
   return state;
 }

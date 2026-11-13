@@ -175,6 +175,9 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   // DENIED with the reason, source Roles, conditions, direct exceptions, scope and surfaces. Served only
   // when the server composes the evaluator (AdminApiDeps.explainEffectiveAccess); it needs the pool.
   "explainEffectiveAccess",
+  // "Access explained": the eleven-gate chain for one person and, optionally, one action or page (read-only; the SAME
+  // authority as explainEffectiveAccess). Served only when the server composes it (AdminApiDeps.explainAccessGates).
+  "explainAccessGates",
   // What a grant condition may be: the evaluator's kinds, their parameters, and the capability x
   // recordKind allow-list. Unsupported kinds are listed with the reason, never silently absent.
   "listSupportedConditionKinds",
@@ -320,6 +323,8 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   listRoleCapabilityDecisionHistory: "rolesPermissions",
   // The same authority as getPrincipalEffectiveAccess: admin.principalAccess.read.
   explainEffectiveAccess: "users",
+  // The same authority again: admin.principalAccess.read. Not widened, not a new key.
+  explainAccessGates: "users",
   listSupportedConditionKinds: "rolesPermissions",
   // The Employee > Security Roles picker's vocabulary: the same authority as listPrincipalRoleAssignments.
   listSupportedAssignmentScopes: "users",
@@ -435,6 +440,11 @@ export interface AdminApiDeps {
    * second, repository-only evaluator to fall back to.
    */
   readonly explainEffectiveAccess?: (tenantId: string, principalId: string) => Promise<unknown>;
+  /**
+   * "Access explained" (eosOps/accessGatesExplanation.ts), composed by the server over the shared pool. `readSignIn` is the
+   * login-account read through `loginAdministration` (same key); null when EOS login is not composed.
+   */
+  readonly explainAccessGates?: (tenantId: string, principalId: string, question: unknown, readSignIn: (() => Promise<unknown>) | null) => Promise<unknown>;
   /** W01 holder lookup: the existing Employee visibility, composed by the server (eosAdministration/workflowHolderVisibility). */
   readonly workflowHolderVisibility?: (tenantId: string, callerPrincipalId: string, employeeIds: readonly string[]) =>
     Promise<{ readonly employeeReadHeld: boolean; readonly visible: ReadonlyMap<string, { readonly displayName: string | null }> }>;
@@ -575,6 +585,8 @@ export async function executeAdminOperation<T = unknown>(
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation as AdminReadOperation | AdminMutationOperation);
     const data = operation === "explainEffectiveAccess"
       ? await explain(deps, actor, input)
+      : operation === "explainAccessGates"
+      ? await explainGates(deps, actor, input)
       : isWorkflowOperation(operation)
         ? await dispatchWorkflowOperation(deps, actor, operation, input, reason)
         : await dispatch(repo, actor, operation, input, reason);
@@ -700,6 +712,22 @@ async function explain(deps: AdminApiDeps, actor: AdminActor, input: Record<stri
     if (err instanceof PrincipalContextError) throw new NotFound(`principal has no effective access: ${err.refusal}`);
     throw err;
   }
+}
+
+/**
+ * Access explained: the gate chain for one Principal in the caller's tenant. The read authority (admin.principalAccess.read)
+ * was decided by the dispatcher before this runs. Unlike `explain`, a Principal that cannot be resolved (disabled, no usable
+ * membership, ineligible Employee) is the ANSWER -- the failing gate -- not a not-found; only a Principal with no membership
+ * in THIS tenant is not found.
+ */
+async function explainGates(deps: AdminApiDeps, actor: AdminActor, input: Record<string, unknown>): Promise<unknown> {
+  const principalId = requireString(input.principalId, "principalId");
+  if (!(await deps.repo.getMembership(actor.tenantId, principalId))) throw new NotFound("principal not found in this tenant");
+  if (typeof deps.explainAccessGates !== "function") throw new Error("explainAccessGates is not composed on this server");
+  const readSignIn = typeof deps.loginAdministration === "function"
+    ? () => deps.loginAdministration!("readLoginAccount", actor, { principalId })
+    : null;
+  return deps.explainAccessGates(actor.tenantId, principalId, input.question, readSignIn);
 }
 
 /**
@@ -999,6 +1027,10 @@ async function dispatch(
       // Routed through `explain` in executeAdminOperation (it needs the injected evaluator).
       throw new Error("explainEffectiveAccess is not a repository read");
 
+    case "explainAccessGates":
+      // Routed through `explainGates` in executeAdminOperation (it needs the injected evaluator and the sign-in read).
+      throw new Error("explainAccessGates is not a repository read");
+
     case "listRoleCapabilityDecisionHistory": {
       const roleKey = optionalString(input.roleKey);
       const capabilityKey = optionalString(input.capabilityKey);
@@ -1060,6 +1092,8 @@ async function dispatch(
       } as never);
 
     case "createRole":
+      // CAPABILITY BEFORE VALIDATION (API-01): the command's own gate, asked before the input is read.
+      await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
       return createRole(repo, actor, {
         key: requireString(input.key, "key"),
         name: requireString(input.name, "name"),
@@ -1227,6 +1261,12 @@ async function authorityCommand(
   input: Record<string, unknown>,
   reason: string | null,
 ): Promise<unknown> {
+  // CAPABILITY BEFORE VALIDATION (API-01): every authority change is gated before its input is read, by the SAME function and key the command applies next:
+  // requireGrantAuthority (the verified protected Owner for the self-approval exemption family -- who does not hold admin.securityPolicy.write -- else the fixed key
+  // AUTHORITY_CHANGE_GATE names). The four assignment changes (admin.roleAssignment.write) ignore any stray objectKey and keep the plain capability gate.
+  const gate = AUTHORITY_CHANGE_GATE[operation];
+  if (gate === "editSecurityPolicy") await requireGrantAuthority(repo, actor, gate, input.objectKey);
+  else await requireSecurityAdministrationCapability(repo, actor, gate);
   switch (operation) {
     case "grantObjectActionToRole":
       // The reason must be STATED by the administrator; the request id alone is not a reason.

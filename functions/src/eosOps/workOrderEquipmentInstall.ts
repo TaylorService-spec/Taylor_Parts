@@ -48,6 +48,7 @@ import {
   type InstallResult,
 } from "./equipmentCustody.js";
 import { INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE, isInventoryBaselineCertified } from "./inventoryBaselineGate.js";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority.js";
 import { authorizeMobileAct, currentMobileLocationIds, MobileStockRefusal } from "./mobileStockAuthority.js";
 import { recordRentalDeploymentOn, rentalInstallContextOn } from "../eosRental/rentalDeployment";
 
@@ -130,12 +131,14 @@ async function authorizeInstall(reader: ContextualReader, actor: InstallActor, w
   }
 }
 
-async function readInstallWorkOrder(db: Pick<PoolClient, "query">, tenantId: string, workOrderId: string, lock = false): Promise<InstallWorkOrder> {
+async function readInstallWorkOrder(db: Pick<PoolClient, "query">, tenantId: string, principalId: string, workOrderId: string, lock = false): Promise<InstallWorkOrder> {
+  // DWO-company: capability and own assignment were decided by the caller; the caller's operating companies decide here, inside the (locking) SELECT.
+  const reach = await requireWorkOrderCompanyReach(db, tenantId, principalId, refuse);
   const { rows } = await db.query(
     `SELECT id, status::text AS status, work_order_type::text AS type, customer_id, location_id, operating_company_key,
             equipment_id, rental_agreement_id
-       FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2${lock ? " FOR UPDATE" : ""}`,
-    [tenantId, workOrderId]);
+       FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3)}${lock ? " FOR UPDATE" : ""}`,
+    [tenantId, workOrderId, ...reach.sqlParams()]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "no such Work Order in this tenant");
   const r = rows[0];
   const wo: InstallWorkOrder = {
@@ -174,7 +177,7 @@ export async function listInstallableUnitsForWorkOrder(
   input: { readonly workOrderId: string; readonly serialNumber?: string },
 ): Promise<{ readonly units: readonly InstallableUnit[]; readonly truncated: boolean }> {
   await authorizeInstall(deps.reader ?? postgresContextualReader(deps.pool), actor, input?.workOrderId);
-  const wo = await readInstallWorkOrder(deps.pool, actor.tenantId, input.workOrderId);
+  const wo = await readInstallWorkOrder(deps.pool, actor.tenantId, actor.principalId, input.workOrderId);
   const serial = input.serialNumber === undefined ? null : input.serialNumber;
   if (serial !== null && (typeof serial !== "string" || serial.trim() === "")) {
     refuse("SERIAL_INVALID", "INVALID_INPUT", "serialNumber, when stated, is a non-empty string");
@@ -273,7 +276,7 @@ export async function recordWorkOrderEquipmentInstall(
     // 1 + 4. capability, then the assignment -- read through THIS transaction.
     await authorizeInstall(deps.reader ?? postgresContextualReader(client), actor, input.workOrderId);
     // 2 + 3. lock and revalidate the Work Order: a concurrent install on the same Work Order waits here.
-    const wo = await readInstallWorkOrder(client, actor.tenantId, input.workOrderId, true);
+    const wo = await readInstallWorkOrder(client, actor.tenantId, actor.principalId, input.workOrderId, true);
     if (!(await isInventoryBaselineCertified(client, actor.tenantId))) {
       refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
     }

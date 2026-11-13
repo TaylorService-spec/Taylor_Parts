@@ -42,10 +42,30 @@ test("policy and surfaces are gated at JOB level, under their unchanged check na
   for (const [id, name] of [["policy", POLICY_NAME], ["surfaces", SURFACES_NAME]]) {
     const block = jobBlock(id);
     assert.match(block, new RegExp(`^    name: ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"), `${id} check name changed`);
-    assert.match(block, /^    needs: changes$/m, `${id} must depend on the changes job`);
+    // `policy` is the AGGREGATE GATE over the split engine lane (lane CIP): it still depends on `changes` and now on the two
+    // jobs that do the work. The required check keeps this job id and this name.
+    const needs = id === "policy" ? /^    needs: \[changes, policy-offline, policy-postgres\]$/m : /^    needs: changes$/m;
+    assert.match(block, needs, `${id} must depend on the changes job${id === "policy" ? " and on both engine jobs" : ""}`);
     const lines = block.split("\n").filter((l) => /^    if:/.test(l));
     assert.deepEqual(lines, [`    ${GATE}`], `${id} must carry exactly the fail-closed job-level gate`);
   }
+});
+
+test("the engine lane's two work jobs carry the same job-level gate, and the gate fails on anything but success", () => {
+  for (const id of ["policy-offline", "policy-postgres"]) {
+    const block = jobBlock(id);
+    assert.match(block, /^    needs: changes$/m, `${id} must depend on the changes job`);
+    assert.deepEqual(block.split("\n").filter((l) => /^    if:/.test(l)), [`    ${GATE}`], `${id} must carry the fail-closed job-level gate`);
+  }
+  const gate = jobBlock("policy");
+  assert.match(gate, /!= "success"/, "the gate must fail on any upstream result other than 'success' (skipped included)");
+  assert.match(gate, /adminPolicyPartitions\.mjs aggregate manifests/, "the gate must run the manifest aggregation");
+  const matrix = jobBlock("policy-postgres");
+  assert.match(matrix, /fail-fast: false/, "one failing partition must not hide the others");
+  const count = JSON.parse(readFileSync(resolve(ROOT, ".github/ci/eos-admin-policy-postgres-partitions.json"), "utf8")).partitions;
+  assert.match(matrix, new RegExp(`partition: \\[${Array.from({ length: count }, (_, i) => i + 1).join(", ")}\\]`),
+    "the matrix and the partition map must agree on the partition count");
+  assert.match(matrix, new RegExp(`partition \\$\\{\\{ matrix\\.partition \\}\\} of ${count}\\b`), "the job name states the partition count");
 });
 
 test("the changes job is cheap and decides from the committed list", () => {
@@ -154,7 +174,9 @@ test("COMPLETENESS: every suite and script the gated jobs run is selected by the
       executed.add(`field-ops-app-vite/${t}`);
     }
   }
-  for (const m of jobBlock("policy").matchAll(/run: node (scripts\/\S+\.mjs)/g)) executed.add(m[1]);
+  for (const id of ["policy-offline", "policy-postgres", "policy"]) {
+    for (const m of jobBlock(id).matchAll(/run: node (scripts\/\S+\.mjs)/g)) executed.add(m[1]);
+  }
   assert.ok(executed.size > 150, `parsed too few executed files (${executed.size}); the parser is broken`);
   const unmatched = [...executed].filter((f) => matchingChanges([f], globs).length === 0).sort();
   assert.deepEqual(unmatched, [], `run by a gated job but not selected by ${PATHS_FILE} -- add them there`);

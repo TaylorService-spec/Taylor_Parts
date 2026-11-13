@@ -396,6 +396,12 @@ export async function reviewReorderRequest(
   actor: ReorderActor,
   input: Record<string, unknown>,
 ): Promise<ReorderTransitionResult> {
+  // CAPABILITY BEFORE VALIDATION (API-01): the exact key depends on the decision, so a caller holding NEITHER is refused here, before
+  // the input is read any further. The decision-specific check below still decides a holder of only one of the two.
+  const stated = (input as { decision?: unknown } | null | undefined)?.decision;
+  if (!(actor?.capabilities instanceof Set) || !(actor.capabilities.has(REORDER_APPROVE) || actor.capabilities.has(REORDER_REJECT))) {
+    requireActor(actor, stated === "REJECTED" ? REORDER_REJECT : REORDER_APPROVE);
+  }
   const i = acceptOnly(input, ["reorderRequestId", "decision", "reviewNotes"]);
   if (i.decision !== "APPROVED" && i.decision !== "REJECTED") {
     refuse("DECISION_INVALID", "INVALID_INPUT", "decision must be APPROVED or REJECTED");
@@ -609,11 +615,12 @@ export async function markReorderReceived(
   actor: ReorderActor,
   input: Record<string, unknown>,
 ): Promise<ReorderTransitionResult> {
+  // CAPABILITY BEFORE THE PRECONDITION (API-01): a caller without the key learns nothing about the closeout rule.
+  requireActor(actor, REORDER_MARK_RECEIVED);
   if (RECEIVING_POSTGRES_ACTIVE) {
     refuse("CLOSEOUT_REQUIRES_RECEIPT", "PRECONDITION_FAILED",
       "a Reorder is closed out by receiving the stock: use the governed receipt, which records the inventory movement, the custody and the cost evidence in the same transaction");
   }
-  requireActor(actor, REORDER_MARK_RECEIVED);
   const i = acceptOnly(input, ["reorderRequestId"]);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
 
