@@ -21,6 +21,7 @@ import { businessDateOn } from "../eosOps/operatingCompanyBusinessTime";
 import { resolveOperatingCompanyFromKey } from "../eosFinance/financeFoundation";
 import { prepareRentalChargePackageOn } from "./rentalBilling";
 import { withActorAuthority } from "../eosOps/administrationReach";
+import { resolveWorkOrderCompanyReach, type WorkOrderCompanyReach } from "../eosOps/workOrderCompanyAuthority";
 import { FINANCE_COMPANY_ASSIGNMENT_KEY, financeReachesCompany } from "../eosFinance/financeCompanyAccess";
 import type { ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 
@@ -423,7 +424,10 @@ export async function initiateRentalReturn(pool: Pool, actor: RentalActor, input
     if (s.status === "RETURN_PENDING") return Object.freeze({ outcome: "replayed" as const, agreement: await readRentalAgreementFor(c, actor, String(s.agreement_id)) });
     if (s.status !== "DEPLOYED") refuse("RENTAL_ASSIGNMENT_NOT_DEPLOYED", "PRECONDITION_FAILED", `a ${String(s.status)} assignment has nothing to return`);
     if (woId !== null) {
-      const { rows } = await c.query(`SELECT rental_agreement_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2`, [actor.tenantId, woId]);
+      // DWO-company: a Work Order outside the caller's company authority is answered exactly like a missing one (same code and message); no assignment branch (office command).
+      const woReach = await resolveWorkOrderCompanyReach(c, actor.tenantId, actor.principalId);
+      const { rows } = await c.query(`SELECT rental_agreement_id FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 AND ${woReach.sql("operating_company_key", 3, { assignment: false })}`,
+        [actor.tenantId, woId, ...woReach.sqlParams()]);
       if (rows[0]?.rental_agreement_id !== s.agreement_id) refuse("RETURN_WORK_ORDER_MISMATCH", "PRECONDITION_FAILED", "the pickup Work Order is not one of this agreement's");
     }
     const unit = await lockUnit(c, actor, s.fleet_unit_id);
@@ -682,7 +686,7 @@ function fleetUnitSummary(f: Record<string, any>) {
   };
 }
 
-export async function readRentalAgreementOn(db: Queryable, tenantId: string, agreementId: string) {
+export async function readRentalAgreementOn(db: Queryable, tenantId: string, agreementId: string, woReach: WorkOrderCompanyReach) {
   const { rows } = await db.query(`SELECT g.*, a.name AS account_name, l.name AS site_name FROM eos_rental.rental_agreements g
       LEFT JOIN eos_crm.accounts a ON a.tenant_id = g.tenant_id AND a.id = g.account_id
       LEFT JOIN eos_crm.account_locations l ON l.tenant_id = g.tenant_id AND l.id = g.customer_location_id
@@ -701,7 +705,7 @@ export async function readRentalAgreementOn(db: Queryable, tenantId: string, agr
        LEFT JOIN eos_finance.obligation_balances b ON b.tenant_id = o.tenant_id AND b.obligation_id = o.id
       WHERE c.tenant_id = $1 AND c.agreement_id = $2 ORDER BY c.period_start NULLS FIRST, c.recorded_at`, [tenantId, agreementId]);
   const { rows: wos } = await db.query(`SELECT id, work_order_number, work_order_type::text AS type, status::text AS status, equipment_id FROM eos_ops.work_orders
-     WHERE tenant_id = $1 AND rental_agreement_id = $2 ORDER BY created_at`, [tenantId, agreementId]);
+     WHERE tenant_id = $1 AND rental_agreement_id = $2 AND ${woReach.sql("operating_company_key", 3, { assignment: false })} ORDER BY created_at`, [tenantId, agreementId, ...woReach.sqlParams()]);
   return Object.freeze({
     id: String(g.id), number: String(g.rental_agreement_number), status: String(g.status), operatingCompanyKey: String(g.operating_company_key),
     customer: { accountId: String(g.account_id), name: g.account_name ?? null }, site: { id: String(g.customer_location_id), name: g.site_name ?? null },
@@ -732,7 +736,7 @@ export async function readRentalAgreementFor(db: Queryable, actor: RentalActor, 
       LEFT JOIN eos_policy.tenant_operating_company_keys k ON k.tenant_id = g.tenant_id AND k.operating_company_key = g.operating_company_key AND k.status = 'ACTIVE'
      WHERE g.tenant_id = $1 AND g.id = $2 AND g.operating_company_key = ANY($3::text[])`, [actor.tenantId, agreementId, requireCompanyAuthority(actor)]);
   if (!rows[0]) refuse("RENTAL_AGREEMENT_NOT_FOUND", "NOT_FOUND", "no Rental Agreement with that id");
-  const agreement = await readRentalAgreementOn(db, actor.tenantId, agreementId);
+  const agreement = await readRentalAgreementOn(db, actor.tenantId, agreementId, await resolveWorkOrderCompanyReach(db, actor.tenantId, actor.principalId));
   const companyId = rows[0].operating_company_id === null ? null : String(rows[0].operating_company_id);
   const financeVisible = companyId !== null && financeReachesCompany(actor, FINANCE_COMPANY_ASSIGNMENT_KEY, companyId);
   if (financeVisible) return Object.freeze({ ...agreement, financeWithheld: false as const });
@@ -810,6 +814,7 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
   const within = input.dueWithinDays === undefined ? 7 : Number(input.dueWithinDays);
   if (!Number.isInteger(within) || within < 0 || within > 90) refuse("DUE_WINDOW_INVALID", "INVALID_INPUT", "dueWithinDays is 0..90");
   const t = actor.tenantId;
+  const woReach = await resolveWorkOrderCompanyReach(pool, t, actor.principalId);
   const { rows: units } = await pool.query(`SELECT id FROM eos_rental.fleet_units WHERE tenant_id = $1 AND ($2::text[] IS NULL OR owner_operating_company_key = ANY($2::text[])) ORDER BY display_name, id LIMIT 1000`, [t, ck]);
   const fleet: ReturnType<typeof fleetUnitSummary>[] = [];
   for (const u of units) {
@@ -822,8 +827,9 @@ export async function readRentalWorkspace(pool: Pool, actor: RentalActor, input:
     `SELECT s.fleet_unit_id, w.id AS work_order_id, w.work_order_number, w.status::text AS status FROM eos_rental.rental_assignments s
        JOIN eos_ops.work_orders w ON w.tenant_id = s.tenant_id AND w.rental_agreement_id = s.agreement_id AND w.work_order_type = 'INSTALL'
                                  AND w.equipment_id IS NULL AND w.status::text NOT IN ('COMPLETED', 'CANCELLED', 'CLOSED')
+                                 AND ${woReach.sql("w.operating_company_key", 3, { assignment: false })}
       WHERE s.tenant_id = $1 AND s.status = 'RESERVED'
-        AND ($2::text[] IS NULL OR EXISTS (SELECT 1 FROM eos_rental.rental_agreements g WHERE g.tenant_id = s.tenant_id AND g.id = s.agreement_id AND g.operating_company_key = ANY($2::text[])))`, [t, ck]);
+        AND ($2::text[] IS NULL OR EXISTS (SELECT 1 FROM eos_rental.rental_agreements g WHERE g.tenant_id = s.tenant_id AND g.id = s.agreement_id AND g.operating_company_key = ANY($2::text[])))`, [t, ck, ...woReach.sqlParams()]);
   const { rows: due } = await pool.query(
     `SELECT g.id, g.rental_agreement_number, g.operating_company_key, te.expected_end_date,
             eos_policy.operating_company_business_date(g.tenant_id, oc.operating_company_id, now()) AS today,
