@@ -10,9 +10,15 @@ export function readDeadline(isRead, callerSignal, waitMs = READ_WAIT_MS) {
   const ctl = new AbortController();
   let fired = false;
   const timer = setTimeout(() => { fired = true; ctl.abort(); }, waitMs);
+  const onCallerAbort = () => ctl.abort();
   if (callerSignal) {
     if (callerSignal.aborted) ctl.abort();
-    else callerSignal.addEventListener("abort", () => ctl.abort(), { once: true });
+    else callerSignal.addEventListener("abort", onCallerAbort, { once: true });
   }
-  return { signal: ctl.signal, timedOut: () => fired, clear: () => clearTimeout(timer) };
+  return {
+    signal: ctl.signal,
+    timedOut: () => fired,
+    // Also drops the listener: a long-lived caller signal must not keep one closure per settled read.
+    clear: () => { clearTimeout(timer); callerSignal?.removeEventListener("abort", onCallerAbort); },
+  };
 }
