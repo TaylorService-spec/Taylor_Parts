@@ -27,6 +27,18 @@ Issued: 2026-11-13 (America/Phoenix) · Inputs: [LAUNCH-READINESS-AUDIT-2026-11-
 | #2231 / #2232 release candidate (was item 29) | Released in R2.5 (`e4a4d95b`) |
 | #2215 Warehouse Manager reorder read (was item 27) | Owner approved PARTS-404 / RO-02 on 2026-10-21 (controller log). Remaining step: normal review, CI and merge under standing rules |
 
+## Owner rulings recorded (2026-11-13, in session)
+
+These rulings supersede the "Needs Owner?" column for their rows. Every other row is still open.
+
+| # | Ruling | What it authorizes | What remains separately gated |
+|---|---|---|---|
+| D1 | **YES** | Day-1 scope = the proven employee workflows plus F-1 invoicing. Q-1, D-1, W-1 and T-1 are post-launch, in the #2182 order. REC is designed before go-live. | Building any post-launch spec still follows #2182 |
+| D4 | **YES** | Ventana is in Day-1. FIX-VEN (#2216) is approved for nonprod only. | #2216 procedure: conflict resolution, a second reviewer, required CI, merge, then the operator's dry run, Owner review and apply on the Render shell. Every one of those steps is human/operator-executed. |
+| D5 | **YES** | Design and build a governed, audited, Administrator-only operation that makes a person login-ready (Principal, membership, login account). Hand-over is by setup code until D6 is decided. | Exact capability and grant holders need Owner confirmation before activation. No grant is implied. |
+| D7 | **EVERYONE** | MFA is required for every account. New login accounts default to required. The server refuses MFA-less sessions for required accounts (existing behaviour). | Flipping existing live nonprod accounts is an account change and is executed only with Owner go-ahead |
+| D8 | **FRESH ENROLLMENT** | Real employees get new EOS login accounts issued by an Administrator. No tool migrates Firebase Auth accounts. | The identity cutover itself (G2) and any production action |
+
 ## Register
 
 ### 1. Essential workflows and acceptance
