@@ -261,6 +261,7 @@
     "test/invoiceNumberAllocatorPostgres.test.mjs",
     "test/financialPolicyFoundationPostgres.test.mjs",
     "test/rentalPostgres.test.mjs",
+    "test/rentalWorkOrderCompanyPostgres.test.mjs",
     "test/analysisPostgres.test.mjs",
     "test/myWorkPostgres.test.mjs",
     "test/administratorReorderQueuePostgres.test.mjs",
