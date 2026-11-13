@@ -32,6 +32,7 @@ on:
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
       - "field-ops-app-vite/test/uxMigrationManifest.test.jsx"
+      - "field-ops-app-vite/test/compactUxStandard.test.jsx"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
       - "field-ops-app-vite/src/domain/workOrderSearch.js"
       - "field-ops-app-vite/src/domain/workOrderStatusGroups.js"
@@ -206,6 +207,7 @@ on:
       - "field-ops-app-vite/test/objectListMetadataAuthority.test.mjs"
       - "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
       - "field-ops-app-vite/test/uxMigrationManifest.test.jsx"
+      - "field-ops-app-vite/test/compactUxStandard.test.jsx"
       - "field-ops-app-vite/src/modules/workOrders/WorkOrdersList.jsx"
       - "field-ops-app-vite/src/domain/workOrderSearch.js"
       - "field-ops-app-vite/src/domain/workOrderStatusGroups.js"
@@ -536,4 +538,11 @@ jobs:
       # server, the picker that must never become an id box, and the label that must never be a key.
       - name: Work Order equipment (client rule mirror + picker + label)
         run: npx vitest run test/workOrderEquipmentClient.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Compact UX Standard (docs/design/compact-ux-standard.md): the InfoTip accessibility contract
+      # (hover, keyboard focus, Escape, touch, screen-reader description) and the rule that a compacted
+      # page moves explanation into a tip but never a warning, a refusal or a required instruction.
+      - name: Compact UX Standard (InfoTip a11y + always-visible rule)
+        run: npx vitest run test/compactUxStandard.test.jsx
         working-directory: field-ops-app-vite

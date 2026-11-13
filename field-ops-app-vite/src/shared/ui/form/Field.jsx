@@ -30,8 +30,13 @@
 import { Children, cloneElement, isValidElement } from "react";
 import { hintId, errorId, describedBy } from "./fieldA11y";
 import FormError from "./FormError";
+import InfoTip from "../primitives/InfoTip.jsx";
 
-export default function Field({ id, label, required = false, hint, error, className, children }) {
+// `help` (Compact UX Standard §4, field help): SECONDARY explanation -- why a field exists,
+// what a term means -- shown as an InfoTip beside the label instead of a line under the
+// control. `hint` stays for what the user needs to fill the field in correctly (format,
+// limits, required instructions); that is never moved into a tooltip.
+export default function Field({ id, label, required = false, hint, help, error, className, children }) {
   const wrapCls = className ? `fo-form-field ${className}` : "fo-form-field";
   const hasHint = Boolean(hint);
   const hasError = Boolean(error);
@@ -48,10 +53,20 @@ export default function Field({ id, label, required = false, hint, error, classN
 
   return (
     <div className={wrapCls}>
-      <label className="fo-wizard-field-label" htmlFor={id}>
-        {label}
-        {required && <span className="fo-field-required"> (required)</span>}
-      </label>
+      {help ? (
+        <div className="fo-form-field__label-row">
+          <label className="fo-wizard-field-label" htmlFor={id}>
+            {label}
+            {required && <span className="fo-field-required"> (required)</span>}
+          </label>
+          <InfoTip label={`About ${typeof label === "string" ? label : "this field"}`}>{help}</InfoTip>
+        </div>
+      ) : (
+        <label className="fo-wizard-field-label" htmlFor={id}>
+          {label}
+          {required && <span className="fo-field-required"> (required)</span>}
+        </label>
+      )}
       {control}
       {hint && (
         <p className="fo-wizard-hint" id={hintId(id)}>

@@ -27,6 +27,7 @@ import WorkspaceHeader from "./WorkspaceHeader.jsx";
 export default function WorkspaceShell({
   crumb = null,
   title,
+  help = null,
   actions = null,
   context = null,
   attention = null,
@@ -39,7 +40,7 @@ export default function WorkspaceShell({
     <section className={`fo-workspace ${className}`.trim()} data-density={density}>
       {crumb}
       {(title != null || actions != null) && (
-        <WorkspaceHeader title={title}>{actions}</WorkspaceHeader>
+        <WorkspaceHeader title={title} help={help}>{actions}</WorkspaceHeader>
       )}
       {context ? <div className="fo-workspace__context">{context}</div> : null}
       {attention ? <div className="fo-workspace__attention" role="region" aria-label="Needs attention">{attention}</div> : null}
