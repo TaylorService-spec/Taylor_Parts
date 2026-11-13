@@ -148,6 +148,7 @@ Set-Cookie: __Host-eos_refresh=eosrt_…; Path=/; Secure; HttpOnly; SameSite=<EO
 - TOTP per RFC 6238 (SHA-1, 6 digits, 30 s, ±1 step).
 - **A code works once:** the accepted step must exceed the last one (L12).
 - Enrolling issues 10 recovery codes and ends every other, password-only session.
+- **D7 (Owner, 2026-11-13): MFA is required for everyone.** Every creation path sets `mfa_required = true`: `provisionLoginAccount` always inserts true and refuses an explicit `mfaRequired: false` with `INVALID_INPUT` (400) before any I/O (an omitted or true value is accepted); the employee-assertion and persona-session paths already insert true. The Administration create form has no checkbox. Existing accounts are unchanged by this rule: they keep their stored value, and `setLoginMfaRequirement` is untouched. Flipping live accounts needs a separate Owner go-ahead.
 - An account with `mfa_required` and no factor gets a session that reaches `/auth/*` only, until it enrolls (L13). Its holder cannot remove a required factor.
 - Removing a factor needs the password **and** a current TOTP code or an unused recovery code. Regenerating recovery codes needs the password **and** a current TOTP code; a recovery code cannot mint more.
 - An MFA challenge records the credential version and is void after any password reset or change (finding 8; S10).

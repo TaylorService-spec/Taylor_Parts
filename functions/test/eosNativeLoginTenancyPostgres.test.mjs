@@ -238,7 +238,43 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   const asFb = (uid, operation, input, headers = {}) => post("/admin/policy", { operation, input }, { authorization: `Bearer fb-token.${uid}`, ...headers });
   const bearer = (token, extraHeaders = {}) => ({ authorization: `Bearer ${token}`, ...extraHeaders });
   const experience = (token, extraHeaders = {}) => post("/operations/experience", { operation: "resolveMyExperienceContext" }, bearer(token, extraHeaders));
-  const login = (identifier, password, tenantId) => post("/auth/login", { identifier, password, ...(tenantId ? { tenantId } : {}) });
+  // D7: every new account is MFA-required, so a password alone yields an enrollment-only session or an MFA challenge.
+  // `login` finishes the sign-in like a person would: the first time an account owes a factor it enrolls an authenticator
+  // (begin -> confirm with a real code), afterwards it answers the challenge with a current code. `rawLogin` is the bare
+  // password step, for the tests that are ABOUT the enrollment or the challenge.
+  const rawLogin = (identifier, password, tenantId) => post("/auth/login", { identifier, password, ...(tenantId ? { tenantId } : {}) });
+  const base32Secret = (text) => {
+    const A32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0; let value = 0; const out = [];
+    for (const ch of text) { value = (value << 5) | A32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+    return Buffer.from(out);
+  };
+  const factorSecrets = new Map(); // normalized identifier -> TOTP secret
+  const currentCode = (secret) => totpCodeAt(secret, totpStepAt(Math.floor(Date.now() / 1000)));
+  const forgetLastStep = (key) => q(`UPDATE eos_policy.login_mfa_factors SET last_used_step = NULL WHERE account_id IN (SELECT id FROM eos_policy.login_accounts WHERE login_identifier = $1)`, [key]);
+  // Answer an MFA challenge with a current code (one code per 30-second step: forget the last used step first, fixture SQL only; MFA stays required).
+  const answerChallenge = async (key, challenge, headers = {}, at = base) => {
+    await forgetLastStep(key);
+    const m = await post("/auth/login/mfa", { challenge, code: currentCode(factorSecrets.get(key)) }, headers, at);
+    if (m.status === 200) m.body = { status: "AUTHENTICATED", ...m.body };
+    return m;
+  };
+  const login = async (identifier, password, tenantId) => {
+    const key = identifier.trim().toLowerCase();
+    const r = await rawLogin(identifier, password, tenantId);
+    if (r.status !== 200) return r;
+    if (r.body.status === "MFA_REQUIRED" && factorSecrets.has(key)) return answerChallenge(key, r.body.challenge);
+    if (r.body.session?.mfaEnrollmentRequired === true) {
+      const b = await post("/auth/mfa/totp/begin", { password }, bearer(r.body.session.accessToken));
+      assert.equal(b.status, 200, JSON.stringify(b.body));
+      const secret = base32Secret(b.body.secret);
+      const c = await post("/auth/mfa/totp/confirm", { factorId: b.body.factorId, code: currentCode(secret) }, bearer(r.body.session.accessToken));
+      assert.equal(c.status, 200, JSON.stringify(c.body));
+      secrets.push(b.body.secret, ...c.body.recoveryCodes);
+      factorSecrets.set(key, secret);
+      return login(identifier, password, tenantId);
+    }
+    return r;
+  };
   const events = async (where, values) => (await q(`SELECT * FROM eos_policy.authentication_events WHERE ${where} ORDER BY occurred_at, id`, values)).rows;
   const secrets = [PAT_PW];
 
@@ -301,6 +337,10 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     assert.equal((await login("pat@tenancy.test", PAT_PW, C)).status, 401);
     assert.equal((await login("pat@tenancy.test", PAT_PW, "tenant-that-does-not-exist")).status, 401);
     assert.equal((await login("pat@tenancy.test", PAT_PW, "not a tenant!")).status, 401);
+    // KNOWN DEFECT (WORK-QUEUE A16, found while moving these suites to D7): the four refused attempts above leave pat one short of the
+    // lockout, and an MFA account's correct password still RESERVES an attempt until the second factor passes -- so the next correct
+    // password + code would lock pat. Clear the counter here so the later tests prove what they are about; A16 fixes the behaviour.
+    await q(`UPDATE eos_policy.login_accounts SET failed_attempts = 0, locked_until = NULL WHERE login_identifier = 'pat@tenancy.test'`);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.authentication_events WHERE tenant_id = $1`, [C])).rows[0].n, beforeC);
     // The switch is refused for the same reason.
     const sw = await post("/auth/session/switch-tenant", { tenantId: B }, bearer(sessA.accessToken));
@@ -372,12 +412,12 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
 
   // ════════════════════ M8: MFA cannot be bypassed by switching ════════════════════
   await t.test("M8 a session that owes a second factor cannot switch; a verified one keeps its verification across the switch", async () => {
-    const prov = await asFb("fb-owner-ab", "provisionLoginAccount", { principalId: quinn, loginIdentifier: "quinn@tenancy.test", reason: "quinn", mfaRequired: true }, { "x-eos-tenant": A });
+    const prov = await asFb("fb-owner-ab", "provisionLoginAccount", { principalId: quinn, loginIdentifier: "quinn@tenancy.test", reason: "quinn" }, { "x-eos-tenant": A });
     assert.equal(prov.status, 200, JSON.stringify(prov.body));
     secrets.push(prov.body.data.enrollmentTicket);
     await post("/auth/enrollment/complete", { ticket: prov.body.data.enrollmentTicket, password: "a silver kite over the bay" });
     secrets.push("a silver kite over the bay");
-    const owed = (await login("quinn@tenancy.test", "a silver kite over the bay", A)).body.session;
+    const owed = (await rawLogin("quinn@tenancy.test", "a silver kite over the bay", A)).body.session;
     assert.equal(owed.mfaEnrollmentRequired, true);
     assert.equal((await post("/auth/session/switch-tenant", { tenantId: B }, bearer(owed.accessToken))).status, 403, "MFA_ENROLLMENT_REQUIRED");
     const b = await post("/auth/mfa/totp/begin", { password: "a silver kite over the bay" }, bearer(owed.accessToken));
@@ -392,7 +432,7 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     assert.equal(sw.status, 200, JSON.stringify(sw.body));
     assert.equal((await experience(sw.body.session.accessToken)).status, 200, "verified in A -> verified in B");
     // A fresh login into B with only the password stops at the second factor, as everywhere.
-    assert.equal((await login("quinn@tenancy.test", "a silver kite over the bay", B)).body.status, "MFA_REQUIRED");
+    assert.equal((await rawLogin("quinn@tenancy.test", "a silver kite over the bay", B)).body.status, "MFA_REQUIRED");
   });
 
   // ════════════════════ M9: password-reset abuse ════════════════════
@@ -422,16 +462,19 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
 
   // ════════════════════ M10: session fixation ════════════════════
   await t.test("M10 session fixation: a planted refresh cookie is never adopted -- login always mints a NEW session for the authenticated person", async () => {
-    const attacker = (await login("quinn@tenancy.test", "a silver kite over the bay", A)).body; // MFA_REQUIRED for quinn
+    const attacker = (await rawLogin("quinn@tenancy.test", "a silver kite over the bay", A)).body; // MFA_REQUIRED for quinn
     assert.equal(attacker.status, "MFA_REQUIRED");
     const planted = `eosrt_${"P".repeat(43)}`;
-    const r = await post("/auth/login", { identifier: "pat@tenancy.test", password: "a brand new passphrase", tenantId: A }, { cookie: `__Host-eos_refresh=${planted}` });
+    const plantedHeaders = { cookie: `__Host-eos_refresh=${planted}` };
+    let r = await post("/auth/login", { identifier: "pat@tenancy.test", password: "a brand new passphrase", tenantId: A }, plantedHeaders);
     assert.equal(r.status, 200);
+    if (r.body.status === "MFA_REQUIRED") r = await answerChallenge("pat@tenancy.test", r.body.challenge, plantedHeaders); // D7: the session is minted after the second factor
     assert.notEqual(r.body.session.refreshToken, planted);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.login_refresh_tokens WHERE token_sha256 = encode(sha256($1::bytea), 'hex')`, [planted])).rows[0].n, 0);
     // The request carries no field that names a session or a subject the server would adopt.
-    const extraFields = await post("/auth/login", { identifier: "pat@tenancy.test", password: "a brand new passphrase", sessionId: "x".repeat(32), subject: "user.abc" });
+    let extraFields = await post("/auth/login", { identifier: "pat@tenancy.test", password: "a brand new passphrase", sessionId: "x".repeat(32), subject: "user.abc" });
     assert.equal(extraFields.status, 200);
+    if (extraFields.body.status === "MFA_REQUIRED") extraFields = await answerChallenge("pat@tenancy.test", extraFields.body.challenge);
     assert.notEqual(extraFields.body.session.sessionId, "x".repeat(32));
   });
 
