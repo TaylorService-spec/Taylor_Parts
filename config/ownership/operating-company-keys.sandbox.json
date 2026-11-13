@@ -20,18 +20,27 @@
     "SAMPLE COMPANY IS NOT BOUND HERE. 'sample-co-synthetic' is fixture data and stays outside the",
     "governed business partition. Genuine Work Orders are never migrated into it.",
     "",
-    "VENTANA IS AUTHORIZED BUT UNKEYED, DELIBERATELY. The tenant may operate as Ventana, and a native",
-    "Ventana operational row must FAIL CLOSED until an explicit key binding is authored here. Supporting",
-    "a company conceptually and keying its partition are two separate decisions."
+    "VENTANA IS KEYED BY THE OWNER RULING OF 2026-10-21 (UAT decision OQ-09), AND ONLY BY THAT RULING. Until",
+    "then a native Ventana operational row failed closed because no binding was authored here; the Ventana",
+    "binding below is that explicit decision. Its value 'ventana' reads the same as the company id, and that",
+    "is, exactly like Taylor's, a coincidence of authoring and NOT an equality rule: code reads the binding",
+    "row. Supporting a company conceptually and keying its partition remain two separate decisions; any",
+    "further company stays unkeyed until it is bound here."
   ],
   "environment": "eos-platform-sandbox",
-  "status": "AUTHORED by Owner ruling 2026-09-22 — the Work Order migration operational key binding",
+  "status": "AUTHORED by Owner ruling 2026-09-22 — the Work Order migration operational key binding; AMENDED by Owner ruling 2026-10-21 — the Ventana operational key binding",
   "bindings": [
     {
       "operatingCompanyId": "taylor",
       "operatingCompanyKey": "taylor",
       "provenance": "MIGRATED",
       "reason": "Owner ruling 2026-09-22: the genuine Taylor nonprod business partition for the Work Order migration population."
+    },
+    {
+      "operatingCompanyId": "ventana",
+      "operatingCompanyKey": "ventana",
+      "provenance": "NATIVE",
+      "reason": "Owner ruling 2026-10-21 (UAT decision OQ-09): the Ventana nonprod operational partition key, authored so Ventana operational rows can exist; Sample Company stays unbound."
     }
   ]
 }

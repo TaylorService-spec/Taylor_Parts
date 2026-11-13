@@ -332,6 +332,7 @@
     "test/saeDelegatedExemptionPostgres.test.mjs",
     "test/commercialRecordCompanyPostgres.test.mjs",
     "test/clcSal03InteractionPostgres.test.mjs",
+    "test/operatingCompanyBindingPostgres.test.mjs",
     "test/workOrderCompanyBoundaryPostgres.test.mjs"
   ]
 }
