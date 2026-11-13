@@ -256,12 +256,13 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     await forgetLastStep(key);
     const m = await post("/auth/login/mfa", { challenge, code: currentCode(factorSecrets.get(key)) }, headers, at);
     if (m.status === 200) m.body = { status: "AUTHENTICATED", ...m.body };
+    else console.error("MFA challenge answer refused:", m.status, JSON.stringify({ code: m.body?.code, message: m.body?.message }));
     return m;
   };
   const login = async (identifier, password, tenantId) => {
     const key = identifier.trim().toLowerCase();
     const r = await rawLogin(identifier, password, tenantId);
-    if (r.status !== 200) return r;
+    if (r.status !== 200) { console.error("password step refused:", identifier, r.status, JSON.stringify({ code: r.body?.code, message: r.body?.message })); return r; }
     if (r.body.status === "MFA_REQUIRED" && factorSecrets.has(key)) return answerChallenge(key, r.body.challenge);
     if (r.body.session?.mfaEnrollmentRequired === true) {
       const b = await post("/auth/mfa/totp/begin", { password }, bearer(r.body.session.accessToken));
