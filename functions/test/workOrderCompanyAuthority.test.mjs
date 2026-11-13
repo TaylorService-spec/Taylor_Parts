@@ -83,7 +83,7 @@ const READS_WORK_ORDER_DATA = /(?:eos_ops|\$\{[A-Z_]*SCHEMA\})\.(?:work_orders|w
 const SCOPED_BY_DWO = ["eosExperience/myWork.ts", "eosOps/coordinatedVisitPostgresRead.ts", "eosOps/equipmentOperations.ts", "eosOps/inboundWorkDecisions.ts",
   "eosOps/selfScheduling.ts", "eosOps/workOrderAnalytics.ts", "eosOps/workOrderEquipmentInstall.ts", "eosOps/workOrderExecution.ts", "eosOps/workOrderFieldContext.ts",
   "eosOps/workOrderLabor.ts", "eosOps/workOrderLifecycle.ts", "eosOps/workOrderPartsPlanAuthority.ts", "eosOps/workOrderQueries.ts", "eosOps/workOrderScheduling.ts",
-  "eosWorkforce/reads/assignedWorkReads.ts"];
+  "eosWorkforce/reads/assignedWorkReads.ts", "eosRental/rental.ts"];
 // DWO-1: the seller's narrow read-only projection of a Service Work Order another company performs for its Sales Order (decided on the SALES ORDER, not on the Work Order's company).
 const SELLER_PROJECTION_SOURCE = "eosOps/salesOrderServiceWorkOrders.ts";
 const SCOPED_BEFORE_DWO = {
@@ -91,7 +91,6 @@ const SCOPED_BEFORE_DWO = {
   "eosOps/workOrderAvailability.ts": "suggestWorkOrderPlacement and the placement reads: companies via requireCompanyAuthority / resolveCompanyAuthority",
   "eosOps/workOrderCreateCommand.ts": "create: the stated company must be one the caller is authorized for; the Sales Order link is Q-1a",
   "eosAnalysis/measures.ts": "Analysis measures filter on the caller's company keys (w.operating_company_key = ANY($2))",
-  "eosRental/rental.ts": "Work Orders read through a Rental Agreement the caller's company reach already decided; a rental Work Order is the agreement's company (RENTAL_COMPANY_MISMATCH at create)",
 };
 const NOT_AN_ENTRY_POINT = {
   "eosOps/contextualAuthorization.ts": "the record-RELATION reader (is the caller the assigned Employee): runs after the capability and decides only the relation; the company layer follows in each command",
@@ -237,4 +236,11 @@ test("the deployed server supplies no company seam of its own: the governed reso
   // No production source injects a reach: it is resolved inside each entry point from the verified caller.
   const injected = walk(SRC).map((f) => relative(SRC, f).replace(/\\/g, "/")).filter((rel) => /workOrderCompanyReach\s*[:=]\s*(?!await)/.test(source(rel)) && !rel.endsWith("workOrderCompanyAuthority.ts"));
   assert.deepEqual(injected, []);
+});
+
+test("A10: Rental three Work Order reads carry the office-side reach, and assigned work on the Employee record keeps the My Work assignment branch", () => {
+  const rental = source("eosRental/rental.ts");
+  assert.equal([...rental.matchAll(/woReach\.sql\("(?:w\.)?operating_company_key", 3, \{ assignment: false \}\)/g)].length, 5, "return check, agreement Work Order list, workspace going-out (a CASE per column, so the unit stays listed)");
+  assert.match(rental, /RETURN_WORK_ORDER_MISMATCH/);
+  assert.doesNotMatch(source("eosWorkforce/reads/assignedWorkReads.ts"), /assignment:\s*false/, "same rule as listMyAssignedWorkOrders");
 });
