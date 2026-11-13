@@ -4,6 +4,8 @@ Issued: 2026-10-11 04:15:00 -0700 (America/Phoenix) · Baseline: `main @ c73ce64
 
 **Status:** ASSESSMENT ONLY. It does not authorize implementation, create an architectural authority, or reopen accepted decisions. Prepared under the direction of Rudy DiGiorgio using AI-assisted engineering tools.
 
+> **Superseded for launch status by [`../launch-readiness-2026-11/LAUNCH-READINESS-AUDIT-2026-11-13.md`](../launch-readiness-2026-11/LAUNCH-READINESS-AUDIT-2026-11-13.md) (`main @ afe621c0`).** One correction to this document: `main` became protected by an active GitHub ruleset at 2026-10-11 22:31, after this audit was issued. The "unprotected `main`" statements below describe the state at `c73ce647` only.
+
 ## Document set
 
 | # | Document | Question it answers |
