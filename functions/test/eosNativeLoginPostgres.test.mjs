@@ -208,7 +208,42 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   const asFirebase = (uid, operation, input) => post("/admin/policy", { operation, input }, { authorization: `Bearer fb-token.${uid}` });
   const bearer = (token) => ({ authorization: `Bearer ${token}` });
   const experience = (token) => post("/operations/experience", { operation: "resolveMyExperienceContext" }, bearer(token));
-  const login = (identifier, password) => post("/auth/login", { identifier, password });
+  const base32Decode = (s) => {
+    const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0; let value = 0; const out = [];
+    for (const ch of s) { value = (value << 5) | A.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+    return Buffer.from(out);
+  };
+  // D7: every new account is MFA-required, so a password alone yields an enrollment-only session or an MFA challenge.
+  // `login` therefore finishes the sign-in like a person would: the first time it sees an account owe a factor it enrolls
+  // an authenticator (begin -> confirm with a real code), and afterwards it answers the challenge with a current code.
+  // `rawLogin` is the bare password step, for the tests that are ABOUT the enrollment or the challenge.
+  const rawLogin = (identifier, password) => post("/auth/login", { identifier, password });
+  const factorSecrets = new Map(); // normalized identifier -> TOTP secret
+  const currentCode = (secret) => totpCodeAt(secret, totpStepAt(Math.floor(Date.now() / 1000)));
+  const forgetLastStep = (key) => q(`UPDATE eos_policy.login_mfa_factors SET last_used_step = NULL WHERE account_id IN (SELECT id FROM eos_policy.login_accounts WHERE login_identifier = $1)`, [key]);
+  const login = async (identifier, password) => {
+    const key = identifier.trim().toLowerCase();
+    const r = await rawLogin(identifier, password);
+    if (r.status !== 200) return r;
+    if (r.body.status === "MFA_REQUIRED" && factorSecrets.has(key)) {
+      // One code per 30-second step: forget the last used step (fixture SQL only; MFA stays required) so repeated sign-ins in one step work.
+      await forgetLastStep(key);
+      const m = await post("/auth/login/mfa", { challenge: r.body.challenge, code: currentCode(factorSecrets.get(key)) });
+      if (m.status === 200) m.body = { status: "AUTHENTICATED", ...m.body };
+      return m;
+    }
+    if (r.body.session?.mfaEnrollmentRequired === true) {
+      const b = await post("/auth/mfa/totp/begin", { password }, bearer(r.body.session.accessToken));
+      assert.equal(b.status, 200, JSON.stringify(b.body));
+      const secret = base32Decode(b.body.secret);
+      const c = await post("/auth/mfa/totp/confirm", { factorId: b.body.factorId, code: currentCode(secret) }, bearer(r.body.session.accessToken));
+      assert.equal(c.status, 200, JSON.stringify(c.body));
+      secretsSeen.push(b.body.secret, ...c.body.recoveryCodes);
+      factorSecrets.set(key, secret);
+      return login(identifier, password);
+    }
+    return r;
+  };
   const loginEvents = async (accountId) => (await q(`SELECT event, outcome, reason_code FROM eos_policy.authentication_events WHERE account_id = $1 ORDER BY occurred_at, id`, [accountId])).rows;
   const accountOf = async (principalId) => (await q(`SELECT * FROM eos_policy.login_accounts WHERE principal_id = $1 AND status <> 'retired'`, [principalId])).rows[0];
   const secretsSeen = []; // every secret value this run handled, for the at-rest and log scans
@@ -405,14 +440,13 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   // ════════════════════ L11-L14: TOTP ════════════════════
   let totpSecret; let recoveryCodes; let lastStep;
   let bobTotp; let bobCodes;
-  const base32Decode = (s) => {
-    const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0; let value = 0; const out = [];
-    for (const ch of s) { value = (value << 5) | A.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
-    return Buffer.from(out);
-  };
   await t.test("L11 TOTP enrollment: begin -> confirm with a real code -> 10 recovery codes; other sessions end", async () => {
-    aliceSession = (await login("alice@taylor.test", PASSWORDS.alice)).body.session;
-    const other = (await login("alice@taylor.test", PASSWORDS.alice)).body.session;
+    // alice already holds an authenticator from the earlier sign-ins (D7: required for every account); this proof starts from the
+    // administrator-reset state, "required, no factor", so it still walks the first enrollment itself.
+    assert.equal((await asAdmin("resetLoginMfa", { principalId: alice, reason: "restart the enrollment proof" })).status, 200);
+    factorSecrets.delete("alice@taylor.test");
+    aliceSession = (await rawLogin("alice@taylor.test", PASSWORDS.alice)).body.session;
+    const other = (await rawLogin("alice@taylor.test", PASSWORDS.alice)).body.session;
     // A stolen access token alone cannot start enrollment (second review finding 6): the current password is required.
     assert.equal((await post("/auth/mfa/totp/begin", {}, bearer(aliceSession.accessToken))).status, 401);
     const begin = await post("/auth/mfa/totp/begin", { password: PASSWORDS.alice }, bearer(aliceSession.accessToken));
@@ -428,6 +462,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal(recoveryCodes.length, 10);
     secretsSeen.push(...recoveryCodes);
     lastStep = step;
+    factorSecrets.set("alice@taylor.test", totpSecret);
     assert.equal((await experience(other.accessToken)).status, 401, "a password-only session ends when a factor is enrolled");
     assert.equal((await experience(aliceSession.accessToken)).status, 200, "the enrolling session continues");
     const acct = await post("/auth/account", {}, bearer(aliceSession.accessToken));
@@ -436,7 +471,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   });
 
   await t.test("L12 MFA login: password -> challenge -> code; a code works ONCE; bad codes are counted", async () => {
-    const p1 = await login("alice@taylor.test", PASSWORDS.alice);
+    const p1 = await rawLogin("alice@taylor.test", PASSWORDS.alice);
     assert.equal(p1.body.status, "MFA_REQUIRED");
     assert.ok(!p1.body.session);
     assert.equal((await post("/auth/login/mfa", { challenge: p1.body.challenge, code: "123456" })).status, 401);
@@ -445,14 +480,14 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
     assert.equal(ok.body.session.mfaEnrollmentRequired, false);
     assert.equal((await post("/auth/login/mfa", { challenge: p1.body.challenge, code: next })).status, 401, "a challenge is single-use");
-    const p2 = await login("alice@taylor.test", PASSWORDS.alice);
+    const p2 = await rawLogin("alice@taylor.test", PASSWORDS.alice);
     assert.equal((await post("/auth/login/mfa", { challenge: p2.body.challenge, code: next })).status, 401, "a TOTP code replays never");
     assert.equal((await post("/auth/login/mfa", { challenge: p2.body.challenge, code: totpCodeAt(totpSecret, lastStep) })).status, 401, "an older step never");
     // Recovery code: works once, case and dashes ignored.
     const rc = recoveryCodes[0].toLowerCase().replace(/-/g, " ");
     const viaRc = await post("/auth/login/mfa", { challenge: p2.body.challenge, recoveryCode: rc });
     assert.equal(viaRc.status, 200, JSON.stringify(viaRc.body));
-    const p3 = await login("alice@taylor.test", PASSWORDS.alice);
+    const p3 = await rawLogin("alice@taylor.test", PASSWORDS.alice);
     assert.equal((await post("/auth/login/mfa", { challenge: p3.body.challenge, recoveryCode: recoveryCodes[0] })).status, 401);
     await asAdmin("unlockLoginAccount", { principalId: alice, reason: "test reset of the failure counter" });
     aliceSession = viaRc.body.session;
@@ -465,7 +500,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal(prov.status, 200);
     secretsSeen.push(prov.body.data.enrollmentTicket);
     assert.equal((await post("/auth/enrollment/complete", { ticket: prov.body.data.enrollmentTicket, password: PASSWORDS.bob })).status, 200);
-    const s = (await login("bob@taylor.test", PASSWORDS.bob)).body.session;
+    const s = (await rawLogin("bob@taylor.test", PASSWORDS.bob)).body.session;
     assert.equal(s.mfaEnrollmentRequired, true);
     assert.equal((await experience(s.accessToken)).status, 401, "the API refuses a session that owes a factor");
     assert.equal((await post("/auth/account", {}, bearer(s.accessToken))).status, 200);
@@ -475,6 +510,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal(c.status, 200);
     secretsSeen.push(b.body.secret, ...c.body.recoveryCodes);
     bobTotp = secret;
+    factorSecrets.set("bob@taylor.test", secret);
     bobCodes = c.body.recoveryCodes;
     assert.equal((await experience(s.accessToken)).status, 200, "enrolling satisfies the policy for this session");
     // A required factor cannot be removed by its holder.
@@ -488,9 +524,11 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.data.factorsRemoved, 1);
     assert.equal((await experience(aliceSession.accessToken)).status, 401);
-    const l = await login("alice@taylor.test", PASSWORDS.alice);
+    factorSecrets.delete("alice@taylor.test");
+    const l = await rawLogin("alice@taylor.test", PASSWORDS.alice);
     assert.equal(l.body.status, "AUTHENTICATED", "no factor -> password login");
-    aliceSession = l.body.session;
+    assert.equal(l.body.session.mfaEnrollmentRequired, true, "D7: ... into an enrollment-only session");
+    aliceSession = (await login("alice@taylor.test", PASSWORDS.alice)).body.session; // enrolls a new authenticator, then signs in with it
   });
 
   // ════════════════════ L15-L16: password change and admin-assisted reset ════════════════════
@@ -831,7 +869,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     assert.equal((await post("/auth/enrollment/complete", { ticket: prov.body.data.enrollmentTicket, password: "a quiet morning walk by the lake" })).status, 200);
     const acct = (await accountOf(erin)).id;
     // A burst of 20 concurrent wrong guesses and, in the middle, the RIGHT one.
-    const attempts = Array.from({ length: 21 }, (_, i) => login("erin@taylor.test", i === 15 ? "a quiet morning walk by the lake" : `wrong guess number ${i}`));
+    const attempts = Array.from({ length: 21 }, (_, i) => rawLogin("erin@taylor.test", i === 15 ? "a quiet morning walk by the lake" : `wrong guess number ${i}`));
     const results = await Promise.all(attempts);
     assert.ok(results.every((r) => r.status === 401 || r.status === 503 || r.status === 200), JSON.stringify(results.map((r) => r.status)));
     const ev = await loginEvents(acct);
@@ -853,7 +891,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   });
 
   await t.test("S10 an MFA challenge does not survive a password reset (finding 8); a session cannot out-guess the lockout (finding 7)", async () => {
-    const p = await login("bob@taylor.test", PASSWORDS.bob);
+    const p = await rawLogin("bob@taylor.test", PASSWORDS.bob);
     assert.equal(p.body.status, "MFA_REQUIRED");
     const r = await asAdmin("issueLoginReset", { principalId: bob, reason: "challenge voiding proof" });
     secretsSeen.push(r.body.data.resetTicket);
@@ -885,7 +923,9 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   await t.test("S12 a spent refresh token from a DIFFERENT client inside the grace window is theft, not a sibling (finding 12)", async () => {
     const proxied = await startExtra({ EOS_AUTH_TRUSTED_PROXY_HOPS: "1" });
     const from = (ip) => ({ "x-forwarded-for": `198.51.100.250, ${ip}` });
-    const s0 = (await post("/auth/login", { identifier: "alice@taylor.test", password: PASSWORDS.alice }, from("203.0.113.10"), proxied)).body.session;
+    const first = await post("/auth/login", { identifier: "alice@taylor.test", password: PASSWORDS.alice }, from("203.0.113.10"), proxied);
+    await forgetLastStep("alice@taylor.test");
+    const s0 = (await post("/auth/login/mfa", { challenge: first.body.challenge, code: currentCode(factorSecrets.get("alice@taylor.test")) }, from("203.0.113.10"), proxied)).body.session;
     const s1 = await post("/auth/refresh", { refreshToken: s0.refreshToken }, from("203.0.113.10"), proxied);
     assert.equal(s1.status, 200);
     // Same client, inside the window: a sibling tab.
