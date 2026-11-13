@@ -447,6 +447,8 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     factorSecrets.delete("alice@taylor.test");
     aliceSession = (await rawLogin("alice@taylor.test", PASSWORDS.alice)).body.session;
     const other = (await rawLogin("alice@taylor.test", PASSWORDS.alice)).body.session;
+    // Under D7 a session before enrollment is enrollment-only: /auth/* works, the API does not. Prove it is LIVE, so its end below means something.
+    assert.equal((await post("/auth/account", {}, bearer(other.accessToken))).status, 200, "the other enrollment-only session is live before enrollment");
     // A stolen access token alone cannot start enrollment (second review finding 6): the current password is required.
     assert.equal((await post("/auth/mfa/totp/begin", {}, bearer(aliceSession.accessToken))).status, 401);
     const begin = await post("/auth/mfa/totp/begin", { password: PASSWORDS.alice }, bearer(aliceSession.accessToken));
@@ -463,7 +465,7 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     secretsSeen.push(...recoveryCodes);
     lastStep = step;
     factorSecrets.set("alice@taylor.test", totpSecret);
-    assert.equal((await experience(other.accessToken)).status, 401, "a password-only session ends when a factor is enrolled");
+    assert.equal((await post("/auth/account", {}, bearer(other.accessToken))).status, 401, "another session ends when a factor is enrolled");
     assert.equal((await experience(aliceSession.accessToken)).status, 200, "the enrolling session continues");
     const acct = await post("/auth/account", {}, bearer(aliceSession.accessToken));
     assert.equal(acct.body.account.factors.length, 1);
