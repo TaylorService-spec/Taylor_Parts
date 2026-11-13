@@ -213,7 +213,8 @@
       "test/offlinePrecheckReadsPostgres.test.mjs",
       "test/grant1OwnerPolicyGrantsPostgres.test.mjs",
       "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
-      "test/accessGatesExplanationPostgres.test.mjs"
+      "test/accessGatesExplanationPostgres.test.mjs",
+      "test/workOrderCompanyBoundaryPostgres.test.mjs"
     ]
   },
   "measuredSeconds": {

@@ -455,6 +455,7 @@ test("the Work Order domain cutover", { skip: SKIP, concurrency: 1 }, async (t) 
   await t.test("a Part with recorded actuals cannot be un-planned (Firebase refused removing a qtyUsed > 0 row)", async () => {
     await q(`INSERT INTO eos_policy.principals (id,external_subject,identity_provider,status) VALUES ('prn-planner','sub-planner','eos','active')`);
     await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status) VALUES ('mem-planner',$1,'prn-planner','active')`, [T]);
+    await grantSyntheticCompanyAuthority(pool, T, "prn-planner", ["taylor"]); // DWO-company: the planner is a Taylor Employee, as the Work Order company rule requires
     await assert.rejects(partsPlan.setPartsPlan(deps, { tenantId: T, principalId: "prn-planner", capabilities: new Set(["workOrder.parts.plan"]) },
       { workOrderId: journeyWo, plan: [] }),
     (e) => { assert.equal(e.code, "USED_PART_REMOVAL"); return true; });

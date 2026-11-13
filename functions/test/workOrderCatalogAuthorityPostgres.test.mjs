@@ -259,8 +259,12 @@ test("Work Order commands resolve Parts from the PostgreSQL catalog", { skip: SK
 
   // ════════════════════ PARTS PLAN ════════════════════
 
+  // DWO-company: planning a parts plan is bounded by the planner's operating-company authority, so the planner is an Employee of the Work Orders' company.
+  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, display_name) VALUES ('emp-planner','t1','ACTIVE','sampleco','Planner')`);
+  await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+           VALUES ('lnk-planner','t1',$1,'emp-planner','sampleco','OPERATOR_ASSERTED','active','fixture','fixture')`, [actorPrincipal]);
   const planActor = (caps = [partsPlan.WORK_ORDER_PARTS_PLAN]) =>
-    ({ tenantId: "t1", principalId: "prn-planner", capabilities: new Set(caps) });
+    ({ tenantId: "t1", principalId: actorPrincipal, capabilities: new Set(caps) });
   const setPlan = (workOrderId, plan, actor = planActor()) =>
     partsPlan.setPartsPlan({ pool }, actor, { workOrderId, plan });
 

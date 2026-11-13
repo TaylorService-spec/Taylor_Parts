@@ -45,6 +45,7 @@
 import type { Pool, PoolClient } from "pg";
 import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
 import { isQuarantined, WORK_ORDER_QUARANTINED, WORK_ORDER_QUARANTINED_MESSAGE } from "./workOrderQuarantine.js";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority.js";
 
 const SCHEMA = "eos_ops";
 
@@ -203,10 +204,12 @@ export async function setPartsPlan(
 
     // FOR UPDATE on the Work Order: a concurrent transition to COMPLETED waits here rather than racing the
     // terminal check, which is the only thing that makes that refusal mean anything.
+    // DWO-company: capability first (above), then the caller's operating companies, inside the locking SELECT.
+    const reach = await requireWorkOrderCompanyReach(client, tenantId, principalId, refuse);
     const wo = await client.query(
       `SELECT status::text AS status FROM ${SCHEMA}.work_orders
-        WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-      [tenantId, workOrderId],
+        WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: false })} FOR UPDATE`,
+      [tenantId, workOrderId, ...reach.sqlParams()],
     );
     if (wo.rows.length === 0) {
       refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", `no work order ${workOrderId} in this tenant`);

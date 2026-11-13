@@ -132,6 +132,7 @@
     "test/salesOrderAllocationOffline.test.mjs",
     "test/saeProtectedOwnerExemption.test.mjs",
     "test/commercialCompanyAuthority.test.mjs",
+    "test/workOrderCompanyAuthority.test.mjs",
     "test/adminPolicyPartitions.test.mjs",
     "test/commercialRecordCompany.test.mjs"
   ],
@@ -329,6 +330,7 @@
     "test/sal03CompanylessOwnerEligibilityPostgres.test.mjs",
     "test/saeDelegatedExemptionPostgres.test.mjs",
     "test/commercialRecordCompanyPostgres.test.mjs",
-    "test/clcSal03InteractionPostgres.test.mjs"
+    "test/clcSal03InteractionPostgres.test.mjs",
+    "test/workOrderCompanyBoundaryPostgres.test.mjs"
   ]
 }

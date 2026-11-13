@@ -55,6 +55,7 @@ import {
 } from "./workOrderAvailability";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
 import { isQuarantined } from "./workOrderQuarantine";
+import { requireWorkOrderCompanyReach } from "./workOrderCompanyAuthority";
 import { resolveOperationalContextForPrincipal } from "./capabilityAuthority";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { withActorAuthority } from "./administrationReach";
@@ -326,6 +327,12 @@ export async function issueSelfSchedulingLink(deps: WorkOrderOperationDeps, acto
   if (!ID_SHAPE(i.workOrderId)) refuse("WORK_ORDER_ID_REQUIRED", "INVALID_INPUT", "workOrderId is required");
   const now = (deps.now ?? (() => new Date()))();
   return inTransaction(deps.pool, async (c) => {
+    // DWO-company: capability first (above), then the caller's operating companies, decided BEFORE the per-Work-Order advisory lock is taken, so a Work Order of
+    // another company is the plain miss and no lock is ever contended on its behalf.
+    const reach = await requireWorkOrderCompanyReach(c, actor.tenantId, actor.principalId, refuse);
+    const reachable = await c.query(`SELECT 1 FROM eos_ops.work_orders WHERE tenant_id = $1 AND id = $2 AND ${reach.sql("operating_company_key", 3, { assignment: false })}`,
+      [actor.tenantId, i.workOrderId, ...reach.sqlParams()]);
+    if (reachable.rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "that Work Order does not exist");
     await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`self-sched:${actor.tenantId}:${i.workOrderId}`]);
     const wo = await assertSelfSchedulable(c, actor.tenantId, await readWorkOrder(c, actor.tenantId, i.workOrderId as string));
     const policy = await applicablePolicy(c, actor.tenantId, wo.companyId, wo.type);
@@ -364,9 +371,13 @@ export async function revokeSelfSchedulingLink(deps: WorkOrderOperationDeps, act
   if (!reason) refuse("REASON_REQUIRED", "INVALID_INPUT", "a revocation states why");
   const now = (deps.now ?? (() => new Date()))();
   return inTransaction(deps.pool, async (c) => {
+    // DWO-company: only the sessions of a Work Order the caller's operating companies reach are revoked; for any other id nothing is found, exactly as for an id with no session.
+    const reach = await requireWorkOrderCompanyReach(c, actor.tenantId, actor.principalId, refuse);
     const { rows } = await c.query(
-      `UPDATE eos_ops.self_scheduling_sessions SET status = 'REVOKED', closed_at = $3, closed_by_principal_id = $4, closed_reason = $5, version = version + 1
-        WHERE tenant_id = $1 AND work_order_id = $2 AND status = 'ACTIVE' RETURNING id`, [actor.tenantId, i.workOrderId, now, actor.principalId, reason]);
+      `UPDATE eos_ops.self_scheduling_sessions s SET status = 'REVOKED', closed_at = $3, closed_by_principal_id = $4, closed_reason = $5, version = version + 1
+        WHERE s.tenant_id = $1 AND s.work_order_id = $2 AND s.status = 'ACTIVE'
+          AND EXISTS (SELECT 1 FROM eos_ops.work_orders w WHERE w.tenant_id = s.tenant_id AND w.id = s.work_order_id AND ${reach.sql("w.operating_company_key", 6, { assignment: false })})
+        RETURNING s.id`, [actor.tenantId, i.workOrderId, now, actor.principalId, reason, ...reach.sqlParams()]);
     for (const s of rows) {
       await sessionEvent(c, actor.tenantId, s.id, "REVOKED", { byPrincipalId: actor.principalId, reason }, now);
       await audit(c, actor.tenantId, actor.principalId, "workOrder.selfScheduling.revoke", "workOrder", i.workOrderId as string, { sessionId: s.id }, reason, now);
@@ -383,11 +394,15 @@ export async function readSelfSchedulingSessions(deps: WorkOrderOperationDeps, a
   const i = only(raw, ["workOrderId"]);
   if (!ID_SHAPE(i.workOrderId)) refuse("WORK_ORDER_ID_REQUIRED", "INVALID_INPUT", "workOrderId is required");
   const now = (deps.now ?? (() => new Date()))();
+  // DWO-company: the history of a Work Order the caller's operating companies do not reach is empty, exactly as for an id with no session.
+  const reach = await requireWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId, refuse);
   const { rows } = await deps.pool.query(
     `SELECT s.*, (SELECT json_agg(json_build_object('kind', e.event_kind, 'at', e.occurred_at, 'detail', e.detail) ORDER BY e.occurred_at, e.event_seq)
                     FROM eos_ops.self_scheduling_session_events e WHERE e.tenant_id = s.tenant_id AND e.session_id = s.id) AS events
-       FROM eos_ops.self_scheduling_sessions s WHERE s.tenant_id = $1 AND s.work_order_id = $2 ORDER BY s.issued_at DESC, s.id LIMIT 20`,
-    [actor.tenantId, i.workOrderId]);
+       FROM eos_ops.self_scheduling_sessions s WHERE s.tenant_id = $1 AND s.work_order_id = $2
+        AND EXISTS (SELECT 1 FROM eos_ops.work_orders w WHERE w.tenant_id = s.tenant_id AND w.id = s.work_order_id AND ${reach.sql("w.operating_company_key", 3, { assignment: false })})
+      ORDER BY s.issued_at DESC, s.id LIMIT 20`,
+    [actor.tenantId, i.workOrderId, ...reach.sqlParams()]);
   return Object.freeze({
     workOrderId: i.workOrderId,
     sessions: rows.map((s) => ({
