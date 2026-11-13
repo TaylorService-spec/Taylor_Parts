@@ -43,7 +43,6 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
   const [state, setState] = useState({ status: "loading", data: null, error: null });
   const [reason, setReason] = useState("");
   const [identifier, setIdentifier] = useState(suggestedIdentifier);
-  const [requireMfa, setRequireMfa] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [oneTime, setOneTime] = useState(null);
@@ -100,13 +99,10 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
           <span>Sign-in name (usually the work email)</span>
           <input className="fo-input" value={identifier} onChange={(e) => setIdentifier(e.target.value)} autoCapitalize="none" spellCheck={false} />
         </label>
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={requireMfa} onChange={(e) => setRequireMfa(e.target.checked)} />
-          <span>Require two-step verification</span>
-        </label>
+        <p className="fo-muted">Two-step verification is required for every sign-in. The person sets it up the first time they sign in.</p>
         {reasonField}
         <div>
-          <Button loading={busy} onClick={() => run("provisionLoginAccount", { loginIdentifier: identifier.trim(), mfaRequired: requireMfa },
+          <Button loading={busy} onClick={() => run("provisionLoginAccount", { loginIdentifier: identifier.trim() },
             (d) => setOneTime({ label: "Setup code", code: d.enrollmentTicket, expiresAt: d.enrollmentTicketExpiresAt }))}>Create sign-in</Button>
         </div>
         {actionError ? <p role="alert">{actionError}</p> : null}

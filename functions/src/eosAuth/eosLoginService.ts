@@ -1546,10 +1546,12 @@ export class EosLoginService {
    * Not an authority change: the Principal id -- and so every Role, scope and Employee link -- is unchanged.
    */
   async provisionLoginAccount(actor: AdminActor, input: Record<string, unknown>) {
+    // D7 (Owner, 2026-11-13): two-step verification is required for everyone. An explicit opt-out is refused before any I/O.
+    if (input.mfaRequired === false) throw new LoginRefusal("INVALID_INPUT", "two-step verification is required for every sign-in account");
     const { principalId, reason } = await this.requireCredentialAdministration(actor, input.principalId, input.reason, "admin.roleAssignment.write");
     const identifier = normalizeLoginIdentifier(input.loginIdentifier);
     if (!identifier) throw new LoginRefusal("INVALID_INPUT", "loginIdentifier must be 3-128 of a-z 0-9 . _ @ + -");
-    const mfaRequired = input.mfaRequired === true;
+    const mfaRequired = true; // D7: required for every new account (an explicit false was refused at the top)
     const principal = await this.deps.repo.getPrincipal(principalId);
     if (!principal || principal.status !== "active") throw new LoginRefusal("CONFLICT", "that principal is not active");
     const membership = await this.deps.repo.getMembership(actor.tenantId, principalId);

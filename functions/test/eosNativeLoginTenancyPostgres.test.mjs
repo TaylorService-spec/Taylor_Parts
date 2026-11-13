@@ -372,7 +372,7 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
 
   // ════════════════════ M8: MFA cannot be bypassed by switching ════════════════════
   await t.test("M8 a session that owes a second factor cannot switch; a verified one keeps its verification across the switch", async () => {
-    const prov = await asFb("fb-owner-ab", "provisionLoginAccount", { principalId: quinn, loginIdentifier: "quinn@tenancy.test", reason: "quinn", mfaRequired: true }, { "x-eos-tenant": A });
+    const prov = await asFb("fb-owner-ab", "provisionLoginAccount", { principalId: quinn, loginIdentifier: "quinn@tenancy.test", reason: "quinn" }, { "x-eos-tenant": A });
     assert.equal(prov.status, 200, JSON.stringify(prov.body));
     secrets.push(prov.body.data.enrollmentTicket);
     await post("/auth/enrollment/complete", { ticket: prov.body.data.enrollmentTicket, password: "a silver kite over the bay" });

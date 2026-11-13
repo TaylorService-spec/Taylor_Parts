@@ -31,3 +31,16 @@ describe("EmployeeLoginAccount action feedback", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+describe("EmployeeLoginAccount create (D7)", () => {
+  it("offers no opt-out and never sends mfaRequired", async () => {
+    const api = vi.fn(async (op) => (op === "readLoginAccount" ? { ok: true, data: { account: null, eosIdentity: null, recentEvents: [] } } : { ok: true, data: { enrollmentTicket: "t", enrollmentTicketExpiresAt: null } }));
+    render(<EmployeeLoginAccount api={api} principalId="p-1" />);
+    await screen.findByText("Create sign-in");
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.change(screen.getAllByRole("textbox")[1], { target: { value: "testing" } });
+    fireEvent.click(screen.getByText("Create sign-in"));
+    await waitFor(() => expect(api.mock.calls.some(([op]) => op === "provisionLoginAccount")).toBe(true));
+    expect(JSON.stringify(api.mock.calls.find(([op]) => op === "provisionLoginAccount"))).not.toContain("mfaRequired");
+  });
+});

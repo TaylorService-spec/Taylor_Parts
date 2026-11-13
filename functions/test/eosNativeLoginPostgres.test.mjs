@@ -459,7 +459,9 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
   });
 
   await t.test("L13 an MFA-required account without a factor: session reaches /auth/* only, until it enrolls", async () => {
-    const prov = await asAdmin("provisionLoginAccount", { principalId: bob, loginIdentifier: "bob@taylor.test", reason: "dispatcher login", mfaRequired: true });
+    const refused = await asAdmin("provisionLoginAccount", { principalId: bob, loginIdentifier: "bob@taylor.test", reason: "dispatcher login", mfaRequired: false });
+    assert.equal(refused.status, 400, "D7: an explicit opt-out is refused");
+    const prov = await asAdmin("provisionLoginAccount", { principalId: bob, loginIdentifier: "bob@taylor.test", reason: "dispatcher login" }); // D7: omitted = required
     assert.equal(prov.status, 200);
     secretsSeen.push(prov.body.data.enrollmentTicket);
     assert.equal((await post("/auth/enrollment/complete", { ticket: prov.body.data.enrollmentTicket, password: PASSWORDS.bob })).status, 200);
