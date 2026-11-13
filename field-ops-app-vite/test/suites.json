@@ -850,6 +850,10 @@
       "runner": "node"
     },
     {
+      "file": "test/readDeadline.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/receiveAgainstPurchaseOrder.test.mjs",
       "runner": "node"
     },
