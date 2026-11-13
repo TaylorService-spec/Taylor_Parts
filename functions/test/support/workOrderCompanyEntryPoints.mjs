@@ -73,5 +73,7 @@ export const OTHER_ROUTE_WORK_ORDER_ENTRY_POINTS = Object.freeze({
   "commercial:listCoordinatedOperations": { kind: "LIST", file: "eosOps/coordinatedVisitPostgresRead.ts" },
   "experience:searchEos (workOrder kind)": { kind: "LIST", file: "eosExperience/myWork.ts" },
   "experience:readMyWork (assigned work, dispatch queue)": { kind: "LIST", file: "eosOps/workOrderQueries.ts" },
+  "rental:initiateRentalReturn (returnWorkOrderId)": { kind: "ID", file: "eosRental/rental.ts" },
+  "rental:readRentalWorkspace / readRentalAgreement (Work Order join)": { kind: "LIST", file: "eosRental/rental.ts" },
   "workforce:listAssignedWorkForEmployee (WORK_ORDER)": { kind: "LIST", file: "eosWorkforce/reads/assignedWorkReads.ts" },
 });

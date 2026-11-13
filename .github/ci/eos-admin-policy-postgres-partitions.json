@@ -75,6 +75,7 @@
       "test/financeCommercialFulfillmentPostgres.test.mjs",
       "test/financeIntercompanyPostgres.test.mjs",
       "test/rentalPostgres.test.mjs",
+      "test/rentalWorkOrderCompanyPostgres.test.mjs",
       "test/supplierAdministrationPostgres.test.mjs",
       "test/supplierTermsObjectMatrixPostgres.test.mjs",
       "test/reorderPurchaseOrderMigrationPostgres.test.mjs",
@@ -214,7 +215,8 @@
       "test/grant1OwnerPolicyGrantsPostgres.test.mjs",
       "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
       "test/accessGatesExplanationPostgres.test.mjs",
-      "test/workOrderCompanyBoundaryPostgres.test.mjs"
+      "test/workOrderCompanyBoundaryPostgres.test.mjs",
+      "test/operatingCompanyBindingPostgres.test.mjs"
     ]
   },
   "measuredSeconds": {
@@ -341,6 +343,7 @@
     "test/invoiceNumberAllocatorPostgres.test.mjs": 2,
     "test/financialPolicyFoundationPostgres.test.mjs": 15,
     "test/rentalPostgres.test.mjs": 6,
+    "test/rentalWorkOrderCompanyPostgres.test.mjs": 2,
     "test/analysisPostgres.test.mjs": 5,
     "test/myWorkPostgres.test.mjs": 4,
     "test/administratorReorderQueuePostgres.test.mjs": 3,

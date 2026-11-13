@@ -263,6 +263,7 @@ functions/test/employeeCompanyAuthorityGrants.test.mjs
 functions/test/employeeCompanyAuthorityGrantsPostgres.test.mjs
 functions/test/previewCompanyAuthorityBudgetPostgres.test.mjs
 functions/test/rentalPostgres.test.mjs
+functions/test/rentalWorkOrderCompanyPostgres.test.mjs
 functions/test/analysisPostgres.test.mjs
 functions/test/myWorkPostgres.test.mjs
 functions/test/adminControlPlaneWorkforcePostgres.test.mjs
@@ -1076,3 +1077,5 @@ functions/src/eosCommercial/recordCompanyOffer.ts
 functions/test/commercialRecordCompany.test.mjs
 functions/test/commercialRecordCompanyPostgres.test.mjs
 functions/test/clcSal03InteractionPostgres.test.mjs
+functions/test/operatingCompanyBindingPostgres.test.mjs
+config/ownership/operating-company-keys.sandbox.json

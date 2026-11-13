@@ -7503,6 +7503,7 @@ capability, grant, migration or Firebase dependency, and changes no authority.
   workspace.
 - `readMyEmployeeProfile` does not return the Job Role. `readMyWork` returns it for the caller only.
 - Nonprod Ventana is unkeyed, and no accounting destination exists (handoffs PENDING_DESTINATION). Both are carried forward.
+  - *Note 2026-10-22:* nonprod Ventana is now keyed `ventana -> ventana` (NATIVE) by the Owner's Ventana UAT activation ruling (Level 3) under docs/uat/10-ventana-key-change-procedure.md. The binding confers no reach and no capability. The accounting-destination gap is unchanged.
 
 ## #210 — CONTROLLER/OWNER: Administration control plane + scaled NONPROD Taylor workforce (2026-10-03)
 
@@ -7762,6 +7763,7 @@ Left in place, out of scope: the unrendered `LegacyRoleMatrix` / `LegacyRoleGrid
 
 **Decision.** The Administrator has full EOS access including operational reach, through the existing model and with no code bypass.
 - The Administrator's Employee holds REORDER_QUEUE for every keyed company. Today that is `taylor` only. Nonprod Ventana is unkeyed (see the Finance closure record), and the governed writer refuses an unkeyed queue (`REORDER_QUEUE_NOT_FOUND`), so `REORDER_QUEUE:ventana` follows once Ventana's company key is bound. Binding it is a separate configuration ruling. Independent review caught this.
+  - *Note 2026-10-22:* the Ventana key is now bound on nonprod (Owner Ventana UAT activation ruling). `REORDER_QUEUE:ventana` for the Administrator is still NOT granted; that remains its own governed act and is not part of the binding.
 - The scope is issued through the governed Workforce writer (`assignEmployeeOperationalScope`) by a different authorized principal, the Owner persona. Self-scoping stays refused (`OPERATIONAL_SCOPE_SELF`).
 - The Overview now settles the purchase-order read, as it already did for the Work Order aggregates. A refusal is stated inside the Procurement panel and no longer blanks the other panels.
 

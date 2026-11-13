@@ -210,7 +210,7 @@ export default function RentalWorkspace({ callApi = callRentalApi, callWorkspace
       <UnitTable title="Reserved" units={ws.reserved} empty="Nothing reserved." />
       <section className="fo-panel" aria-label="Going Out">
         <SectionHeader title="Going Out" description={ws.goingOut.length === 0 ? "No delivery scheduled." : "Reserved units with an open delivery / install Work Order."} />
-        {ws.goingOut.length > 0 && (<ul>{ws.goingOut.map((g) => <li key={g.workOrderId}>{g.workOrderNumber} — {statusLabel(g.status)}</li>)}</ul>)}
+        {ws.goingOut.length > 0 && (<ul>{ws.goingOut.map((g) => <li key={`${g.fleetUnitId}-${g.workOrderId ?? "none"}`}>{g.workOrderNumber ? `${g.workOrderNumber} — ${statusLabel(g.status)}` : "Delivery Work Order not shown"}</li>)}</ul>)}
       </section>
       <UnitTable title="On Rent" units={ws.onRent} empty="Nothing is out on rent." />
       <UnitTable title="Return Pending" units={ws.returnPending} empty="No return in progress." />
