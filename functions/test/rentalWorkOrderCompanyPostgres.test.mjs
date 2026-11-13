@@ -60,9 +60,10 @@ test("A10: Rental Work Order company reach and assigned work, in PostgreSQL", { 
   const ROUND_THE_CLOCK = Object.fromEntries(["0", "1", "2", "3", "4", "5", "6"].map((d) => [d, [{ start: "00:00", end: "24:00" }]]));
   ok(await call(dispatcher, WO, "setTechnicianWorkingHours", { employeeId: "e-tech-a", timeZone: "UTC", weeklyHours: ROUND_THE_CLOCK, reason: "fixture availability" }), "hours");
   let slot = 0;
-  const workOrder = async ({ rentalAgreementId } = {}) => {
+  const workOrder = async ({ rentalAgreementId, createOnly = false } = {}) => {
     const id = ok(await call(dispatcher, WO, "createWorkOrder", { operatingCompanyId: "taylor", customerId: "acct-r", locationId: "loc-r1", workOrderType: "INSTALL", priority: 2,
       ...(rentalAgreementId ? { rentalAgreementId } : {}) }), "create").workOrderId;
+    if (createOnly) return id; // the one technician can hold only one active Work Order (DOUBLE_BOOKED)
     ok(await call(dispatcher, WO, "markWorkOrderReady", { workOrderId: id }), "ready");
     ok(await call(dispatcher, WO, "setWorkOrderPartsPlan", { workOrderId: id, plan: [] }), "plan");
     const start = Date.now() + 2 * 24 * HOUR + (++slot) * 2 * HOUR;
@@ -98,7 +99,7 @@ test("A10: Rental Work Order company reach and assigned work, in PostgreSQL", { 
     assert.equal((await one(`SELECT status FROM eos_rental.rental_assignments WHERE id = $1`, [assignmentId])).status, "DEPLOYED");
     // each id: a Ventana Work Order that CARRIES this agreement's id (the old check accepted it), a missing id, and a Taylor Work Order of ANOTHER agreement
     const foreign = await ventanaWo({ rentalAgreementId: agreement.id });
-    const wrongAgreement = await workOrder({ rentalAgreementId: other.id });
+    const wrongAgreement = await workOrder({ rentalAgreementId: other.id, createOnly: true });
     const tryReturn = async (returnWorkOrderId) => (await rn(wm, "initiateRentalReturn", { assignmentId, returnWorkOrderId, reason: "pickup" }));
     const refusals = [];
     for (const id of [foreign, "wo-does-not-exist", wrongAgreement]) {
@@ -137,11 +138,12 @@ test("A10: Rental Work Order company reach and assigned work, in PostgreSQL", { 
     const assign = (workOrderId, employeeId) => q(
       `INSERT INTO eos_ops.work_order_assignments (id,tenant_id,work_order_id,assignee_employee_id,source,effective_from,assigned_by_principal_id,provenance)
        VALUES ($1,$2,$3,$4,'SCHEDULE',now(),$5,'NATIVE')`, [`woa-${workOrderId}-${employeeId}`, TENANT, workOrderId, employeeId, dispatcher.principalId]);
-    await assign(mine, "e-tech-a"); await assign(mine, "e-peer");        // the caller (peer) and the listed Employee are both assigned to `mine`
-    await assign(notMine, "e-tech-a");                                     // only the listed Employee is assigned to `notMine`
+    // A Work Order has ONE current assignment (work_order_assignments_one_current): the caller (peer) holds `mine`; another Employee holds `notMine`.
+    await assign(mine, "e-peer");
+    await assign(notMine, "e-tech-a");
     const actor = { tenantId: TENANT, principalId: peer.principalId, capabilities: new Set(["employee.record.read", "workOrder.record.read"]) };
-    const listed = (await assignedWork.listAssignedWorkForEmployee({ pool }, actor, { employeeId: "e-tech-a", family: "WORK_ORDER", limit: 100 })).items.map((i) => i.recordId);
-    assert.ok(listed.includes(mine), "the Work Order the caller is assigned to stays visible");
-    assert.equal(listed.includes(notMine), false, "another company's Work Order the caller is not assigned to is not");
+    const listFor = async (employeeId) => (await assignedWork.listAssignedWorkForEmployee({ pool }, actor, { employeeId, family: "WORK_ORDER", limit: 100 })).items.map((i) => i.recordId);
+    assert.ok((await listFor("e-peer")).includes(mine), "the foreign Work Order the caller is assigned to is listed, as My Work does");
+    assert.equal((await listFor("e-tech-a")).includes(notMine), false, "another company's Work Order the caller is not assigned to is not");
   });
 });
