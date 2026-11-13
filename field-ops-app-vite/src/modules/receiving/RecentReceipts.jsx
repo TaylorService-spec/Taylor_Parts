@@ -7,6 +7,7 @@ import { fetchReceipts, fetchReceivingLocationOptions } from "../../services/par
 import { fetchAcquireWarehouseOptions } from "../../services/inventoryLocationClient.js";
 import { correctReceipt, correctionKindsFor, CORRECTION_KIND } from "../../services/receiptCorrectionClient.js";
 import { SESSION_GATE_KEYS, sessionDecision, useSessionAccess } from "../../access/sessionAccess.js";
+import { useOperationGate } from "../../access/operationGate.js";
 
 // Inventory > Receiving > RECENT RECEIPTS (Firebase exit B3-x; DECISIONS #B3-x).
 //
@@ -37,6 +38,11 @@ export default function RecentReceipts({ deps = null }) {
   const readWarehouses = deps?.fetchWarehouseLabels ?? fetchAcquireWarehouseOptions;
   const access = useSessionAccess();
   const canCorrect = deps?.canCorrect ?? sessionDecision(access, SESSION_GATE_KEYS.receiptCorrect, false);
+  // The access map: listReceipts needs receivingOrder.record.read; the warehouse NAMES (listInventoryWarehouses) need warehouse.record.read or
+  // inventory.transaction.read. A read the session cannot make is not asked: the list says DENIED, the names stay ids. null = not answered yet.
+  const decide = useOperationGate();
+  const receiptsReadable = decide("listReceipts");
+  const labelsReadable = decide("listInventoryWarehouses") === true;
 
   const [attempt, setAttempt] = useState(0);
   const [list, setList] = useState({ state: "LOADING", items: [] });
@@ -44,6 +50,10 @@ export default function RecentReceipts({ deps = null }) {
   const [open, setOpen] = useState(null);
 
   useEffect(() => {
+    if (receiptsReadable !== true) {
+      setList({ state: receiptsReadable === false ? "DENIED" : "LOADING", items: [] });
+      return undefined;
+    }
     let cancelled = false;
     setList((l) => ({ ...l, state: "LOADING" }));
     Promise.resolve()
@@ -51,17 +61,18 @@ export default function RecentReceipts({ deps = null }) {
       .then((res) => { if (!cancelled) setList({ state: "READY", items: Array.isArray(res?.items) ? res.items : [] }); })
       .catch((err) => { if (!cancelled) setList({ state: err?.code === "FORBIDDEN" ? "DENIED" : "FAILED", items: [] }); });
     return () => { cancelled = true; };
-  }, [read, attempt]);
+  }, [read, attempt, receiptsReadable]);
 
   // Warehouse NAMES are enrichment: an id that will not resolve stays an id, and a failed lookup never blocks the list.
   useEffect(() => {
+    if (!labelsReadable) return undefined;
     let cancelled = false;
     Promise.resolve().then(() => readWarehouses()).then((res) => {
       if (cancelled || res?.status !== "ready") return;
       setLabels(Object.fromEntries((res.options ?? []).map((o) => [o.value, o.label])));
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [readWarehouses]);
+  }, [readWarehouses, labelsReadable]);
 
   return (
     <div>

@@ -666,6 +666,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/operationGate.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/operationalRoleLanding.test.mjs",
       "runner": "node"
     },
@@ -1303,6 +1307,10 @@
     },
     {
       "file": "test/b2EosOnlySignIn.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/eosPersonaTargetAllowlist.test.mjs",
       "runner": "node --test"
     },
     {

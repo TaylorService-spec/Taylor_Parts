@@ -40,7 +40,7 @@ import {
 } from "./capabilityAuthority";
 import { authorizeOperationalAction, postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { entitlementsFor, type GrantCondition } from "./conditionalEntitlement";
-import { ASSIGNMENT_SCOPE_DIMENSIONS } from "../adminPolicy/assignmentScopeRuntime";
+import { ASSIGNMENT_SCOPE_DIMENSIONS, type BusinessContext } from "../adminPolicy/assignmentScopeRuntime";
 import {
   postgresPrincipalDimensionReader,
   snapshotContextualReader,
@@ -152,6 +152,8 @@ export interface EffectiveAccessExplanation {
     readonly employee: { readonly displayName: string | null; readonly operatingCompanyId: string | null; readonly employmentStatus: string | null } | null;
     readonly grantsCapabilities: false;
   };
+  /** Present only when ExplainOptions.question was given. */
+  readonly questionDecision?: ExplainedQuestionDecision;
 }
 
 export interface ExplainOptions {
@@ -160,6 +162,22 @@ export interface ExplainOptions {
   readonly dimensionReader?: PrincipalDimensionReader;
   /** The Functional Role fact reader. Defaults to PostgreSQL. Read-only; never consulted for a decision. */
   readonly functionalRoleReader?: (tenantId: string, employeeId: string) => Promise<readonly CurrentFunctionalRole[]>;
+  /**
+   * "Access explained": ONE extra decision by the SAME evaluator, for one capability and, optionally, the business context
+   * (company, warehouse, channel) of one record. Reported as `questionDecision`; it changes no other field of the answer.
+   */
+  readonly question?: { readonly capabilityKey: string; readonly businessContext?: BusinessContext };
+}
+
+/** The evaluator's own decision for the asked question (see ExplainOptions.question). */
+export interface ExplainedQuestionDecision {
+  readonly capabilityKey: string;
+  readonly allowed: boolean;
+  readonly outcome: string;
+  readonly predicate: string | null;
+  readonly detail: string | null;
+  /** True when the only thing missing is a record: the answer is decided per record at runtime. */
+  readonly needsRecord: boolean;
 }
 
 export async function explainEffectiveAccess(
@@ -273,6 +291,15 @@ export async function explainEffectiveAccess(
     }));
   }
 
+  let questionDecision: ExplainedQuestionDecision | undefined;
+  if (options.question) {
+    const d = await authorizeOperationalAction(snapshot, actor, { capabilityKey: options.question.capabilityKey,
+      ...(options.question.businessContext ? { businessContext: options.question.businessContext } : {}) });
+    questionDecision = Object.freeze({ capabilityKey: options.question.capabilityKey, allowed: d.allowed, outcome: d.outcome,
+      predicate: d.predicate ?? null, detail: d.detail ?? null,
+      needsRecord: !d.allowed && d.denials.some((x) => x.detail === "no record supplied") });
+  }
+
   // Supported scoped assignments: those that produced at least one holding OR only inert capabilities at a
   // supported scope. An assignment of an unconsumed scope type stays in `excluded` as SCOPE_UNSUPPORTED.
   const supportedScoped = (ctx.principalContext.scopedAssignments ?? [])
@@ -333,6 +360,7 @@ export async function explainEffectiveAccess(
         employmentStatus: employeeRow.employment_status ?? null }) : null,
       grantsCapabilities: false as const,
     }),
+    ...(questionDecision ? { questionDecision } : {}),
   });
 }
 

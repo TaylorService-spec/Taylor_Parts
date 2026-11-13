@@ -199,6 +199,8 @@ Replacement status is taken from the lane matrix section B, updated for work mer
 
 Tally: **10 RETIRE-READY, 9 HELD, 0 BUILD-FIRST** for the 19 files that import the package; row 20 is HELD. Because rows 1-4 and 20 are the production sign-in path, 5 of 20 can only go when production has an EOS API and a recovery process, both Owner-reserved.
 
+**EOS bundle (2026-10-21, lane FBX).** The B2 alias covered only `firebase/firebase`; 18 of the files above import `firebase/app|auth|firestore|functions` directly, and `AuthContext` (static from `main.jsx`) plus `App.jsx` pulled all four SDKs into the entry chunk of the EOS-only build even though the handles were null. In a `VITE_AUTH_SOURCE=eos` build `vite.config.js` now also aliases those four specifiers to `src/firebase/firebaseSdkAbsent.js` (fail-closed stand-ins; `httpsCallable` returns a callable that rejects with `FIREBASE_ABSENT`), and `npm run verify:eos-only` (CI: `vite-build-check`) fails if SDK code, a Google endpoint host or a Firebase config value is in the EOS output. Entry chunk 1,454 kB (gzip 432) -> 929 kB (gzip 277). No source file, the real `firebase.js`, or any non-EOS build changed. The HELD rows stay in the repo for the Firebase-backed builds.
+
 ---
 
 ## 4. Deployed functions mapped to their EOS replacement

@@ -430,6 +430,8 @@ test("Employee company-access grants, in PostgreSQL", { skip: SKIP, concurrency:
     // A6 customer-balance summary (1764680000000): its down refuses only if an Administration decision or a direct grant names the new key or one of its pairs, and nothing here wrote one, so it is peeled first of all.
     // G-1 performance goal authoring (1764690000000): its down refuses only if a command record, an authored goal, an Administration decision or a direct grant names it, and nothing here wrote one, so it is peeled first of all.
     // F-1a issue invoice (1764700000000): its down refuses only if an issued invoice or a number counter exists, and nothing here wrote one, so it is peeled first of all.
+    // CLC company-less record correction (1764719000000): its down refuses only while a grant / decision names the key or an applied command is in the audit trail, and nothing here wrote one, so it is peeled first of all.
+    if ((await newest()) === "1764719000000_commercial-record-company-assign") migrate("down", 1);
     // SAE Rule 2 delegated exemption (1764718000000): its down refuses only if a correction was decided under it or a grant / decision names an exemption key, and nothing here wrote one, so it is peeled first of all.
     if ((await newest()) === "1764718000000_delegated-self-approval-exemption") migrate("down", 1);
     // S1c holders (1764717000000): its down refuses only while an Administration decision names salesOrder.fulfill for its four Roles, and nothing here wrote one, so it is peeled first of all.

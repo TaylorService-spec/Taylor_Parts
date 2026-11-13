@@ -5956,6 +5956,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   text-transform: uppercase; color: var(--verenward-bronze); white-space: nowrap; }
 .ns-attention-strip__body { min-width: 0; line-height: 1.5; }
 .ns-attention-strip__action { white-space: nowrap; font-weight: 600; }
+/* CLC: the set-operating-company form opens beneath the one-line notice, across the whole strip. */
+.ns-attention-strip__form { grid-column: 1 / -1; display: grid; gap: 10px; max-width: 560px; }
 @media (max-width: 700px) {
   /* Stacked rather than truncated: the reason and the action are both load-bearing. */
   .ns-attention-strip { grid-template-columns: 1fr; gap: 6px; }

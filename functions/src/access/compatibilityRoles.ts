@@ -245,7 +245,7 @@ const ADMIN_ALL_PERMISSIONS = [
 export const ADMIN_ROLE: Role = Object.freeze({
 
   id: "admin",
-  name: "Administrator (compatibility)",
+  name: "Systems Administrator",
   description:
     "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
   systemSeed: true,
@@ -263,7 +263,7 @@ export const ADMIN_ROLE: Role = Object.freeze({
 // authority (Row 7).
 export const DISPATCHER_ROLE: Role = Object.freeze({
   id: "dispatcher",
-  name: "Dispatcher (compatibility)",
+  name: "Dispatcher",
   description:
     "Seeded compatibility Role reproducing today's dispatcher security-role matrix exactly.",
   systemSeed: true,
@@ -290,7 +290,7 @@ export const DISPATCHER_ROLE: Role = Object.freeze({
 // scope.
 export const TECHNICIAN_ROLE: Role = Object.freeze({
   id: "technician",
-  name: "Technician (compatibility)",
+  name: "Technician",
   description:
     "Seeded compatibility Role reproducing today's technician security-role matrix exactly, with Issue #100 operational-role grants expressed as Conditions.",
   systemSeed: true,

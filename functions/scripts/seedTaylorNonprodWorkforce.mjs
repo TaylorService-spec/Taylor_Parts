@@ -84,7 +84,9 @@ async function phasePrincipals() {
 
 // ════════════════════ phase: api (governed commands, as the employee whose job it is) ════════════════════
 let issuerCredential = null;
-async function personaToken(subject) {
+// The persona path sends the issued token through the SAME guarded transport as the harness (callEosApiAsPersona): the
+// registered nonprod EOS API only, the route a path, no redirect followed. It never fetches args.api itself.
+async function personaCall(subject, route, payload) {
   const fallback = MANIFEST.nonprodActorFallback ?? {};
   const actor = subject.startsWith("nonprod-persona.") ? subject : fallback[subject];
   if (!actor || !actor.startsWith("nonprod-persona.")) throw new Error(`no governed nonprod persona can act for ${subject}`);
@@ -92,13 +94,11 @@ async function personaToken(subject) {
     if (typeof args["issuer-credential-file"] !== "string") throw new Error("--issuer-credential-file is required in persona mode");
     issuerCredential = readFileSync(args["issuer-credential-file"], "utf8").trim();
   }
-  const { issueEosPersonaSession } = await import("../../scripts/eosPersonaSession.mjs");
-  const s = await issueEosPersonaSession(actor.slice("nonprod-persona.".length), { credential: issuerCredential, baseUrl: args.api });
-  return s.token;
+  const { callEosApiAsPersona } = await import("../../scripts/eosPersonaSession.mjs");
+  return callEosApiAsPersona(actor.slice("nonprod-persona.".length), route, payload, { credential: issuerCredential, baseUrl: args.api });
 }
 
 async function tokenFor(subject) {
-  if (args.tokens === "persona") return personaToken(subject);
   if (args.tokens !== "local") throw new Error("--tokens local (the local proof harness) or --tokens persona (nonprod persona sessions)");
   if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(args.api))) throw new Error("--tokens local is refused for a non-localhost API");
   const b = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -107,6 +107,10 @@ async function tokenFor(subject) {
 }
 
 async function call(subject, route, operation, input) {
+  if (args.tokens === "persona") {
+    const { status, body } = await personaCall(subject, route, input === undefined ? { operation } : { operation, input });
+    return { status, ok: status >= 200 && status < 300 && body?.ok !== false, body: body ?? {} };
+  }
   const res = await fetch(`${args.api}${route}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${await tokenFor(subject)}` },
     body: JSON.stringify(input === undefined ? { operation } : { operation, input }) });
   const body = await res.json().catch(() => ({}));

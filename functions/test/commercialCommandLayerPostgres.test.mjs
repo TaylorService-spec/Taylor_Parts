@@ -95,6 +95,12 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ($1,$1,'proof',$2)`, [p, status]);
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ($1,$2,$3)`, [`m-${p}`, tenant, p]);
   }
+  // SAL-03(c) SETUP ONLY: a company-less create inherits the Account's owner only when the creator is a real Employee whose company authority covers it,
+  // so the two acting Principals get valid Employee links (home company taylor, a governed and key-bound company in t1).
+  for (const [p, employee] of [["p1", "e-retail"], ["p2", "e-national"]]) {
+    await q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason, status)
+             VALUES ($1,'t1',$2,$3,'taylor','OPERATOR_ASSERTED','fixture','test','active')`, [`l-${p}`, p, employee]);
+  }
 
   const newOpportunity = (overrides = {}) => opp.createOpportunity(deps, ACTOR, {
     idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", operatingCompanyId: "taylor", need: "Walk-in freezer",

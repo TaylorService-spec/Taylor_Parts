@@ -160,14 +160,14 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
   const bea = await principal("fb-bea", "bea");
   const beaEmp = await enrol(bea, A, "technician", "ACTIVE");
   // X7 needs a target whose id sorts BELOW its issuer's (fb-admin-a): only then did the per-person lock order cycle with
-  // a writer locking both access versions in id order. Ids are random, so draw until one does.
+  // a writer locking both access versions in id order. The issuer's id is random, so cal's id is built from it (the same
+  // uuid minus one: same length, same layout, so it sorts strictly below under any ordering) rather than drawn and hoped for.
   const adminAId = (await q(`SELECT id FROM eos_policy.principals WHERE external_subject = 'fb-admin-a'`)).rows[0].id;
-  let cal = null;
-  for (let i = 0; i < 64 && !cal; i += 1) {
-    const id = await principal(`fb-cal-${i}`, `cal ${i}`);
-    if ([id, adminAId].sort()[0] === id) cal = id;
-  }
-  assert.ok(cal, "a principal id sorting below the issuer's was drawn");
+  const calHex = (BigInt(`0x${adminAId.replace(/-/g, "")}`) - 1n).toString(16).padStart(32, "0");
+  const cal = `${calHex.slice(0, 8)}-${calHex.slice(8, 12)}-${calHex.slice(12, 16)}-${calHex.slice(16, 20)}-${calHex.slice(20)}`;
+  await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, display_name, status, created_at, updated_at)
+           VALUES ($1, 'fb-cal', 'firebase', 'cal', 'active', now(), now())`, [cal]);
+  assert.ok(cal < adminAId, "a principal id sorting below the issuer's");
   await enrol(cal, A, "technician", "ACTIVE");
 
   const authorityDigest = async (tenantId) => (await q(`SELECT

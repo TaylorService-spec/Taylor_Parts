@@ -75,6 +75,8 @@ export function opportunityView({ loading = false, errorStatus = null, result = 
     // The governed edit's concurrency token (eos_commercial edit_version): an edit applies only against the version read.
     editVersion: num(o.editVersion),
     closedAtMillis: num(o.closedAtMillis),
+    // CLC: the SERVER's offer to set the operating company of a company-less record (absent = not offered). Carried, never derived.
+    ...(result.operatingCompanyAssignment ? { operatingCompanyAssignment: result.operatingCompanyAssignment } : {}),
   };
 }
 

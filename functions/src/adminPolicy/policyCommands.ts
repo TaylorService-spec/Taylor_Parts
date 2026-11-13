@@ -67,7 +67,7 @@ import {
   grantConditionCatalogFromRows,
 } from "../eosOps/conditionalEntitlement";
 import type { GrantConditionRecord, RoleCapabilityDecisionRecord } from "./types";
-import { actionsForObject, resolveObjectAction } from "./objectSecurityAuthority";
+import { actionsForObject, NAMED_ONLY_GRANT_CAPABILITIES, resolveObjectAction } from "./objectSecurityAuthority";
 import {
   ASSIGNMENT_SCOPE_DIMENSIONS,
   ASSIGNMENT_SCOPE_RUNTIME_TYPES,
@@ -2540,7 +2540,9 @@ export async function applyObjectWideRoleAuthority(
   const role = await repo.getRoleByKey(actor.tenantId, roleKey);
   if (!role) throw new PolicyValidationError("role not found");
   const kinds = input.actionKinds && input.actionKinds.length > 0 ? new Set(input.actionKinds) : null;
-  const actions = actionsForObject(await repo.listCapabilities(), objectKey).filter((c) => !kinds || kinds.has(c.actionKind));
+  // A named-only capability is never conferred by an object-wide GRANT (it is neither granted nor listed in the preview); a REVOKE may still sweep it.
+  const actions = actionsForObject(await repo.listCapabilities(), objectKey)
+    .filter((c) => (!kinds || kinds.has(c.actionKind)) && !(input.mode === "GRANT" && NAMED_ONLY_GRANT_CAPABILITIES.includes(c.key)));
   if (actions.length === 0) throw new PolicyValidationError(`${objectKey} has no registered action${kinds ? " of those kinds" : ""}`);
   const heldIds = new Set((await repo.listRoleCapabilities(actor.tenantId, [role.id])).map((g) => g.capabilityId));
   const results: ObjectWideResult["actions"][number][] = [];

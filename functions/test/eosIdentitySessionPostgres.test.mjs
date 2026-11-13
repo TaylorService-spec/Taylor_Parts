@@ -285,12 +285,15 @@ test("EOS identity/session foundation, in PostgreSQL and through the in-process 
     return { status: res.status, body: json };
   };
   const issued = new Map(); // key -> token
-  const session = (key) => harness.issueEosPersonaSession(key, { baseUrl: base, credential, env: {} });
+  // The harness refuses any target that is not a registered nonprod endpoint. This suite runs the EOS API in-process on loopback
+  // http, so it uses the TEST-ONLY loopback client (scripts/eosPersonaSession.mjs), which accepts loopback URLs and nothing else.
+  const loopbackHarness = harness.createLoopbackTestEosPersonaClient(base);
+  const session = (key) => loopbackHarness.issueEosPersonaSession(key, { baseUrl: base, credential, env: {} });
   const asEos = (key, path, body) => post(path, body, { authorization: `Bearer ${issued.get(key)}` });
   const asFirebase = (key, path, body) => post(path, body, { authorization: `Bearer fb-token.${personas.get(key).uid}` });
 
   await t.test("12. the harness client obtains sessions WITHOUT SANDBOX_CREDENTIALS_FILE (credential passed explicitly)", async () => {
-    await assert.rejects(harness.issueEosPersonaSession("dispatcher", { baseUrl: base, env: {} }), /NO_ISSUER_CREDENTIAL/);
+    await assert.rejects(loopbackHarness.issueEosPersonaSession("dispatcher", { baseUrl: base, env: {} }), /NO_ISSUER_CREDENTIAL/);
     for (const key of personas.keys()) {
       const s = await session(key);
       assert.equal(s.personaKey, key);

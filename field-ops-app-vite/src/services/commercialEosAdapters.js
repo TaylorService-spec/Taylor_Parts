@@ -57,6 +57,8 @@ export function toOpportunityContextResult(detail) {
     accountName: detail.accountName ?? null,
     salesOrderNumber: detail.salesOrder?.number ?? null,
     salesAgreementNumber: detail.salesAgreement?.number ?? null,
+    // CLC: present only when the SERVER offers "Set operating company" for this company-less record; the client decides nothing.
+    ...(detail.operatingCompanyAssignment ? { operatingCompanyAssignment: detail.operatingCompanyAssignment } : {}),
   };
 }
 
@@ -258,6 +260,8 @@ export function toSalesAgreementProjection(a) {
     acceptedByPrincipalId: a.acceptedByPrincipalId ?? null,
     createdAtMillis: millisOf(a.createdAt),
     updatedAtMillis: millisOf(a.updatedAt),
+    // CLC: present only when the SERVER offers "Set operating company" for this company-less record; the client decides nothing.
+    ...(a.operatingCompanyAssignment ? { operatingCompanyAssignment: a.operatingCompanyAssignment } : {}),
   };
 }
 

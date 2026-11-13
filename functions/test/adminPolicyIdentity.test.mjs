@@ -234,6 +234,8 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "listWorkflowActionRoleHolders",
     // DECISIONS #249: one Employee's home company and explicit company-access grants (admin.principalAccess.read).
     "listEmployeeCompanyAuthority",
+    // "Access explained": the eleven-gate chain, read-only, admin.principalAccess.read.
+    "explainAccessGates",
   ].sort(), "the Owner's eight, listTenantPrincipals, the four Object-owned projections and the three control-plane reads");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",

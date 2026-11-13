@@ -443,7 +443,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // 199 -> 202: finance.adjustment.approve / finance.refund.approve / finance.invoice.void.approve (F-1b, 1764712000000), granted to NOBODY.
   // 202 -> 203: salesOrder.fulfill (S1c Sales Order allocation, 1764714000000), granted to admin, dispatcher and owner.
   // 203 -> 210: the seven approval.selfApproval.exempt* keys (SAE Rule 2, 1764718000000), granted to nobody.
-  assert.equal(VOCABULARY.size, 210);
+  // 210 -> 211: commercial.recordCompany.assign (CLC, 1764719000000), granted to nobody.
+  assert.equal(VOCABULARY.size, 211);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

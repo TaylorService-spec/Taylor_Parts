@@ -83,6 +83,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listSupportedAssignmentScopes",
   // DECISIONS #249: one Employee's home company and explicit company-access grants (the Employee > Company access section).
   "listEmployeeCompanyAuthority",
+  // "Access explained": the eleven-gate chain for one person (read-only; the same authority as explainEffectiveAccess).
+  "explainAccessGates",
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
