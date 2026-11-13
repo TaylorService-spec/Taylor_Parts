@@ -13,6 +13,7 @@ import { certifyInventoryBaselineFixture } from "./support/inventoryBaselineCert
 const require = createRequire(import.meta.url);
 const assignedWork = require("../lib/eosWorkforce/reads/assignedWorkReads.js");
 const equipmentDelta = require("../lib/adminPolicy/equipmentActivationDelta.js");
+const model = require("../lib/eosOps/conditionalEntitlement.js");
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -141,7 +142,11 @@ test("A10: Rental Work Order company reach and assigned work, in PostgreSQL", { 
     // A Work Order has ONE current assignment (work_order_assignments_one_current): the caller (peer) holds `mine`; another Employee holds `notMine`.
     await assign(mine, "e-peer");
     await assign(notMine, "e-tech-a");
-    const actor = { tenantId: TENANT, principalId: peer.principalId, capabilities: new Set(["employee.record.read", "workOrder.record.read"]) };
+    // The Workforce read requires a resolved entitlement provider (employeeReadKernel); built the same way as workOrderCompanyBoundaryPostgres's callerOf.
+    const ent = model.entitlementsFrom(["employee.record.read", "workOrder.record.read"].map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "persona" }, capabilityKey })),
+      model.SHIPPED_GRANT_CONDITIONS);
+    const actor = { tenantId: TENANT, principalId: peer.principalId, capabilities: new Set(ent.filter((e) => e.condition === null).map((e) => e.capabilityKey)),
+      conditionallyHeld: new Set(ent.filter((e) => e.condition !== null).map((e) => e.capabilityKey)), entitlements: () => ent };
     const listFor = async (employeeId) => (await assignedWork.listAssignedWorkForEmployee({ pool }, actor, { employeeId, family: "WORK_ORDER", limit: 100 })).items.map((i) => i.recordId);
     assert.ok((await listFor("e-peer")).includes(mine), "the foreign Work Order the caller is assigned to is listed, as My Work does");
     assert.equal((await listFor("e-tech-a")).includes(notMine), false, "another company's Work Order the caller is not assigned to is not");
