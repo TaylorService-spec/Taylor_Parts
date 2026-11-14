@@ -9770,3 +9770,7 @@ A reason is REQUIRED (1 to 500 characters), recorded in the audit row. The comma
 **Also fixed (PARTS-403d).** `useGovernedReorderRead` reported the disabled, empty, finished state for the first render in which a read became enabled; it is now loading on that render. The archived-notes panel no longer omits `employeeIds` (that read the whole Employee directory and discarded it).
 
 **Next pieces (not in this change).** Extend the table to the remaining pages and transports, and route the remaining legacy-role gates through it.
+
+## #D5-LOGIN-READY (number assigned at merge) — Design note: a governed, Administrator-only "make a person login-ready" operation (lane A13, 2026-11-14; Owner decision D5)
+
+DESIGN ONLY, in `docs/architecture/eos-login-ready-person.md`. Proposes `makePersonLoginReady` (existing Employee in, Principal + membership + OPERATOR_ASSERTED link + `eos` binding + pending login + one-time setup code out, one transaction, MFA required) behind a NEW `BUSINESS_ACTION` key `admin.loginReadyPerson.provision` registered with no grant (the #CLC pattern) in addition to `admin.roleAssignment.write`. Nine numbered Owner decisions are listed in the note. No code, capability, grant, migration or deploy.

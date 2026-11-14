@@ -539,6 +539,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none reached — no product code, grant, migration, deploy, credential, Postgres run or nonprod write; the Ventana script is run by the controller, not by this lane
 - Lifecycle stage:     MERGED `b433d396` (#2202) (docs) -- reconciled 2026-10-23 from GitHub PR state
 
+- Capability:          Lane A13 (2026-11-14) — design note for Owner decision D5: a governed, audited, Administrator-only "make a person login-ready" operation (Principal, membership, Employee link, login account, one-time setup code)
+- Agent/session:       Claude Code Lane A13 · Role: designer (documents only); controller merges
+- Branch / worktree:   `a13-d5-login-ready-design` · `D:/eos-lanes/wt-a13`
+- Base commit:         `8e7c798a`
+- Owned paths:         `docs/architecture/eos-login-ready-person.md` (new)
+- Shared paths req'd:  this registry · `docs/DECISIONS.md` (#D5-LOGIN-READY)
+- Dependencies:        D7 (#2235) merged; D6 (email provider) undecided, setup-code hand-over assumed
+- Expected outcome:    the Owner can decide the nine listed questions; nothing is built or granted
+- Protected boundaries:no code, no capability, no grant, no migration, no Rules, deploy, Firebase or production action
+- Lifecycle stage:     DESIGNED (PR open, not merged)
+
 ## Ready for assignment
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.
