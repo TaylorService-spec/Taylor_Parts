@@ -643,3 +643,14 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Expected outcome:    a company-less Opportunity or Agreement can be given its company, once, by a holder of the new key who can see it and reaches the company; nothing else about reach, grants or visibility changes; no one holds the key until the Owner grants it
 - Protected boundaries:no grant, no Rules, deploy, Firebase or production action; the migration file is the controller's
 - Lifecycle stage:     MERGED `b05dfe33` (#2199) -- reconciled 2026-10-23 from GitHub PR state
+
+- Capability:          A15 / REC (2026-11-14) — design of second-Owner resilience (a governed Owner lifecycle: propose, accept, take effect, remove), the break-glass ceremony as ruled on 2026-10-20 (OD-1/4/5/6/9/10), its emergency exception (OD-6), and the succession boundary. Builds on the held REC spec PR #2174; 10 Owner decisions R-1..R-10
+- Agent/session:       Claude Code controller · Role: author; Owner decides
+- Branch / worktree:   `docs/a15-rec-owner-resilience` · `D:/eos-lanes/wt-a15`
+- Base commit:         `ee850d02`
+- Owned paths:         `docs/architecture/rec-owner-resilience-and-break-glass.md`
+- Shared paths req'd:  this registry
+- Dependencies:        REC spec #2174 (held); A13 #2238 provides the in-product login for a future second Owner
+- Expected outcome:    the Owner rules R-1..R-10; the build then starts with the Owner lifecycle (Layer A)
+- Protected boundaries:docs only; no code, migration, capability, grant, Rules, configuration, deploy or production action; nothing activated; no custodian, second Owner or successor named
+- Lifecycle stage:     DESIGNED (PR open; Owner decisions pending; not self-merged)
