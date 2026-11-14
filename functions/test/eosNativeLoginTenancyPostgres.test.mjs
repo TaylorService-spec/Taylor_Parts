@@ -337,10 +337,6 @@ test("EOS native login: one Principal, many tenants, one tenant per session; sec
     assert.equal((await login("pat@tenancy.test", PAT_PW, C)).status, 401);
     assert.equal((await login("pat@tenancy.test", PAT_PW, "tenant-that-does-not-exist")).status, 401);
     assert.equal((await login("pat@tenancy.test", PAT_PW, "not a tenant!")).status, 401);
-    // KNOWN DEFECT (WORK-QUEUE A16, found while moving these suites to D7): the four refused attempts above leave pat one short of the
-    // lockout, and an MFA account's correct password still RESERVES an attempt until the second factor passes -- so the next correct
-    // password + code would lock pat. Clear the counter here so the later tests prove what they are about; A16 fixes the behaviour.
-    await q(`UPDATE eos_policy.login_accounts SET failed_attempts = 0, locked_until = NULL WHERE login_identifier = 'pat@tenancy.test'`);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.authentication_events WHERE tenant_id = $1`, [C])).rows[0].n, beforeC);
     // The switch is refused for the same reason.
     const sw = await post("/auth/session/switch-tenant", { tenantId: B }, bearer(sessA.accessToken));

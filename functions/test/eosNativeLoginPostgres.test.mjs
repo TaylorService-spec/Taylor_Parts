@@ -495,6 +495,28 @@ test("EOS native login: accounts, sessions, MFA, recovery and administration, in
     aliceSession = viaRc.body.session;
   });
 
+  await t.test("L12b A16: after 4 failures the right password + right code signs in; a wrong code still counts and locks", async () => {
+    const id = "alice@taylor.test";
+    const fail4 = async () => { for (let i = 0; i < 4; i++) assert.equal((await rawLogin(id, "not the password at all")).status, 401); };
+    await fail4();
+    const p = await rawLogin(id, PASSWORDS.alice);
+    assert.equal(p.body.status, "MFA_REQUIRED");
+    assert.equal((await accountOf(alice)).failed_attempts, 4, "the right password does not count as a failure");
+    assert.equal((await accountOf(alice)).locked_until, null);
+    await forgetLastStep(id);
+    const ok = await post("/auth/login/mfa", { challenge: p.body.challenge, code: currentCode(totpSecret) });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await accountOf(alice)).failed_attempts, 0, "the second factor clears the counter");
+    // The code lockout keeps its bound: 4 failures, the right password, then ONE wrong code locks.
+    await fail4();
+    const p2 = await rawLogin(id, PASSWORDS.alice);
+    assert.equal(p2.body.status, "MFA_REQUIRED");
+    assert.equal((await post("/auth/login/mfa", { challenge: p2.body.challenge, code: totpCodeAt(totpSecret, 1) })).status, 401);
+    assert.ok((await accountOf(alice)).locked_until > new Date(), "a wrong code still counts");
+    assert.equal((await rawLogin(id, PASSWORDS.alice)).status, 401, "locked: the right password is refused");
+    assert.equal((await asAdmin("unlockLoginAccount", { principalId: alice, reason: "after the A16 proof" })).status, 200);
+  });
+
   await t.test("L13 an MFA-required account without a factor: session reaches /auth/* only, until it enrolls", async () => {
     const refused = await asAdmin("provisionLoginAccount", { principalId: bob, loginIdentifier: "bob@taylor.test", reason: "dispatcher login", mfaRequired: false });
     assert.equal(refused.status, 400, "D7: an explicit opt-out is refused");

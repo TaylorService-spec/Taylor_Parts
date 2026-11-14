@@ -411,6 +411,23 @@ export class EosLoginService {
       [account.id, now, this.policy.lockThreshold, new Date(now.getTime() + this.policy.lockBaseSeconds * 1000)]);
   }
 
+  /**
+   * A16: give back THIS attempt's own reservation once its password proved correct but a second factor is still owed.
+   * Without it, four earlier failures plus this correct password reached the threshold, and completeMfaLogin then
+   * refused the correct code because the account was locked. Refund by ONE, never reset: a holder of the password who
+   * guesses codes still pays one per wrong code (recordFailure), so the code lockout keeps its bound. The lock is kept
+   * when the count stays at or over the threshold (concurrent failures set it, not this attempt), and dropped when the
+   * refund takes the count below it: the real failures are then under the threshold. The refund is by amount, so a
+   * success that clears the count mid-flight can absorb one later failure (bounded to one; GREATEST keeps it >= 0).
+   */
+  private async refundAttempt(client: PoolClient, accountId: string): Promise<void> {
+    await client.query(`UPDATE ${SCHEMA}.login_accounts SET
+      failed_attempts = GREATEST(failed_attempts - 1, 0),
+      locked_until = CASE WHEN GREATEST(failed_attempts - 1, 0) >= $3 THEN locked_until ELSE NULL END,
+      updated_at = $2
+    WHERE id = $1`, [accountId, this.now(), this.policy.lockThreshold]);
+  }
+
   private async clearFailures(q: Pick<PoolClient, "query"> | Pool, accountId: string): Promise<void> {
     await q.query(`UPDATE ${SCHEMA}.login_accounts SET failed_attempts = 0, locked_until = NULL, updated_at = $2 WHERE id = $1`, [accountId, this.now()]);
   }
@@ -530,7 +547,9 @@ export class EosLoginService {
         await c.query(`UPDATE ${SCHEMA}.login_accounts SET password_hash = $2, updated_at = $3 WHERE id = $1`, [a.id, rehash, this.now()]);
       }
       if (await this.hasActiveFactor(c, a.id)) {
-        // The password step passed; the counter stays reserved until the SECOND factor also passes.
+        // The password step passed: refund this attempt's reservation (A16), but do NOT reset the counter -- earlier
+        // failures stand until the SECOND factor also passes, and every wrong code still counts.
+        await this.refundAttempt(c, a.id);
         const challenge = newOpaqueToken("mfaChallenge");
         const now = this.now();
         const expires = new Date(now.getTime() + this.policy.mfaChallengeSeconds * 1000);
