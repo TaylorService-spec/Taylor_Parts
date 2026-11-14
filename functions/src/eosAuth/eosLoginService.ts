@@ -416,7 +416,9 @@ export class EosLoginService {
    * Without it, four earlier failures plus this correct password reached the threshold, and completeMfaLogin then
    * refused the correct code because the account was locked. Refund by ONE, never reset: a holder of the password who
    * guesses codes still pays one per wrong code (recordFailure), so the code lockout keeps its bound. The lock is kept
-   * when the count stays at or over the threshold (concurrent failures set it, not this attempt).
+   * when the count stays at or over the threshold (concurrent failures set it, not this attempt), and dropped when the
+   * refund takes the count below it: the real failures are then under the threshold. The refund is by amount, so a
+   * success that clears the count mid-flight can absorb one later failure (bounded to one; GREATEST keeps it >= 0).
    */
   private async refundAttempt(client: PoolClient, accountId: string): Promise<void> {
     await client.query(`UPDATE ${SCHEMA}.login_accounts SET
