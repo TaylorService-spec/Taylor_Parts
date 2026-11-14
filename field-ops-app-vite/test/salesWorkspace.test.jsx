@@ -292,7 +292,7 @@ describe("SalesWorkspace (New Opportunity create flow)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^new opportunity$/i }));
     fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });
-    fireEvent.change(screen.getByLabelText(/owner \(employee id\)/i), { target: { value: "EMP-1" } });
+    fireEvent.change(screen.getByLabelText(/owner override/i), { target: { value: "EMP-1" } });
     fireEvent.change(screen.getByLabelText(/^channel$/i), { target: { value: "RETAIL" } });
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
 

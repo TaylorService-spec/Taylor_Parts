@@ -5,7 +5,7 @@
 // only produces a worse error message, never an unauthorized or malformed write (same posture documented in
 // domain/salesOrderActions.js for the Sales Order write mirrors).
 //
-// Deliberately excludes: solution lines (the create flow seeds accountId/ownerEmployeeId/salesChannel/
+// Deliberately excludes: solution lines (the create flow seeds accountId/[optional ownerEmployeeId]/salesChannel/
 // need/expectedValue/expectedCloseAt only — lines are added afterward via the existing Solution section edit
 // once general field editing goes live; CreateOpportunityInput.lines stays optional and unset here) and any
 // contactId (Opportunity has no contactId field — see opportunityCommands.ts's CreateOpportunityInput; adding
@@ -27,8 +27,14 @@ export function validateOpportunityCreateInput(input) {
   if (!nonEmpty(input.accountId)) {
     errors.accountId = "Select a customer account.";
   }
-  if (!nonEmpty(input.ownerEmployeeId)) {
-    errors.ownerEmployeeId = "Enter the owning employee's id.";
+  // OWNER IS OPTIONAL (Owner ruling D-4, kept 2026-10-21; functions/src/ownership/creationOwnerResolution.ts).
+  // Blank -> the server inherits the customer account's owner, or refuses when the account has none. There is
+  // NO client default: the signed-in employee is never prefilled or submitted, because the server cannot tell
+  // a prefilled id from a deliberate choice and D-4 forbids the creator becoming the owner by acting.
+  if (input.ownerEmployeeId != null && typeof input.ownerEmployeeId !== "string") {
+    errors.ownerEmployeeId = "Owner must be an employee ID, or left blank.";
+  } else if (nonEmpty(input.ownerEmployeeId) && /\s/.test(input.ownerEmployeeId.trim())) {
+    errors.ownerEmployeeId = "An employee ID has no spaces. Leave the field blank to use the customer's owner.";
   }
   if (!SALES_CHANNELS.includes(input.salesChannel)) {
     errors.salesChannel = "Select a sales channel.";
@@ -49,11 +55,13 @@ export function validateOpportunityCreateInput(input) {
 export function buildOpportunityCreatePayload(input) {
   const payload = {
     accountId: input.accountId.trim(),
-    ownerEmployeeId: input.ownerEmployeeId.trim(),
     salesChannel: input.salesChannel,
     expectedValue: finiteNum(input.expectedValue) ? input.expectedValue : null,
     expectedCloseAt: finiteNum(input.expectedCloseAt) ? input.expectedCloseAt : null,
   };
+  // A blank owner is left OUT of the payload, which the server treats exactly as blank (D-4 inheritance or
+  // refusal). An explicit override is sent trimmed and is re-validated server-side.
+  if (nonEmpty(input.ownerEmployeeId)) payload.ownerEmployeeId = input.ownerEmployeeId.trim();
   if (nonEmpty(input.need)) payload.need = input.need.trim();
   return payload;
 }
