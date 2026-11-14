@@ -63,6 +63,7 @@ import { createVerifierMetrics } from "../eosAuth/verifierMetrics";
 import { createSelfSchedulingHttpHandler } from "../eosOps/selfSchedulingHttp";
 import { SELF_SCHEDULING_ROUTE } from "../eosOps/selfScheduling";
 import { startInboundPollingIfEnabled } from "../eosOps/inboundProviderRuntime";
+import { applyEosApiSecurityHeaders } from "./securityHeaders";
 
 /** Which domain transport answers a request path. Everything not Catalog, Operations, Commercial, Workforce or CRM is Administration. */
 export function eosApiDomainFor(url: string | undefined): "auth" | "catalog" | "crm" | "commercial" | "operations" | "workforce" | "selfScheduling" | "administration" {
@@ -384,6 +385,7 @@ export async function startEosApi(
   // EVERY request runs in its own scope, so a human session's tenant binding (requestTenantBinding.ts, D-12) belongs to
   // exactly one request and can never leak to another.
   const server = createServer((req, res) => runWithRequestScope(() => {
+    applyEosApiSecurityHeaders(res); // every response, every domain, errors and preflight included
     const domain = eosApiDomainFor(req.url);
     if (domain === "selfScheduling") {
       void selfSchedulingHandler(req as never, res as never);
