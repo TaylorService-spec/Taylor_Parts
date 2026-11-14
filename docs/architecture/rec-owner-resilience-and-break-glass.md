@@ -24,12 +24,13 @@ The order of use: a second Owner when one exists, the ceremony when none can act
 | The protected Owner is never appointed or removed by role administration. Any attempt is refused with `PROTECTED_OWNER_MEMBERSHIP` | `refuseProtectedOwnerMembership`, `functions/src/adminPolicy/policyCommands.ts:2009` |
 | Owner succession "is a separate governed lifecycle operation that does not exist yet" | `policyCommands.ts:2006`, `administrationAuthority.ts:171` |
 | `bootstrapFirstOwner` works only while the tenant has zero Owners, and never adds a second | `tenantBootstrap.ts:337-389` |
-| A login held by an Owner or Administrator is administered only by an Owner in that tenant, never by its holder (`SELF_ADMINISTRATION`) | `eosLoginService.ts:1333`, `targetAdministrable :1426`, `holdsProtectedAdministeringRoleIn :1446` |
-| So **an Owner can already reset, unlock or reset the MFA of another Owner**. With two Owners, recovery needs no new credential code | same |
-| The last enabled Owner or Administrator login cannot be disabled or retired | `requireNotLastAdministratorLogin :1478` |
+| A login held by an Owner or Administrator is administered only by an Owner in that tenant, never by its holder (`SELF_ADMINISTRATION`) | `eosLoginService.ts:1352`, `targetAdministrable :1445`, `holdsProtectedAdministeringRoleIn :1465` |
+| Reset, unlock and MFA reset of a login need `admin.credentialReset.initiate`. In nonprod the EOS grants give it to `owner`, `admin` and `generalManager` (R2.6.2 snapshot `evidence/security/grid-apply/live-after-r262.json`). So **in nonprod an Owner can already reset, unlock or reset the MFA of another Owner**, with no new credential code. The legacy Firebase permission catalog marks the key `active: false` and excludes it from environment activation. That governs only the Firebase path, but any other environment needs the EOS grant before Layer A gives recovery there (§6 gate) | `LOGIN_ADMINISTRATION_OPERATIONS :2073-2083`, `requireCredentialAdministration :1340`; `functions/src/access/permissionCatalog.ts:1113-1116`, `environmentCapabilityOverrides.ts:31-33` |
+| The last enabled login held by an Owner **or** Administrator cannot be disabled or retired. It counts both roles together, so it does **not** protect the last Owner login while an Administrator login exists | `requireNotLastAdministratorLogin :1497` |
+| `bootstrapFirstOwner` refuses a target who holds the protected Administrator Role (#223) or would hold an owner-excluded capability (Owner ruling A) | `refuseFirstOwnerTarget`, `tenantBootstrap.ts:309-326` |
 | The protected-Owner check (secondary-approval exemption seam) works **per Principal**: any enabled Principal with the protected Owner Role and exactly one active link to an access-eligible Employee qualifies | `eos_policy.protected_owner_employee`, migration `1764716000000`; TypeScript twin `functions/src/access/secondaryApprovalExemption*` |
 | `login_tickets.purpose` allows only `enrollment` and `reset` | migration `1764550000000_eos-native-login.sql:97` |
-| Every attempt reserves a failure before it is checked, and the count clears only on a fully successful sign-in. Since R2.6.1 (#2236, A16), a correct password with a wrong authenticator code does not clear it. Anyone who knows a login name can still hold it locked (residual D-4), which pushes a sole Owner toward recovery | `eosLoginService.ts:384-419, 544, 604` |
+| Every attempt reserves a failure before it is checked, and the count clears only on a fully successful sign-in. Since R2.6.1 (#2236, A16), a correct password with a wrong authenticator code does not clear it. Anyone who knows a login name can still hold it locked (residual D-4), which pushes a sole Owner toward recovery | `eosLoginService.ts:389-431, 544, 604` |
 
 **Finding F-10 (new).** The secondary-approval exemption seam qualifies *every* protected Owner. Appointing a second Owner therefore also hands that person the platform-wide exemption from second-person approval (the 2026-10-20 Owner policy override). That may be intended, but it was ruled when there was one Owner. It is decision **R-4**.
 
@@ -45,41 +46,54 @@ The target, at proposal **and** at acceptance:
 - is an enabled Principal with an active membership in the tenant;
 - has exactly one active link to an access-eligible Employee (the same rule as the seam), so the protected-Owner check qualifies them from the first minute;
 - has an **enabled** EOS login with a **confirmed authenticator** (not `pending_enrollment`). A second Owner who cannot sign in gives no resilience;
-- is not already an Owner, and is not the proposer.
+- is not already an Owner, and is not the proposer;
+- does **not** hold the protected Administrator Role (Owner and Administrator are distinct, #223), and would not hold an owner-excluded capability with the Owner Role (Owner ruling A). These are the existing `refuseFirstOwnerTarget` checks, reused.
+
+Every condition is checked again at completion, under the governance lock.
 
 ### 2.3 The operation: propose, accept, take effect
-Two new protected lifecycle actions. They are **not** capability-gated: only a verified protected Owner may run them, exactly like the existing protected-Owner rule. They register no capability and need no grant. An Administrator, or any other role, is refused with zero trace.
+New protected lifecycle actions. They are **not** capability-gated: only a verified protected Owner may run them, exactly like the existing protected-Owner rule. They register no capability and need no grant. An Administrator, or any other role, is refused with zero trace.
 
 | Step | Who | What happens |
 |---|---|---|
-| **Propose** `owner.lifecycle.propose` | A protected Owner, with a reason, after **fresh re-authentication** (password and authenticator, within the last 5 minutes, not just a live session) | A proposal row `PROPOSED` is created, expiring in 72 hours. Notice to every enabled Owner and Administrator. Audit row |
+| **Propose** `owner.lifecycle.propose` | A protected Owner, with a reason, after **fresh re-authentication** (password and authenticator, within the last 5 minutes, not just a live session) | A proposal row `PROPOSED` is created, expiring in 72 hours. Notice to every enabled Owner and Administrator. Audit row. **While the tenant has one Owner**, the proposal also needs one custodian's callback to that Owner's number of record (§3.1) confirming they made it, before it can be accepted. This is the guaranteed observer when a sole Owner's session is stolen (R-2) |
 | **Accept** `owner.lifecycle.accept` | The appointee, signed in with their own fresh re-authentication | The proposal becomes `ACCEPTED`, effective after **24 hours** (R-2). Notices again |
-| **Cancel** | The proposer, any other Owner, the appointee, or any Administrator | `CANCELLED` (terminal). Administrators may cancel but never propose or accept: cancelling only removes risk |
-| **Take effect** | The system, at the first request after the delay (no scheduler needed) | In one transaction: every §2.2 condition is re-checked, then one active, global, protected Owner Role assignment is written with provenance `owner-lifecycle:<proposalId>`. Audit row and notice. If a condition fails, the proposal becomes `VOIDED` with the reason |
+| **Cancel** | The proposer, any other Owner, the appointee, any custodian, or any Administrator | `CANCELLED` (terminal), with notice to every Owner. Administrators may cancel but never propose or accept. To stop one hostile Administrator blocking a second Owner forever, a second Administrator cancellation for the same appointee within 30 days is refused; an Owner or custodian cancellation is never limited |
+| **Complete** `owner.lifecycle.complete` | The appointee or the proposer, at any time between the end of the delay and 72 hours later. This is the only entry point; no other request activates the Role | In one transaction under the governance lock: every §2.2 condition is re-checked, then one active, global, protected Owner Role assignment is written with provenance `owner-lifecycle:<proposalId>`. Audit row and notice. If a condition fails, the proposal becomes `VOIDED` with the reason. Not completed in time, it becomes `EXPIRED` |
 
-The appointee's consent proves the person exists, agrees, and has a working sign-in. The delay and the notices give any Administrator a 24-hour window to stop an attacker's appointment (F-11).
+The appointee's consent proves the person exists, agrees, and has a working sign-in. The delay, the notices and, for a sole Owner, the custodian callback give a 24-hour window to stop an attacker's appointment (F-11).
 
 ### 2.4 Removing an Owner (R-5)
-`owner.lifecycle.remove`, run by **another** protected Owner with a reason and fresh re-authentication. It takes effect **immediately**: removal only reduces authority, and an Owner removing a compromised Owner cannot wait. It is never allowed to remove the last protected Owner (a new guard, alongside `requireNotLastAdministratorLogin`). An Owner may also **relinquish** their own Role, but only while another protected Owner with an enabled, MFA-confirmed login remains. The removed person's login and Employee link are untouched; they lose only the Role. Their open proposals are cancelled.
+`owner.lifecycle.remove`, run by **another** protected Owner with a reason and fresh re-authentication.
+- **Delay.** Removal takes effect after **24 hours**, with notice to every Owner and Administrator. The target Owner (by signing in) or any custodian can cancel it. Immediate removal needs one custodian's attestation of suspected compromise, recorded by reference. Without that delay, a hostile second Owner could remove the real Owner during a lockout and become sole Owner, and nothing in EOS could restore the Role (§5).
+- **Refused** while the target is locked or has an open recovery request, so a lockout cannot be used to remove someone who cannot answer.
+- **Never the last Owner**: refused unless at least one *other* protected Owner keeps an enabled, MFA-confirmed login. This is a new guard; `requireNotLastAdministratorLogin` does not provide it (§1).
+- **Relinquish.** An Owner may give up their own Role under the same last-Owner rule. It takes effect immediately, because the person is acting for themselves.
+- **Effect.** The removed person keeps their login and Employee link and loses only the Role. Their open proposals are cancelled.
+- **No restore path.** A wrongly removed Owner is re-appointed by a remaining Owner through §2.3. Where no honest Owner remains, it is succession (§5).
 
 ### 2.5 What a second Owner changes
-- **Recovery**: either Owner resets, unlocks or resets the MFA of the other through Administration. These are the existing commands, audit and notices. No ceremony is needed.
+- **Recovery**: either Owner resets, unlocks or resets the MFA of the other through Administration, where the environment grants `admin.credentialReset.initiate` to `owner` (nonprod does, §1). These are the existing commands, audit and notices. No ceremony is needed.
 - **Administrator lockouts**: they now have two Owners able to handle them (finding F-3 in #2174).
 - **Exemption (R-4)**: the second Owner is exempt from second-person approval like the first (F-10), unless the Owner rules otherwise.
 - **Two Owners**: one Owner approving the other Owner's request is an ordinary two-person approval, recorded with no exemption basis.
 
 ### 2.6 Schema and build (after decisions)
-- One table, `eos_policy.owner_lifecycle_proposals`: tenant, target Principal, proposer, reason, states with timestamps, cancel and void actor and reason. Append-only state history goes to `audit_events`. An operator-applied migration, because migration writes from agent sessions are refused (count-pinning tests listed in the build PR).
-- The two protected actions plus remove. The `PROTECTED_OWNER_MEMBERSHIP` refusal stays: ordinary role administration still cannot touch the Owner Role.
+- One table, `eos_policy.owner_lifecycle_proposals`: kind (appoint or remove), tenant, target Principal, proposer, reason, states with timestamps, cancel and void actor and reason, custodian attestation reference. Append-only state history goes to `audit_events`. An operator-applied migration, because migration writes from agent sessions are refused (count-pinning tests listed in the build PR).
+- The protected actions: propose, accept, complete, cancel, remove and relinquish. The `PROTECTED_OWNER_MEMBERSHIP` refusal stays: ordinary role administration still cannot touch the Owner Role.
+- **Fresh re-authentication** (password and authenticator within the last 5 minutes). It does not exist today and is new build, with its own tests (a live session alone is refused; a stale step-up is refused).
 - A notice surface shared with the ceremony (#2174 OD-11): Users screen and sign-in banner for every Owner and Administrator, kept for 7 days.
 - Tests (sandbox, synthetic data):
   - a non-Owner or an Administrator is refused at every step;
   - proposing yourself is refused;
-  - an unlinked, unenrolled or disabled target is refused;
+  - an unlinked, unenrolled or disabled target is refused, and so is a protected Administrator or a target that would hold an owner-excluded capability, at proposal and at completion;
   - acceptance without fresh re-authentication is refused;
   - an expired, cancelled or voided proposal never takes effect;
-  - the role is not active before the delay;
-  - removing the last Owner is refused;
+  - the role is not active before the delay or before `complete`, and only `complete` activates it;
+  - a sole-Owner proposal cannot be accepted without the custodian callback;
+  - a second Administrator cancellation for the same appointee within 30 days is refused;
+  - removal waits 24 h unless a custodian attests compromise, and is refused while the target is locked or has an open recovery request;
+  - removing the last Owner, or the last Owner with an enabled, MFA-confirmed login, is refused;
   - relinquishing is refused when no second MFA-confirmed Owner exists;
   - the seam qualifies the new Owner exactly as R-4 rules;
   - no output, log or audit row carries a credential.
@@ -120,11 +134,11 @@ This is how a recovered Owner finds an attacker's appointment (F-11). It is read
 | Condition | Recommendation (R-7) |
 |---|---|
 | Who may need it | Owner targets only. Administrator recoveries take the ordinary delay, because an Owner can recover an Administrator in-product |
-| When it applies | Only when **no** other protected Owner can act (none exists, or R-6's attestation is recorded) |
+| When it applies | Only when **no** other protected Owner can act: none exists, or **both** emergency custodians independently attest that the other Owner is unavailable or suspected compromised |
 | Approvals | **Two different custodians**, each doing their own two-channel verification and each signing. The operator's key and the recoverer's key never count |
 | Delay | Shortened to **2 hours**, never zero. A cancel stops it exactly as in the ordinary ceremony |
 | Reason | One of a fixed list of reason codes (security incident, payroll or legal deadline, safety), plus free text |
-| Frequency | At most once per target per 30 days. A second emergency inside that window takes the ordinary delay |
+| Frequency | At most one **executed** emergency recovery per target per 30 days. Requests, approvals, cancellations and expiries do not count, so a false emergency cannot use up the window. A second executed emergency inside the window takes the ordinary delay |
 | Effects | Identical to an ordinary execution: full revocation (OD-10), forced MFA re-enrollment, the same notices plus an `EMERGENCY` marker, and the post-recovery review |
 | After | Each custodian confirms in the evidence record within 7 days that the emergency was genuine. A missing confirmation is reported to the Owner; it does not undo the recovery |
 
@@ -136,12 +150,12 @@ Death, incapacity or departure of a sole Owner with no second Owner is **success
 
 ## 6. Build order and gates (after decisions)
 
-1. Layer A schema, operations, notice surface and tests (§2.6). This is independent of the ceremony and gives the most resilience first.
+1. Layer A schema, operations, fresh re-authentication, notice surface and tests (§2.6). This is independent of the ceremony and gives the most resilience first. A sole Owner's first appointment needs one named custodian (the §2.3 callback).
 2. Ceremony schema (the `recovery` ticket purpose, a request table, a custodian register, provisional configuration), commands, the `recovery` validity rule (#2174 F-4), and the post-recovery review.
 3. Emergency exception on the same commands.
 4. Offline recoverer and custodian helpers (#2174 §9).
 5. Sandbox drill with synthetic data: everything in #2174 §9, plus the §2.6 tests, the R-6 refusal, a two-custodian emergency, the 30-day limit, the callback drill and the post-recovery review.
-6. **Gates that are not engineering's:** the custodian names (OD-5), the Owner's final security-policy acceptance, any production identity activation (OD-10), and keeping Firebase break-glass until acceptance (#2174 OD-14).
+6. **Gates that are not engineering's:** the custodian names (OD-5); in any environment other than nonprod, the EOS grant of `admin.credentialReset.initiate` to `owner`, without which Layer A gives no recovery there (§1); the Owner's final security-policy acceptance, any production identity activation (OD-10), and keeping Firebase break-glass until acceptance (#2174 OD-14).
 
 Not in this lane: email (D-5), the production EOS API (D-1), splitting database ownership (#2174 F-8), and A13's "make a person login-ready" operation (PR #2238). A13 is the in-product way to give the future second Owner a linked, enrolled login (§2.2).
 
@@ -150,12 +164,12 @@ Not in this lane: email (D-5), the production EOS API (D-1), splitting database 
 | R | Decision | Recommendation |
 |---|---|---|
 | R-1 | Form of the second Owner | A living second Owner only. Do not build the dormant sealed Owner |
-| R-2 | Appointment friction | Proposer and appointee both re-authenticate. Appointee consent required. A 24 h delay after acceptance, with notices. Cancellable by either party, any other Owner, or any Administrator |
-| R-3 | Who may be appointed | Linked to exactly one access-eligible Employee, with an enabled login and a confirmed authenticator, at proposal and at effect |
+| R-2 | Appointment friction | Proposer and appointee both re-authenticate. Appointee consent required. With one Owner, a custodian callback confirms the proposal. A 24 h delay after acceptance, with notices, then an explicit `complete`. Cancellable by either party, any other Owner, any custodian or an Administrator (a second Administrator cancellation within 30 days refused) |
+| R-3 | Who may be appointed | Linked to exactly one access-eligible Employee, with an enabled login and a confirmed authenticator. Not a protected Administrator, and no owner-excluded capability. Checked at proposal, acceptance and completion |
 | R-4 | Secondary-approval exemption for a second Owner (F-10) | Each protected Owner is exempt, as the seam already behaves. One Owner approving the other's request is an ordinary two-person approval |
-| R-5 | Removing an Owner | By another Owner, immediate, with re-authentication. Never the last Owner. Self-relinquish only while another MFA-confirmed Owner remains |
+| R-5 | Removing an Owner | By another Owner, with re-authentication, after a 24 h delay cancellable by the target or a custodian (immediate only with a custodian's compromise attestation). Refused while the target is locked or being recovered. Never leaves no Owner with an enabled, MFA-confirmed login. Self-relinquish under the same rule. No restore path |
 | R-6 | Ceremony when a second Owner exists | Refuse an Owner-target request unless a custodian attests that the other Owner is unavailable or suspected compromised |
-| R-7 | Emergency exception | Owner targets only, no other Owner able to act, two different custodians, a 2 h delay (never zero), reason codes, once per 30 days. Provisional and inactive |
+| R-7 | Emergency exception | Owner targets only, no other Owner able to act (both custodians attest), two different custodians, a 2 h delay (never zero), reason codes, at most one executed emergency per 30 days. Provisional and inactive |
 | R-8 | Trusted callback | The number of record is held outside EOS on the custodian register, changed only with two custodians. The custodian dials it themselves. Drilled at activation, yearly and on any custodian change |
 | R-9 | An Owner permanently gone | Not a recovery. A separate procedure decided by the Owner and counsel. The ceremony never appoints an Owner |
 | R-10 | Post-recovery review | Show the recovered person every Owner lifecycle, Administrator staffing and privileged credential act since their last good sign-in (at most 30 days). Read-only |
