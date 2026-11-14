@@ -653,4 +653,4 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        REC spec #2174 (held); A13 #2238 provides the in-product login for a future second Owner
 - Expected outcome:    the Owner rules R-1..R-10; the build then starts with the Owner lifecycle (Layer A)
 - Protected boundaries:docs only; no code, migration, capability, grant, Rules, configuration, deploy or production action; nothing activated; no custodian, second Owner or successor named
-- Lifecycle stage:     DESIGNED, Owner-ruled 2026-11-14 (R-1..R-10; R-11 safeguards to confirm before build)
+- Lifecycle stage:     DESIGNED, Owner-ruled 2026-11-14 (R-1..R-10; R-9 simplified, R-11 parked)
