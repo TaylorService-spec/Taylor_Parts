@@ -1,0 +1,71 @@
+{
+  "$comment": "D-1 delivery and customer-acknowledgment spec companion, 2026-10-20. Firebase-parity holders derived READ-ONLY from functions/src/access/{permissionCatalog,compatibilityRoles,governedBusinessRoles}.ts at main b3d09dc3 (scratch copy; nothing written to a role, a grant, a database or a fixture). No migration is proposed by this file. The parity set for any NEW delivery or acknowledgment key is empty.",
+  "decision": "Brief 2026-10-20: derive Firebase-parity holders A7-style. Grants not in exact Firebase parity are a STOP. None is authorized by this file.",
+  "baseline": {
+    "firebaseSource": "main b3d09dc3 functions/src/access/{permissionCatalog.ts, compatibilityRoles.ts, governedBusinessRoles.ts}",
+    "eosSource": "NOT READ. EOS holders are Administration data in eos_policy.role_capabilities; the brief forbids touching an environment, and the repository seed baseline is not the live table."
+  },
+  "newKeySearch": {
+    "pattern": "permission id containing deliver, signat, acknowledg or proof",
+    "firebaseMatches": [],
+    "note": "permissionCatalog.ts:1365 states CUSTOMER delivery is a separate, not-yet-authorized future capability and is not registered. Firebase never held a delivery, signature, acknowledgment or proof-of-delivery key."
+  },
+  "newKeysFirebaseParityHolders": [],
+  "keysReusedByTheRecommendedDesign": {
+    "workOrder.create": {
+      "firebaseHolders": ["admin", "dispatcher", "fieldManager", "generalManager", "officeManager", "operationsManager", "owner", "partsAssociate", "partsManager", "shopAssociate", "shopManager"],
+      "use": "create a DELIVERY (or INSTALL) Work Order from Sales Order lines",
+      "eosHolders": null
+    },
+    "workOrder.transition": {
+      "firebaseHolders": ["admin", "dispatcher", "fieldManager", "generalManager", "operationsManager", "owner", "partsAssociate", "partsManager", "shopAssociate", "shopManager", "technician"],
+      "use": "technician runtime edges; unchanged",
+      "eosHolders": null
+    },
+    "workOrder.labor.record": {
+      "firebaseHolders": ["admin", "technicianLaborRecorder"],
+      "use": "precedent only: EOS labor reuses workOrder.execution.record",
+      "eosHolders": null
+    },
+    "equipment.install": {
+      "firebaseHolders": ["admin", "equipmentInstaller"],
+      "use": "install visit; unchanged",
+      "eosHolders": null
+    },
+    "salesOrder.service": {
+      "firebaseHolders": ["admin", "dispatcher", "owner"],
+      "use": "only once S1c registers it in EOS (S1a companion); not required by D-1 because workOrder.create already accepts salesOrderId and salesOrderLines",
+      "eosHolders": null
+    },
+    "workOrder.execution.record": {
+      "firebaseHolders": null,
+      "use": "EOS-native; the assigned Employee records the delivery record and the acknowledgment (RECORD_ASSIGNMENT). Reusing it widens its stated meaning (Owner Decision 15).",
+      "eosHolders": null
+    },
+    "workOrder.lifecycle.dispatch": {
+      "firebaseHolders": null,
+      "use": "EOS-native; unchanged",
+      "eosHolders": null
+    },
+    "workOrder.lifecycle.complete": {
+      "firebaseHolders": null,
+      "use": "EOS-native; unchanged",
+      "eosHolders": null
+    }
+  },
+  "firebaseConditioned": [],
+  "toAdd": [],
+  "toAddCount": 0,
+  "toRemove": [],
+  "excluded": [
+    {
+      "capabilities": ["any new delivery key", "any new acknowledgment key", "any narrower signature-image read key", "any post-completion acknowledgment correction key"],
+      "reason": "Not Firebase holders: Firebase had no such keys, so every holder would be a non-parity grant. STOP until the Owner names holders (Owner Decisions 13, 14, 15)."
+    }
+  ],
+  "notes": [
+    "A null firebaseHolders means the key is EOS-native and has no Firebase counterpart; a null eosHolders means not read.",
+    "workOrder.transition and workOrder.create list Firebase holders only; the live EOS grants for the EOS-native lifecycle keys are Administration decisions and are not asserted here.",
+    "If the Owner takes Owner Decision 15 A, no capability is registered and no role_capabilities row is added. If 15 B, a separate parity-exempt ruling on holders is required before any migration."
+  ]
+}

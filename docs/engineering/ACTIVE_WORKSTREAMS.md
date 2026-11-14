@@ -115,6 +115,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Protected boundaries:none beyond standing delivery authority
 - Lifecycle stage:     MERGED `bd77a454` (#2120); repo-wide endPoolAndDrain helper is a separate follow-up PR
 
+- Capability:          Delivery and customer acknowledgment (D-1): spec first, then a build slice only where the spec shows one governed answer (it does not; PR 2 not built)
+- Agent/session:       Claude Code Lane D-1 · Role: builder (spec); controller merges
+- Branch / worktree:   `d1/delivery-acknowledgment-spec` · lane D-1 worktree
+- Base commit:         `b3d09dc3`
+- Owned paths:         `docs/architecture/d1-delivery-acknowledgment-spec.md`, `docs/architecture/d1-delivery-grant-parity.json`
+- Shared paths req'd:  this registry (one row). No DECISIONS.md, precedence-sweep, shell gate or migration edit
+- Dependencies:        none for the spec; D1a-D1d wait on Owner Decisions 1-17 in the spec, and lean on S1a (#2167), F-1, Q-1 and W-1 as stated interfaces
+- Expected outcome:    Owner rulings on the 17 numbered decisions, then D1a (acknowledgment on INSTALL / SERVICE_CALL completion) and D1b (DELIVERY Work Order and delivery record)
+- Protected boundaries:any capability or grant (none proposed; a new key is non-parity), the completion edge, serialized custody (OD-3 B), any migration, any production step
+- Lifecycle stage:     DESIGNED
+
 - Capability:          Honest refusal wording — Jobs (Job Assignments) and My Dashboard Service Attention classify refusals through workOrderOutcome.js (FORBIDDEN → denied, COMPANY_AUTHORITY_REQUIRED → company-authority message, NOT_YET_ACTIVATED → not enabled; outages keep retry copy)
 - Agent/session:       Claude Code Lane C · Role: builder; Lane D: independent reviewer; controller merges
 - Branch / worktree:   `work/eos-lane-c-wo-refusal-wording` · Lane C clone
