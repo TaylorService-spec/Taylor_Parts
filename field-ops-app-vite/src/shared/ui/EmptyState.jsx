@@ -33,11 +33,14 @@
 // guidance says what the screen is for. Neither replaces the other, so the two
 // compose rather than competing for the same slot.
 import Icon from "./Icon.jsx";
-import { Inbox, SearchX } from "lucide-react";
+import { Inbox, Lock, SearchX } from "lucide-react";
 
+// "denied" -- the address is real and the principal may not open it (navigation/DeniedDestination.jsx).
+// Neither empty above: nothing is missing and no filter hid it.
 const DEFAULT_ICON_BY_VARIANT = {
   database: Inbox,
   filtered: SearchX,
+  denied: Lock,
 };
 
 export default function EmptyState({ title, message, guidance, action, variant = "database", icon, className }) {
