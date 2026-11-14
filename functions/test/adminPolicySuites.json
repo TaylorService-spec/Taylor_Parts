@@ -18,6 +18,7 @@
     "test/adminPolicyIdentity.test.mjs",
     "test/adminPolicyDefinitionEditing.test.mjs",
     "test/eosApiBlueprint.test.mjs",
+    "test/eosApiSecurityHeaders.test.mjs",
     "test/adminPolicyNoOpAudit.test.mjs",
     "test/eosOpsNoFirebase.test.mjs",
     "test/eosOpsApiShape.test.mjs",

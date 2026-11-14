@@ -50,12 +50,23 @@ test("client routes are directed to /index.html", () => {
 });
 
 test("it is filesystem-first — nothing that could shadow version.json or assets", () => {
-  // `routes` would bypass the filesystem check; redirects/headers/cleanUrls/trailingSlash would be
+  // `routes` would bypass the filesystem check; redirects/cleanUrls/trailingSlash would be
   // routing authority this file was never meant to hold.
-  for (const key of ["routes", "redirects", "headers", "cleanUrls", "trailingSlash"]) {
+  for (const key of ["routes", "redirects", "cleanUrls", "trailingSlash"]) {
     assert.equal(config[key], undefined, `vercel.json must not declare "${key}"`);
   }
-  assert.deepEqual(Object.keys(config).sort(), ["$schema", "rewrites"]);
+  assert.deepEqual(Object.keys(config).sort(), ["$schema", "headers", "rewrites"]);
+});
+
+test("headers carry only the D10 security headers, on every path, and route nothing", () => {
+  // `headers` sets response headers; it cannot rewrite or redirect. It is held to exactly the security
+  // set (securityHeaders.test.mjs checks the values), so it never becomes routing or caching authority.
+  assert.equal(config.headers.length, 1);
+  const [{ source, headers, ...rest }] = config.headers;
+  assert.equal(source, "/(.*)");
+  assert.deepEqual(rest, {});
+  assert.deepEqual(headers.map((h) => h.key).sort(),
+    ["Content-Security-Policy", "Referrer-Policy", "X-Content-Type-Options", "X-Frame-Options"]);
 });
 
 test("the file the rewrite serves is the one the build emits", () => {
