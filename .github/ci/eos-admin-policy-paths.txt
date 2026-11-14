@@ -810,6 +810,7 @@ functions/test/employeeOperationalScopePostgres.test.mjs
 functions/test/employeeWorkEligibilityPostgres.test.mjs
 functions/test/eosAccessToken.test.mjs
 functions/test/eosApiBlueprint.test.mjs
+functions/test/eosApiSecurityHeaders.test.mjs
 functions/test/eosAuthNoFirebase.test.mjs
 functions/test/eosIdentitySessionPostgres.test.mjs
 functions/test/eosOpsCashApplication.test.mjs
