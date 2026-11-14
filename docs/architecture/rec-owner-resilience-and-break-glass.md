@@ -1,10 +1,10 @@
 # Sign-in recovery (REC): second-Owner resilience, the ruled break-glass ceremony, and its emergency exception
 
-**Status: DESIGN FOR THE OWNER. DOCS ONLY.** No code, migration, capability, grant, authentication, MFA, session, Rules or configuration change. No recovery has been run, and nothing here is activated. No credential, secret, key or token was read, searched for or handled.
+**Status: DESIGN, OWNER-RULED 2026-11-14 (§7). DOCS ONLY.** No code, migration, capability, grant, authentication, MFA, session, Rules or configuration change. No recovery has been run, and nothing here is activated. No credential, secret, key or token was read, searched for or handled.
 **Issued:** 2026-11-14 (America/Phoenix). **Base:** `origin/main` `ee850d02`. **Lane:** A15 (work queue), REC.
 **Authority:** the Owner's REC rulings of 2026-10-20 (`docs/governance/owner-commercial-spec-rulings-2026-10-20.md`, "REC Account recovery", merged in #2182). Ruling **OD-1: "Design both secondary-Owner resilience and an independent emergency operator recovery ceremony."** Ruling OD-6 adds: "Prepare an emergency-exception design separately." The Owner also directed (D1, 2026-11-13) that recovery is designed before go-live.
 **Builds on:** the REC specification in PR #2174 (`docs/architecture/rec-sign-in-recovery-design.md`, held). That document's threat model (§4), ceremony (§6) and unlinked-Principal analysis (§7) are not repeated. Where it and the 2026-10-20 rulings differ, the rulings win. This note adds what the specification left undesigned.
-**Decision level:** every open choice is an **OWNER DECISION** (`R-n`) with a recommendation. This is a security and authorization-model change (`docs/DelegationCharter.md` §8.3), so nothing is built until the Owner decides, and nothing is activated until the Owner's final security-policy acceptance (rulings §7 item 1).
+**Decision level:** the Owner ruled R-1 to R-10 on 2026-11-14 and added R-11 (§7). This is a security and authorization-model change (`docs/DelegationCharter.md` §8.3). Nothing is activated until the Owner's final security-policy acceptance (rulings §7 item 1). The safeguards for R-9 were accepted. The safeguards for R-11 are the controller's reading of the Owner's words and are confirmed by the Owner before that part is built.
 
 ## 0. At a glance
 
@@ -13,7 +13,8 @@
 | **A. Second Owner** (prevention) | A second real person holds the protected Owner Role and an enabled sign-in. Either Owner can reset the other through Administration, using the existing Owner-to-Owner path | **Designed here (§2)**. Needs a new Owner lifecycle operation; today nothing can appoint a second Owner |
 | **B. Break-glass ceremony** (guaranteed floor) | Custodian signature + operator execution + recoverer-held secret + delay + notices | **Ruled** 2026-10-20 (§3 records the ruled shape against #2174 §6) |
 | **C. Emergency exception** | A shorter delay under stricter conditions, for when 24 hours is too long | **Designed here (§4)**, provisional values only |
-| **D. Succession** (an Owner who is permanently gone) | Not a recovery. No one is recovering their own account | Out of the ceremony. **Owner + counsel (R-9)** |
+| **D. Succession** (an Owner who is permanently gone) | Not a recovery. The Systems Administrator nominates a successor under safeguards | **Ruled R-9**, designed in §5 |
+| **E. Acting Owner** (an Owner who cannot act for now) | The Systems Administrator acts in the Owner's capacity, time-boxed and with exclusions | **Ruled R-11**, designed in §5a; safeguards to be confirmed |
 
 The order of use: a second Owner when one exists, the ceremony when none can act, the emergency exception only under its own conditions. Firebase production break-glass stays the floor until B is built, drilled and accepted (#2174 OD-14).
 
@@ -144,39 +145,71 @@ This is how a recovered Owner finds an attacker's appointment (F-11). It is read
 
 With one named custodian, there is **no** emergency exception; the ordinary delay applies. Every value in this table is provisional, like OD-6, and inactive until final acceptance.
 
-## 5. Layer D: an Owner who is permanently gone (R-9)
+## 5. Layer D: an Owner who is permanently gone (R-9, ruled)
 
-Death, incapacity or departure of a sole Owner with no second Owner is **succession**, not recovery: the person whose account it is will never redeem a secret. The ceremony never appoints a new Owner, and `bootstrapFirstOwner` stays limited to tenants with zero Owners. Recommendation: the Owner and counsel decide on a separate legal procedure, such as a documented successor letter held with counsel. Only after that procedure exists should EOS get an operator command for it. That command would be built on the ceremony's parties and audit, with a longer delay. The practical prevention is Layer A: name a second Owner.
+Death, incapacity or departure of a sole Owner, with no second Owner who can act, is **succession**, not recovery: the person whose account it is will never redeem a secret. The ceremony never appoints an Owner, and `bootstrapFirstOwner` stays limited to tenants with zero Owners.
+
+**Owner ruling (2026-11-14):** "the System Administrator should be able to do it", with the four safeguards below accepted. It is a narrow, recorded exception to "Owner and Administrator are distinct" (#223) and to "only the protected Owner confers Owner authority". The Administrator nominates; the Administrator is never made Owner.
+
+`owner.succession.nominate`, `owner.succession.complete`, `owner.succession.cancel`:
+1. **Nominate.** A holder of the protected Administrator Role (displayed as "Systems Administrator", #2225), with a reason and fresh re-authentication, nominates **a different person**. The nominee meets every R-3 condition, so is never the nominator and never a protected Administrator. Refused while any other protected Owner can act (has an enabled, MFA-confirmed login) or while an Owner recovery request for the absent Owner is open.
+2. **Custodian confirmation.** One registered custodian confirms the Owner is permanently gone and records an evidence reference, such as a death certificate, a counsel letter or a medical statement. The evidence itself stays outside EOS. Without it the nomination cannot proceed.
+3. **Wait.** **7 days**, with notices to every Owner and Administrator, kept on the Users screen for the whole wait.
+4. **Cancel.** Any successful sign-in by the absent Owner cancels it automatically. A custodian or another Administrator may also cancel it.
+5. **Complete.** The nominee, with fresh re-authentication, completes within 72 hours after the wait. Then, in one transaction under the governance lock, every condition is re-checked and the Owner Role is written with provenance `owner-succession:<id>`, with an audit row and notices.
+6. **After.** The absent Owner's Role and login are not touched. The new Owner may remove them under R-5.
+
+## 5a. Layer E: an acting Owner (R-11, Owner direction 2026-11-14)
+
+**The Owner's words:** "A system owner can act in the capacity of an owner if the owner is incapacitated or during the 24hr hold."
+
+**Controller's reading, to be confirmed before build.** "System owner" is the Systems Administrator (the protected Administrator Role). The "24hr hold" is any REC waiting period while the sole Owner cannot act:
+- the delay of a recovery of the Owner's sign-in (§3);
+- the wait of a succession (§5);
+- the 24 h wait of a second-Owner appointment made while the first Owner is incapacitated.
+
+No Owner Role is assigned. The Administrator gains, temporarily, the Owner-only governance acts it otherwise lacks.
+
+| Rule | Design |
+|---|---|
+| Starts only on a recorded trigger | One of: a custodian's attestation that the Owner is incapacitated (reference only); an Owner recovery request that a custodian has approved (`APPROVED` or `WAITING`); an open succession nomination with its custodian confirmation. Starting it needs the Administrator's fresh re-authentication and a reason |
+| Ends automatically | At the Owner's next successful sign-in; when the recovery executes, is cancelled or expires; when the succession completes or is cancelled; or after **7 days**. A further 7 days needs a new custodian attestation |
+| Never covers | Appointing, removing or relinquishing an Owner (only the §5 nomination); administering the absent Owner's login or credentials (only the ceremony); the secondary-approval exemption (R-4 covers Owners only, so acting-Owner decisions still need a second person); granting or delegating the exemption keys; the custodian register or recovery configuration; the Administrator's own roles and grants |
+| Audit | Every act records `authority_basis = ACTING_OWNER`, the trigger reference and the acting person. Start and end are audit rows |
+| Visibility | Notices to every Owner and Administrator at start and end, and a banner while it lasts. The post-recovery review (R-10) and the returning Owner's first sign-in list every acting-Owner act |
+| Threat | A stolen Administrator session cannot start it alone. Every trigger needs a custodian, and the exclusions keep it from taking over the Owner's account or Role |
 
 ## 6. Build order and gates (after decisions)
 
 1. Layer A schema, operations, fresh re-authentication, notice surface and tests (§2.6). This is independent of the ceremony and gives the most resilience first. A sole Owner's first appointment needs one named custodian (the §2.3 callback).
 2. Ceremony schema (the `recovery` ticket purpose, a request table, a custodian register, provisional configuration), commands, the `recovery` validity rule (#2174 F-4), and the post-recovery review.
 3. Emergency exception on the same commands.
+3a. Succession (§5) and acting Owner (§5a), after the Owner confirms the §5a reading. Both reuse the custodian register, notices and fresh re-authentication.
 4. Offline recoverer and custodian helpers (#2174 §9).
-5. Sandbox drill with synthetic data: everything in #2174 §9, plus the §2.6 tests, the R-6 refusal, a two-custodian emergency, the 30-day limit, the callback drill and the post-recovery review.
+5. Sandbox drill with synthetic data: everything in #2174 §9, plus the §2.6 tests, the R-6 refusal, a two-custodian emergency, the 30-day limit, the callback drill, the post-recovery review, a succession that an absent-Owner sign-in cancels, a self-nomination refused, acting-Owner refusals for every excluded act, and acting authority ending at the Owner's sign-in.
 6. **Gates that are not engineering's:** the custodian names (OD-5); in any environment other than nonprod, the EOS grant of `admin.credentialReset.initiate` to `owner`, without which Layer A gives no recovery there (§1); the Owner's final security-policy acceptance, any production identity activation (OD-10), and keeping Firebase break-glass until acceptance (#2174 OD-14).
 
 Not in this lane: email (D-5), the production EOS API (D-1), splitting database ownership (#2174 F-8), and A13's "make a person login-ready" operation (PR #2238). A13 is the in-product way to give the future second Owner a linked, enrolled login (§2.2).
 
-## 7. OWNER DECISIONS
+## 7. OWNER RULINGS (2026-11-14)
 
-| R | Decision | Recommendation |
+| R | Decision | Ruling |
 |---|---|---|
-| R-1 | Form of the second Owner | A living second Owner only. Do not build the dormant sealed Owner |
-| R-2 | Appointment friction | Proposer and appointee both re-authenticate. Appointee consent required. With one Owner, a custodian callback confirms the proposal. A 24 h delay after acceptance, with notices, then an explicit `complete`. Cancellable by either party, any other Owner, any custodian or an Administrator (a second Administrator cancellation within 30 days refused) |
-| R-3 | Who may be appointed | Linked to exactly one access-eligible Employee, with an enabled login and a confirmed authenticator. Not a protected Administrator, and no owner-excluded capability. Checked at proposal, acceptance and completion |
-| R-4 | Secondary-approval exemption for a second Owner (F-10) | Each protected Owner is exempt, as the seam already behaves. One Owner approving the other's request is an ordinary two-person approval |
-| R-5 | Removing an Owner | By another Owner, with re-authentication, after a 24 h delay cancellable by the target or a custodian (immediate only with a custodian's compromise attestation). Refused while the target is locked or being recovered. Never leaves no Owner with an enabled, MFA-confirmed login. Self-relinquish under the same rule. No restore path |
-| R-6 | Ceremony when a second Owner exists | Refuse an Owner-target request unless a custodian attests that the other Owner is unavailable or suspected compromised |
-| R-7 | Emergency exception | Owner targets only, no other Owner able to act (both custodians attest), two different custodians, a 2 h delay (never zero), reason codes, at most one executed emergency per 30 days. Provisional and inactive |
-| R-8 | Trusted callback | The number of record is held outside EOS on the custodian register, changed only with two custodians. The custodian dials it themselves. Drilled at activation, yearly and on any custodian change |
-| R-9 | An Owner permanently gone | Not a recovery. A separate procedure decided by the Owner and counsel. The ceremony never appoints an Owner |
-| R-10 | Post-recovery review | Show the recovered person every Owner lifecycle, Administrator staffing and privileged credential act since their last good sign-in (at most 30 days). Read-only |
+| R-1 | Form of the second Owner | **Accepted.** A living second Owner only; no dormant sealed Owner |
+| R-2 | Appointment friction | **Accepted with the Owner's clarification.** Both people re-authenticate, and an active Owner starts every appointment. The rest is as designed: consent, a 24 h delay with notices, explicit `complete`, the cancellation rules. The sole-Owner custodian callback is kept; the Owner did not remove it. The Owner added that the Systems Administrator may act as Owner while the Owner is incapacitated or during the hold: R-11 |
+| R-3 | Who may be appointed | **Accepted.** Linked to exactly one access-eligible Employee, with an enabled login and a confirmed authenticator. Not a protected Administrator, and no owner-excluded capability. Checked at proposal, acceptance and completion |
+| R-4 | Secondary-approval exemption for a second Owner | **Accepted.** Every protected Owner is exempt, recorded under their own name. One Owner approving the other's request is an ordinary two-person approval |
+| R-5 | Removing an Owner | **Accepted.** By another Owner, with re-authentication, after a 24 h delay cancellable by the target or a custodian; immediate only with a custodian's compromise attestation. Refused while the target is locked or being recovered. Never leaves no Owner with an enabled, MFA-confirmed login. Self-relinquish under the same rule |
+| R-6 | Ceremony when a second Owner exists | **Accepted.** Refused for an Owner target unless a custodian attests that the other Owner is unavailable or suspected compromised |
+| R-7 | Emergency exception | **Accepted as recommended.** Owner targets only; no other Owner able to act (both custodians attest); two different custodians; a 2 h delay, never zero; reason codes; at most one executed emergency per 30 days. Provisional and inactive |
+| R-8 | Trusted callback | **Accepted.** The number of record is held outside EOS on the custodian register, changed only with two custodians, and dialled by the custodian. Drilled at activation, yearly and on any custodian change |
+| R-9 | An Owner permanently gone | **Ruled:** the Systems Administrator nominates a successor (never themselves), a custodian confirms with an evidence reference, a 7-day wait with notices, cancelled by any sign-in of the absent Owner (§5) |
+| R-10 | Post-recovery review | **Accepted.** Read-only list of Owner lifecycle, Administrator staffing, acting-Owner and privileged credential acts since the last good sign-in (at most 30 days) |
+| R-11 | Acting Owner (new) | **Owner direction:** the Systems Administrator acts in the Owner's capacity while the Owner is incapacitated or during the hold. The safeguards in §5a (custodian trigger, 7-day limit, exclusions, audit, notices) are the controller's design and are **confirmed by the Owner before build** |
 
 Still open from #2174 and not re-decided here: OD-2, OD-7, OD-8, OD-11 to OD-17. This note is the design OD-3 asked for. The REC register (§5) says OD-7, OD-8, OD-13 and OD-16 stay design-only with no activation. The custodian names (OD-5) and final security-policy acceptance remain the Owner's.
 
 ## 8. Not done here
-- No code, migration, capability, grant, Rules, configuration or production change. `docs/DECISIONS.md` is not edited; a decision record follows the Owner's rulings on R-1 to R-10.
-- Nobody is named as a custodian, second Owner or successor.
+- No code, migration, capability, grant, Rules, configuration or production change. This note is the record of the 2026-11-14 rulings. The `docs/DECISIONS.md` entry, including the narrow exceptions to #223 for R-9 and R-11, is written with the first build PR.
+- Nobody is named as a custodian, second Owner, successor or acting Owner.
 - Whether the sole Owner and the operator are the same person in production is not assumed. Every layer holds either way, because the custodian, not the operator, is the second party.
