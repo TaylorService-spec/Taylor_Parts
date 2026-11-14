@@ -10,8 +10,18 @@ const { applyEosApiSecurityHeaders, EOS_API_SECURITY_HEADERS } = createRequire(i
 
 test("server.ts applies the headers before dispatching to any handler", () => {
   const src = readFileSync(new URL("../src/eosApi/server.ts", import.meta.url), "utf8");
-  assert.ok(src.indexOf("applyEosApiSecurityHeaders(res)") > 0);
-  assert.ok(src.indexOf("applyEosApiSecurityHeaders(res)") < src.indexOf("const domain = eosApiDomainFor"));
+  // The call must be the FIRST statement of the one request listener (a comment or dead branch would not match).
+  assert.match(src, /createServer\(\(req, res\) => runWithRequestScope\(\(\) => \{\s*applyEosApiSecurityHeaders\(res\);/);
+});
+
+test("the header set is exactly the D10 values", () => {
+  assert.deepEqual({ ...EOS_API_SECURITY_HEADERS }, {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+  });
 });
 
 test("headers survive a handler's own writeHead on 200, 404 and OPTIONS", async () => {

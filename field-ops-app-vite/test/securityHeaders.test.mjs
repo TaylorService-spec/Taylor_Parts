@@ -16,6 +16,14 @@ test("vercel.json sets the security headers on every path", () => {
   assert.match(csp, /frame-ancestors 'none'/);
 });
 
+test("CSP keeps its deny-by-default shape and the registered API origin", () => {
+  const directive = (name) => new RegExp(`(?:^|; )${name} ([^;]+)`).exec(csp)?.[1].split(" ") ?? [];
+  assert.deepEqual(directive("default-src"), ["'none'"]);
+  assert.deepEqual(directive("object-src"), ["'none'"]);
+  // The EOS-only build calls exactly its own origin and the registered nonprod API; a new API origin must be added here.
+  assert.deepEqual(directive("connect-src"), ["'self'", "https://eos-api-nonprod.onrender.com"]);
+});
+
 test("CSP allows no eval and no inline script beyond the hashed bootstrap in index.html", () => {
   const scriptSrc = /script-src ([^;]+)/.exec(csp)[1];
   assert.doesNotMatch(csp, /unsafe-eval/);
