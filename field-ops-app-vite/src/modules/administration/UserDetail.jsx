@@ -184,6 +184,8 @@ export default function UserDetail({
   const [editOpen, setEditOpen] = useState(false);
   const [editClosed, setEditClosed] = useState(false);
   const [editNotice, setEditNotice] = useState(null);
+  // A13: the one-time setup code lives here, not in the panel, so a re-read of the record (which unmounts the panel) cannot discard it.
+  const [loginReadyResult, setLoginReadyResult] = useState(null);
   const editing = canEdit && (editOpen || (editRequested && !editClosed));
 
   const record = useWorkforceRead(WORKFORCE_READS.EMPLOYEE_RECORD.operation, employeeId ? { employeeId } : null, { client: workforce });
@@ -399,8 +401,9 @@ export default function UserDetail({
         <RuledSection title="User Access" meta="Sign-in to EOS — separate from the Employee record">
           <UserAccessRelationship userAccess={employee.userAccess} />
           {linked ? <PrincipalLinkDetails read={principalLink} /> : null}
-          {canMakeLoginReady ? (
-            <MakeLoginReady api={policyCall} employeeId={employee.employeeId} workEmail={employee.contact?.workEmail ?? ""} onDone={record.reload} />
+          {canMakeLoginReady || loginReadyResult ? (
+            <MakeLoginReady api={policyCall} employeeId={employee.employeeId} workEmail={employee.contact?.workEmail ?? ""}
+              result={loginReadyResult} onIssued={setLoginReadyResult} onDone={() => { setLoginReadyResult(null); record.reload(); }} />
           ) : null}
           <AccountActions
             linked={linked}

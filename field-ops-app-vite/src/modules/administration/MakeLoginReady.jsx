@@ -13,12 +13,15 @@ import { LOGIN_ACTION_DONE_WORDS, OneTimeCode } from "./EmployeeLoginAccount.jsx
 // The setup code is shown ONCE, here, to the Administrator who ran the act. It is never stored readably, logged or audited, and cannot be
 // shown again; a lost code is replaced from Sign-in (New setup code) on the created account.
 
-export default function MakeLoginReady({ api, employeeId, workEmail = "", onDone }) {
+// result / onIssued (optional): the caller may hold the one-time result, so a page re-read that unmounts this panel cannot lose the code.
+export default function MakeLoginReady({ api, employeeId, workEmail = "", onDone, result = null, onIssued }) {
   const [identifier, setIdentifier] = useState(workEmail ?? "");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [oneTime, setOneTime] = useState(null);
+  const [localOneTime, setLocalOneTime] = useState(null);
+  const oneTime = onIssued ? result : localOneTime;
+  const setOneTime = onIssued ?? setLocalOneTime;
   const hasWorkEmail = typeof workEmail === "string" && workEmail.trim() !== "";
 
   const run = async () => {
