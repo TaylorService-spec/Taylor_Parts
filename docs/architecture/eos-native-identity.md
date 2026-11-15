@@ -163,6 +163,7 @@ These are ten operations in a fourth closed table, separate from the existing re
 |---|---|
 | `readLoginAccount` | `admin.principalAccess.read` (the Users surface read) |
 | `provisionLoginAccount`, `reissueLoginEnrollment`, `retireLoginAccount` | `admin.roleAssignment.write` (binds an identity, as `bindPrincipalEosIdentity` does) |
+| `makePersonLoginReady` (A13 / D5, docs/architecture/eos-login-ready-person.md) | `admin.loginReadyPerson.provision` (a BUSINESS_ACTION registered with NO grant) **and** `admin.roleAssignment.write`; inactive for everyone until the Owner confirms a grant |
 | `issueLoginReset`, `unlockLoginAccount`, `resetLoginMfa` | `admin.credentialReset.initiate` (DECISIONS #56) |
 | `setLoginAccountStatus`, `revokeLoginSessions`, `setLoginMfaRequirement` | `admin.userStatus.write` |
 

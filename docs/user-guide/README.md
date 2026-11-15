@@ -71,6 +71,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Administration: Policy and Access](../training/administration-policy-and-access.md) — the canonical
   Administration guide: Security Roles on the Employee record, Object Security, Effective Access, Direct
   Exceptions, Functional Roles, workflows, the protected Owner and the Owner's Administrator staffing.
+- [Make a person login-ready](./administration/make-a-person-login-ready.md) — giving an Employee their first EOS sign-in and a one-time setup code (needs a specific permission nobody holds until the Owner grants it)
 - [Manage users](./administration/manage-employees.md) — finding people and keeping their Employee details
   correct.
 - [View an Employee's work schedule](./administration/view-an-employee-work-schedule.md) — the Work Schedule tab on an Employee record (read-only; changing hours is not switched on yet)
