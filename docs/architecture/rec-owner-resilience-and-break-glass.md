@@ -4,7 +4,7 @@
 **Issued:** 2026-11-14 (America/Phoenix). **Base:** `origin/main` `ee850d02`. **Lane:** A15 (work queue), REC.
 **Authority:** the Owner's REC rulings of 2026-10-20 (`docs/governance/owner-commercial-spec-rulings-2026-10-20.md`, "REC Account recovery", merged in #2182). Ruling **OD-1: "Design both secondary-Owner resilience and an independent emergency operator recovery ceremony."** Ruling OD-6 adds: "Prepare an emergency-exception design separately." The Owner also directed (D1, 2026-11-13) that recovery is designed before go-live.
 **Builds on:** the REC specification in PR #2174 (`docs/architecture/rec-sign-in-recovery-design.md`, held). That document's threat model (§4), ceremony (§6) and unlinked-Principal analysis (§7) are not repeated. Where it and the 2026-10-20 rulings differ, the rulings win. This note adds what the specification left undesigned.
-**Decision level:** the Owner ruled R-1 to R-10 on 2026-11-14 (§7). Later the same day the Owner set the simpler rule in R-9 ("if there is no owner the system administrator can assign the owner"), and the acting-Owner idea (R-11) is parked. This is a security and authorization-model change (`docs/DelegationCharter.md` §8.3). Nothing is activated until the Owner's final security-policy acceptance (rulings §7 item 1). The R-9 safeguards for an Owner who is still on record were accepted by the Owner.
+**Decision level:** the Owner ruled R-1 to R-10 and R-12 on 2026-11-14 (§7). Later the same day the Owner set the simpler rule in R-9 ("if there is no owner the system administrator can assign the owner"), and the acting-Owner idea (R-11) is parked. This is a security and authorization-model change (`docs/DelegationCharter.md` §8.3). Nothing is activated until the Owner's final security-policy acceptance (rulings §7 item 1). The R-9 safeguards for an Owner who is still on record were accepted by the Owner.
 
 ## 0. At a glance
 
@@ -107,7 +107,7 @@ The mechanics are #2174 §6 (parties, states, steps, operator properties I-1 to 
 |---|---|
 | OD-1 both layers | The ceremony is the floor, whether or not a second Owner exists. When one does, see R-6 |
 | OD-4 separation | A custodian authorizes and the operator executes. The recoverer never authorizes their own recovery, even as operator |
-| OD-5 no automatic custodians | The custodian register ships **empty**. The ceremony refuses every request until the Owner names custodians, each registered by the operator with their public key |
+| OD-5 no automatic custodians | The custodian register ships **empty**. The ceremony refuses every request until custodians are registered by the operator, each with their public key. During the beta the two slots are **Custodian 1** and **Custodian 2**, with no real person named (R-12) |
 | OD-6 provisional 24 h delay, 72 h expiry | Stored as configuration marked `provisional`, read by the commands. The ceremony is **inactive** (every command refuses with `RECOVERY_NOT_ACTIVATED`) until the Owner's final security-policy acceptance |
 | OD-9 two channels + attestation | One live channel and one **trusted callback** to the number of record, attested by the custodian. The callback procedure is documented and drilled (§3.1) |
 | OD-10 revocation only on execution | Every session, refresh token, open ticket, authenticator and recovery code is revoked **only** when an emergency recovery executes successfully. A request, approval, cancellation or expiry revokes nothing. Routine resets are unchanged (#56 D-ROUTINE-REVOKE) |
@@ -181,7 +181,7 @@ On 2026-11-14 the Owner first said that "A system owner can act in the capacity 
 3a. Assigning an Owner when there is none (§5). It reuses the custodian register, notices and fresh re-authentication.
 4. Offline recoverer and custodian helpers (#2174 §9).
 5. Sandbox drill with synthetic data: everything in #2174 §9, plus the §2.6 tests, the R-6 refusal, a two-custodian emergency, the 30-day limit, the callback drill, the post-recovery review, a Case 2 assignment that an absent-Owner sign-in cancels, a Case 1 assignment refused once an Owner appears, a self-nomination refused, and a Case 2 nomination refused without the custodian confirmation.
-6. **Gates that are not engineering's:** the custodian names (OD-5); in any environment other than nonprod, the EOS grant of `admin.credentialReset.initiate` to `owner`, without which Layer A gives no recovery there (§1); the Owner's final security-policy acceptance, any production identity activation (OD-10), and keeping Firebase break-glass until acceptance (#2174 OD-14).
+6. **Gates that are not engineering's:** the real people behind Custodian 1 and Custodian 2 (OD-5, R-12), before any environment other than nonprod; in any environment other than nonprod, the EOS grant of `admin.credentialReset.initiate` to `owner`, without which Layer A gives no recovery there (§1); the Owner's final security-policy acceptance, any production identity activation (OD-10), and keeping Firebase break-glass until acceptance (#2174 OD-14).
 
 Not in this lane: email (D-5), the production EOS API (D-1), splitting database ownership (#2174 F-8), and A13's "make a person login-ready" operation (PR #2238). A13 is the in-product way to give the future second Owner a linked, enrolled login (§2.2).
 
@@ -200,10 +200,11 @@ Not in this lane: email (D-5), the production EOS API (D-1), splitting database 
 | R-9 | When there is no Owner | **Ruled:** the Systems Administrator assigns the Owner (never themselves). No Owner on record: 24 h wait. An Owner on record but permanently gone: a custodian confirms with an evidence reference, a 7-day wait, cancelled by any sign-in of the absent Owner (§5) |
 | R-10 | Post-recovery review | **Accepted.** Read-only list of Owner lifecycle, Administrator staffing and privileged credential acts since the last good sign-in (at most 30 days) |
 | R-11 | Acting Owner | **Parked.** Superseded the same day by the simpler R-9 rule; not built (§5a) |
+| R-12 | Custodian names during the beta | **Ruled:** "lets not assign custodians since this is a beta in development. maybe just call them custodian 1 and custodian 2". The design and any build refer to **Custodian 1** and **Custodian 2**. In nonprod they may be held only by fictional test personas. Real people are named before any other environment, and the ceremony stays `RECOVERY_NOT_ACTIVATED` until then |
 
-Still open from #2174 and not re-decided here: OD-2, OD-7, OD-8, OD-11 to OD-17. This note is the design OD-3 asked for. The REC register (§5) says OD-7, OD-8, OD-13 and OD-16 stay design-only with no activation. The custodian names (OD-5) and final security-policy acceptance remain the Owner's.
+Still open from #2174 and not re-decided here: OD-2, OD-7, OD-8, OD-11 to OD-17. This note is the design OD-3 asked for. The REC register (§5) says OD-7, OD-8, OD-13 and OD-16 stay design-only with no activation. Naming the real custodians (OD-5, deferred by R-12 until the system leaves the beta) and final security-policy acceptance remain the Owner's.
 
 ## 8. Not done here
 - No code, migration, capability, grant, Rules, configuration or production change. This note is the record of the 2026-11-14 rulings. The `docs/DECISIONS.md` entry, including the narrow exception to #223 for R-9, is written with the first build PR.
-- Nobody is named as a custodian, second Owner or successor.
+- Nobody is named as a custodian, second Owner or successor. The custodians are Custodian 1 and Custodian 2 (R-12).
 - Whether the sole Owner and the operator are the same person in production is not assumed. Every layer holds either way, because the custodian, not the operator, is the second party.
