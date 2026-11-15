@@ -12,8 +12,9 @@
 //   * migration 027 is in the applied set, after 026, and extends 026 rather than restating it.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
+import { join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -298,7 +299,7 @@ const reachesCatalogWriter = (source) => CATALOG_WRITER_MODULES.test(stripCommen
 test("the PostgreSQL catalog writers are reached only inside catalogMaster (i.e. through the Render Catalog transport), even ACTIVE", () => {
   assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "ACTIVE");
   const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : /\.(ts|js|mjs)$/.test(f) ? [join(dir, f)] : []));
-  const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && reachesCatalogWriter(readFileSync(f, "utf8")));
+  const importers = walk("src").filter((f) => !f.split(sep).join("/").startsWith(CATALOG_DIR) && reachesCatalogWriter(readFileSync(f, "utf8")));
   assert.deepEqual(importers, [], "activating PostgreSQL catalog writers is step 7 and must change CATALOG_WRITER_AUTHORITY in the same change");
 });
 

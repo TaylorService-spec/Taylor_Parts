@@ -8,7 +8,8 @@
 //     owners resolved against the target tenant, Commercial Account references, unclassified fields, determinism.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join, resolve, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";

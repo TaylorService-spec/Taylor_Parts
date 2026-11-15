@@ -12,7 +12,7 @@
 // This file resets nothing and touches no database.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join } from "node:path";
 
 import {
