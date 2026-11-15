@@ -54,7 +54,8 @@ const run = async (command, caps) => {
 
 test("every command-backed row is exercised, and the rows with no command are the catalog (table-derived) and the self reads", () => {
   const catalog = new Set(CATALOG_READ_OPERATIONS);
-  const unexercised = Object.keys(OPERATION_ACCESS).filter((op) => !(op in COMMANDS) && !catalog.has(op) && OPERATION_ACCESS[op].allOf.length > 0);
+  // makePersonLoginReady is a service operation, proven in loginReadyPersonUnit.test.mjs.
+  const unexercised = Object.keys(OPERATION_ACCESS).filter((op) => !(op in COMMANDS) && !catalog.has(op) && op !== "makePersonLoginReady" && OPERATION_ACCESS[op].allOf.length > 0);
   assert.deepEqual(unexercised, [], "a row that requires a capability must be proven against its command");
 });
 

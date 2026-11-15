@@ -23,6 +23,8 @@ import { SUPPLIER_TERMS_READ_CAPABILITY } from "./partSupplierTerms.js";
 import { LEGACY_NOTES_READ_CAPABILITY } from "./legacyInventoryActionNotes.js";
 import { WORK_ORDER_RECORD_READ } from "./workOrderRecordRead.js";
 import { EXPERIENCE_SURFACE_KEYS } from "./experienceAuthority.js";
+import { LOGIN_READY_PERSON_CAPABILITY } from "../eosAuth/eosLoginService.js";
+import { SECURITY_ADMINISTRATION_CAPABILITY } from "../adminPolicy/administrationAuthority.js";
 
 export interface OperationAccess {
   /** EVERY one of these capabilities. Empty = any signed-in principal (a self read, or a read the command guards section by section). */
@@ -82,6 +84,11 @@ export const OPERATION_ACCESS: Readonly<Record<string, OperationAccess>> = Objec
   // Retyped on purpose: the Workforce read layer may be imported only by its transport. The parity test proves this key against the real listEmployees.
   listEmployees: holds("employee.record.read"),
   listWorkOrders: holds(WORK_ORDER_RECORD_READ),
+
+  // ── Administration ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  // A13 / D5: DOUBLE-GATED -- the BUSINESS_ACTION (granted to nobody until the Owner confirms) AND admin.roleAssignment.write. EosLoginService.makePersonLoginReady
+  // applies both before any I/O; proven in test/loginReadyPersonUnit.test.mjs (the service is not a (deps, actor, input) command).
+  makePersonLoginReady: holds(LOGIN_READY_PERSON_CAPABILITY, SECURITY_ADMINISTRATION_CAPABILITY.assignRole),
 
   // ── Self reads: any signed-in principal; each guards its own sections or answers only for the caller ────────────────────────────────────
   resolveMyCapabilities: SELF,

@@ -19,6 +19,7 @@ const STATUS_WORDS = Object.freeze({
 // What the administrator is told once the server has applied an action (the re-read then shows the new state).
 export const LOGIN_ACTION_DONE_WORDS = Object.freeze({
   provisionLoginAccount: "Sign-in created.",
+  makePersonLoginReady: "Sign-in created. Assign Roles separately.",
   reissueLoginEnrollment: "New setup code issued.",
   issueLoginReset: "Password reset code issued.",
   unlockLoginAccount: "Sign-in unlocked.",
@@ -29,7 +30,7 @@ export const LOGIN_ACTION_DONE_WORDS = Object.freeze({
   retireLoginAccount: "Sign-in removed.",
 });
 
-function OneTimeCode({ label, code, expiresAt, onDone }) {
+export function OneTimeCode({ label, code, expiresAt, onDone }) {
   return (
     <div className="fo-panel" role="status" style={{ marginTop: 8 }}>
       <p><strong>{label}</strong> — give this to the person directly (in person or by phone). It is shown once and expires {new Date(expiresAt).toLocaleString()}.</p>

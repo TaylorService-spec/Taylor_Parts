@@ -1226,6 +1226,7 @@ async function dispatch(
     // Login-account administration is served above, by the composed login service, before this dispatcher.
     case "readLoginAccount":
     case "provisionLoginAccount":
+    case "makePersonLoginReady":
     case "reissueLoginEnrollment":
     case "issueLoginReset":
     case "setLoginAccountStatus":
@@ -1679,7 +1680,8 @@ function classify(err: unknown): AdminApiFailureCode {
   if (err instanceof LoginRefusal) {
     if (err.code === "FORBIDDEN" || err.code === "SELF_ADMINISTRATION" || err.code === "PROTECTED_TARGET") return "FORBIDDEN";
     if (err.code === "NOT_FOUND") return "NOT_FOUND";
-    if (err.code === "CONFLICT") return "CONFLICT";
+    if (err.code === "CONFLICT" || err.code === "EMPLOYEE_NOT_ELIGIBLE" || err.code === "EMPLOYEE_SEPARATED"
+      || err.code === "ALREADY_LINKED" || err.code === "LOGIN_RETIRED") return "CONFLICT";
     return "INVALID_INPUT";
   }
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;

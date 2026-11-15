@@ -1197,6 +1197,7 @@
       "admin.employeeOperationalScope.write",
       "admin.employeeProfile.write",
       "admin.employeeWorkEligibility.write",
+      "admin.loginReadyPerson.provision",
       "admin.principalAccess.read",
       "admin.roleAssignment.write",
       "admin.securityPolicy.read",

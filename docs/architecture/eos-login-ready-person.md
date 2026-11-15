@@ -1,7 +1,7 @@
 # Make a person login-ready — design note (Owner decision D5)
 
-Status: DESIGN, DECIDED 2026-11-14 (section 9). Written under lane A13, 2026-11-14, at base `8e7c798a`. No code, no capability, no grant, no migration and no
-deploy comes with this note. Tier: protected (identity and authorization model); building it needs its own authorization.
+Status: BUILT (inactive until granted) — lane A13, 2026-11-15. Built exactly as decided in section 9, with one deviation recorded in DECISIONS (#A13-LOGIN-READY-BUILD): the key also had to be added to `PROTECTED_ADMINISTRATOR_EXCLUSIONS`, because `rolesPermissions` is a system-administration Object whose every action protected standing implies. The capability is registered by migration `1764720000000_login-ready-person-provision` and granted to NOBODY; no grant, no deploy. Design history: DESIGN, DECIDED 2026-11-14 (section 9), written at base `8e7c798a`. The original design note carried no code, capability, grant, migration or
+deploy. Tier: protected (identity and authorization model); building it needs its own authorization.
 
 Owner ruling D5 (2026-11-13), verbatim: "Design and build a governed, audited, Administrator-only operation that makes a person
 login-ready (Principal, membership, login account). Hand-over is by setup code until D6 (email provider) is decided. Exact

@@ -26,6 +26,7 @@ import { actorCapabilities, requireSecurityAdministrationCapability } from "../a
 import { ADMIN_ROLE_KEY, PROTECTED_OWNER_ROLE_KEY } from "../adminPolicy/administrationAuthority";
 import { ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES } from "../adminPolicy/employmentAccessEligibility";
 import type { AdminActor } from "../adminPolicy/policyCommands";
+import { EmployeePrincipalLinkConflict, establishLink, readActiveLinkForEmployee } from "../employeeIdentity/employeePrincipalLinkRepository";
 import { newTokenId, signEosAccessToken, EOS_TOKEN_MAX_LIFETIME_SECONDS, type EosSigner } from "./eosAccessToken";
 import {
   burnPasswordWork, decryptFactorSecret, encryptFactorSecret, factorSubkey, hashPassword, isOpaqueTokenOf, matchTotpStep,
@@ -41,6 +42,11 @@ const SCHEMA = "eos_policy";
 
 /** Every human EOS subject. Never `nonprod-persona.` -- the two issuers can never mint for each other's subjects. */
 export const HUMAN_SUBJECT_PREFIX = "user.";
+
+/** A13 / D5: the capability makePersonLoginReady needs IN ADDITION to admin.roleAssignment.write. A BUSINESS_ACTION registered with NO grant. */
+export const LOGIN_READY_PERSON_CAPABILITY = "admin.loginReadyPerson.provision";
+/** The primary alias provider of a Principal made login-ready: unique, never authenticates (no verifier recognizes it). */
+export const PROVISIONED_IDENTITY_PROVIDER = "eos-provisioned";
 /** The Employees operator enrollment may reach (enrollEmployeeLogin): the scaled sample workforce and the synthetic workforce, nothing else. */
 export const ENROLLABLE_EMPLOYEE_ID_PREFIXES: readonly string[] = Object.freeze(["np-taylor-", "synthetic-np-emp-"]);
 /** ON_LEAVE is enrollable (Owner, 2026-10-18) but cannot sign in until ACTIVE: DQ-007 admits ACTIVE and CONTRACTOR only. */
@@ -122,7 +128,11 @@ export type LoginRefusalCode =
   | "FORBIDDEN"
   | "SELF_ADMINISTRATION"
   | "PROTECTED_TARGET"
-  | "REASON_REQUIRED";
+  | "REASON_REQUIRED"
+  | "EMPLOYEE_NOT_ELIGIBLE"
+  | "EMPLOYEE_SEPARATED"
+  | "ALREADY_LINKED"
+  | "LOGIN_RETIRED";
 
 const STATUS_BY_REFUSAL: Readonly<Record<LoginRefusalCode, number>> = Object.freeze({
   LOGIN_REFUSED: 401, MFA_CHALLENGE_INVALID: 401, MFA_CODE_REFUSED: 401, REFRESH_REFUSED: 401, TICKET_INVALID: 410,
@@ -130,6 +140,7 @@ const STATUS_BY_REFUSAL: Readonly<Record<LoginRefusalCode, number>> = Object.fre
   MFA_NOT_ENROLLED: 409, MFA_REQUIRED_BY_POLICY: 409, PASSWORD_REFUSED: 400, CURRENT_PASSWORD_REFUSED: 401,
   PASSWORD_POLICY: 400, INVALID_INPUT: 400, NOT_FOUND: 404, CONFLICT: 409, FORBIDDEN: 403, SELF_ADMINISTRATION: 403,
   PROTECTED_TARGET: 403, REASON_REQUIRED: 400,
+  EMPLOYEE_NOT_ELIGIBLE: 409, EMPLOYEE_SEPARATED: 409, ALREADY_LINKED: 409, LOGIN_RETIRED: 409,
 });
 
 /** One refusal. `detail` is a code or a fixed sentence -- never an identifier, a password, a token or a hash. */
@@ -1589,37 +1600,138 @@ export class EosLoginService {
     }
     if (await this.accountByIdentifier(this.deps.pool, identifier)) throw new LoginRefusal("CONFLICT", "that login identifier is in use");
 
-    return this.tx(async (c) => {
-      const policyTx = makeTransaction(c, { tenantId: actor.tenantId, uid: actor.uid });
-      const subject = newHumanSubject();
-      const binding = await policyTx.createPrincipalIdentityBinding({
-        principalId, identityProvider: EOS_IDENTITY_PROVIDER, externalSubject: subject, createdBy: actor.uid,
-        reason: `login account: ${reason}`,
-      });
-      await policyTx.bumpAccessVersion(principalId);
-      const accountId = randomUUID();
-      const now = this.now();
-      try {
-        await c.query(
-          `INSERT INTO ${SCHEMA}.login_accounts (id, tenant_id, principal_id, binding_id, login_identifier, status, mfa_required, created_by, created_at, updated_at, reason)
-           VALUES ($1,$2,$3,$4,$5,'pending_enrollment',$6,$7,$8,$8,$9)`,
-          [accountId, actor.tenantId, principalId, binding.id, identifier, mfaRequired, actor.uid, now, reason]);
-      } catch (err) {
-        if ((err as { code?: string }).code === "23505") throw new LoginRefusal("CONFLICT", "that login identifier or principal already has a login account");
-        throw err;
-      }
-      const ticket = await this.issueTicket(c, accountId, "enrollment", actor.uid, reason);
-      await policyTx.appendAudit({
-        action: "provisionLoginAccount", actorUid: actor.uid, targetKind: "loginAccount", targetId: accountId, before: null,
-        after: { principalId, loginIdentifier: identifier, bindingId: binding.id, subject, mfaRequired, enrollmentTicketId: ticket.ticketId, ticketExpiresAt: ticket.expiresAt },
-        occurredAt: now.toISOString(), reason,
-      } as never);
-      return Object.freeze({
-        accountId, principalId, loginIdentifier: identifier, status: "pending_enrollment", subject, mfaRequired,
-        // SHOWN ONCE. Not stored, not logged, not in the audit event. Hand it to the account holder out of band.
-        enrollmentTicket: ticket.ticket, enrollmentTicketExpiresAt: ticket.expiresAt,
-      });
+    return this.tx((c) => this.provisioningTail(c, actor, {
+      principalId, identifier, reason, mfaRequired, auditAction: "provisionLoginAccount", auditLead: { principalId },
+    }));
+  }
+
+  /**
+   * THE ONE PROVISIONING TAIL (A13): the EOS identity binding, the access-version bump, the pending login account, the one-time
+   * enrollment ticket and the audit row, in the caller's transaction. provisionLoginAccount (an existing Principal) and
+   * makePersonLoginReady (a Principal made in the same act) both end here, so there is a single provisioning path.
+   * `auditLead` is the operation's own facts, placed first in the audit `after`; no secret is ever put in it.
+   */
+  private async provisioningTail(c: PoolClient, actor: AdminActor, p: {
+    principalId: string; identifier: string; reason: string; mfaRequired: boolean; auditAction: string;
+    auditLead: Record<string, unknown>;
+  }) {
+    const { principalId, identifier, reason, mfaRequired } = p;
+    const policyTx = makeTransaction(c, { tenantId: actor.tenantId, uid: actor.uid });
+    const subject = newHumanSubject();
+    const binding = await policyTx.createPrincipalIdentityBinding({
+      principalId, identityProvider: EOS_IDENTITY_PROVIDER, externalSubject: subject, createdBy: actor.uid,
+      reason: `login account: ${reason}`,
     });
+    await policyTx.bumpAccessVersion(principalId);
+    const accountId = randomUUID();
+    const now = this.now();
+    try {
+      await c.query(
+        `INSERT INTO ${SCHEMA}.login_accounts (id, tenant_id, principal_id, binding_id, login_identifier, status, mfa_required, created_by, created_at, updated_at, reason)
+         VALUES ($1,$2,$3,$4,$5,'pending_enrollment',$6,$7,$8,$8,$9)`,
+        [accountId, actor.tenantId, principalId, binding.id, identifier, mfaRequired, actor.uid, now, reason]);
+    } catch (err) {
+      if ((err as { code?: string }).code === "23505") throw new LoginRefusal("CONFLICT", "that login identifier or principal already has a login account");
+      throw err;
+    }
+    const ticket = await this.issueTicket(c, accountId, "enrollment", actor.uid, reason);
+    await policyTx.appendAudit({
+      action: p.auditAction, actorUid: actor.uid, targetKind: "loginAccount", targetId: accountId, before: null,
+      after: { ...p.auditLead, loginIdentifier: identifier, bindingId: binding.id, subject, mfaRequired, enrollmentTicketId: ticket.ticketId, ticketExpiresAt: ticket.expiresAt },
+      occurredAt: now.toISOString(), reason,
+    } as never);
+    return Object.freeze({
+      accountId, principalId, loginIdentifier: identifier, status: "pending_enrollment", subject, mfaRequired,
+      // SHOWN ONCE. Not stored, not logged, not in the audit event. Hand it to the account holder out of band.
+      enrollmentTicket: ticket.ticket, enrollmentTicketExpiresAt: ticket.expiresAt,
+    });
+  }
+
+  /**
+   * MAKE A PERSON LOGIN-READY (A13, Owner decision D5; docs/architecture/eos-login-ready-person.md). For an EXISTING Employee with no
+   * active Principal link: in ONE transaction create their Principal (alias `eos-provisioned` / `principal.<uuid>`, never
+   * authenticating), an active membership in the ACTOR's tenant, an OPERATOR_ASSERTED Employee link, and then the shared provisioning
+   * tail (binding, pending login account, one-time setup code). Assigns no Role, scope or capability.
+   *
+   * DOUBLE-GATED: `admin.loginReadyPerson.provision` (a BUSINESS_ACTION granted to nobody until the Owner confirms) AND
+   * `admin.roleAssignment.write`. Until the key is granted every call is FORBIDDEN, the protected Administrator and Owner included.
+   * Not idempotent: a repeat refuses ALREADY_LINKED; a lost setup code is recovered with reissueLoginEnrollment.
+   */
+  async makePersonLoginReady(actor: AdminActor, input: Record<string, unknown>) {
+    // Refused before any I/O: D7 (MFA is required for everyone) and the authority-bearing principalId (this operation mints the Principal).
+    if (input.mfaRequired === false) throw new LoginRefusal("INVALID_INPUT", "two-step verification is required for every sign-in account");
+    if (Object.prototype.hasOwnProperty.call(input, "principalId")) throw new LoginRefusal("INVALID_INPUT", "principalId is not accepted: this operation creates the Principal");
+    const held = await actorCapabilities(this.deps.repo, actor);
+    if (!held.has(LOGIN_READY_PERSON_CAPABILITY)) throw new LoginRefusal("FORBIDDEN", `not authorized: "${LOGIN_READY_PERSON_CAPABILITY}" is required`);
+    await requireSecurityAdministrationCapability(this.deps.repo, actor, "assignRole");
+    const employeeId = typeof input.employeeId === "string" ? input.employeeId.trim() : "";
+    if (employeeId === "" || employeeId.length > 128) throw new LoginRefusal("INVALID_INPUT", "employeeId is required");
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (reason.length === 0) throw new LoginRefusal("REASON_REQUIRED", "a stated reason is required");
+    if (reason.length > 500) throw new LoginRefusal("INVALID_INPUT", "reason is too long");
+    const typed = normalizeLoginIdentifier(input.loginIdentifier);
+    if (!typed) throw new LoginRefusal("INVALID_INPUT", "loginIdentifier must be 3-128 of a-z 0-9 . _ @ + -");
+
+    try {
+      return await this.tx(async (c) => {
+        // Fixed lock order: (a) the Employee row, (b) the per-Employee advisory lock. Identifier races are settled by the unique indexes (23505 -> CONFLICT).
+        const { rows } = await c.query(
+          `SELECT employment_status, separation_date, work_email, operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+          [actor.tenantId, employeeId]);
+        if (rows.length === 0) throw new LoginRefusal("NOT_FOUND", "the Employee does not exist in this tenant");
+        await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`eos-login-ready:${actor.tenantId}:${employeeId}`]);
+        const emp = rows[0] as { employment_status: string | null; separation_date: unknown; work_email: string | null; operating_company_id: string };
+        if (!emp.employment_status || !ACCESS_ELIGIBLE_EMPLOYMENT_STATUSES.includes(emp.employment_status)) {
+          throw new LoginRefusal("EMPLOYEE_NOT_ELIGIBLE", "only an ACTIVE or CONTRACTOR Employee can be made login-ready");
+        }
+        if (emp.separation_date != null) throw new LoginRefusal("EMPLOYEE_SEPARATED", "that Employee has a separation date");
+        if (await readActiveLinkForEmployee(c, actor.tenantId, employeeId)) {
+          throw new LoginRefusal("ALREADY_LINKED", "that Employee already has a linked Principal; use Create sign-in on their record");
+        }
+        // The login name IS the work email when the Employee has one; otherwise the Administrator's (normalized) value stands.
+        const hasWorkEmail = typeof emp.work_email === "string" && emp.work_email.trim() !== "";
+        const workEmail = hasWorkEmail ? normalizeLoginIdentifier(emp.work_email) : null;
+        if (hasWorkEmail && !workEmail) throw new LoginRefusal("INVALID_INPUT", "the Employee's work email cannot be used as a login name");
+        if (workEmail && workEmail !== typed) throw new LoginRefusal("INVALID_INPUT", "the login name must be the Employee's own work email");
+        const identifier = workEmail ?? typed;
+        const { rows: retired } = await c.query(
+          `SELECT 1 FROM ${SCHEMA}.login_accounts WHERE status = 'retired' AND login_identifier = $1 LIMIT 1`, [identifier]);
+        if (retired.length > 0) throw new LoginRefusal("LOGIN_RETIRED", "a login with that name was retired and is not re-created");
+        if (await this.accountByIdentifier(c, identifier)) throw new LoginRefusal("CONFLICT", "that login identifier is in use");
+
+        const policyTx = makeTransaction(c, { tenantId: actor.tenantId, uid: actor.uid });
+        const principal = await policyTx.createPrincipal({
+          identityProvider: PROVISIONED_IDENTITY_PROVIDER, externalSubject: `principal.${randomUUID()}`, displayName: null,
+        });
+        await policyTx.createTenantMembership(principal.id);
+        await policyTx.appendAudit({
+          action: "tenant.addPrincipal", actorUid: actor.uid, targetKind: "principal", targetId: principal.id, before: null,
+          after: { status: "active", identityProvider: PROVISIONED_IDENTITY_PROVIDER }, occurredAt: this.now().toISOString(), reason,
+        } as never);
+        let link;
+        try {
+          link = await establishLink(c, {
+            tenantId: actor.tenantId, principalId: principal.id, employeeId, operatingCompanyId: emp.operating_company_id,
+            linkSource: "OPERATOR_ASSERTED", assertedBy: actor.uid, assertionReason: reason,
+          });
+        } catch (err) {
+          if (err instanceof EmployeePrincipalLinkConflict) throw new LoginRefusal("CONFLICT", err.code);
+          throw err;
+        }
+        const out = await this.provisioningTail(c, actor, {
+          principalId: principal.id, identifier, reason, mfaRequired: true, auditAction: "makePersonLoginReady",
+          auditLead: { employeeId, principalId: principal.id, membershipCreated: true, linkId: link.id, linkSource: "OPERATOR_ASSERTED" },
+        });
+        await this.event(c, { event: "makePersonLoginReady", outcome: "success", accountId: out.accountId, principalId: principal.id, tenantId: actor.tenantId });
+        return Object.freeze({ ...out, employeeId });
+      });
+    } catch (err) {
+      // A named refusal is also recorded as a security event (outside the rolled-back transaction; best effort, never the cause of a failure).
+      if (err instanceof LoginRefusal) {
+        try { await this.event(this.deps.pool, { event: "makePersonLoginReady", outcome: "refused", reason: err.code, tenantId: actor.tenantId }); } catch { /* the refusal stands */ }
+      }
+      throw err;
+    }
   }
 
   /** The input checks the two operator enrollments share, in the order both always ran them. Throws; returns the clean values. */
@@ -2073,6 +2185,8 @@ export function canonicalEventLine(r: Record<string, unknown>): string {
 export const LOGIN_ADMINISTRATION_OPERATIONS = Object.freeze({
   readLoginAccount: { mutation: false, capability: "admin.principalAccess.read" },
   provisionLoginAccount: { mutation: true, capability: "admin.roleAssignment.write" },
+  // A13 / D5: double-gated -- the capability named here AND admin.roleAssignment.write (checked in makePersonLoginReady).
+  makePersonLoginReady: { mutation: true, capability: LOGIN_READY_PERSON_CAPABILITY },
   reissueLoginEnrollment: { mutation: true, capability: "admin.roleAssignment.write" },
   retireLoginAccount: { mutation: true, capability: "admin.roleAssignment.write" },
   issueLoginReset: { mutation: true, capability: "admin.credentialReset.initiate" },
@@ -2089,7 +2203,7 @@ export const LOGIN_ADMINISTRATION_OPERATIONS = Object.freeze({
   // administrator session on admin.securityPolicy.read -- never on the unauthenticated /health. Counts and mode only.
   readAuthVerifierDiagnostics: { mutation: false, capability: "admin.securityPolicy.read" },
 } as const);
-export type LoginAdministrationCapability = "admin.roleAssignment.write" | "admin.credentialReset.initiate" | "admin.userStatus.write";
+export type LoginAdministrationCapability = "admin.roleAssignment.write" | "admin.credentialReset.initiate" | "admin.userStatus.write" | typeof LOGIN_READY_PERSON_CAPABILITY;
 export type LoginAdministrationOperation = keyof typeof LOGIN_ADMINISTRATION_OPERATIONS;
 export const isLoginAdministrationOperation = (name: unknown): name is LoginAdministrationOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(LOGIN_ADMINISTRATION_OPERATIONS, name);
@@ -2108,6 +2222,7 @@ export function createLoginAdministration(service: EosLoginService, governance: 
         return governance.readAuthVerifierDiagnostics(actor, diagnostics);
       case "readLoginAccount": return service.readLoginAccount(actor, input);
       case "provisionLoginAccount": return service.provisionLoginAccount(actor, input);
+      case "makePersonLoginReady": return service.makePersonLoginReady(actor, input);
       case "reissueLoginEnrollment": return service.reissueLoginEnrollment(actor, input);
       case "issueLoginReset": return service.issueLoginReset(actor, input);
       case "setLoginAccountStatus": return service.setLoginAccountStatus(actor, input);

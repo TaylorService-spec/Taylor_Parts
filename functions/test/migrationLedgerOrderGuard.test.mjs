@@ -229,8 +229,9 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // 116 -> 117: 1764717000000 -- S1c holders (Owner ruling 2026-10-20): salesOrder.fulfill granted to generalManager, warehouseManager, fieldManager and partsManager (4 grants); no capability, no schema. APPENDED, an EXPLAINED pending migration.
 // 116 -> 117: 1764718000000 -- SAE Rule 2 delegated self-approval exemption (2026-10-20): seven capabilities (no grants), the SQL proof functions and the delegated branch of the people triggers. APPENDED, an EXPLAINED pending migration.
 // 118 -> 119: 1764719000000 -- CLC company-less record correction (2026-10-21): commercial.recordCompany.assign (one BUSINESS_ACTION capability, NO grants); no schema. APPENDED, an EXPLAINED pending migration.
-const RUNNABLE_MIGRATION_COUNT = 119;
-const TRACKED_MIGRATION_COUNT = 120; // the 119 runnable + the one deferred file
+// 119 -> 120: 1764720000000 -- A13 / D5 make-a-person-login-ready (2026-11-14): admin.loginReadyPerson.provision (one BUSINESS_ACTION capability, NO grants); no schema. APPENDED, an EXPLAINED pending migration.
+const RUNNABLE_MIGRATION_COUNT = 120;
+const TRACKED_MIGRATION_COUNT = 121; // the 120 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
@@ -301,6 +302,7 @@ const PENDING_AT_MEASUREMENT = Object.freeze([
   "1764717000000_sales-order-allocation-owner-holders",
   "1764718000000_delegated-self-approval-exemption",
   "1764719000000_commercial-record-company-assign",
+  "1764720000000_login-ready-person-provision",
 ]);
 
 const repoMigrations = () =>

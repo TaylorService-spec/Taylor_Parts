@@ -878,6 +878,8 @@ functions/test/ownerExclusionLockPostgres.test.mjs
 functions/test/eosNativeLoginPostgres.test.mjs
 functions/test/eosNativeLoginTenancyPostgres.test.mjs
 functions/test/eosNativeLoginUnit.test.mjs
+functions/test/loginReadyPersonPostgres.test.mjs
+functions/test/loginReadyPersonUnit.test.mjs
 # SUBJECT at the M3 re-review: EOS native login source (#2067). Its suites run only in this lane's npm scripts and no
 # other workflow watches the directory, so a source-only change must trigger the gate.
 functions/src/eosAuth/**

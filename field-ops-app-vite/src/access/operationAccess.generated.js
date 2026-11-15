@@ -20,6 +20,7 @@ export const OPERATION_ACCESS = Object.freeze({
   listWorkOrders: Object.freeze({"allOf":["workOrder.record.read"]}),
   listWorkflowWork: Object.freeze({"allOf":[]}),
   lookupScannedPart: Object.freeze({"allOf":["inventory.catalog.read"]}),
+  makePersonLoginReady: Object.freeze({"allOf":["admin.loginReadyPerson.provision","admin.roleAssignment.write"]}),
   probePartAlias: Object.freeze({"allOf":["inventory.catalog.manage","inventory.catalog.read"]}),
   readInventoryMovements: Object.freeze({"allOf":["inventory.transaction.read"]}),
   readInventoryOnHand: Object.freeze({"allOf":["inventory.transaction.read"]}),

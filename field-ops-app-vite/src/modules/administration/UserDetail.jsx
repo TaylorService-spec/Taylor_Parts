@@ -25,6 +25,9 @@ import {
 } from "../../domain/employeeProfile.js";
 import UserAccessActions from "./UserAccessActions.jsx";
 import EmployeeLoginAccount from "./EmployeeLoginAccount.jsx";
+import MakeLoginReady from "./MakeLoginReady.jsx";
+import { useOperationGate } from "../../access/operationGate.js";
+import { useSessionAccess } from "../../access/sessionAccess.js";
 import { eosHumanLoginEnabled } from "../../auth/eosLoginClient.js";
 // FIREBASE EXIT B2: in an EOS-only sign-in build the Firebase account callables (setUserStatus, readPrincipalAccessState,
 // password reset, listRecordChangeHistory) are not reachable -- there is no Firebase identity to call them with. Account status,
@@ -181,6 +184,8 @@ export default function UserDetail({
   const [editOpen, setEditOpen] = useState(false);
   const [editClosed, setEditClosed] = useState(false);
   const [editNotice, setEditNotice] = useState(null);
+  // A13: the one-time setup code lives here, not in the panel, so a re-read of the record (which unmounts the panel) cannot discard it.
+  const [loginReadyResult, setLoginReadyResult] = useState(null);
   const editing = canEdit && (editOpen || (editRequested && !editClosed));
 
   const record = useWorkforceRead(WORKFORCE_READS.EMPLOYEE_RECORD.operation, employeeId ? { employeeId } : null, { client: workforce });
@@ -191,6 +196,12 @@ export default function UserDetail({
   const [activeTab, selectTab] = useUrlTab(EMPLOYEE_TAB_DEFS);
   const employee = record.status === WORKFORCE_READ_STATE.READY ? record.data : null;
   const linked = employee?.userAccess === "LINKED";
+  // MAKE LOGIN-READY (A13): offered only for an UNLINKED Employee, with EOS login on, when the server's own access map says this session may ask
+  // (admin.loginReadyPerson.provision + admin.roleAssignment.write). While the key is ungranted the control is absent for everyone.
+  const decideOperation = useOperationGate();
+  const sessionAccess = useSessionAccess();
+  const canMakeLoginReady = employee?.userAccess === "UNLINKED" && eosHumanLoginEnabled() && sessionAccess.eosSource === true
+    && decideOperation("makePersonLoginReady") === true;
 
   // EMP-RT-02 only when EMP-RT-01 says a link exists. The server decides whether this caller may read it.
   const principalLink = useWorkforceRead(
@@ -390,6 +401,10 @@ export default function UserDetail({
         <RuledSection title="User Access" meta="Sign-in to EOS — separate from the Employee record">
           <UserAccessRelationship userAccess={employee.userAccess} />
           {linked ? <PrincipalLinkDetails read={principalLink} /> : null}
+          {canMakeLoginReady || loginReadyResult ? (
+            <MakeLoginReady api={policyCall} employeeId={employee.employeeId} workEmail={employee.contact?.workEmail ?? ""}
+              result={loginReadyResult} onIssued={setLoginReadyResult} onDone={() => { setLoginReadyResult(null); record.reload(); }} />
+          ) : null}
           <AccountActions
             linked={linked}
             principalLink={principalLink}

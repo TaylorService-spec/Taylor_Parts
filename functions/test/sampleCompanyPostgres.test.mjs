@@ -297,8 +297,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 116 -> 117: 1764717000000 -- S1c holders (Owner ruling 2026-10-20): 4 grants of salesOrder.fulfill; no capability, no schema, no Sample Company data.
 // 116 -> 117: 1764718000000 -- SAE Rule 2 delegated self-approval exemption (2026-10-20): seven capabilities, no grants, no Sample Company data beyond the catalog vocabulary.
 // 118 -> 119: 1764719000000 -- CLC company-less record correction (2026-10-21): one capability, no grants, no Sample Company data beyond the catalog vocabulary.
-const PINNED_LAST_MIGRATION = "1764719000000_commercial-record-company-assign";
-const PINNED_MIGRATION_COUNT = 119;
+// 119 -> 120: 1764720000000 -- A13 make-a-person-login-ready (2026-11-14): one capability, no grants, no Sample Company data beyond the catalog vocabulary.
+const PINNED_LAST_MIGRATION = "1764720000000_login-ready-person-provision";
+const PINNED_MIGRATION_COUNT = 120;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

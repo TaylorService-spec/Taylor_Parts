@@ -619,11 +619,13 @@ describe("Employee business data no longer depends on Firestore", () => {
     });
   }
 
-  it("the record page's data seams are exactly: Workforce, the Principal credential lookup, the PostgreSQL control plane, and the legacy User Access callables", () => {
+  it("the record page's data seams are exactly: Workforce, the Principal credential lookup, the PostgreSQL control plane, the server-decided operation gate, and the legacy User Access callables", () => {
     const src = code(read("src/modules/administration/UserDetail.jsx"));
     const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services)\/[^"']*)["']/g)].map((m) => m[1]).sort();
     expect(seams).toEqual([
       "../../access/administrationUsersClient",
+      "../../access/operationGate.js",
+      "../../access/sessionAccess.js",
       "../../hooks/usePrincipalCredential.js",
       "../../hooks/useWorkforceCapabilities.js",
       "../../hooks/useWorkforceRead.js",
