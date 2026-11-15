@@ -1336,6 +1336,10 @@
     {
       "file": "test/salesOrderAllocationClient.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/securityHeaders.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
