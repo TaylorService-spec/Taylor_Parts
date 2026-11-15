@@ -1,6 +1,6 @@
 # Make a person login-ready — design note (Owner decision D5)
 
-Status: DESIGN ONLY. Written under lane A13, 2026-11-14, at base `8e7c798a`. No code, no capability, no grant, no migration and no
+Status: DESIGN, DECIDED 2026-11-14 (section 9). Written under lane A13, 2026-11-14, at base `8e7c798a`. No code, no capability, no grant, no migration and no
 deploy comes with this note. Tier: protected (identity and authorization model); building it needs its own authorization.
 
 Owner ruling D5 (2026-11-13), verbatim: "Design and build a governed, audited, Administrator-only operation that makes a person
@@ -182,21 +182,22 @@ Postgres suites (the `*Postgres.test.mjs` convention), registered in `functions/
 - Session: first login after enrollment completes through the existing paths with the MFA-required behaviour from #2235.
 - Unit: operation-table pin (count and mutation flag), access-map entry, client panel test (control hidden without the key, code shown once).
 
-## 9. Open decisions for the Owner
+## 9. Decisions (2026-11-14)
 
-1. **Input shape.** Existing Employee only (A), or one combined "create the person" act (B)? Recommend A: Employee first through `createEmployee`, then this.
-2. **Capability name and kind.** `admin.loginReadyPerson.provision` as a `BUSINESS_ACTION` registered with no grants (the #CLC pattern). Recommend yes.
-3. **Holders.** Administrator only, Administrator and Owner, a named person, or a new Role (section 4). Recommend Administrator only, granted separately after build.
-4. **Login name.** Must equal the Employee's `work_email` (recommended, as the operator path requires), or free text the Administrator types when the
-   Employee has no work email.
-5. **Eligible statuses.** ACTIVE and CONTRACTOR (recommended), or also ON_LEAVE (the operator path allows it, but that person cannot sign in yet).
-6. **Primary alias for a new Principal.** Provider `eos-provisioned`, subject `principal.<uuid>`, non-authenticating (recommended; verify no resolver
-   special-cases providers), versus reusing the `user.<hex>` subject as the primary identity with provider `eos`.
-7. **Audit shape.** One `makePersonLoginReady` event (recommended), versus also writing a separate `provisionLoginAccount` row for existing audit queries.
-8. **Hand-over.** Setup code shown once on screen and handed over in person or by phone until D6 is decided (as ruled). Confirm the Administrator is the
-   only party who ever sees it.
-9. **First real use.** Whether production use waits for a nonprod exercise with a synthetic Employee and the normal operator-run promotion (recommended:
-   yes; this note authorizes no deploy).
+The Owner asked the controller to decide these nine ("Decide #2238's 9 decisions", 2026-11-14). Each is decided as below. None grants anything: the key
+stays ungranted until the Owner confirms the grant (D5), and nothing is deployed.
+
+| # | Decision | Decided |
+|---|---|---|
+| 1 | Input shape | **A: an existing Employee only.** The Employee is created first through `createEmployee`; the UI chains the two steps on one page |
+| 2 | Capability name and kind | **`admin.loginReadyPerson.provision`, a `BUSINESS_ACTION` registered with no grant** (the #CLC pattern), checked together with `admin.roleAssignment.write` |
+| 3 | Holders | **The Administrator Role only** (shown as "Systems Administrator", #2225), matching D5. This names the intended holder; the grant itself is written only after the Owner confirms it, through the normal Administration grant path |
+| 4 | Login name | **The Employee's `work_email` when the Employee has one** (must match exactly). When the Employee has none, the Administrator types it, and it goes through `normalizeLoginIdentifier` and the uniqueness and retired-login checks like any other. Many field staff have no work email, so requiring one would block them |
+| 5 | Eligible statuses | **ACTIVE and CONTRACTOR only.** ON_LEAVE is refused (`EMPLOYEE_NOT_ELIGIBLE`): that person resolves no context and could not use the login |
+| 6 | Primary alias for a new Principal | **Provider `eos-provisioned`, subject `principal.<uuid>`, never authenticating.** Checked at this head: no verifier recognizes it (the same property `eos-synthetic-nonprod` relies on); the only provider CHECK is `principal_identities_provider_is_eos` on the additional-identity table, not on `principals`; the `EOS_IDENTITY_PROVIDER` branch in `policyCommands.ts` applies only to `eos`. The sign-in identity stays the `eos` `user.<hex>` binding |
+| 7 | Audit shape | **One `makePersonLoginReady` audit row** plus the `tenant.addPrincipal` row and the link's own assertion fields (section 5). No duplicate `provisionLoginAccount` row; audit reads that need it filter on both names |
+| 8 | Hand-over | **The setup code is shown once, to the Administrator who ran the operation, and to no one else** (not stored readably, logged or audited). The Administrator hands it over in person or by phone until D6 (email) is decided |
+| 9 | First real use | **Nonprod first:** exercised with a synthetic Employee in nonprod, then the normal operator-run promotion. This note authorizes no deploy |
 
 ## 10. Out of scope
 
