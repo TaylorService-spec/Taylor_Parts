@@ -115,7 +115,7 @@ const ENV_REPORT = fixture("envReport.mjs", [
   'import { spawnSync } from "node:child_process";',
   "const pick = (env) => ({",
   "  GOOGLE_APPLICATION_CREDENTIALS: env.GOOGLE_APPLICATION_CREDENTIALS ?? null,",
-  "  HOME: env.HOME, CLOUDSDK_CONFIG: env.CLOUDSDK_CONFIG ?? null,",
+  "  HOME: env.HOME, CLOUDSDK_CONFIG: env.CLOUDSDK_CONFIG ?? null, APPDATA: env.APPDATA ?? null,",
   "  METADATA_SERVER_DETECTION: env.METADATA_SERVER_DETECTION ?? null, NODE_OPTIONS: env.NODE_OPTIONS ?? \"\",",
   "});",
   "const wellKnown = join(homedir(), \".config\", \"gcloud\", \"application_default_credentials.json\");",
@@ -253,9 +253,13 @@ test("(b) positive control: a demo- project on a loopback emulator initializes n
 const FAKE_HOME = path.join(WORK, "fake-home");
 mkdirSync(path.join(FAKE_HOME, ".config", "gcloud"), { recursive: true });
 writeFileSync(path.join(FAKE_HOME, ".config", "gcloud", "application_default_credentials.json"), JSON.stringify({ type: "dummy-not-a-credential" }));
+// Windows keeps ADC under %APPDATA%\gcloud and os.homedir() reads USERPROFILE: a dummy there too.
+const FAKE_APPDATA = path.join(FAKE_HOME, "AppData", "Roaming");
+mkdirSync(path.join(FAKE_APPDATA, "gcloud"), { recursive: true });
+writeFileSync(path.join(FAKE_APPDATA, "gcloud", "application_default_credentials.json"), JSON.stringify({ type: "dummy-not-a-credential" }));
 
 test("(c) the guarded process cannot see the well-known ADC file, has no GOOGLE_APPLICATION_CREDENTIALS, no metadata server", () => {
-  const r = run(ENV_REPORT, { env: { HOME: FAKE_HOME } });
+  const r = run(ENV_REPORT, { env: { HOME: FAKE_HOME, USERPROFILE: FAKE_HOME, APPDATA: FAKE_APPDATA } });
   assert.equal(r.status, 0, r.stderr);
   const seen = JSON.parse(r.stdout);
   assert.equal(seen.self.GOOGLE_APPLICATION_CREDENTIALS, null);
@@ -265,6 +269,7 @@ test("(c) the guarded process cannot see the well-known ADC file, has no GOOGLE_
   assert.equal(seen.self.CLOUDSDK_CONFIG, seen.self.HOME);
   assert.equal(seen.cloudsdkEntries, 0, "an EMPTY config directory");
   assert.equal(seen.self.METADATA_SERVER_DETECTION, "none");
+  if (process.platform === "win32") assert.equal(seen.self.APPDATA, seen.self.HOME, "on Windows %APPDATA% (gcloud ADC) follows the neutral directory");
   assert.ok(seen.self.NODE_OPTIONS.includes(OFFLINE_ENTRY.split(path.sep).join("/")), "children are guarded too"); // the guard writes forward slashes (#2245)
 });
 
