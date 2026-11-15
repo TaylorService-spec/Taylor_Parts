@@ -8,12 +8,25 @@ test("validateOpportunityCreateInput: a fully valid minimal draft is ok with no 
   assert.deepEqual(validateOpportunityCreateInput(VALID), { ok: true, errors: {} });
 });
 
-test("validateOpportunityCreateInput: requires accountId, ownerEmployeeId, and a valid channel", () => {
+test("validateOpportunityCreateInput: requires accountId and a valid channel; a blank owner is NOT an error (D-4)", () => {
   const r = validateOpportunityCreateInput({ ...VALID, accountId: "", ownerEmployeeId: "  ", salesChannel: "BOGUS" });
   assert.equal(r.ok, false);
   assert.ok(r.errors.accountId);
-  assert.ok(r.errors.ownerEmployeeId);
   assert.ok(r.errors.salesChannel);
+  assert.ok(!("ownerEmployeeId" in r.errors));
+});
+
+test("validateOpportunityCreateInput: owner may be blank or absent -- the server inherits the account owner or refuses", () => {
+  assert.deepEqual(validateOpportunityCreateInput({ ...VALID, ownerEmployeeId: "" }), { ok: true, errors: {} });
+  assert.deepEqual(validateOpportunityCreateInput({ ...VALID, ownerEmployeeId: "   " }), { ok: true, errors: {} });
+  const { ownerEmployeeId, ...noOwner } = VALID;
+  assert.deepEqual(validateOpportunityCreateInput(noOwner), { ok: true, errors: {} });
+});
+
+test("validateOpportunityCreateInput: an explicit owner override must look like one employee id", () => {
+  assert.ok(validateOpportunityCreateInput({ ...VALID, ownerEmployeeId: "E 1" }).errors.ownerEmployeeId);
+  assert.ok(validateOpportunityCreateInput({ ...VALID, ownerEmployeeId: 42 }).errors.ownerEmployeeId);
+  assert.equal(validateOpportunityCreateInput({ ...VALID, ownerEmployeeId: "  E1  " }).ok, true);
 });
 
 test("validateOpportunityCreateInput: expectedValue must be a non-negative number when provided", () => {
@@ -43,6 +56,13 @@ test("buildOpportunityCreatePayload: trims strings, drops a blank need, null-nor
     expectedValue: null, expectedCloseAt: null,
   });
   assert.ok(!("need" in payload));
+});
+
+test("buildOpportunityCreatePayload: a blank owner is OMITTED, never defaulted to anyone (D-4)", () => {
+  for (const blank of ["", "   ", undefined]) {
+    const payload = buildOpportunityCreatePayload({ ...VALID, ownerEmployeeId: blank });
+    assert.ok(!("ownerEmployeeId" in payload), `owner ${JSON.stringify(blank)} must not be sent`);
+  }
 });
 
 test("buildOpportunityCreatePayload: keeps a non-blank need, trimmed", () => {

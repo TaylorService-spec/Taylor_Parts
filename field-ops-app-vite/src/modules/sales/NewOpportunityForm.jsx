@@ -10,9 +10,10 @@ import { Button } from "../../shared/ui/primitives/index.js";
 const EMPTY_DRAFT = { accountId: "", ownerEmployeeId: "", salesChannel: "", need: "", expectedValue: null, expectedCloseAt: null };
 
 // New Opportunity — governed CREATE flow. Account selection reuses the SAME generic Firestore-collection
-// hook (hooks/useAccountPicker, a BOUNDED read); owner stays a bounded employee-id field
-// (the employee directory is not connected — see opportunityFieldModel.js's "owner" control note, honest
-// about the same not-yet-connected directory rather than a fake picker). Opportunity has NO contactId field
+// hook (hooks/useAccountPicker, a BOUNDED read); owner is an OPTIONAL employee-id override (Owner ruling D-4:
+// blank -> the server inherits the account owner or refuses; never prefilled with the signed-in employee). The
+// employee directory is not connected -- see opportunityFieldModel.js's "owner" control note, honest about the
+// same not-yet-connected directory rather than a fake picker. Opportunity has NO contactId field
 // (functions/src/opportunity/opportunityCommands.ts's CreateOpportunityInput) — deliberately no contact
 // picker here. Solution lines are likewise out of scope for create (added later via the existing Solution
 // section edit once general field editing is live).
@@ -107,7 +108,7 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
         </div>
 
         <div className="fo-sales-editform__field">
-          <label htmlFor="new-opp-owner">Owner (Employee ID)</label>
+          <label htmlFor="new-opp-owner">Owner override (Employee ID, optional)</label>
           <input
             id="new-opp-owner"
             className="fo-input"
@@ -117,7 +118,9 @@ export default function NewOpportunityForm({ onClose, onCreated, readiness, auth
             onChange={(e) => set("ownerEmployeeId", e.target.value)}
           />
           <p id="new-opp-owner-note" className="fo-muted fo-sales-editform__note">
-            Employee directory not connected yet — enter the owning employee's id.
+            Leave blank to have the customer account's owner own this opportunity. Creating it does not make you
+            the owner. If the customer account has no owner, creation is refused. Fill this in only to name a
+            different owner by employee ID (the employee directory is not connected yet).
           </p>
           {fieldErrors.ownerEmployeeId && <p className="fo-sales-createform__error">{fieldErrors.ownerEmployeeId}</p>}
         </div>

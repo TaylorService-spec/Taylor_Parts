@@ -17,7 +17,7 @@ function fakeUseAccounts(accounts = [{ id: "A1", name: "Northgate Grocery" }, { 
 
 function fillMinimalValidForm() {
   fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });
-  fireEvent.change(screen.getByLabelText(/owner \(employee id\)/i), { target: { value: "EMP-1" } });
+  fireEvent.change(screen.getByLabelText(/owner override/i), { target: { value: "EMP-1" } });
   fireEvent.change(screen.getByLabelText(/^channel$/i), { target: { value: "RETAIL" } });
 }
 
@@ -28,8 +28,15 @@ describe("NewOpportunityForm -- validation", () => {
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
     expect(client.createOpportunity).not.toHaveBeenCalled();
     expect(screen.getByText("Select a customer account.")).toBeTruthy();
-    expect(screen.getByText("Enter the owning employee's id.")).toBeTruthy();
+    expect(screen.queryByText(/owning employee/i)).toBeNull();
     expect(screen.getByText("Select a sales channel.")).toBeTruthy();
+  });
+
+  it("the owner field is an optional override: starts empty (never the signed-in employee) and explains inheritance", () => {
+    render(<NewOpportunityForm authorizedChannels={["RETAIL"]} readiness={ENABLED} onClose={vi.fn()} deps={{ client: { createOpportunity: vi.fn() }, useAccounts: fakeUseAccounts() }} />);
+    expect(screen.getByLabelText(/owner override \(employee id, optional\)/i).value).toBe("");
+    expect(screen.getByText(/customer account's owner own this opportunity/i)).toBeTruthy();
+    expect(screen.getByText(/does not make you\s+the owner/i)).toBeTruthy();
   });
 
   it("disables submit entirely (honest, no submit attempt) when write-readiness is disabled", () => {
@@ -60,6 +67,19 @@ describe("NewOpportunityForm -- successful create calls the callable with the ex
     expect(payload.idempotencyKey.length).toBeGreaterThan(0);
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("OPP-9"));
+  });
+
+  it("submits with the owner left blank and sends NO ownerEmployeeId (the server inherits or refuses)", async () => {
+    const client = { createOpportunity: vi.fn().mockResolvedValue({ result: { success: true, replayed: false, opportunityId: "OPP-9", stage: "IDENTIFIED" } }) };
+    render(<NewOpportunityForm authorizedChannels={["NATIONAL_ACCOUNTS", "RETAIL"]} readiness={ENABLED} onClose={vi.fn()} onCreated={vi.fn()} deps={{ client, useAccounts: fakeUseAccounts() }} />);
+    fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });
+    fireEvent.change(screen.getByLabelText(/^channel$/i), { target: { value: "RETAIL" } });
+    fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
+
+    await waitFor(() => expect(client.createOpportunity).toHaveBeenCalledTimes(1));
+    const payload = client.createOpportunity.mock.calls[0][0];
+    expect("ownerEmployeeId" in payload).toBe(false);
+    expect(payload.accountId).toBe("A1");
   });
 
   it("includes need/expectedValue/expectedCloseAt when provided", async () => {
@@ -152,7 +172,7 @@ describe("NewOpportunityForm -- AUTHORIZED CHANNELS ONLY (Controller DQ-4)", () 
     expect(channelValues()).toEqual([]);
     expect(screen.getByText("No sales channel is available to you")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/customer account/i), { target: { value: "A1" } });
-    fireEvent.change(screen.getByLabelText(/owner \(employee id\)/i), { target: { value: "EMP-1" } });
+    fireEvent.change(screen.getByLabelText(/owner override/i), { target: { value: "EMP-1" } });
     fireEvent.click(screen.getByRole("button", { name: /create opportunity/i }));
     expect(client.createOpportunity).not.toHaveBeenCalled();
   });
