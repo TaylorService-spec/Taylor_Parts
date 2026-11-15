@@ -176,6 +176,7 @@
       "test/sal03CompanylessOwnerEligibilityPostgres.test.mjs"
     ],
     "5": [
+      "test/loginReadyPersonPostgres.test.mjs",
       "test/eosOpsPostgres.test.mjs",
       "test/inventoryCapabilityGrantMigration.test.mjs",
       "test/eosOpsWarehouseBinPostgres.test.mjs",

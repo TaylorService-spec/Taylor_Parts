@@ -70,6 +70,10 @@ export const SYSTEM_ADMINISTRATION_OBJECTS: ReadonlySet<string> = new Set([
  *                                OWNER RULED 2026-10-12 (DECISIONS #230): "Exclude commercial capabilities from protected
  *                                Administrator standing." The record key inventory.supplierTerms.read is NOT excluded
  *                                (operational read, #223); .create / .edit / .changeStatus are not implied (business Object).
+ *   admin.loginReadyPerson.provision
+ *                                A13 / D5 (Owner 2026-11-13: "No grant is implied"). It hangs on the system-administration Object
+ *                                rolesPermissions, whose every action standing would otherwise imply; it is held by NO ONE until the
+ *                                Owner confirms the grant, the protected Administrator and Owner included.
  */
 export const PROTECTED_ADMINISTRATOR_EXCLUSIONS: ReadonlySet<string> = new Set([
   "reorder.request.read.queue",
@@ -77,6 +81,7 @@ export const PROTECTED_ADMINISTRATOR_EXCLUSIONS: ReadonlySet<string> = new Set([
   "inventory.catalog.cost.read",
   "inventory.catalog.cost.create",
   "inventory.catalog.cost.edit",
+  "admin.loginReadyPerson.provision",
 ]);
 
 /**
