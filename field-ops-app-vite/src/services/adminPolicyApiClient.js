@@ -195,6 +195,8 @@ export const ADMIN_PREVIEW_OPERATIONS = Object.freeze(["previewAuthorityChange"]
 export const ADMIN_LOGIN_OPERATIONS = Object.freeze([
   "readLoginAccount",
   "provisionLoginAccount",
+  // A13 / D5: make an Employee login-ready (Principal, membership, link and sign-in in one act). Double-gated on the server.
+  "makePersonLoginReady",
   "reissueLoginEnrollment",
   "issueLoginReset",
   "setLoginAccountStatus",
@@ -412,6 +414,15 @@ export function getRoleSecurity(roleKey, options = {}) {
  */
 export function getPrincipalEffectiveAccess(principalId, options = {}) {
   return callPolicyApi("getPrincipalEffectiveAccess", { principalId }, options);
+}
+
+/**
+ * MAKE A PERSON LOGIN-READY (A13 / D5). For an Employee with no linked Principal: `{ employeeId, loginIdentifier, reason }`.
+ * Returns the one-time `enrollmentTicket` (shown once, never stored readably) and the created ids. Never takes a principalId or
+ * mfaRequired. The server refuses unless the caller holds admin.loginReadyPerson.provision AND admin.roleAssignment.write.
+ */
+export function makePersonLoginReady(input, options = {}) {
+  return callPolicyApi("makePersonLoginReady", input, options);
 }
 
 /** The injectable seam a hook or screen takes, so a test can stand in for the whole read model. */
