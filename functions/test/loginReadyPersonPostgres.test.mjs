@@ -308,6 +308,80 @@ test("A13 make a person login-ready: gate, refusals, rows, rollback, concurrency
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.employee_principal_links WHERE employee_id = $1`, [loserEmployee])).rows[0].n, 0, "the loser left no link");
   });
 
+  // The ordinary link path (linkEmployeePrincipal), driven as the administrator exactly as the transport resolves them.
+  const linkCmd = require("../lib/eosWorkforce/commands/employeePrincipalLinkCommands.js");
+  const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
+  const linkActor = await (async () => {
+    const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: "fb-admin-uid", requestedTenantId: null });
+    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
+  })();
+  const memberPrincipal = (subject) => repo.transact({ tenantId, uid: "lrp-fixture" }, async (tx) => {
+    const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase", displayName: null });
+    await tx.createTenantMembership(p.id);
+    return p.id;
+  });
+  const activeLinks = async (employeeId) => (await q(`SELECT principal_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND employee_id = $2 AND status = 'active'`, [tenantId, employeeId])).rows;
+
+  await t.test("CONCURRENCY: makePersonLoginReady racing linkEmployeePrincipal on one Employee -> exactly one wins, one active link, and a losing makePersonLoginReady creates nothing", async () => {
+    const wins = { loginReady: 0, link: 0 };
+    for (let i = 0; i < 8; i++) {
+      const e = await employee(`emp-race-link-${i}`);
+      const fixturePrincipal = await memberPrincipal(`fb-race-link-${i}`);
+      const before = await rowCounts();
+      // The link command reaches its lock sooner than makePersonLoginReady (which resolves capabilities first), so stagger its start
+      // (0..7 ms) to give the race both outcomes across the iterations; every outcome is asserted, none is assumed.
+      const delay = i;
+      const [mplr, lnk] = await Promise.allSettled([
+        service.makePersonLoginReady(adminActor, base(e, { loginIdentifier: `race.link.${i}@example.test` })),
+        new Promise((r) => setTimeout(r, delay)).then(() => linkCmd.linkEmployeePrincipal({ pool }, linkActor, { employeeId: e, linkedPrincipalId: fixturePrincipal, reason: "race against make login-ready" })),
+      ]);
+      const settled = [mplr, lnk];
+      assert.deepEqual(settled.map((r) => r.status).sort(), ["fulfilled", "rejected"], `iteration ${i}: exactly one wins`);
+      const active = await activeLinks(e);
+      assert.equal(active.length, 1, `iteration ${i}: exactly one active link`);
+      const after = await rowCounts();
+      const audit = (await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = 'makePersonLoginReady' AND after::text LIKE $1`, [`%"employeeId": "${e}"%`])).rows[0].n;
+      if (mplr.status === "fulfilled") {
+        wins.loginReady++;
+        assert.ok(lnk.reason?.code === "EMPLOYEE_ALREADY_LINKED" || lnk.reason?.code === "CONFLICT" || /already/i.test(lnk.reason?.message ?? ""), `iteration ${i}: the link path is refused by name, got ${lnk.reason?.code ?? lnk.reason?.message}`);
+        assert.equal(active[0].principal_id, mplr.value.principalId, `iteration ${i}: the surviving link is the new Principal's`);
+        assert.equal(audit, 1);
+      } else {
+        wins.link++;
+        assert.ok(mplr.reason instanceof LoginRefusal && ["ALREADY_LINKED", "CONFLICT"].includes(mplr.reason.code), `iteration ${i}: loser refused by name, got ${mplr.reason?.code ?? mplr.reason?.message}`);
+        assert.equal(active[0].principal_id, fixturePrincipal, `iteration ${i}: the surviving link is the ordinary path's`);
+        // The loser created ZERO rows: the only change since the snapshot is the winner's one link row.
+        assert.deepEqual(after, { ...before, links: before.links + 1 }, `iteration ${i}: the losing makePersonLoginReady left no Principal, membership, binding, account, ticket or audit row`);
+        assert.equal(audit, 0);
+      }
+    }
+    assert.equal(wins.loginReady + wins.link, 8);
+  });
+
+  await t.test("LOGIN REMOVED THEN READY AGAIN: retiring the login does not unlink (ALREADY_LINKED); after unlinkEmployeePrincipal the old name is LOGIN_RETIRED and a new name makes a NEW Principal and login", async () => {
+    const e = await employee("emp-reready");
+    const first = await service.makePersonLoginReady(adminActor, base(e, { loginIdentifier: "re.ready.one@example.test" }));
+    await service.retireLoginAccount(adminActor, { principalId: first.principalId, reason: "proof: remove the sign-in" });
+    // (1) The login is gone but the Employee is still linked: the operation refuses by name and writes nothing. Removing a login is not unlinking a person.
+    assert.equal((await activeLinks(e))[0]?.principal_id, first.principalId, "retiring the login leaves the link in force");
+    await refused(adminActor, base(e, { loginIdentifier: "re.ready.two@example.test" }), "ALREADY_LINKED", "login retired but Employee still linked");
+    // (2) The product's way to free the Employee is the governed unlink (it needs the Principal to be named).
+    const unlinked = await linkCmd.unlinkEmployeePrincipal({ pool }, linkActor, { employeeId: e, expectedCurrentPrincipalId: first.principalId, reason: "proof: free the Employee" });
+    assert.equal(unlinked.outcome, "REVOKED");
+    assert.equal((await activeLinks(e)).length, 0);
+    // (3) The retired name is never silently re-created, even for the same person.
+    await refused(adminActor, base(e, { loginIdentifier: "re.ready.one@example.test" }), "LOGIN_RETIRED", "the retired name is refused");
+    // (4) A new name succeeds and yields a NEW Principal, binding, account and ticket; the old ones stay as history.
+    const second = await service.makePersonLoginReady(adminActor, base(e, { loginIdentifier: "re.ready.two@example.test" }));
+    assert.equal(second.status, "pending_enrollment");
+    assert.notEqual(second.principalId, first.principalId);
+    assert.notEqual(second.accountId, first.accountId);
+    assert.notEqual(second.subject, first.subject);
+    const links = (await q(`SELECT principal_id, status FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND employee_id = $2 ORDER BY created_at`, [tenantId, e])).rows;
+    assert.deepEqual(links.map((l) => [l.principal_id, l.status]), [[first.principalId, "revoked"], [second.principalId, "active"]], "history kept; one active link");
+    assert.equal((await q(`SELECT status FROM eos_policy.login_accounts WHERE id = $1`, [first.accountId])).rows[0].status, "retired", "the old login stays retired");
+  });
+
   await t.test("SESSION: the setup code is redeemable once; the first sign-in then reaches the existing two-step enrollment, with no access", async () => {
     const e = await employee("emp-signin");
     const out = await service.makePersonLoginReady(adminActor, base(e, { loginIdentifier: "first.signin@example.test" }));
