@@ -24,7 +24,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdi
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUPPORT = path.join(HERE, "support");
@@ -91,7 +91,7 @@ function fixture(name, lines) {
   return file;
 }
 const GUARDED = fixture("guarded.mjs", [
-  `import ${JSON.stringify(EMULATOR_ENTRY)};`,
+  `import ${JSON.stringify(pathToFileURL(EMULATOR_ENTRY).href)};`,
   'import admin from "firebase-admin";',
   "const projectId = process.env.FIXTURE_PROJECT === \"<none>\" ? undefined : process.env.FIXTURE_PROJECT;",
   "admin.initializeApp(projectId === undefined ? undefined : { projectId });",
@@ -108,7 +108,7 @@ const PRELOADED = fixture("preloaded.mjs", [
   'console.log("FIXTURE-REACHED-END");',
 ]);
 const ENV_REPORT = fixture("envReport.mjs", [
-  `import ${JSON.stringify(OFFLINE_ENTRY)};`,
+  `import ${JSON.stringify(pathToFileURL(OFFLINE_ENTRY).href)};`,
   'import { existsSync, readdirSync } from "node:fs";',
   'import { homedir } from "node:os";',
   'import { join } from "node:path";',
@@ -192,7 +192,7 @@ for (const host of ["firestore.googleapis.com:443", "10.0.0.5:8080", "0.0.0.0:80
 
 test("(a) the service the caller did not name is pinned to a dead loopback port, never left to reach Google", () => {
   const r = run(fixture("pinned.mjs", [
-    `import ${JSON.stringify(EMULATOR_ENTRY)};`,
+    `import ${JSON.stringify(pathToFileURL(EMULATOR_ENTRY).href)};`,
     "console.log(JSON.stringify({ fs: process.env.FIRESTORE_EMULATOR_HOST, auth: process.env.FIREBASE_AUTH_EMULATOR_HOST }));",
   ]), { env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8093" } });
   assert.equal(r.status, 0, r.stderr);
@@ -265,7 +265,7 @@ test("(c) the guarded process cannot see the well-known ADC file, has no GOOGLE_
   assert.equal(seen.self.CLOUDSDK_CONFIG, seen.self.HOME);
   assert.equal(seen.cloudsdkEntries, 0, "an EMPTY config directory");
   assert.equal(seen.self.METADATA_SERVER_DETECTION, "none");
-  assert.ok(seen.self.NODE_OPTIONS.includes(OFFLINE_ENTRY), "children are guarded too");
+  assert.ok(seen.self.NODE_OPTIONS.includes(OFFLINE_ENTRY.split(path.sep).join("/")), "children are guarded too"); // the guard writes forward slashes (#2245)
 });
 
 test("(c) a child process inherits the neutralized environment AND the guard itself", () => {
@@ -310,7 +310,7 @@ test("(c) CLOUDSDK_CONFIG pointing at a directory that holds ADC is refused", ()
 
 test("(c) offline mode leaves emulator variables alone but still neutralizes ADC and gates initializeApp", () => {
   const r = run(fixture("offline.mjs", [
-    `import ${JSON.stringify(OFFLINE_ENTRY)};`,
+    `import ${JSON.stringify(pathToFileURL(OFFLINE_ENTRY).href)};`,
     'import admin from "firebase-admin";',
     "console.log(JSON.stringify({ fs: process.env.FIRESTORE_EMULATOR_HOST ?? null, home: process.env.HOME }));",
     'admin.initializeApp({ projectId: "taylor-parts" });',
@@ -335,7 +335,7 @@ test("the neutral directories the guard creates do not accumulate", () => {
 
 test("(e) a guarded process cannot open a TCP connection to a non-loopback host; loopback still works", () => {
   const r = run(fixture("egress.mjs", [
-    `import ${JSON.stringify(OFFLINE_ENTRY)};`,
+    `import ${JSON.stringify(pathToFileURL(OFFLINE_ENTRY).href)};`,
     'import net from "node:net";',
     'import https from "node:https";',
     "const attempt = (make) => new Promise((resolve) => { const s = make(); s.on(\"error\", (e) => resolve(e.code || e.message)); s.on(\"connect\", () => { s.destroy(); resolve(\"CONNECTED\"); }); });",
