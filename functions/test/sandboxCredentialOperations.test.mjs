@@ -554,10 +554,10 @@ test("CREDENTIAL DESTINATION: a real existing file refuses rotation and is left 
   try {
     const target = join(dir, "sandbox-credentials.local.json");
     writeFileSync(target, "{}\n");
-    const before = readFileSync(target, "utf8");
+    const before = readFileSync(target);
     const mtime = statSync(target).mtimeMs;
     assert.throws(() => activator.resolveCredentialDestination({ out: target }, {}, dir, { mode: "rotate" }), /would overwrite an existing/);
-    assert.equal(readFileSync(target, "utf8"), before);
+    assert.deepEqual(readFileSync(target), before, "raw bytes, no line-ending normalization");
     assert.equal(statSync(target).mtimeMs, mtime);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
