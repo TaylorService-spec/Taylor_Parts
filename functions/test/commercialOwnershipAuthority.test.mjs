@@ -10,7 +10,8 @@
 // No Firestore, no emulator, no database. Every input below is a literal.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join } from "node:path";
 import {
   COMMERCIAL_HANDOFF_SOURCES,

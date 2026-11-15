@@ -7,7 +7,8 @@
 //   * the Firestore reader forwards only the fields the census consults.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join, resolve, relative, sep } from "node:path";
 import { createRequire } from "node:module";
 

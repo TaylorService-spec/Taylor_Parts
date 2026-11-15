@@ -16,10 +16,11 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
@@ -497,13 +498,15 @@ test("the dry run's disposition counts are 6 / 10 / 0", () => {
   assert.match(bootstrap.formatPlan(result), /RESET_EXISTING_SANDBOX_PASSWORD : 10/);
 });
 
+// On Windows path.resolve adds a drive letter and backslashes; the expectations below are POSIX spellings of the same location.
+const posix = (p) => p.replace(/^[A-Za-z]:/, "").split(sep).join("/");
 // ═════ UAT CREDENTIAL SINGLE SOURCE (Owner-approved S1–S4, 2026-10-14) ═════
 // activateSandboxPersonas no longer has an implicit destination; every UAT script names a persona by its canonical role key.
 // No test here writes, reads or prints a real credential: the files are throwaway temp files holding no password.
 const activator = require("../scripts/activateSandboxPersonas.js");
 
 test("CREDENTIAL DESTINATION: --out, else SANDBOX_CREDENTIALS_FILE, else CREDENTIAL_SOURCE_NOT_CONFIGURED -- never the repository root", () => {
-  const resolve = (args, env) => activator.resolveCredentialDestination(args, env, "/work/functions");
+  const resolve = (args, env) => posix(activator.resolveCredentialDestination(args, env, "/work/functions"));
   assert.throws(() => resolve({}, {}), /^Error: CREDENTIAL_SOURCE_NOT_CONFIGURED|CREDENTIAL_SOURCE_NOT_CONFIGURED/);
   assert.throws(() => resolve({ out: "true" }, {}), /CREDENTIAL_SOURCE_NOT_CONFIGURED/, "a bare --out names nothing");
   assert.throws(() => resolve({}, { SANDBOX_CREDENTIALS_FILE: "   " }), /CREDENTIAL_SOURCE_NOT_CONFIGURED/, "a blank variable names nothing");
@@ -524,7 +527,7 @@ test("CREDENTIAL DESTINATION: --out=<file> is the same flag as --out <file>, nev
   assert.deepEqual(activator.parseArgs(["--projectId=eos-platform-sandbox", "--rotate"]), { projectId: "eos-platform-sandbox", rotate: "true" });
   assert.deepEqual(activator.parseArgs(["--out="]), { out: "" });
   const args = activator.parseArgs(["--out=/mine/sandbox-credentials.local.json"]);
-  assert.equal(activator.resolveCredentialDestination(args, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }, "/w"),
+  assert.equal(posix(activator.resolveCredentialDestination(args, { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }, "/w")),
     "/mine/sandbox-credentials.local.json", "the = form wins over the configured file exactly as the spaced form does");
   assert.throws(() => activator.resolveCredentialDestination(activator.parseArgs(["--out="]),
     { SANDBOX_CREDENTIALS_FILE: "/canon/sandbox-credentials.local.json" }, "/w"), /CREDENTIAL_SOURCE_NOT_CONFIGURED/);
@@ -532,7 +535,7 @@ test("CREDENTIAL DESTINATION: --out=<file> is the same flag as --out <file>, nev
 
 test("CREDENTIAL DESTINATION: --rotate needs an explicit NEW --out -- never the configured canonical file, never an existing file", () => {
   const canon = "/canon/sandbox-credentials.local.json";
-  const rotate = (args, env, exists = () => false) => activator.resolveCredentialDestination(args, env, "/w", { mode: "rotate", exists });
+  const rotate = (args, env, exists = () => false) => posix(activator.resolveCredentialDestination(args, env, "/w", { mode: "rotate", exists }));
   assert.throws(() => rotate({}, { SANDBOX_CREDENTIALS_FILE: canon }), /CREDENTIAL_SOURCE_NOT_CONFIGURED: --rotate .* never defaults/,
     "rotation never falls back to the canonical file");
   assert.throws(() => rotate({ out: canon }, { SANDBOX_CREDENTIALS_FILE: canon }), /REFUSING: --rotate would replace the canonical/);
@@ -543,7 +546,7 @@ test("CREDENTIAL DESTINATION: --rotate needs an explicit NEW --out -- never the 
   assert.throws(() => rotate({ out: "/new/rotated.json" }, {}), /must end with 'credentials\.local\.json'/);
   assert.throws(() => activator.resolveCredentialDestination({}, {}, "/w", { mode: "replace" }), /unknown mode/);
   // Merge mode (--activate-missing) still accepts the configured canonical file: merging only adds entries.
-  assert.equal(activator.resolveCredentialDestination({}, { SANDBOX_CREDENTIALS_FILE: canon }, "/w", { mode: "merge", exists: () => true }), canon);
+  assert.equal(posix(activator.resolveCredentialDestination({}, { SANDBOX_CREDENTIALS_FILE: canon }, "/w", { mode: "merge", exists: () => true })), canon);
 });
 
 test("CREDENTIAL DESTINATION: a real existing file refuses rotation and is left byte-for-byte unchanged", () => {
@@ -603,7 +606,7 @@ test("UAT SCRIPTS name the 16 accepted personas by CANONICAL ROLE KEY -- never a
   assert.match(grants, /const ACTOR_PERSONA = "ownerExecutive";/);
   // The local-driver -> sandbox persona map hands its values straight to signInPersona: every value is canonical.
   const { LOCAL_TO_SANDBOX_PERSONA, LOCAL_TO_EOS_PERSONA } = await import(
-    join(repo, "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/deployedSession.mjs"));
+    (await import("node:url")).pathToFileURL(join(repo, "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/deployedSession.mjs")).href);
   for (const [map, name] of [[LOCAL_TO_SANDBOX_PERSONA, "LOCAL_TO_SANDBOX_PERSONA"], [LOCAL_TO_EOS_PERSONA, "LOCAL_TO_EOS_PERSONA"]]) {
     for (const [k, v] of Object.entries(map)) assert.ok(canonical.has(v), `${name}.${k} -> "${v}" is not a canonical role key`);
   }

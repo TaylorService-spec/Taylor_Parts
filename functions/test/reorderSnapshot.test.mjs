@@ -10,7 +10,8 @@
 //     requires only the fence helpers at module scope.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";

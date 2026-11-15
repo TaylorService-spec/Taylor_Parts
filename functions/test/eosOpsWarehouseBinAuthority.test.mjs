@@ -6,8 +6,9 @@
 // fails on any machine rather than only where Postgres happens to be up.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, statSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
+import { join, sep } from "node:path";
 import {
   reconcileLocationSource,
   toBinCodeClaimRow,
@@ -208,7 +209,7 @@ function sourceFiles(root) {
       if (entry === "node_modules" || entry === ".git" || entry === "lib") continue;
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) walk(full);
-      else if (/\.(ts|js|mjs|cjs)$/.test(entry)) out.push(full);
+      else if (/\.(ts|js|mjs|cjs)$/.test(entry)) out.push(full.split(sep).join("/"));
     }
   };
   walk(root);

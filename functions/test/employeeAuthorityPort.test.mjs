@@ -17,11 +17,12 @@
 // `firebase-admin` is ever even RESOLVED. See the last two sections.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   EMPLOYMENT_STATUS_VALUES,
@@ -536,8 +537,8 @@ Module._load = function (request) {
   const driver = join(dir, "drive.mjs");
   writeFileSync(
     driver,
-    `import { mustResolveEmployeeReference } from "${resolve(FUNCTIONS_DIR, "lib/employeeIdentity/employeeAuthority.js")}";
-import { createPostgresEmployeeAuthority, resolveConfiguredEmployeeAuthority } from "${resolve(FUNCTIONS_DIR, "lib/employeeIdentity/postgresEmployeeAuthority.js")}";
+    `import { mustResolveEmployeeReference } from "${pathToFileURL(resolve(FUNCTIONS_DIR, "lib/employeeIdentity/employeeAuthority.js")).href}";
+import { createPostgresEmployeeAuthority, resolveConfiguredEmployeeAuthority } from "${pathToFileURL(resolve(FUNCTIONS_DIR, "lib/employeeIdentity/postgresEmployeeAuthority.js")).href}";
 const ref = { tenantId: "t", employeeId: "e" };
 const codes = [];
 for (const authority of [

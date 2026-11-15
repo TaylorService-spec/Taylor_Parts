@@ -273,7 +273,8 @@ function installEgressBlock(state) {
 
 function propagateToChildren(env, mode) {
   env[ACTIVE_ENV] = mode;
-  const entry = path.join(__dirname, mode === "emulator" ? "firebaseEmulatorGuard.cjs" : "firebaseOfflineGuard.cjs");
+  // Forward slashes: Node's NODE_OPTIONS parser treats a backslash inside double quotes as an escape (breaks on Windows).
+  const entry = path.join(__dirname, mode === "emulator" ? "firebaseEmulatorGuard.cjs" : "firebaseOfflineGuard.cjs").replace(/\\/g, "/");
   const flag = `--require "${entry}"`;
   const current = env.NODE_OPTIONS ?? "";
   if (!current.includes(entry)) env.NODE_OPTIONS = `${current} ${flag}`.trim();

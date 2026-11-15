@@ -4,10 +4,11 @@
 // Offline requests run the REAL resolveOperationalContext over a fake PolicyReader and a fake pool.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -213,7 +214,7 @@ const workforceSources = () => walk(WORKFORCE, [".ts"]);
 test("no Firebase or Firestore in the Workforce layer, statically and transitively", () => {
   for (const f of workforceSources()) {
     // The migration modules NAME the snapshot's source project (firebaseProjectId) as data; nothing may import or call Firebase.
-    const forbidden = f.includes(`${WORKFORCE}/migration/`)
+    const forbidden = f.split(sep).join("/").includes(`${WORKFORCE.split(sep).join("/")}/migration/`)
       ? [/(from|require\()\s*["'][^"']*firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /onCall\(|onRequest\(/, /\.collection\(/]
       : [/firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /customClaims|claims\./, /onCall\(|onRequest\(/];
     for (const pattern of forbidden) assert.doesNotMatch(code(f), pattern, `${rel(f)} matches ${pattern}`);

@@ -7,9 +7,10 @@
 // DEVIATION FROM DESIGN §3.3, tracked for the Owner: the runners are AUDITED, not PREVIEWED (follow-up).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -92,7 +93,7 @@ test("CARVE-OUT TRIPWIRE: only the Administration API and the reviewed machine r
     if (!ok) continue;
     for (const file of sources(root)) {
       const names = commandImports(readFileSync(file, "utf8"));
-      if (names.length > 0) found[relative(REPO, file)] = names.sort();
+      if (names.length > 0) found[relative(REPO, file).split(sep).join("/")] = names.sort();
     }
   }
   assert.deepEqual(Object.keys(found).sort(), Object.keys(DIRECT_CALLERS).sort(),

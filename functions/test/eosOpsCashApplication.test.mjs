@@ -12,7 +12,8 @@
 // the column rather than adding a reconciler for it, and the first test below is what holds that.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join } from "node:path";
 import {
   CashApplicationAuthorityError,
