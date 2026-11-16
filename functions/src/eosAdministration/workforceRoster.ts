@@ -26,6 +26,21 @@ import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, type EmployeeDirectoryItem
 import { EMPLOYEE_RECORD_READ, EMPLOYMENT_STATUSES } from "../eosWorkforce/reads/employeeDirectoryReads";
 
 export const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
+
+/**
+ * THE PEOPLE-ADMINISTRATION KEYS (SEC-ROSTER-01, 2026-11-15). employee.record.read is held by nearly every Role (grid
+ * approval a-20261023235337: 23 Roles), and it is the DIRECTORY read: names, numbers, titles, Job Role, manager, company
+ * and status stay readable on this roster (Sales' owner picker and the Users search read exactly that). The Administration
+ * columns -- Work Eligibility, Operational Scope (which truck / warehouse) and Application user -- are returned only to a
+ * caller holding one of these keys, the existing keys that ADMINISTER those very facts; everyone else gets [] / null and
+ * `administrationColumnsWithheld` saying why. The same set opens the Administration -> Users door (experienceAuthority
+ * `administration.users`, asserted equal by test). No key is new and no grant changes.
+ */
+export const PEOPLE_ADMINISTRATION_KEYS: readonly string[] = Object.freeze([
+  PRINCIPAL_ACCESS_READ, "admin.employeeProfile.write", "admin.employeeJobRole.write", "admin.employeeOperationalScope.write",
+  "admin.employeeWorkEligibility.write", "admin.employeeFunctionalRole.write",
+]);
+export const ADMINISTRATION_COLUMNS_WITHHELD = `Work Eligibility, Operational Scope and Application user are shown only to holders of one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`;
 export const WORKFORCE_ROSTER_LIMIT = 500;
 
 /**
@@ -42,7 +57,8 @@ export interface WorkforceRosterItem extends EmployeeDirectoryItem {
   readonly manager: { readonly employeeId: string; readonly displayName: string | null } | null;
   readonly workEligibility: readonly string[];
   readonly operationalScopes: readonly { readonly scopeType: string; readonly scopeId: string; readonly label: string | null }[];
-  readonly applicationUser: "LINKED" | "UNLINKED";
+  /** null when the caller may not read the Administration columns (see administrationColumnsWithheld). */
+  readonly applicationUser: "LINKED" | "UNLINKED" | null;
   /** The linked Principal id -- ONLY for a caller holding admin.principalAccess.read (else null), for Security Role assignment. */
   readonly principalId: string | null;
   /** null when the caller may not read Security Role assignments (see securityRolesWithheld). */
@@ -57,6 +73,7 @@ export interface WorkforceRoster {
   readonly total: number;
   readonly truncated: boolean;
   readonly securityRolesWithheld: string | null;
+  readonly administrationColumnsWithheld: string | null;
   /** The order actually applied: the default (name ascending) unless the caller asked for a column. */
   readonly sort: { readonly key: WorkforceRosterSortKey; readonly direction: "asc" | "desc"; readonly isDefault: boolean };
   readonly facets: {
@@ -87,12 +104,17 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
       if (securityRoleKey && !actor.capabilities.has(PRINCIPAL_ACCESS_READ)) {
         refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Security Role requires ${PRINCIPAL_ACCESS_READ}`);
       }
+      if (scopeType && !PEOPLE_ADMINISTRATION_KEYS.some((k) => actor.capabilities.has(k))) {
+        refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Operational Scope requires one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`);
+      }
       return { jobRoleId: text(input?.jobRoleId, "jobRoleId"), securityRoleKey, status, operatingCompanyId: text(input?.operatingCompanyId, "operatingCompanyId"),
         scopeType, noJobRole: input?.noJobRole === true, query: text(input?.query, "query", 100), sort: rosterSortOf(input?.sort), limit: limitOf(input?.limit) };
     },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, f, reach) => {
       const roles = actor.capabilities.has(PRINCIPAL_ACCESS_READ);
+      // Masked BEFORE filtering and sorting, so neither a filter nor a sort on a withheld column can act as an oracle.
+      const administers = PEOPLE_ADMINISTRATION_KEYS.some((k) => actor.capabilities.has(k));
       const pattern = f.query ? `%${f.query.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
       const { rows } = await db.query(
         `WITH roster AS (
@@ -131,9 +153,9 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         ...directoryItemOf(r),
         jobRole: r.job_role_id ? { id: String(r.job_role_id), label: String(r.job_role_label ?? r.job_role_id), since: iso(r.job_role_since)! } : null,
         manager: r.manager_employee_id ? { employeeId: String(r.manager_employee_id), displayName: r.manager_name ?? null } : null,
-        workEligibility: (r.eligibility ?? []) as string[],
-        operationalScopes: (r.scopes ?? []) as WorkforceRosterItem["operationalScopes"],
-        applicationUser: r.principal_id ? "LINKED" : "UNLINKED",
+        workEligibility: administers ? (r.eligibility ?? []) as string[] : [],
+        operationalScopes: administers ? (r.scopes ?? []) as WorkforceRosterItem["operationalScopes"] : [],
+        applicationUser: administers ? (r.principal_id ? "LINKED" : "UNLINKED") : null,
         principalId: roles && r.principal_id ? String(r.principal_id) : null,
         securityRoles: roles ? ((r.security_roles ?? []) as NonNullable<WorkforceRosterItem["securityRoles"]>) : null,
         firstName: r.first_name ?? null,
@@ -160,6 +182,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         total: matches.length,
         truncated: matches.length > f.limit,
         securityRolesWithheld: roles ? null : `Security Roles are shown only to holders of ${PRINCIPAL_ACCESS_READ}`,
+        administrationColumnsWithheld: administers ? null : ADMINISTRATION_COLUMNS_WITHHELD,
         sort: { key: f.sort.key, direction: f.sort.direction, isDefault: f.sort.isDefault },
         facets: {
           jobRoles: [...facet((i) => (i.jobRole ? [i.jobRole.id] : []))].map(([id, count]) => ({ id, label: jobRoleLabels.get(id) ?? id, count })).sort((a, b) => a.label.localeCompare(b.label)),

@@ -130,10 +130,15 @@ export function recordCompanyName(record) {
   return resolveOperatingCompany(record?.operatingCompanyId ?? null).company?.displayName ?? null;
 }
 
+// SEC-ROSTER-01: the server withholds a colleague's personal fields unless the caller may maintain them, and says so
+// (`personalFieldsWithheld`). A withheld field reads "Not available to you", never "Not recorded".
+const personal = (record) => (record?.personalFieldsWithheld ? { absence: ABSENCE.NOT_AUTHORIZED } : {});
+
 export function recordIdentityFields(record) {
   const n = record?.name ?? {};
   const c = record?.contact ?? {};
   const a = record?.address ?? {};
+  const p = personal(record);
   return [
     field({ label: "First Name", value: n.firstName, priority: 1 }),
     field({ label: "Middle Name", value: n.middleName, priority: 3 }),
@@ -142,12 +147,12 @@ export function recordIdentityFields(record) {
     field({ label: "Employee ID", value: record?.employeeNumber, kind: FIELD_KIND.IDENTIFIER, priority: 1 }),
     field({ label: "Work Email", value: c.workEmail, priority: 1 }),
     field({ label: "Work Phone", value: c.workPhone, priority: 2 }),
-    field({ label: "Mobile Phone", value: c.mobilePhone, priority: 2 }),
-    field({ label: "Street", value: a.street, priority: 3 }),
-    field({ label: "Unit / Suite", value: a.unit, priority: 3 }),
-    field({ label: "City", value: a.city, priority: 3 }),
-    field({ label: "State", value: a.state, priority: 3 }),
-    field({ label: "ZIP", value: a.postalCode, priority: 3 }),
+    field({ label: "Mobile Phone", value: c.mobilePhone, priority: 2, ...p }),
+    field({ label: "Street", value: a.street, priority: 3, ...p }),
+    field({ label: "Unit / Suite", value: a.unit, priority: 3, ...p }),
+    field({ label: "City", value: a.city, priority: 3, ...p }),
+    field({ label: "State", value: a.state, priority: 3, ...p }),
+    field({ label: "ZIP", value: a.postalCode, priority: 3, ...p }),
   ];
 }
 
@@ -161,8 +166,8 @@ export function recordEmploymentFields(record) {
       absence: isBlank(record?.operatingCompanyId) ? ABSENCE.NOT_RECORDED : ABSENCE.UNRESOLVED,
       priority: 2,
     }),
-    field({ label: "Hire Date", value: record?.hireDate, kind: FIELD_KIND.DATE, priority: 2 }),
-    field({ label: "Separation Date", value: record?.separationDate, kind: FIELD_KIND.DATE, priority: 3 }),
+    field({ label: "Hire Date", value: record?.hireDate, kind: FIELD_KIND.DATE, priority: 2, ...personal(record) }),
+    field({ label: "Separation Date", value: record?.separationDate, kind: FIELD_KIND.DATE, priority: 3, ...personal(record) }),
   ];
 }
 

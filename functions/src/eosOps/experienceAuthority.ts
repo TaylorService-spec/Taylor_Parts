@@ -335,9 +335,17 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   ]),
 
   // ── Administration
+  // SEC-ROSTER-01 (2026-11-15): earned by the PEOPLE-ADMINISTRATION keys only (workforceRoster.PEOPLE_ADMINISTRATION_KEYS,
+  // asserted equal by test). It was also earned by employee.record.read, which the grid grants to 23 Roles -- so every
+  // Employee, General Employee included, had the Administration -> Users door. employee.record.read stays the directory
+  // read behind pickers and names; it opens no Administration surface.
   surface("administration.users", "Users & Employees", [
     { capabilityKey: "admin.principalAccess.read" },
-    { capabilityKey: "employee.record.read" },
+    { capabilityKey: "admin.employeeProfile.write" },
+    { capabilityKey: "admin.employeeJobRole.write" },
+    { capabilityKey: "admin.employeeOperationalScope.write" },
+    { capabilityKey: "admin.employeeWorkEligibility.write" },
+    { capabilityKey: "admin.employeeFunctionalRole.write" },
   ]),
   surface("administration.dataImport", "Data Import", [{ capabilityKey: "admin.dataImport.execute" }]),
   surface("administration.auditLogs", "Audit Logs", [{ capabilityKey: "audit.event.read" }]),

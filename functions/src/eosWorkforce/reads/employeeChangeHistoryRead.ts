@@ -27,7 +27,7 @@ import {
   acceptOnly, decodeEmployeeCursor, encodeEmployeeCursor, isoOf, refuse, requireEmployeeId, requirePageSize, runEmployeeRead,
   type EmployeeReadActor, type EmployeeReadDeps,
 } from "./employeeReadKernel";
-import { deriveEmployeeDisplayName } from "./employeeRecordProjection";
+import { deriveEmployeeDisplayName, EMPLOYEE_PERSONAL_PROFILE_KEYS, holdsPersonalFieldsRead, PERSONAL_FIELDS_WITHHELD } from "./employeeRecordProjection";
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
 import { PROFILE_FIELD_MAP } from "../employeeProfileVocabulary";
 
@@ -94,6 +94,8 @@ export interface EmployeeChangeHistoryItem {
 
 export interface EmployeeChangeHistoryPage {
   readonly employeeId: string;
+  /** null when personal keys are included; otherwise why they were dropped from before / after (SEC-ROSTER-01). */
+  readonly personalFieldsWithheld: string | null;
   readonly items: EmployeeChangeHistoryItem[];
   readonly truncated: boolean;
   readonly nextCursor: string | null;
@@ -128,9 +130,18 @@ export function listEmployeeChangeHistory(deps: EmployeeReadDeps, actor: Employe
       const truncated = rows.length > p.limit;
       const kept = rows.slice(0, p.limit);
 
+      // SEC-ROSTER-01: a profile change's personal keys (mobile phone, home address, hire / separation date) are the
+      // record's personal fields, so they are dropped for a caller who may not read them on the record itself.
+      const personal = holdsPersonalFieldsRead(actor.capabilities);
+      const redact = (side: Json | null): Json | null => {
+        if (personal || !side) return side;
+        const out: Json = {};
+        for (const [k, v] of Object.entries(side)) if (!EMPLOYEE_PERSONAL_PROFILE_KEYS.includes(k)) out[k] = v;
+        return out;
+      };
       const projected = kept.map((r) => {
         const project = ACTIONS[r.action as EmployeeChangeAction];
-        return { row: r, before: project(r.before), after: project(r.after) };
+        return { row: r, before: redact(project(r.before)), after: redact(project(r.after)) };
       });
 
       // Readable names for the ids this page mentions, resolved in the same snapshot and the same tenant.
@@ -175,6 +186,7 @@ export function listEmployeeChangeHistory(deps: EmployeeReadDeps, actor: Employe
       const last = kept[kept.length - 1];
       return {
         employeeId: p.employeeId,
+        personalFieldsWithheld: personal ? null : PERSONAL_FIELDS_WITHHELD,
         items,
         truncated,
         nextCursor: truncated && last ? encodeEmployeeCursor(p.scope, { number: last.position, id: last.id }) : null,

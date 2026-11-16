@@ -20,6 +20,7 @@ import {
 } from "./employeeReadKernel";
 import {
   CURRENT_MANAGER_JOIN, directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, EMPLOYEE_RECORD_COLUMNS, employeeRecordOf,
+  holdsPersonalFieldsRead, PERSONAL_FIELDS_WITHHELD, withPersonalFieldsWithheld,
   type EmployeeDirectoryItem, type EmployeeRecordProjection,
 } from "./employeeRecordProjection";
 
@@ -30,6 +31,8 @@ export type UserAccessLinkage = "LINKED" | "UNLINKED";
 
 export interface EmployeeRecordRead extends EmployeeRecordProjection {
   readonly userAccess: UserAccessLinkage;
+  /** null when the personal fields are returned; otherwise why they are null (SEC-ROSTER-01, employeeRecordProjection). */
+  readonly personalFieldsWithheld: string | null;
 }
 
 export function readEmployee(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<EmployeeRecordRead> {
@@ -48,7 +51,13 @@ export function readEmployee(deps: EmployeeReadDeps, actor: EmployeeReadActor, i
       // ASSIGNMENT SCOPE: decided on THIS row's governed operating company, read in this snapshot. A no-op for a
       // caller who holds employee.record.read globally.
       await reach.authorizeEmployee(rows[0].operating_company_id ?? null);
-      return { ...employeeRecordOf(rows[0]), userAccess: rows[0].linked ? "LINKED" : "UNLINKED" };
+      const record = employeeRecordOf(rows[0]);
+      const personal = holdsPersonalFieldsRead(actor.capabilities);
+      return {
+        ...(personal ? record : withPersonalFieldsWithheld(record)),
+        userAccess: rows[0].linked ? "LINKED" : "UNLINKED",
+        personalFieldsWithheld: personal ? null : PERSONAL_FIELDS_WITHHELD,
+      };
     }, SCOPED_BY_OPERATING_COMPANY);
 }
 
