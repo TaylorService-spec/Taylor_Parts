@@ -35,6 +35,8 @@ import {
   explainWhyInFrontOfMe,
 } from "../src/domain/employeeOperatingProfile.js";
 import { EMPLOYMENT_STATUS_VALUES } from "../src/domain/employeeVocabulary.js";
+import { recordEmploymentFields, recordIdentityFields } from "../src/domain/employeeOperatingProfile.js";
+import { ABSENCE as FIELD_ABSENCE } from "../src/domain/structuredFields.js";
 import {
   JOB_ROLE_STATE,
   assignableJobRoles,
@@ -702,4 +704,28 @@ describe("routes", () => {
     expect(app).toMatch(/path="users\/:employeeId"/);
     expect(read("src/navigation/AppRail.jsx")).toMatch(/<NavLink to="\/my-profile" className="fo-rail-identity__profile">/);
   });
+});
+
+// SEC-ROSTER-01: when the server withholds a colleague's personal fields (personalFieldsWithheld), the record says
+// "Not available to you" for each of them -- never "Not recorded", which would claim the value does not exist.
+const base = {
+  name: { firstName: "Casey", lastName: "Colleague" }, employeeNumber: "E-100", jobTitle: "Technician",
+  contact: { workEmail: "casey@example.test", workPhone: "555-0100", mobilePhone: null },
+  address: { street: null, unit: null, city: null, state: null, postalCode: null }, hireDate: null, separationDate: null,
+};
+const PERSONAL = ["Mobile Phone", "Street", "Unit / Suite", "City", "State", "ZIP", "Hire Date", "Separation Date"];
+const valueOf = (record) => Object.fromEntries([...recordIdentityFields(record), ...recordEmploymentFields(record)].map((f) => [f.label, f.value]));
+
+describe("SEC-ROSTER-01 withheld personal fields", () => {
+it("withheld personal fields read 'Not available to you'; work contact is unaffected", () => {
+  const v = valueOf({ ...base, personalFieldsWithheld: "Personal fields ... admin.employeeProfile.write" });
+  for (const label of PERSONAL) expect(v[label], label).toBe(FIELD_ABSENCE.NOT_AUTHORIZED);
+  expect(v["Work Email"]).toBe("casey@example.test");
+  expect(v["Work Phone"]).toBe("555-0100");
+});
+
+it("without the withheld marker an empty personal field still reads 'Not recorded'", () => {
+  const v = valueOf({ ...base, personalFieldsWithheld: null });
+  for (const label of PERSONAL) expect(v[label], label).toBe(FIELD_ABSENCE.NOT_RECORDED);
+});
 });

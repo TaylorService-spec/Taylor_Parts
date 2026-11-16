@@ -14,7 +14,7 @@ import {
   acceptOnly, isoOf, refuse, requireEmployeeId, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
 } from "./employeeReadKernel";
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
-import { WORK_ELIGIBILITY_LABEL, type WorkEligibilityCode } from "../workEligibilityVocabulary";
+import { WORK_ELIGIBILITY_LABEL, type WorkEligibilityCode } from "../workEligibilityVocabulary";
 import { holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS } from "./employeeRecordProjection";
 /** SEC-ROSTER-01: another Employee's Work Eligibility is Administration data, read with a people-administration key (refused before any database work). */
 function requirePeopleAdministration(actor: EmployeeReadActor): void {

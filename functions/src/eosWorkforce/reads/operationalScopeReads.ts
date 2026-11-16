@@ -20,7 +20,7 @@ import {
 } from "./employeeReadKernel";
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
 import { OPERATIONAL_SCOPE_TYPES, OPERATIONAL_SCOPE_TYPE_LABEL, type OperationalScopeType } from "../operationalScopeVocabulary";
-import { employeeCompanyKeys, governedCompanyKeys, warehouseCompanyAllowed } from "../employeeCompanyReach";
+import { employeeCompanyKeys, governedCompanyKeys, warehouseCompanyAllowed } from "../employeeCompanyReach";
 import { holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS } from "./employeeRecordProjection";
 /** SEC-ROSTER-01: another Employee's Operational Scope is Administration data, read with a people-administration key (refused before any database work). */
 function requirePeopleAdministration(actor: EmployeeReadActor): void {

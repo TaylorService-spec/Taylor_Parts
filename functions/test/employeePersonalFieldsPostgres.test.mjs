@@ -47,12 +47,10 @@ const DIRECTORY_ONLY = new Set(["employee.record.read"]);
 const actor = (caps) => ({ tenantId: TENANT, principalId: "p-caller", capabilities: new Set(caps),
   entitlements: async () => entitlement.entitlementsFrom([...caps].map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "fixture" }, capabilityKey }))) });
 
-test("static: the Administration -> Users door is earned by exactly the people-administration keys", () => {
+test("static: the Administration -> Users door is earned by admin.principalAccess.read only, never the directory read", () => {
   const users = EXPERIENCE_SURFACES.find((s) => s.key === "administration.users");
   assert.ok(users, "administration.users is declared");
-  const keys = users.grants.map((g) => g.capabilityKey).sort();
-  assert.deepEqual(keys, [...PEOPLE_ADMINISTRATION_KEYS].sort(), "door keys == roster administration keys");
-  assert.ok(!keys.includes("employee.record.read"), "the directory read opens no Administration door");
+  assert.deepEqual(users.grants.map((g) => g.capabilityKey), ["admin.principalAccess.read"]);
 });
 
 test("personal fields and Administration columns over PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
