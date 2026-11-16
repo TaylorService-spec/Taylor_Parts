@@ -9,6 +9,7 @@
 // employeeDisplayName (field-ops-app-vite/src/domain/employeeProfile.js:154-159). eos_policy.principals.display_name is
 // never consulted.
 import { isoOf } from "./employeeReadKernel";
+export { holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS } from "../peopleAdministration";
 
 type Row = Record<string, any>;
 

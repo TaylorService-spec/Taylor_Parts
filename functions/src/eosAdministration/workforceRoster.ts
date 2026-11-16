@@ -22,25 +22,21 @@
 import {
   acceptOnly, refuse, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
 } from "../eosWorkforce/reads/employeeReadKernel";
-import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
+import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
 import { EMPLOYEE_RECORD_READ, EMPLOYMENT_STATUSES } from "../eosWorkforce/reads/employeeDirectoryReads";
 
 export const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
 
 /**
- * THE PEOPLE-ADMINISTRATION KEYS (SEC-ROSTER-01, 2026-11-15). employee.record.read is held by nearly every Role (grid
- * approval a-20261023235337: 23 Roles), and it is the DIRECTORY read: names, numbers, titles, Job Role, manager, company
- * and status stay readable on this roster (Sales' owner picker and the Users search read exactly that). The Administration
- * columns -- Work Eligibility, Operational Scope (which truck / warehouse) and Application user -- are returned only to a
- * caller holding one of these keys, the existing keys that ADMINISTER those very facts; everyone else gets [] / null and
- * `administrationColumnsWithheld` saying why. The same set opens the Administration -> Users door (experienceAuthority
- * `administration.users`, asserted equal by test). No key is new and no grant changes.
+ * SEC-ROSTER-01 (2026-11-15). employee.record.read is held by nearly every Role (grid approval a-20261023235337: 23 Roles)
+ * and is the DIRECTORY read: names, numbers, titles, Job Role, manager, company, status and Application user (Owner ruling B,
+ * the same Employee-facing fact readEmployee carries) stay readable here -- Sales' owner picker and the Users search read them.
+ * Work Eligibility and Operational Scope (which truck / warehouse) are returned only to a holder of a PEOPLE_ADMINISTRATION_KEYS
+ * key (employeeRecordProjection), the same set that guards their dedicated reads and opens Administration -> Users; everyone
+ * else gets [] and `administrationColumnsWithheld` saying why. No key is new and no grant changes.
  */
-export const PEOPLE_ADMINISTRATION_KEYS: readonly string[] = Object.freeze([
-  PRINCIPAL_ACCESS_READ, "admin.employeeProfile.write", "admin.employeeJobRole.write", "admin.employeeOperationalScope.write",
-  "admin.employeeWorkEligibility.write", "admin.employeeFunctionalRole.write",
-]);
-export const ADMINISTRATION_COLUMNS_WITHHELD = `Work Eligibility, Operational Scope and Application user are shown only to holders of one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`;
+export { PEOPLE_ADMINISTRATION_KEYS };
+export const ADMINISTRATION_COLUMNS_WITHHELD = `Work Eligibility and Operational Scope are shown only to holders of one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`;
 export const WORKFORCE_ROSTER_LIMIT = 500;
 
 /**
@@ -57,8 +53,7 @@ export interface WorkforceRosterItem extends EmployeeDirectoryItem {
   readonly manager: { readonly employeeId: string; readonly displayName: string | null } | null;
   readonly workEligibility: readonly string[];
   readonly operationalScopes: readonly { readonly scopeType: string; readonly scopeId: string; readonly label: string | null }[];
-  /** null when the caller may not read the Administration columns (see administrationColumnsWithheld). */
-  readonly applicationUser: "LINKED" | "UNLINKED" | null;
+  readonly applicationUser: "LINKED" | "UNLINKED";
   /** The linked Principal id -- ONLY for a caller holding admin.principalAccess.read (else null), for Security Role assignment. */
   readonly principalId: string | null;
   /** null when the caller may not read Security Role assignments (see securityRolesWithheld). */
@@ -104,7 +99,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
       if (securityRoleKey && !actor.capabilities.has(PRINCIPAL_ACCESS_READ)) {
         refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Security Role requires ${PRINCIPAL_ACCESS_READ}`);
       }
-      if (scopeType && !PEOPLE_ADMINISTRATION_KEYS.some((k) => actor.capabilities.has(k))) {
+      if (scopeType && !holdsPeopleAdministration(actor.capabilities)) {
         refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Operational Scope requires one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`);
       }
       return { jobRoleId: text(input?.jobRoleId, "jobRoleId"), securityRoleKey, status, operatingCompanyId: text(input?.operatingCompanyId, "operatingCompanyId"),
@@ -114,7 +109,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
     async (db, tenantId, _principalId, f, reach) => {
       const roles = actor.capabilities.has(PRINCIPAL_ACCESS_READ);
       // Masked BEFORE filtering and sorting, so neither a filter nor a sort on a withheld column can act as an oracle.
-      const administers = PEOPLE_ADMINISTRATION_KEYS.some((k) => actor.capabilities.has(k));
+      const administers = holdsPeopleAdministration(actor.capabilities);
       const pattern = f.query ? `%${f.query.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
       const { rows } = await db.query(
         `WITH roster AS (
@@ -155,7 +150,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         manager: r.manager_employee_id ? { employeeId: String(r.manager_employee_id), displayName: r.manager_name ?? null } : null,
         workEligibility: administers ? (r.eligibility ?? []) as string[] : [],
         operationalScopes: administers ? (r.scopes ?? []) as WorkforceRosterItem["operationalScopes"] : [],
-        applicationUser: administers ? (r.principal_id ? "LINKED" : "UNLINKED") : null,
+        applicationUser: r.principal_id ? "LINKED" : "UNLINKED",
         principalId: roles && r.principal_id ? String(r.principal_id) : null,
         securityRoles: roles ? ((r.security_roles ?? []) as NonNullable<WorkforceRosterItem["securityRoles"]>) : null,
         firstName: r.first_name ?? null,

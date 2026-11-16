@@ -10,7 +10,7 @@ Technician or General Employee does not see it.)
 
 > **Personal details are protected.** A colleague's **mobile phone, home address, hire date and separation date**
 > show only to people who can edit Employee profiles. Anyone else sees **Not available to you** for those fields, and
-> the change history leaves them out. The Work Eligibility, Operational Scope and Application user columns of the
+> the change history leaves them out. The Work Eligibility and Operational Scope columns of the
 > Users list follow the same rule for people who do not administer them. Your own details are always visible to you on
 > **My profile**.
 

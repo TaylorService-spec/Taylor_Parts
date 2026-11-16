@@ -180,7 +180,8 @@ export function listEmployeeChangeHistory(deps: EmployeeReadDeps, actor: Employe
         occurredAt: isoOf(r.occurred_at)!,
         before: named(before),
         after: named(after),
-        reason: r.reason ?? null,
+        // A profile change's free-text reason may restate the personal values it changed, so it follows them.
+        reason: !personal && r.action === "employee.profile.update" ? null : r.reason ?? null,
         changedBy: namesActors && typeof r.changed_by_name === "string" && r.changed_by_name.trim() !== "" ? { displayName: r.changed_by_name } : null,
       }));
       const last = kept[kept.length - 1];

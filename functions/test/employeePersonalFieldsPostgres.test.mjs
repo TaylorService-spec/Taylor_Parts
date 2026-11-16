@@ -29,6 +29,8 @@ const { readEmployee } = require("../lib/eosWorkforce/reads/employeeDirectoryRea
 const { listEmployeeChangeHistory } = require("../lib/eosWorkforce/reads/employeeChangeHistoryRead.js");
 const { listWorkforceRoster, PEOPLE_ADMINISTRATION_KEYS } = require("../lib/eosAdministration/workforceRoster.js");
 const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
+const { listEmployeeWorkEligibility, listEmployeeWorkEligibilityHistory } = require("../lib/eosWorkforce/reads/workEligibilityReads.js");
+const { listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory } = require("../lib/eosWorkforce/reads/operationalScopeReads.js");
 const companies = require("../lib/eosWorkforce/migration/tenantOperatingCompanies.js");
 const entitlement = require("../lib/eosOps/conditionalEntitlement.js");
 
@@ -76,8 +78,8 @@ test("personal fields and Administration columns over PostgreSQL", { skip: SKIP,
                    '555-0199', '1 Home St', 'Apt 2', 'Phoenix', 'AZ', '85001', '2020-01-15')`, [TENANT]);
   const profileChange = { mobilePhone: "555-0198", "address.street": "9 Old Rd", jobTitle: "Apprentice" };
   const profileAfter = { mobilePhone: "555-0199", "address.street": "1 Home St", jobTitle: "Technician" };
-  await q(`INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after)
-           VALUES ('ae-1', $1, 'employee.profile.update', 'p-admin', 'employee', 'e-colleague', $2::jsonb, $3::jsonb)`,
+  await q(`INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
+           VALUES ('ae-1', $1, 'employee.profile.update', 'p-admin', 'employee', 'e-colleague', $2::jsonb, $3::jsonb, 'new mobile 555-0199')`,
     [TENANT, JSON.stringify(profileChange), JSON.stringify(profileAfter)]);
   const deps = { pool };
 
@@ -119,11 +121,13 @@ test("personal fields and Administration columns over PostgreSQL", { skip: SKIP,
     assert.ok(item, "the change is still listed");
     assert.deepEqual(item.before, { jobTitle: "Apprentice" }, "no personal key before");
     assert.deepEqual(item.after, { jobTitle: "Technician" }, "no personal key after");
+    assert.equal(item.reason, null, "a profile change's free-text reason is withheld with its values");
     assert.match(page.personalFieldsWithheld, /admin\.employeeProfile\.write/);
     const full = await listEmployeeChangeHistory(deps, actor(["employee.record.read", "admin.employeeProfile.write"]), { employeeId: "e-colleague" });
     const fullItem = full.items.find((i) => i.eventId === "ae-1");
     assert.equal(fullItem.before.mobilePhone, "555-0198", "positive control: the profile maintainer sees the change");
     assert.equal(fullItem.after["address.street"], "1 Home St");
+    assert.equal(fullItem.reason, "new mobile 555-0199");
     assert.equal(full.personalFieldsWithheld, null);
   });
 
@@ -133,7 +137,7 @@ test("personal fields and Administration columns over PostgreSQL", { skip: SKIP,
     assert.equal(row.displayName, "Casey Colleague", "the picker still finds people by name");
     assert.deepEqual(row.workEligibility, []);
     assert.deepEqual(row.operationalScopes, []);
-    assert.equal(row.applicationUser, null);
+    assert.equal(row.applicationUser, "UNLINKED", "Owner ruling B: User Access linkage is an Employee-facing fact");
     assert.equal(row.principalId, null);
     assert.equal(row.securityRoles, null);
     assert.match(r.administrationColumnsWithheld, /admin\.employeeWorkEligibility\.write/);
@@ -144,9 +148,20 @@ test("personal fields and Administration columns over PostgreSQL", { skip: SKIP,
     for (const key of PEOPLE_ADMINISTRATION_KEYS) {
       const r = await listWorkforceRoster(deps, actor(["employee.record.read", key]), {});
       const row = r.items.find((i) => i.employeeId === "e-colleague");
-      assert.equal(row.applicationUser, "UNLINKED", `${key}: application user shown`);
+      assert.ok(Array.isArray(row.workEligibility), `${key}: eligibility column present`);
       assert.equal(r.administrationColumnsWithheld, null, `${key}: nothing withheld`);
       await listWorkforceRoster(deps, actor(["employee.record.read", key]), { scopeType: "MOBILE" });
+    }
+  });
+
+  await t.test("dedicated Work Eligibility and Operational Scope reads need a people-administration key", async () => {
+    const reads = { listEmployeeWorkEligibility, listEmployeeWorkEligibilityHistory, listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory };
+    for (const [name, read] of Object.entries(reads)) {
+      await assert.rejects(read(deps, actor(DIRECTORY_ONLY), { employeeId: "e-colleague" }), (e) => e.code === "CAPABILITY_REQUIRED", `${name}: directory-only refused`);
+      for (const key of PEOPLE_ADMINISTRATION_KEYS) {
+        const r = await read(deps, actor(["employee.record.read", key]), { employeeId: "e-colleague" });
+        assert.equal(r.employeeId, "e-colleague", `${name} with ${key}`);
+      }
     }
   });
 });

@@ -14,7 +14,15 @@ import {
   acceptOnly, isoOf, refuse, requireEmployeeId, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
 } from "./employeeReadKernel";
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
-import { WORK_ELIGIBILITY_LABEL, type WorkEligibilityCode } from "../workEligibilityVocabulary";
+import { WORK_ELIGIBILITY_LABEL, type WorkEligibilityCode } from "../workEligibilityVocabulary";
+import { holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS } from "./employeeRecordProjection";
+/** SEC-ROSTER-01: another Employee's Work Eligibility is Administration data, read with a people-administration key (refused before any database work). */
+function requirePeopleAdministration(actor: EmployeeReadActor): void {
+  if (!(actor?.capabilities instanceof Set) || !holdsPeopleAdministration(actor.capabilities)) {
+    refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this read requires one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`);
+  }
+}
+
 
 const MAX_HISTORY = 100;
 
@@ -53,7 +61,7 @@ export function listEmployeeWorkEligibility(deps: EmployeeReadDeps, actor: Emplo
   readonly items: WorkEligibilityItem[];
 }> {
   return runEmployeeRead(deps, actor,
-    () => { acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
+    () => { requirePeopleAdministration(actor); acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, employeeId) => {
       await requireEmployee(db, tenantId, employeeId);
@@ -76,7 +84,7 @@ export function listEmployeeWorkEligibilityHistory(deps: EmployeeReadDeps, actor
   readonly truncated: boolean;
 }> {
   return runEmployeeRead(deps, actor,
-    () => { acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
+    () => { requirePeopleAdministration(actor); acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, employeeId) => {
       await requireEmployee(db, tenantId, employeeId);
