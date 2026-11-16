@@ -1,10 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import SalesOrderDetail from "../src/modules/sales/SalesOrderDetail.jsx";
 import { useSalesOrder } from "../src/hooks/useSalesOrder.js";
+import SalesOrdersList from "../src/modules/sales/SalesOrdersList.jsx";
+import { useMetadataList } from "../src/hooks/useMetadataList.js";
 
 vi.mock("../src/hooks/useSalesOrder.js", () => ({ useSalesOrder: vi.fn() }));
+vi.mock("../src/hooks/useMetadataList.js", () => ({ useMetadataList: vi.fn() }));
+vi.mock("../src/hooks/useListCriteria.js", () => ({ useListCriteria: () => ({ criteria: { filters: [], sort: [], dropped: [] }, apply: vi.fn() }) }));
+vi.mock("../src/hooks/useListViewChrome.js", () => ({ useListViewChrome: () => ({ activeViewId: null, selectView: vi.fn(), total: 1 }) }));
+vi.mock("../src/hooks/useAccountReferenceResolver.js", () => ({ useAccountReferenceResolver: () => ({ resolveReference: null, status: "READY" }) }));
+vi.mock("../src/metadata/ListViewHeader.jsx", () => ({ default: () => null, CollectionResultContext: () => null }));
 
 // The Customer is RESOLVED now, not printed as an id, so the detail view reads account names
 // through the same batched hook the Sales Orders list uses. Mocked here for the same reason
@@ -501,5 +508,61 @@ describe("SalesOrderBareRedirect", () => {
     );
     expect(await screen.findByText("canonical page")).toBeTruthy();
     expect(screen.queryByText("dashboard")).toBeNull();
+  });
+});
+
+// SO-DETAIL-ROUTE-01 (UAT-R2.1): the Sales Order list exposed no link or id, so a reader (or a test driver) could not reach or cite a
+// Sales Order's canonical address. A row is now a real link to /customers/opportunities/sales-order/:salesOrderId, keyed by the internal id,
+// while the displayed text stays the governed order number. No capability, route or authority is added: the detail route still applies its own
+// governed read, so an unauthorized principal who follows the link gets the governed denial.
+const listPresentation = {
+  listId: "salesOrder.index", surface: "INDEX", state: "READY",
+  columns: [{ fieldId: "salesOrderNumber", label: "Order" }, { fieldId: "state", label: "State" }],
+  rows: [{ key: "so-doc-6", cells: [{ fieldId: "salesOrderNumber", value: "SO-2026-000006" }, { fieldId: "state", value: "Confirmed" }] }],
+  hasMore: false, viewAllListId: null, truncated: false, emptyMessage: null,
+};
+
+function Where() { return <div data-testid="where">{useLocation().pathname}</div>; }
+
+function renderFlow(detail = { loading: true, errorStatus: null, result: null }) {
+  useSalesOrder.mockReturnValue(detail);
+  useMetadataList.mockReturnValue({ presentation: listPresentation, rows: [], loadMore: vi.fn(), retry: vi.fn(), descriptorErrors: [] });
+  return render(
+    <MemoryRouter initialEntries={["/customers/sales-orders"]}>
+      <Where />
+      <Routes>
+        <Route path="/customers/sales-orders" element={<SalesOrdersList />} />
+        <Route path="/customers/opportunities/sales-order/:salesOrderId" element={<SalesOrderDetail hasCapability={() => false} />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+describe("Sales Order list rows open the canonical Sales Order detail", () => {
+  it("the order number is a real link to the id route, and the id is never shown as content", () => {
+    renderFlow();
+    const link = screen.getByRole("link", { name: "SO-2026-000006" });
+    expect(link.getAttribute("href")).toBe("/customers/opportunities/sales-order/so-doc-6");
+    expect(screen.queryByText("so-doc-6")).toBeNull();
+  });
+
+  it("following the link navigates once to the detail route by id; clicking elsewhere on the row does the same", () => {
+    renderFlow();
+    fireEvent.click(screen.getByRole("link", { name: "SO-2026-000006" }));
+    expect(screen.getByTestId("where").textContent).toBe("/customers/opportunities/sales-order/so-doc-6");
+  });
+
+  it("a row click away from the link still navigates by id (existing behaviour preserved)", () => {
+    renderFlow();
+    fireEvent.click(screen.getByText("Confirmed"));
+    expect(screen.getByTestId("where").textContent).toBe("/customers/opportunities/sales-order/so-doc-6");
+  });
+
+  it("an unauthorized principal who follows the link gets the governed denial, with no actions and no widened access", () => {
+    renderFlow({ loading: false, errorStatus: "denied", result: null });
+    fireEvent.click(screen.getByRole("link", { name: "SO-2026-000006" }));
+    expect(screen.getByText(/not authorized to view this Sales Order/)).toBeTruthy();
+    expect(useSalesOrder).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Cancel order|Allocate|Move to In Fulfillment/i })).toBeNull();
   });
 });

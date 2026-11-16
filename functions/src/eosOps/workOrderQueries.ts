@@ -25,6 +25,7 @@ import { WORK_ORDER_CREATE } from "./workOrderCreateCommand";
 import { WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION } from "./workOrderAssignmentAuthority";
 import { OperatingCompanyBindingError, resolveActiveOperatingCompanyId } from "./operatingCompanyBinding";
 import { resolveCompanyAuthority } from "./companyAuthority";
+import { requireWorkOrderCompanyReach, resolveWorkOrderCompanyReach, resolveWorkOrderReadAuthority } from "./workOrderCompanyAuthority";
 import { ListQueryError, appliedListQuery, compileListQuery, describeListQuery, pageOfListQuery, validateListQuery } from "./listQuery";
 import { workOrderListFieldsFor } from "./workOrderListQuery";
 
@@ -151,7 +152,10 @@ export async function readWorkOrderDetail(
   const workOrderId = input?.workOrderId;
   const decision = await authorizeWorkOrderRecordRead(deps.reader, actor, workOrderId as string);
   if (!decision.allowed) refuse(String(decision.outcome), "FORBIDDEN", "this Work Order may not be read by this caller");
-  const { rows } = await deps.pool.query(`${SUMMARY_SELECT} WHERE w.tenant_id = $1 AND w.id = $2`, [actor.tenantId, workOrderId]);
+  // DWO-company: capability and relation first (above), then the caller's operating companies, INSIDE the SELECT. A Work Order outside them is the plain miss.
+  const reach = await requireWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId, refuse);
+  const { rows } = await deps.pool.query(`${SUMMARY_SELECT} WHERE w.tenant_id = $1 AND w.id = $2 AND ${reach.sql("w.operating_company_key", 3)}`,
+    [actor.tenantId, workOrderId, ...reach.sqlParams()]);
   if (rows.length === 0) refuse("WORK_ORDER_NOT_FOUND", "NOT_FOUND", "the Work Order does not exist in this tenant");
   if (await isQuarantined(deps.pool, actor.tenantId, workOrderId as string)) {
     refuse(WORK_ORDER_QUARANTINED, "PRECONDITION_FAILED", WORK_ORDER_QUARANTINED_MESSAGE);
@@ -204,7 +208,7 @@ const requireListRead = (actor: LifecycleActor): void => {
  * assignments. No authority = no list, refused exactly as Analysis refuses it.
  */
 async function listCompanyKeys(pool: Pool, actor: LifecycleActor): Promise<readonly string[]> {
-  const authority = await resolveCompanyAuthority(pool, actor.tenantId, actor.principalId);
+  const authority = await resolveWorkOrderReadAuthority(pool, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
   }
@@ -347,12 +351,16 @@ export async function listMyAssignedWorkOrders(
   if (link.rows.length === 0) return Object.freeze({ employeeId: null, items: Object.freeze([]) });
   const employeeId = String(link.rows[0].employee_id);
   const excluded = i.includeCompleted === true ? ["CLOSED", "CANCELLED"] : [...TERMINAL_STATUSES];
+  // DWO-company: the technician's own work is bounded by the same company reach as every other Work Order read. An assignment is made only to an Employee of the
+  // Work Order's company (DQ-013), so the normal case is unchanged; work of a company the caller no longer reaches is simply not listed.
+  const reach = await resolveWorkOrderCompanyReach(deps.pool, actor.tenantId, actor.principalId);
   const { rows } = await deps.pool.query(
     `${SUMMARY_SELECT}
       WHERE w.tenant_id = $1 AND a.assignee_employee_id = $2 AND ${notQuarantined("w")} AND NOT (w.status::text = ANY($3::text[]))
+        AND ${reach.sql("w.operating_company_key", 4)}
       ORDER BY w.scheduled_start NULLS LAST, w.priority, w.id
       LIMIT ${WORK_ORDER_LIST_MAX}`,
-    [actor.tenantId, employeeId, excluded]);
+    [actor.tenantId, employeeId, excluded, ...reach.sqlParams()]);
   const items: WorkOrderSummary[] = [];
   for (const r of rows) {
     const d = await authorizeWorkOrderRecordRead(deps.reader, actor, String(r.id));
@@ -386,7 +394,7 @@ export async function listWorkOrderTechnicians(
   if (workOrderId !== undefined && workOrderId !== null && !ID_SHAPE(workOrderId)) {
     refuse("WORK_ORDER_ID_INVALID", "INVALID_INPUT", "workOrderId must be a governed Work Order id");
   }
-  const authority = await resolveCompanyAuthority(deps.pool, actor.tenantId, actor.principalId);
+  const authority = await resolveWorkOrderReadAuthority(deps.pool, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) {
     refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority: requires one access-eligible linked Employee with an active home company, or an operating-company assignment");
   }

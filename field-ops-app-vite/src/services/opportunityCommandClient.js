@@ -46,7 +46,24 @@ export async function updateOpportunity(
   }), client);
 }
 
+// CLC (DECISIONS #CLC): set the operating company of a COMPANY-LESS Opportunity or Sales Agreement -- once, with a stated reason. The server decides
+// everything (capability, that the record is visible and still company-less, that the caller reaches the company, lineage); a refusal comes back with the
+// server's governed code (errorDetail) and its own words (message). Idempotent on the caller's key.
+export async function assignRecordOperatingCompany(
+  { family, recordId, operatingCompanyId, reason, idempotencyKey },
+  { client = commercialApiClient } = {},
+) {
+  const answer = await client.call("assignRecordOperatingCompany", { input: { family, recordId, operatingCompanyId, reason, idempotencyKey } });
+  if (answer.ok) return { result: answer.result };
+  return {
+    errorStatus: legacyErrorStatus(answer),
+    errorDetail: typeof answer.reason === "string" && answer.reason ? answer.reason : null,
+    message: typeof answer.message === "string" ? answer.message : null,
+  };
+}
+
 export const opportunityCommandClient = Object.freeze({
+  assignRecordOperatingCompany,
   createOpportunity,
   transitionOpportunity,
   closeOpportunityAsWon,

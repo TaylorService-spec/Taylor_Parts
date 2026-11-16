@@ -16,6 +16,7 @@ import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
 import OpportunityAgreementCard from "./OpportunityAgreementCard.jsx";
+import SetOperatingCompany from "./SetOperatingCompany.jsx";
 import { DetailSection, ownerName as resolveOwnerName, currency as formatValue, shortDate } from "./opportunitySections.jsx";
 import { formatDateOnly } from "../../domain/displayTimestamp";
 import {
@@ -369,6 +370,9 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
       {spine.unrecognised ? (
         <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This opportunity’s stage is not one the lifecycle recognises." />
       ) : null}
+
+      {/* CLC: shown ONLY when the server's own read of this record offers it (the record has no operating company and the caller may set one). */}
+      <SetOperatingCompany family="OPPORTUNITY" recordId={view.id} assignment={view.operatingCompanyAssignment} onApplied={refetch} />
 
       {/* ─────────────── ATTENTION (P1v2 §5). Presentation of deriveAttention's four reasons —
           not a recommendation engine, and never labelled as one. Renders nothing when clean. */}

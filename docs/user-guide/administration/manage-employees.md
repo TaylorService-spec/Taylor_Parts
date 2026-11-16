@@ -103,7 +103,9 @@ one section replaces the old account-status and password-reset buttons.
 
 - **Create sign-in** (for a person who has none): enter their sign-in name, say why, and click it. A **setup code**
   appears once. Give it to the person directly (in person or by phone); it expires and cannot be shown again. They use
-  it on the sign-in screen to choose their own password. You never see or set their password.
+  it on the sign-in screen to choose their own password. You never see or set their password. Two-step verification
+  is required on every new sign-in and cannot be turned off at creation; the person sets it up the first time they
+  sign in.
 - **Reset password** gives a one-time **reset code** the same way. Resetting does not sign the person out; **Sign out
   everywhere** does, and asks you to confirm.
 - **Disable sign-in** stops the person signing in and signs them out at once; **Enable sign-in** turns it back on. Their

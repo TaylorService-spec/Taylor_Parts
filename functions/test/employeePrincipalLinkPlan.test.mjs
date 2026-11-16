@@ -6,8 +6,9 @@
 // Run: npm run build && node --test test/employeePrincipalLinkPlan.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, statSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
+import { join, sep } from "node:path";
 
 import {
   LINK_REFUSAL,
@@ -380,7 +381,7 @@ test("employee id shape rejects paths, blanks and untrimmed ids", () => {
 function sourceFiles(dir) {
   const out = [];
   for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry);
+    const path = join(dir, entry).split(sep).join("/");
     if (statSync(path).isDirectory()) {
       out.push(...sourceFiles(path));
       continue;

@@ -230,6 +230,8 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
   }
   // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
   if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
+  // ---- 1. capability, BEFORE the input is validated (API-01; the scope predicates follow once the custody warehouse is known) ----
+  if (!actor.capabilities.has(EOS_STOCK_RELOCATE_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_STOCK_RELOCATE_CAPABILITY}`);
   const validated = validateEosRelocationRequest(input);
   if (!validated.valid) return refuse("INVALID", "INVALID_INPUT", validated.reason);
   const req = validated.value;
@@ -237,8 +239,6 @@ export async function relocateEosStock(deps: RelocationOperationDeps, actor: Rel
   const serials = req.serialNumbers ?? [];
 
   return inTransaction(deps.pool, async (db) => {
-    // ---- 1. capability (the scope predicates follow once the custody warehouse is known) ----
-    if (!actor.capabilities.has(EOS_STOCK_RELOCATE_CAPABILITY)) refuse("CAPABILITY_MISSING", "FORBIDDEN", `you do not hold ${EOS_STOCK_RELOCATE_CAPABILITY}`);
 
     // ---- 2. PLACEMENT is its own authority: holding relocate does not imply it (Decision #170) ----
     if (req.recordPlacement && !actor.capabilities.has(EOS_PLACEMENT_RECORD_CAPABILITY)) {

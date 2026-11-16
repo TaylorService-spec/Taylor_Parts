@@ -25,6 +25,7 @@ import {
 import VerenwardMark from "../shared/brand/VerenwardMark";
 import Icon from "../shared/ui/Icon";
 import { useAuth } from "../auth/AuthContext";
+import { useSignOut } from "../auth/useSignOut.js";
 import { Button } from "../shared/ui/primitives/index.js";
 
 // One glyph per operational domain, so the rail reads by shape as well as by
@@ -356,7 +357,8 @@ export function RailIdentity() {
   // Identity is the least important thing on this rail; it fails closed to nothing and the rail
   // keeps working.
   const auth = useAuth() ?? {};
-  const { user, role, displayName, logout } = auth;
+  const { user, role, displayName } = auth;
+  const { signingOut, signOut } = useSignOut();
   if (!user) return null;
   const name = displayName || user.email || "Signed in";
   return (
@@ -368,7 +370,7 @@ export function RailIdentity() {
       <NavLink to="/my-profile" className="fo-rail-identity__profile">
         Your Employee Profile
       </NavLink>
-      <Button variant="tertiary" onClick={logout} className="fo-rail-identity__signout">
+      <Button variant="tertiary" onClick={signOut} loading={signingOut} className="fo-rail-identity__signout">
         Sign Out
       </Button>
     </div>

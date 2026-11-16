@@ -296,7 +296,11 @@ test("the service persona matrix over the governed Work Order authority", { skip
       (e) => { assert.equal(e.code, "CAPABILITY_MISSING", who); assert.match(e.message, /workOrder\.lifecycle\.ready/); return true; }, who);
     }
     // Whoever Administration grants them to can perform exactly that edge -- and nothing else.
-    const closer = { tenantId: T, principalId: "prn-dispatcher", capabilities: new Set(["workOrder.lifecycle.close"]) };
+    // DWO-company: whoever is granted the edge acts on the Work Order only within a company it works for, so the grantee is a Taylor Employee.
+    await principal("prn-closer");
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number) VALUES ('emp-closer',$1,'ACTIVE','taylor','emp-closer')`, [T]);
+    await link("prn-closer", "emp-closer");   // an office Employee: not SERVICE_TECHNICIAN eligible, never a technician candidate
+    const closer = { tenantId: T, principalId: "prn-closer", capabilities: new Set(["workOrder.lifecycle.close"]) };
     assert.equal((await lifecycle.transitionWorkOrder({ pool }, closer,
       { workOrderId: "wo-done", expectedStatus: "COMPLETED", toStatus: "CLOSED" })).toStatus, "CLOSED");
     await assert.rejects(lifecycle.transitionWorkOrder({ pool }, closer,

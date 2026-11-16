@@ -666,6 +666,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/operationGate.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/operationalRoleLanding.test.mjs",
       "runner": "node"
     },
@@ -844,6 +848,10 @@
     {
       "file": "test/receiptsLaunchPoint.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/readDeadline.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/receiveAgainstPurchaseOrder.test.mjs",
@@ -1327,6 +1335,10 @@
     },
     {
       "file": "test/salesOrderAllocationClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/securityHeaders.test.mjs",
       "runner": "node --test"
     }
   ]

@@ -5,7 +5,8 @@
 // WRAPPER. So the derivation follows IMPORTS, not just names.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, statSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join, relative, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {

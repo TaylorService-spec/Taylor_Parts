@@ -34,6 +34,7 @@ import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
+import { explainAccessGates } from "../eosOps/accessGatesExplanation";
 import { createAuthorityChangePreview } from "../eosOps/authorityChangePreview";
 import { createAuthorityChangeCommit } from "../eosOps/authorityChangeCommit";
 import { adminPreviewMandatoryFrom } from "../adminPolicy/authorityChangeCommitPort";
@@ -62,6 +63,7 @@ import { createVerifierMetrics } from "../eosAuth/verifierMetrics";
 import { createSelfSchedulingHttpHandler } from "../eosOps/selfSchedulingHttp";
 import { SELF_SCHEDULING_ROUTE } from "../eosOps/selfScheduling";
 import { startInboundPollingIfEnabled } from "../eosOps/inboundProviderRuntime";
+import { applyEosApiSecurityHeaders } from "./securityHeaders";
 
 /** Which domain transport answers a request path. Everything not Catalog, Operations, Commercial, Workforce or CRM is Administration. */
 export function eosApiDomainFor(url: string | undefined): "auth" | "catalog" | "crm" | "commercial" | "operations" | "workforce" | "selfScheduling" | "administration" {
@@ -256,6 +258,8 @@ export async function startEosApi(
     repo,
     // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
     explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
+    // "Access explained": the eleven-gate chain over the same evaluator, same read authority (explainAccessGates).
+    explainAccessGates: (tenantId, principalId, question, readSignIn) => explainAccessGates(repo, pool, { tenantId, principalId, question, readSignIn }),
     // The grant-impact preview (PR 3, advisory): the unchanged authority commands simulated on ONE pooled connection
     // inside BEGIN..ROLLBACK, with the registered governed field-group definitions in the before/after snapshots.
     previewAuthorityChange: createAuthorityChangePreview({ pool, fieldGroups: [PART_SUPPLIER_TERMS_FIELD_GROUPS] }),
@@ -381,6 +385,7 @@ export async function startEosApi(
   // EVERY request runs in its own scope, so a human session's tenant binding (requestTenantBinding.ts, D-12) belongs to
   // exactly one request and can never leak to another.
   const server = createServer((req, res) => runWithRequestScope(() => {
+    applyEosApiSecurityHeaders(res); // every response, every domain, errors and preflight included
     const domain = eosApiDomainFor(req.url);
     if (domain === "selfScheduling") {
       void selfSchedulingHandler(req as never, res as never);

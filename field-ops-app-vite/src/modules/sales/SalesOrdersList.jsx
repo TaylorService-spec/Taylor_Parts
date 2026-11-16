@@ -217,6 +217,9 @@ export default function SalesOrdersList() {
         // routes this application does not mount, and nobody noticed because no screen ever asked
         // the definition. A comment is not a mechanism.
         onRowClick={(id) => navigate(buildRowHref(salesOrderIndexList.rowNavigationTo, id))}
+        // SO-DETAIL-ROUTE-01: the same declared destination as a real link on the first cell, so the canonical id address
+        // is visible and openable (UAT found rows that exposed no link or id).
+        rowHref={(id) => buildRowHref(salesOrderIndexList.rowNavigationTo, id)}
         onLoadMore={loadMore}
         onRetry={retry}
       />

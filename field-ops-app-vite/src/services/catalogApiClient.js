@@ -28,6 +28,7 @@
 // the Firestore client read it in full from six surfaces, and re-creating that over HTTP would move
 // the cost rather than remove it. Every list is a bounded, keyset-paged `searchParts`.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
+import { readDeadline, READ_TIMED_OUT_REASON } from "./readDeadline.js";
 
 export const CATALOG_ROUTE = "/operations/catalog";
 
@@ -105,6 +106,9 @@ export async function callCatalogApi(operation, input = undefined, options = {})
   const doFetch = options.fetchImpl ?? (typeof fetch === "function" ? fetch : null);
   if (!doFetch) return failure("UNREACHABLE", "no network transport is available");
 
+  // READS ONLY get a deadline (RCV-02). Every command keeps the caller's own signal and waits as long as it always did: abandoning a write that may have committed would look failed and invite a double submit.
+  const deadline = readDeadline(CATALOG_READ_OPERATIONS.includes(operation), options.signal);
+  const timedOut = () => failure("UNREACHABLE", "The read did not finish in time. Nothing was changed by it. Try again.", { reason: READ_TIMED_OUT_REASON });
   let response;
   try {
     response = await doFetch(`${base}${CATALOG_ROUTE}`, {
@@ -115,9 +119,11 @@ export async function callCatalogApi(operation, input = undefined, options = {})
         ...(options.tenantId ? { "x-eos-tenant": options.tenantId } : {}),
       },
       body: JSON.stringify(envelope),
-      signal: options.signal,
+      signal: deadline.signal,
     });
   } catch (err) {
+    deadline.clear();
+    if (deadline.timedOut()) return timedOut();
     if (err?.name === "AbortError") return failure("UNREACHABLE", "the request was cancelled");
     // AND THAT IS THE END OF IT. No second source is consulted here.
     return failure("UNREACHABLE", "the Catalog service could not be reached");
@@ -128,7 +134,10 @@ export async function callCatalogApi(operation, input = undefined, options = {})
     body = await response.json();
   } catch {
     body = null;
+  } finally {
+    deadline.clear();
   }
+  if (deadline.timedOut() && body === null) return timedOut();
   if (response.ok && body && body.ok === true) {
     return Object.freeze({ ok: true, operation, result: body.result });
   }

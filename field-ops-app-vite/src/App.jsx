@@ -126,10 +126,14 @@ const WarehouseManagerHome = lazy(() => import("./modules/inventoryRole/Warehous
 const PartsManagerHome = lazy(() => import("./modules/inventoryRole/PartsManagerHome"));
 const PartsAssociateHome = lazy(() => import("./modules/inventoryRole/PartsAssociateHome"));
 import { useAuth } from "./auth/AuthContext";
+import NoAccessScreen from "./auth/NoAccessScreen";
 import Login from "./auth/Login";
 // EOS native login (docs/architecture/eos-native-identity.md): the human front door, when the build enables it.
 import EosLogin from "./auth/EosLogin";
 import { eosHumanLoginEnabled } from "./auth/eosLoginClient.js";
+// A session that owes a second factor can use the sign-in routes only: it gets the authenticator setup screen, not the app.
+import { mfaGateActive, useMfaEnrollmentRequired } from "./auth/useMfaEnrollmentRequired.js";
+const MfaEnrollmentGate = lazy(() => import("./auth/MfaEnrollmentGate.jsx"));
 // FIREBASE EXIT B2: in an EOS-only sign-in build a screen whose batch has not migrated cannot reach Firebase; its failure
 // is contained to the content area (components/RouteErrorBoundary.jsx) rather than replacing the whole app.
 import { EOS_AUTH_ONLY } from "./auth/authSource.js";
@@ -1352,6 +1356,7 @@ const ROUTER_BASENAME = routerBasenameFrom(import.meta.env.BASE_URL);
 
 export default function App() {
   const { user, role, loading, operationalRoles, employmentStatus, identityError, retryIdentityResolution } = useAuth();
+  const mfaEnrollmentRequired = useMfaEnrollmentRequired();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
   // Issue #325 -- capability gating from the TRUSTED effective-access feed (Inventory's
   // resolveEffectiveAccess callable), never from the raw role. The hook asks the callable for a
@@ -1422,6 +1427,17 @@ export default function App() {
     return (
       <Suspense fallback={<div className="fo-panel">Loading...</div>}>
         <CustomerSchedulingPage token={selfScheduleToken} />
+      </Suspense>
+    );
+  }
+
+  // Ahead of the loading and identity-error screens and of the identity read below: the server answers MFA_ENROLLMENT_REQUIRED to all
+  // but the sign-in routes, so those fail for this session. The access and experience hooks above still fire their reads (refused,
+  // harmless). Client-only; the server gate is unchanged.
+  if (mfaGateActive(mfaEnrollmentRequired, user)) {
+    return (
+      <Suspense fallback={<div className="fo-panel">Loading...</div>}>
+        <MfaEnrollmentGate />
       </Suspense>
     );
   }
@@ -1497,39 +1513,8 @@ export default function App() {
   // under the EOS source therefore means the governed source ANSWERED and this principal holds no
   // surface that any destination shows -- which is a fact, not a fault.
   if (!hasAnyAccess) {
-    return (
-      <div className="fo-panel">
-        <h2>No access</h2>
-        {eosIsNavigationSource ? (
-          <>
-            <p className="fo-muted">
-              You're signed in as <strong>{user.email}</strong>. Your access was read from the
-              governed source and it grants no areas of the application.
-            </p>
-            <p className="fo-muted">
-              Access here comes from the Security Roles assigned to your EOS principal, and from your
-              work eligibility and operational scope — not from a role on your sign-in account. Ask
-              an administrator to review your role assignments in Administration, giving them the
-              email above. Once they are changed, choose <strong>Check again</strong>.
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="fo-muted">
-              You're signed in as <strong>{user.email}</strong>, but your account isn't
-              assigned a role with access yet.
-            </p>
-            <p className="fo-muted">
-              Ask an administrator to grant your account a role — giving them the email above
-              helps them find it. Once access is granted, choose <strong>Check again</strong>.
-            </p>
-          </>
-        )}
-        <Button type="button" variant="primary" onClick={() => window.location.reload()}>
-          Check again
-        </Button>
-      </div>
-    );
+    // The panel (and its Sign Out, which is AuthContext.logout) lives in auth/NoAccessScreen.jsx.
+    return <NoAccessScreen email={user.email} eosSource={eosIsNavigationSource} />;
   }
 
   return (

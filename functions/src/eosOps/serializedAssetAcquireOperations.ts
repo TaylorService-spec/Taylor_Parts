@@ -150,16 +150,16 @@ export async function acquireEosSerializedAsset(deps: AcquireOperationDeps, acto
   }
   // The cutover fails closed until the tenant's legacy baseline is CERTIFIED (inventoryBaselineGate.ts).
   if (!(await isInventoryBaselineCertified(deps.pool, actor.tenantId))) refuse("NOT_ACTIVATED", "NOT_ACTIVATED", INVENTORY_BASELINE_NOT_CERTIFIED_MESSAGE);
+  // ---- 1. AUTHORITY, capability first and BEFORE the input is validated (API-01); the receiving warehouse's scope follows ----
+  if (!actor.capabilities.has(EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY)) {
+    refuse("PERMISSION_DENIED", "FORBIDDEN", "actor is not authorized to acquire serialized assets");
+  }
   const validated = validateEosAcquireRequest(input);
   if (!validated.valid) return refuse("REQUEST_INVALID", "INVALID_INPUT", validated.message);
   const req = validated.value;
   const serializedAssetId = serializedAssetDocId(req.partId, req.serialNo);
 
   return inTransaction(deps.pool, async (db) => {
-    // ---- 1. AUTHORITY: the capability, then the receiving warehouse's scope ----
-    if (!actor.capabilities.has(EOS_SERIALIZED_ASSET_ACQUIRE_CAPABILITY)) {
-      refuse("PERMISSION_DENIED", "FORBIDDEN", "actor is not authorized to acquire serialized assets");
-    }
     const authority = await resolveInventoryCompanyAuthority(db, actor.tenantId, actor.principalId);
     if (authority.companyKeys.length === 0) {
       refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "acquiring a unit requires operating-company authority; this principal has none");

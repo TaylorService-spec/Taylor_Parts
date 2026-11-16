@@ -220,8 +220,11 @@ describe("PartDetail -- the frozen notes, and the assignee name", () => {
     expect(within(legacy).getByText("Dana Clerk")).toBeTruthy();
     expect([...legacy.querySelectorAll("button, input, textarea, select, form")].filter((el) => !el.closest("th"))).toHaveLength(0); // column-sort headers are the only controls
     expect(h.employeeDirectoryHookCalls).toBe(0);
-    expect(governedAsked).toContainEqual({ enabled: true, actorSubjects: ["uid-x"] });
+    // employeeIds: [] -- the notes panel names ACTORS only; omitting it would read the whole Employee directory (listEmployees, employee.record.read),
+    // which every Part detail load was refused (UAT 2026-10-23). NO caller on this page may ask for the whole directory.
+    expect(governedAsked).toContainEqual({ enabled: true, employeeIds: [], actorSubjects: ["uid-x"] });
     expect(governedAsked).toContainEqual({ employeeIds: ["emp-9"] });
+    expect(governedAsked.filter((args) => args.employeeIds === undefined)).toEqual([]);
     expect(screen.getAllByText("Pat Associate").length).toBeGreaterThan(0);
   });
 
@@ -233,6 +236,6 @@ describe("PartDetail -- the frozen notes, and the assignee name", () => {
     expect(screen.queryByText(LEGACY_INVENTORY_NOTES_LABEL)).toBeNull();
     // Firebase is the source: the Firestore directory is read, the governed actor read is disabled.
     expect(h.employeeDirectoryHookCalls).toBeGreaterThan(0);
-    expect(governedAsked).toContainEqual({ enabled: false, actorSubjects: ["uid-x"] });
+    expect(governedAsked).toContainEqual({ enabled: false, employeeIds: [], actorSubjects: ["uid-x"] });
   });
 });

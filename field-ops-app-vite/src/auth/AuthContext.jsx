@@ -10,7 +10,7 @@ import { resolveEmployeeSession } from "./employeeSession";
 // ADDITIVE EOS SESSION (docs/architecture/eos-identity-session-foundation.md, 3(e)). When a valid EOS access
 // token is present the session is signed in through EOS and identity comes from the EOS API; otherwise the
 // Firebase path below runs exactly as before.
-import { clearEosSession, readEosSession } from "./eosSession";
+import { clearEosSession, clearEosScopedSessionStorage, readEosSession } from "./eosSession";
 import { eosSessionUser, resolveEosSessionIdentity } from "./eosSessionIdentity";
 import { operationsApiClient } from "../services/operationsApiClient.js";
 import { workforceApiClient } from "../services/workforceApiClient.js";
@@ -239,8 +239,14 @@ export function AuthProvider({ children }) {
     // Ending an EOS session clears its token (and, with the front door enabled, revokes it on the server); the
     // Firebase sign-out is unchanged.
     const hadEosSession = readEosSession() !== null || (eosHumanLoginEnabled() && eosLoginClient.currentSession() !== null);
-    if (eosHumanLoginEnabled()) await eosLoginClient.logout();
+    try {
+      if (eosHumanLoginEnabled()) await eosLoginClient.logout();
+    } catch {
+      // The client already treats an unreachable server as "local session gone"; nothing below may be skipped.
+    }
+    // Whatever the server call did, the client session ends: nothing is left half signed in.
     clearEosSession();
+    clearEosScopedSessionStorage();
     if (hadEosSession) {
       setUser(null);
       setRole(null);

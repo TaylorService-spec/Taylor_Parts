@@ -9,10 +9,17 @@ import { fetchSupplierList } from "../services/partsOperationsReads.js";
 // Fail-closed: a denied/unavailable read resolves to an error code (never a partial list); the
 // workspace renders a FailureState. One-shot fetch (suppliers change rarely and are write-closed to
 // clients), re-run on accessVersion change (the inventory/purchasing access-freshness convention).
-export function useSuppliers(accessVersion) {
-  const [state, setState] = useState({ loading: true, error: null, suppliers: [], truncated: false });
+//
+// `enabled` (UAT RO-01): false asks nothing and settles at the "FORBIDDEN" error a refused read produces (the caller is known not to hold
+// supplier.record.read), instead of taking a 403 on every load.
+export function useSuppliers(accessVersion, enabled = true) {
+  const [state, setState] = useState({ loading: enabled, error: enabled ? null : "FORBIDDEN", suppliers: [], truncated: false });
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ loading: false, error: "FORBIDDEN", suppliers: [], truncated: false });
+      return undefined;
+    }
     let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
     // BOUNDED (§9). Uses the PAGE variant, not the shared unbounded fetcher: that same
@@ -30,7 +37,7 @@ export function useSuppliers(accessVersion) {
     return () => {
       cancelled = true;
     };
-  }, [accessVersion]);
+  }, [accessVersion, enabled]);
 
   return state;
 }

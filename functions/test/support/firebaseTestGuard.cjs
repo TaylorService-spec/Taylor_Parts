@@ -34,7 +34,8 @@
 //       GOOGLE_APPLICATION_CREDENTIALS is removed (firebase-admin reads it eagerly and would throw on
 //       a missing path), HOME and CLOUDSDK_CONFIG point at a fresh empty directory (so the well-known
 //       ~/.config/gcloud/application_default_credentials.json cannot be found -- both firebase-admin
-//       and google-auth-library look for it under $HOME), and GCE metadata detection is disabled.
+//       and google-auth-library look for it under $HOME; on Windows USERPROFILE and APPDATA follow
+//       too, since os.homedir() and %APPDATA%\gcloud are used there), and GCE metadata detection is disabled.
 //       A real credential variable set by the caller is REFUSED, not overridden -- that is an
 //       operator mistake worth surfacing.
 //   (4) Child processes inherit the guard through NODE_OPTIONS (--require), so an operator script a
@@ -159,18 +160,27 @@ function neutralizeAdc(env) {
   // Both firebase-admin and google-auth-library find the well-known ADC file at
   // $HOME/.config/gcloud/application_default_credentials.json (neither reads CLOUDSDK_CONFIG), so
   // HOME itself is pointed at a fresh empty directory. CLOUDSDK_CONFIG follows it for any gcloud child.
+  // On Windows os.homedir() reads USERPROFILE (not HOME) and gcloud keeps ADC under
+  // %APPDATA%\gcloud, so both follow the neutral directory there too.
+  const windows = process.platform === "win32";
   let dir = env[OWNED_HOME_ENV];
-  if (!(dir && env.HOME === dir && env.CLOUDSDK_CONFIG === dir && fs.existsSync(dir))) {
+  if (!(dir && env.HOME === dir && env.CLOUDSDK_CONFIG === dir && fs.existsSync(dir)
+        && (!windows || (env.USERPROFILE === dir && env.APPDATA === dir)))) {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "eos-firebase-test-guard-home-"));
     const created = dir;
     process.once("exit", () => { try { fs.rmSync(created, { recursive: true, force: true }); } catch { /* best effort */ } });
   }
   if (fs.existsSync(path.join(dir, ".config", "gcloud", "application_default_credentials.json"))
-      || fs.existsSync(path.join(dir, "application_default_credentials.json"))) {
+      || fs.existsSync(path.join(dir, "application_default_credentials.json"))
+      || fs.existsSync(path.join(dir, "gcloud", "application_default_credentials.json"))) {
     refuse(`the neutral HOME directory (${dir}) holds Application Default Credentials.`);
   }
   env.HOME = dir;
   env.CLOUDSDK_CONFIG = dir;
+  if (windows) {
+    env.USERPROFILE = dir;
+    env.APPDATA = dir;
+  }
   env[OWNED_HOME_ENV] = dir;
   // No GCE metadata server either: google-auth-library would otherwise probe it for credentials.
   env.METADATA_SERVER_DETECTION = "none";
@@ -273,7 +283,8 @@ function installEgressBlock(state) {
 
 function propagateToChildren(env, mode) {
   env[ACTIVE_ENV] = mode;
-  const entry = path.join(__dirname, mode === "emulator" ? "firebaseEmulatorGuard.cjs" : "firebaseOfflineGuard.cjs");
+  // Forward slashes: Node's NODE_OPTIONS parser treats a backslash inside double quotes as an escape (breaks on Windows).
+  const entry = path.join(__dirname, mode === "emulator" ? "firebaseEmulatorGuard.cjs" : "firebaseOfflineGuard.cjs").replace(/\\/g, "/");
   const flag = `--require "${entry}"`;
   const current = env.NODE_OPTIONS ?? "";
   if (!current.includes(entry)) env.NODE_OPTIONS = `${current} ${flag}`.trim();

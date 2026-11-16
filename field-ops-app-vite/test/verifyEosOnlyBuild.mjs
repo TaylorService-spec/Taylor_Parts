@@ -4,7 +4,9 @@
 // throwaway directory, and asserts on the OUTPUT: the environment's Firebase project identity -- its apiKey, projectId,
 // authDomain, storage bucket, messaging sender and app id, all read from config/environments.json -- appears NOWHERE in the
 // emitted files. "No Firebase config is in the bundle" is a statement about the artifact, so it is asserted on the artifact.
-// (The Firebase SDK's own code may still be bundled; what is absent is any app to initialise and any config to initialise it.)
+// It ALSO asserts the Firebase SDK itself (Auth, Firestore, Functions, app) and every Google identity / Firestore / Functions
+// host string is absent from the EOS-only output (Firebase retirement, P0 Firebase-exit): vite.config.js aliases `firebase/*`
+// to src/firebase/firebaseSdkAbsent.js in that build, and this is the proof on the artifact, not on the config.
 //
 // It also builds the ordinary Firebase-sign-in bundle of the same environment and requires the identity to be PRESENT there, so
 // the absence above cannot be a vacuous pass of a scan that finds nothing anywhere.
@@ -49,7 +51,18 @@ function build(extraEnv) {
   return text;
 }
 
+// Strings that exist only because the Firebase SDK (or a Firebase config) is in the bundle. Each must be PRESENT in the ordinary
+// build (so the scan is not vacuous) and ABSENT from the EOS-only build. Hosts are the endpoints the SDKs call; "@firebase/" is
+// the SDK's internal package namespace; FirebaseError is its error class.
+const SDK_MARKERS = [
+  "firestore.googleapis.com", "identitytoolkit.googleapis.com", "securetoken.googleapis.com", "cloudfunctions.net",
+  "apis.google.com", "firebaseapp.com", "firebasestorage.app", "@firebase/", "FirebaseError", "google.firestore",
+];
+
 const firebaseBuild = build({ VITE_AUTH_SOURCE: "firebase" });
+for (const m of SDK_MARKERS) {
+  assert.ok(firebaseBuild.includes(m), `the ordinary build must carry the Firebase SDK marker "${m}": otherwise this scan proves nothing`);
+}
 for (const value of identity) {
   assert.ok(firebaseBuild.includes(value), `the ordinary build must carry the Firebase identity (${value.slice(0, 6)}...): otherwise this scan proves nothing`);
 }
@@ -61,6 +74,9 @@ assert.ok(!projectIdProperty.test(eosBuild), "the EOS-only build must NOT carry 
 for (const value of identity) {
   assert.ok(!eosBuild.includes(value), `the EOS-only build must NOT contain the Firebase identity value (${value.slice(0, 6)}...)`);
 }
+for (const m of SDK_MARKERS) {
+  assert.ok(!eosBuild.includes(m), `the EOS-only build must NOT contain Firebase SDK / Google endpoint marker "${m}"`);
+}
 assert.ok(eosBuild.includes("eos-api-nonprod.onrender.com"), "the EOS-only build points at the EOS API");
 
-console.log("verify:eos-only OK -- the EOS-only bundle carries none of the Firebase identity values (apiKey, projectId property, authDomain, storageBucket, messagingSenderId, appId); the ordinary bundle carries all of them");
+console.log("verify:eos-only OK -- the EOS-only bundle carries no Firebase SDK code or Google endpoint host and none of the Firebase identity values (apiKey, projectId property, authDomain, storageBucket, messagingSenderId, appId); the ordinary bundle carries all of them");

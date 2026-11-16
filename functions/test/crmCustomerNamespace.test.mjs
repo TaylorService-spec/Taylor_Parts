@@ -12,7 +12,8 @@
 // registered in `test:adminPolicyPostgres`.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join } from "node:path";
 import {
   CRM_ACCOUNT_STATUSES,

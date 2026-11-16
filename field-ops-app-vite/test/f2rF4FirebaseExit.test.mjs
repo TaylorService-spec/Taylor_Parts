@@ -104,7 +104,8 @@ test("the frozen notes stay READABLE under EOS (Firebase exit B3, Owner ruling 8
   assert.match(read("domain/constants.js"), /LEGACY_INVENTORY_NOTES_LABEL = "Archived legacy notes \(frozen 2026-08-30; not stock movements\)";/);
   // The Firestore employees listen is disabled under EOS; the governed actor read is disabled under Firebase.
   assert.match(detail, /useEmployeeDirectory\(\{ enabled: !EOS_SESSION_SOURCE \}\)/);
-  assert.match(detail, /useGovernedEmployeeDirectory\(\{ enabled: EOS_SESSION_SOURCE, actorSubjects:/);
+  // employeeIds: [] -- the panel names actors only; omitting it would read the whole Employee directory (listEmployees) and discard it.
+  assert.match(detail, /useGovernedEmployeeDirectory\(\{ enabled: EOS_SESSION_SOURCE && readable === true, employeeIds: \[\], actorSubjects:/);
   const warehouse = read("modules/inventoryRole/WarehouseManagerHome.jsx");
   assert.match(warehouse, /EOS_SESSION_SOURCE\s*\?\s*\(\s*<>\s*<PartMovementPanel[^>]*\/>[\s\S]*?<summary>\{LEGACY_INVENTORY_NOTES_LABEL\}<\/summary>\s*<PartActivityPanel[^>]*legacyOnly \/>[\s\S]*?:\s*<PartActivityPanel/);
   // Read-only: the reader hook is the only export and holds no write (also pinned by inventoryActionRetirementContract).

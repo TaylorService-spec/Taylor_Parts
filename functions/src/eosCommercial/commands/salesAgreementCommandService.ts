@@ -12,7 +12,7 @@ import { lineFacts, pickFields } from "../../eosAudit/commandAuditEvent";
 import { MAX_HANDOFF_REASON_LENGTH } from "../commercialOwnershipAuthority";
 import { discountAuthorityOf, discountWithinAuthority } from "../../salesAuthority/salesDiscountAuthority";
 import {
-  COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireReservedHolder, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, SALES_AGREEMENT_TRADE_IN_APPROVE_CAPABILITY, fail, requireCatalogReferences, requireAccountLocation, requireReservedHolder, requireEligibleCompanylessOwner, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps, type CommercialWriteScope,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -36,7 +36,7 @@ const agreementLineRows = (lines: readonly { kind: string; ref: string; business
     condition: l.condition, warranty: l.warranty, estimatedArrivalMillis: l.estimatedArrivalMillis }));
 
 /** DQ-020: an Agreement's governing channel is its source Opportunity's stored channel (none -> null, admits no scoped caller). */
-async function sourceOpportunityChannel(db: Queryable, tenantId: string, agreement: AgreementRow): Promise<string | null> {
+export async function sourceOpportunityChannel(db: Queryable, tenantId: string, agreement: AgreementRow): Promise<string | null> {
   if (agreement.opportunityId === null) return null;
   const { rows } = await db.query<{ sales_channel: string | null }>(
     `SELECT sales_channel::text FROM eos_commercial.opportunities WHERE tenant_id = $1 AND id = $2`, [tenantId, agreement.opportunityId]);
@@ -259,6 +259,11 @@ export function createSalesAgreement(deps: CommercialCommandDeps, actor: Commerc
       await requireTenantAccount(db, actor.tenantId, built.accountId);
       await requireAccountLocation(db, actor.tenantId, built.accountId, built.locationId);
       await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
+      // SAL-03(c): an Agreement on a company-less Opportunity is itself company-less and owner-visible: its owner is the creating actor or its Account's governed owner inside the actor's companies.
+      if (opportunity.operatingCompanyKey === null) {
+        await requireEligibleCompanylessOwner(db, actor.tenantId,
+          { recordCreatorPrincipalId: actor.principalId, accountId: built.accountId, ownerEmployeeId: built.ownerEmployeeId });
+      }
       await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
       await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
       // The discount is checked against the SELLING PRICE it applies to (never more than the selling price).

@@ -18,7 +18,10 @@ import {
   actionGuardKind,
   type WorkflowDefinitionInput,
 } from "./workflowCommands";
-import { decideWorkflowMutation, findWorkflowVersion, WORKFLOW_MUTATION_CAPABILITY, WorkflowRefusal } from "./workflowAdministration";
+import {
+  decideWorkflowMutation, findWorkflowVersion, requireWorkflowAdministrationCapability, WORKFLOW_MUTATIONS, WORKFLOW_MUTATION_CAPABILITY,
+  WorkflowRefusal, type WorkflowMutation,
+} from "./workflowAdministration";
 import { actorCapabilities } from "./administrationCapabilityGate";
 import { isAssignmentScopeRuntimeType, scopeEvaluableCapabilities } from "./assignmentScopeRuntime";
 import { employeeAccessIneligibility } from "./employmentAccessEligibility";
@@ -118,6 +121,11 @@ export async function dispatchWorkflowOperation(
   reason: string | null,
 ): Promise<unknown> {
   const { repo } = deps;
+  // CAPABILITY BEFORE VALIDATION (API-01): every workflow mutation has a fixed capability (its own name in WORKFLOW_MUTATIONS, the same one the command asks
+  // for), so a caller who lacks it is refused before the input is read.
+  if ((WORKFLOW_MUTATIONS as readonly string[]).includes(operation)) {
+    await requireWorkflowAdministrationCapability(repo, actor, operation as WorkflowMutation);
+  }
   switch (operation) {
     // ──────────── reads ────────────
     case "listWorkflows": {

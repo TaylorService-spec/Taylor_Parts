@@ -19,6 +19,7 @@ const STATUS_WORDS = Object.freeze({
 // What the administrator is told once the server has applied an action (the re-read then shows the new state).
 export const LOGIN_ACTION_DONE_WORDS = Object.freeze({
   provisionLoginAccount: "Sign-in created.",
+  makePersonLoginReady: "Sign-in created. Assign Roles separately.",
   reissueLoginEnrollment: "New setup code issued.",
   issueLoginReset: "Password reset code issued.",
   unlockLoginAccount: "Sign-in unlocked.",
@@ -29,7 +30,7 @@ export const LOGIN_ACTION_DONE_WORDS = Object.freeze({
   retireLoginAccount: "Sign-in removed.",
 });
 
-function OneTimeCode({ label, code, expiresAt, onDone }) {
+export function OneTimeCode({ label, code, expiresAt, onDone }) {
   return (
     <div className="fo-panel" role="status" style={{ marginTop: 8 }}>
       <p><strong>{label}</strong> — give this to the person directly (in person or by phone). It is shown once and expires {new Date(expiresAt).toLocaleString()}.</p>
@@ -43,7 +44,6 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
   const [state, setState] = useState({ status: "loading", data: null, error: null });
   const [reason, setReason] = useState("");
   const [identifier, setIdentifier] = useState(suggestedIdentifier);
-  const [requireMfa, setRequireMfa] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [oneTime, setOneTime] = useState(null);
@@ -100,13 +100,10 @@ export default function EmployeeLoginAccount({ api, principalId, suggestedIdenti
           <span>Sign-in name (usually the work email)</span>
           <input className="fo-input" value={identifier} onChange={(e) => setIdentifier(e.target.value)} autoCapitalize="none" spellCheck={false} />
         </label>
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={requireMfa} onChange={(e) => setRequireMfa(e.target.checked)} />
-          <span>Require two-step verification</span>
-        </label>
+        <p className="fo-muted">Two-step verification is required for every sign-in. The person sets it up the first time they sign in.</p>
         {reasonField}
         <div>
-          <Button loading={busy} onClick={() => run("provisionLoginAccount", { loginIdentifier: identifier.trim(), mfaRequired: requireMfa },
+          <Button loading={busy} onClick={() => run("provisionLoginAccount", { loginIdentifier: identifier.trim() },
             (d) => setOneTime({ label: "Setup code", code: d.enrollmentTicket, expiresAt: d.enrollmentTicketExpiresAt }))}>Create sign-in</Button>
         </div>
         {actionError ? <p role="alert">{actionError}</p> : null}

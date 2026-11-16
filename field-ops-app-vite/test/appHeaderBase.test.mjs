@@ -94,13 +94,16 @@ check("the rail keeps the ONE identity block: name, role, Sign out", () => {
 });
 
 check("sign-out is ONE implementation, taken from the auth context", () => {
-  // Not a copied handler: the rail calls the same `logout` useAuth() has always supplied. A second
+  // Not a copied handler: the rail's busy-aware useSignOut calls the same `logout` useAuth() has always supplied. A second
   // implementation is how sign-out and session teardown drift apart.
-  assert.ok(rail.includes("const { user, role, displayName, logout } = auth;"), "the rail no longer reads logout from the auth context");
-  assert.ok(rail.includes("onClick={logout}"), "the rail sign-out no longer calls the context logout");
-  const signOutHandlers = rail.split("onClick={logout}").length - 1;
+  const hook = fs.readFileSync(new URL("../src/auth/useSignOut.js", import.meta.url), "utf8");
+  assert.ok(hook.includes("const { logout } = useAuth() ?? {};"), "useSignOut no longer reads logout from the auth context");
+  assert.ok(rail.includes("const { signingOut, signOut } = useSignOut();"), "the rail no longer signs out through useSignOut");
+  assert.ok(rail.includes("onClick={signOut}"), "the rail sign-out no longer calls useSignOut");
+  const signOutHandlers = rail.split("onClick={signOut}").length - 1;
   assert.equal(signOutHandlers, 1, "more than one sign-out control in the rail");
 });
+
 
 
 check("the header still carries the drawer-width navigation opener", () => {

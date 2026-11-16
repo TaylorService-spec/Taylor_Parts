@@ -39,7 +39,8 @@ A new Opportunity or Sales Agreement can be saved before a company is chosen. Un
 visible only to the person who **owns** it, the person who **created** it, the Administrator and the
 Owner. Everyone else, even in the same company, will not see it. Once a company is set, the normal
 company rule above applies and the owner and creator keep access only if they work for that company.
-Sales Orders always have a company.
+Sales Orders always have a company. To set one, see
+[Set the company on a record that has none](./set-the-company-on-a-record-that-has-none.md).
 
 ## Administrators and the Owner
 

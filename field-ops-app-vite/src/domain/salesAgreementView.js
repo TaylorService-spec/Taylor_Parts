@@ -99,6 +99,8 @@ export function salesAgreementView({ result, loading, errorStatus }) {
     acceptedAtMillis: a.acceptedAtMillis ?? null,
     acceptedByUid: a.acceptedByUid ?? null,
     acceptedByPrincipalId: a.acceptedByPrincipalId ?? null,
+    // CLC: the SERVER's offer to set the operating company of a company-less record (absent = not offered). Carried, never derived.
+    ...(a.operatingCompanyAssignment ? { operatingCompanyAssignment: a.operatingCompanyAssignment } : {}),
   };
 }
 

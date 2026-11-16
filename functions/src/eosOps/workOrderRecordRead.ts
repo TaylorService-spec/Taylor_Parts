@@ -62,6 +62,20 @@ export async function authorizeWorkOrderRecordRead(
   return authorizeOperationalAction(reader, actor, { capabilityKey: WORK_ORDER_RECORD_READ, recordId: workOrderId });
 }
 
+/**
+ * CAPABILITY BEFORE VALIDATION (API-01): a caller who holds workOrder.record.read in NO form (flat, conditioned or scoped -- the three
+ * ways the entitled decision admits a key at all) is refused before the request body is read, with exactly the refusal the decision
+ * gives it later (CAPABILITY_MISSING). Whether a HOLDER may read THIS record stays the entitled decision's, after the id is validated.
+ */
+export function requireWorkOrderRecordReadKey(actor: OperationalActor): void {
+  const key = WORK_ORDER_RECORD_READ;
+  const held = actor?.capabilities instanceof Set
+    && (actor.capabilities.has(key)
+      || (actor.conditionallyHeld instanceof Set && actor.conditionallyHeld.has(key))
+      || (Array.isArray(actor.scopedHeld) && actor.scopedHeld.some((h) => h?.capabilityKey === key)));
+  if (!held) throw new WorkOrderReadError("CAPABILITY_MISSING", "FORBIDDEN", "this Work Order may not be read by this caller");
+}
+
 async function requireRead(reader: ContextualReader, actor: OperationalActor, workOrderId: string): Promise<void> {
   const decision = await authorizeWorkOrderRecordRead(reader, actor, workOrderId);
   if (!decision.allowed) {

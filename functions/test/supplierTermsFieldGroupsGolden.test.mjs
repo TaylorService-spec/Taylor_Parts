@@ -13,7 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { createRequire } from "node:module";
 import {
   CAPABILITY_KEYS,

@@ -51,6 +51,7 @@ import {
 import type { WorkOrderOp } from "./workOrderOperationTypes";
 import { notQuarantined } from "./workOrderQuarantine";
 import { resolveCompanyAuthority } from "./companyAuthority";
+import { resolveWorkOrderReadAuthority } from "./workOrderCompanyAuthority";
 import {
   WORK_ORDER_ASSIGNABLE_EMPLOYMENT_STATUSES, WORK_ORDER_ASSIGNMENT_QUALIFICATION,
 } from "./workOrderAssignmentAuthority";
@@ -541,6 +542,13 @@ async function requireCompanyAuthority(client: Db, actor: LifecycleActor): Promi
   return authority.companies;
 }
 
+/** DWO-2: the READ views (availability board, slot search, placement suggestion) -- the protected Administrator reads every company; the mutations above keep requireCompanyAuthority. */
+async function requireReadCompanyAuthority(client: Db, actor: LifecycleActor): Promise<readonly string[]> {
+  const authority = await resolveWorkOrderReadAuthority(client, actor.tenantId, actor.principalId);
+  if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
+  return authority.companies;
+}
+
 async function requireEmployee(db: Db, tenantId: string, employeeId: unknown, companies: readonly string[]): Promise<{ id: string; operatingCompanyId: string }> {
   if (!ID_SHAPE(employeeId)) refuse("EMPLOYEE_ID_REQUIRED", "INVALID_INPUT", "employeeId is required and must be a governed Employee id");
   const { rows } = await db.query(
@@ -831,7 +839,7 @@ export const readTechnicianAvailability: WorkOrderOp = async (deps, caller, inpu
   const pool = deps.pool;
   // EOS Core company authority (#235; the G-9 rule): only Employees of the caller's companies are read. A named Employee outside
   // them lands in notFoundEmployeeIds exactly like an unknown id, and a company outside them reads exactly like an unknown one.
-  const companies = await requireCompanyAuthority(pool, actor);
+  const companies = await requireReadCompanyAuthority(pool, actor);
 
   let employees: { id: string; displayName: string | null; operatingCompanyId: string }[];
   if (ids === null) {
@@ -915,7 +923,7 @@ export const readEmployeeWorkSchedule: WorkOrderOp = async (deps, caller, input)
   requireRead(actor, "reading an Employee's work schedule");
   requireCapability(actor, [EMPLOYEE_RECORD_READ], "reading an Employee's work schedule");
   const i = acceptOnly(input ?? {}, ["employeeId"]);
-  const authority = await resolveCompanyAuthority(deps.pool, actor.tenantId, actor.principalId);
+  const authority = await resolveWorkOrderReadAuthority(deps.pool, actor.tenantId, actor.principalId);
   if (authority.companies.length === 0) refuse("COMPANY_AUTHORITY_REQUIRED", "FORBIDDEN", "no operating-company authority");
   const employee = await requireEmployee(deps.pool, actor.tenantId, i.employeeId, authority.companies);
 
@@ -1066,7 +1074,7 @@ export const findAvailableTechnicianSlots: WorkOrderOp = async (deps, caller, in
   try {
     // EOS Core company authority (#235; the G-9 rule). A company outside the caller's is refused EXACTLY like one that is not
     // ACTIVE and keyed (one code, one message), and the candidates are that company's Employees only.
-    const companies = await requireCompanyAuthority(client, actor);
+    const companies = await requireReadCompanyAuthority(client, actor);
     const notGoverned = (): never =>
       refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED", "the operating company is not ACTIVE and keyed for Work Orders in this tenant");
     if (!companies.includes(companyId)) notGoverned();
@@ -1152,7 +1160,7 @@ export const suggestWorkOrderPlacement: WorkOrderOp = async (deps, caller, input
 
   const client = await deps.pool.connect();
   try {
-    const companies = await requireCompanyAuthority(client, actor);
+    const companies = await requireReadCompanyAuthority(client, actor);
     const { rows } = await client.query(
       `SELECT w.id, w.status::text AS status, w.work_order_type::text AS work_order_type, w.operating_company_key, w.estimated_duration_minutes
          FROM eos_ops.work_orders w WHERE w.tenant_id = $1 AND w.id = $2 AND ${notQuarantined("w")}`, [actor.tenantId, i.workOrderId]);

@@ -3,8 +3,9 @@
 // functions/test/commercialSchemaParityPostgres.test.mjs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readdirSync, statSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -89,7 +90,7 @@ test("(18) no runtime module imports the C1 numbering module yet", () => {
   const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
   const reaching = walk(SRC, ".ts")
     .filter((f) => f !== NUMBERING_SOURCE && IMPORTS_NUMBERING.test(strip(readFileSync(f, "utf8"))))
-    .map((f) => relative(FUNCTIONS_DIR, f));
+    .map((f) => relative(FUNCTIONS_DIR, f).split(sep).join("/"));
   // NON-VACUITY: the probe must still detect a real import, and must ignore a mention.
   assert.equal(IMPORTS_NUMBERING.test('import { allocateCommercialNumber } from "../commercialNumbering.js";'), true);
   assert.equal(IMPORTS_NUMBERING.test("// mirrors eosCommercial/commercialNumbering.ts exactly"), false);

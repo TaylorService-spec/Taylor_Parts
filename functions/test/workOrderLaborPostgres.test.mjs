@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { configureRoundTheClock } from "./support/syntheticAvailability.mjs";
+import { configureRoundTheClock, grantSyntheticCompanyAuthority } from "./support/syntheticAvailability.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -188,6 +188,8 @@ test("Work Order labor", { skip: SKIP, concurrency: 1 }, async (t) => {
       startedAtMillis: Date.UTC(2026, 8, 30, startH), endedAtMillis: Date.UTC(2026, 8, 30, endH), ...extra });
 
   await configureRoundTheClock(pool, caller(P.dispatcher).actor, ["emp-a", "emp-b"]);
+  // DWO-company: the labor-correcting service manager reaches the Work Orders only through its operating-company authority.
+  await grantSyntheticCompanyAuthority(pool, T, "prn-svcmgr", ["taylor"]);
   const woA = await inProgress("emp-a", 2);
   const woB = await inProgress("emp-b", 3);
 

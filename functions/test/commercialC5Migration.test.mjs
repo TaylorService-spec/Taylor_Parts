@@ -13,8 +13,9 @@
 //     (governed, derived, historical preserved), counter seeding max(existing, migrated), unknown target rows.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
+import { join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -71,7 +72,7 @@ test("the exporter writes the snapshot and its sha256 exclusively, never overwri
   const sha = ex.writeSnapshotFiles(out, "{\"a\":1}\n");
   assert.match(sha, /^[0-9a-f]{64}$/);
   assert.equal(readFileSync(`${out}.sha256`, "utf8"), `${sha}  snap.json\n`);
-  assert.equal(statSync(out).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(statSync(out).mode & 0o777, 0o600); // Windows has no POSIX file modes
   assert.throws(() => ex.writeSnapshotFiles(out, "{\"a\":2}\n"), /EEXIST/);
   assert.equal(readFileSync(out, "utf8"), "{\"a\":1}\n");
   assert.throws(() => ex.assertExportInvocation({ environment: "platform-sandbox", out }), /never overwritten/);
@@ -107,7 +108,7 @@ test("STRUCTURAL: no runtime code can reach the exporter, the C5 CLI or src/comm
   assert.deepEqual(offenders, [], "a runtime module references the C5 tooling");
   for (const f of sources("src/commercialMigration")) assert.doesNotMatch(readFileSync(f, "utf8"), /FIREBASE_EXIT_MIGRATION_ONLY/, `${f} names the exporter marker`);
   const scriptImporters = walk(join(root, "functions", "scripts")).filter((f) => /lib\/commercialMigration\//.test(readFileSync(f, "utf8")));
-  assert.deepEqual(scriptImporters.map((f) => f.slice(root.length + 1)), ["functions/scripts/commercialC5.js"], "only the C5 operator CLI loads the C5 modules");
+  assert.deepEqual(scriptImporters.map((f) => f.slice(root.length + 1).split(sep).join("/")), ["functions/scripts/commercialC5.js"], "only the C5 operator CLI loads the C5 modules");
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   assert.doesNotMatch(JSON.stringify({ main: pkg.main, exports: pkg.exports ?? null, bin: pkg.bin ?? null, scripts: pkg.scripts }), /exportCommercialSnapshot|commercialC5\.js/);
   for (const wf of readdirSync(join(root, ".github", "workflows"))) {

@@ -19,6 +19,8 @@ vi.mock("../src/hooks/useManufacturerCatalog", () => ({
 import PartWriteModal from "../src/shared/partMaster/PartWriteModal.jsx";
 import { partMasterCommandClient } from "../src/services/partMasterCommandClient.js";
 import { callCatalogApi } from "../src/services/catalogApiClient.js";
+import { callReorderApi } from "../src/services/reorderApiClient.js";
+import { READ_WAIT_MS } from "../src/services/readDeadline.js";
 
 afterEach(() => { cleanup(); });
 
@@ -185,5 +187,55 @@ describe("Change status -- the catalog administrator activates a part", () => {
     fireEvent.click(screen.getByRole("button", { name: /→ INACTIVE/i }));
     await expectSent(sent, scenario);
     await screen.findByText(/changed since you loaded it/i);
+  });
+});
+
+// RCV-02: a READ gives up on a hung server with an honest error; a WRITE never does (it may have committed -- reporting it failed would invite a double submit).
+describe.each([
+  ["Catalog", callCatalogApi, "searchParts", "createPart"],
+  ["Reorder", callReorderApi, "readReorderQueue", "createReorderRequest"],
+])("%s client: bounded wait for reads only (RCV-02)", (_name, call, readOp, writeOp) => {
+  const opts = (fetchImpl) => ({ baseUrl: "https://eos.test", getIdToken: async () => "t", fetchImpl });
+  const hangs = vi.fn((_url, init) => new Promise((_res, rej) => init.signal?.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" })))));
+  const answersAfter = (ms) => vi.fn(() => new Promise((res) => setTimeout(() => res({ ok: true, status: 200, json: async () => ({ ok: true, result: { done: true } }) }), ms)));
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("a read that never answers becomes an honest, non-throwing timeout and leaves no timer behind", async () => {
+    vi.useFakeTimers();
+    const pending = call(readOp, {}, opts(hangs));
+    await vi.advanceTimersByTimeAsync(READ_WAIT_MS + 1);
+    const res = await pending;
+    expect(res).toMatchObject({ ok: false, code: "UNREACHABLE", reason: "READ_TIMED_OUT" });
+    expect(res.message).toMatch(/did not finish in time\. Nothing was changed by it/);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a read that answers inside the wait is unchanged and clears its timer", async () => {
+    vi.useFakeTimers();
+    const pending = call(readOp, {}, opts(answersAfter(READ_WAIT_MS - 5_000)));
+    await vi.advanceTimersByTimeAsync(READ_WAIT_MS - 4_000);
+    expect(await pending).toMatchObject({ ok: true, result: { done: true } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a slow WRITE is never timed out or reported failed: no deadline signal, and its late answer is its real answer", async () => {
+    vi.useFakeTimers();
+    const slow = answersAfter(READ_WAIT_MS * 3);
+    const pending = call(writeOp, {}, opts(slow));
+    await vi.advanceTimersByTimeAsync(READ_WAIT_MS * 3 + 1);
+    expect(await pending).toMatchObject({ ok: true, result: { done: true } });
+    expect(slow.mock.calls[0][1].signal).toBeUndefined();
+  });
+
+  it("a caller's own signal still cancels a read, and is passed through untouched to a write", async () => {
+    const ctl = new AbortController();
+    const cancelled = call(readOp, {}, { ...opts(hangs), signal: ctl.signal });
+    await new Promise((r) => setTimeout(r, 0));
+    ctl.abort();
+    expect(await cancelled).toMatchObject({ ok: false, code: "UNREACHABLE", message: "the request was cancelled" });
+    const seen = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, result: {} }) }));
+    const own = new AbortController();
+    await call(writeOp, {}, { ...opts(seen), signal: own.signal });
+    expect(seen.mock.calls[0][1].signal).toBe(own.signal);
   });
 });

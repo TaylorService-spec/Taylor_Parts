@@ -62,6 +62,7 @@ export const WORK_ORDER_READ_OPERATIONS = Object.freeze([
   "readTechnicianVolumeBreakdown",
   // Customer self-scheduling (Controller SERVICE EXPERIENCE COMPLETION, 2026-09-30).
   "listSelfSchedulingPolicies",
+  "readSalesOrderServiceWorkOrders",
   "readSelfSchedulingSessions",
   // Equipment installation on the assigned INSTALL Work Order (Controller EQUIPMENT ACTIVATION, 2026-10-01).
   "listInstallableEquipmentForWorkOrder",

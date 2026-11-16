@@ -132,6 +132,7 @@ Set-Cookie: __Host-eos_refresh=eosrt_…; Path=/; Secure; HttpOnly; SameSite=<EO
 - An unknown identifier, wrong password, lock, disable, pending enrollment and ineligible Principal all return the same 401 `LOGIN_REFUSED`, after the same scrypt work. The reason goes to `authentication_events`.
 - **Lockout is atomic** (review finding 2). Each password or second-factor attempt is *reserved* (counted) in one `UPDATE` before any hashing, and only while the account is unlocked. The reservation that reaches 5 sets a 15-minute lock, and every later attempt is refused without evaluation, so a concurrent burst cannot slip a correct guess past the lock (S9).
 - A success clears the count. When a lock expires the count restarts, with **no escalation** (finding 4).
+- **With an authenticator (A16, 2026-11-13):** a correct password gives back its own reservation, so it never counts as a failure. The count does *not* reset until the code passes, and every wrong code counts. So someone holding the password gets at most 5 wrong codes (or recovery codes) per 15-minute window, not 4. Before this fix, four failures plus a correct password reached the threshold, and the correct code was then refused as locked (L12b).
 - The same reservation guards the holder's current password on password change, factor removal and code regeneration (finding 7; S10).
 - *Residual risk (D-4):* anyone who knows an identifier can keep that account locked with 5 guesses per 15 minutes. Administrators can unlock, but the next 5 guesses re-lock it.
 - A per-client-address limiter answers 429 before any password work: 10/min on credential routes, 120/min on routine ones. With `trustForwardedFor`, the client address is the rightmost `X-Forwarded-For` hop.
@@ -148,6 +149,7 @@ Set-Cookie: __Host-eos_refresh=eosrt_…; Path=/; Secure; HttpOnly; SameSite=<EO
 - TOTP per RFC 6238 (SHA-1, 6 digits, 30 s, ±1 step).
 - **A code works once:** the accepted step must exceed the last one (L12).
 - Enrolling issues 10 recovery codes and ends every other, password-only session.
+- **D7 (Owner, 2026-11-13): MFA is required for everyone.** Every creation path sets `mfa_required = true`: `provisionLoginAccount` always inserts true and refuses an explicit `mfaRequired: false` with `INVALID_INPUT` (400) before any I/O (an omitted or true value is accepted); the employee-assertion and persona-session paths already insert true. The Administration create form has no checkbox. Existing accounts are unchanged by this rule: they keep their stored value, and `setLoginMfaRequirement` is untouched. Flipping live accounts needs a separate Owner go-ahead.
 - An account with `mfa_required` and no factor gets a session that reaches `/auth/*` only, until it enrolls (L13). Its holder cannot remove a required factor.
 - Removing a factor needs the password **and** a current TOTP code or an unused recovery code. Regenerating recovery codes needs the password **and** a current TOTP code; a recovery code cannot mint more.
 - An MFA challenge records the credential version and is void after any password reset or change (finding 8; S10).
@@ -161,6 +163,7 @@ These are ten operations in a fourth closed table, separate from the existing re
 |---|---|
 | `readLoginAccount` | `admin.principalAccess.read` (the Users surface read) |
 | `provisionLoginAccount`, `reissueLoginEnrollment`, `retireLoginAccount` | `admin.roleAssignment.write` (binds an identity, as `bindPrincipalEosIdentity` does) |
+| `makePersonLoginReady` (A13 / D5, docs/architecture/eos-login-ready-person.md) | `admin.loginReadyPerson.provision` (a BUSINESS_ACTION registered with NO grant) **and** `admin.roleAssignment.write`; inactive for everyone until the Owner confirms a grant |
 | `issueLoginReset`, `unlockLoginAccount`, `resetLoginMfa` | `admin.credentialReset.initiate` (DECISIONS #56) |
 | `setLoginAccountStatus`, `revokeLoginSessions`, `setLoginMfaRequirement` | `admin.userStatus.write` |
 
@@ -191,7 +194,8 @@ Setup and reset codes are returned **once** to the administrator, to hand over i
   - A refused refresh ends the in-memory session and notifies `AuthContext`, which signs the person out.
 - **`auth/EosLogin.jsx`** shows sign-in, then the second factor, then the setup/reset code form. `App.jsx` renders it instead of `Login.jsx` **only** when the build sets `VITE_EOS_HUMAN_LOGIN=enabled` and is not a production build.
 - **`AuthContext.jsx`** restores a session silently from the refresh token, once per page load. It re-resolves identity after login and revokes on logout. The Firebase path is unchanged.
-- **`modules/account/AccountSecurity.jsx`** (`/account/security`) covers password, authenticator enrollment with an `otpauth://` link plus a manual key, recovery codes, and sessions.
+- **`modules/account/AccountSecurity.jsx`** (`/account/security`) covers password, authenticator enrollment (a QR drawn in the browser from the `otpauth://` URI, with the link and manual key as fallback), recovery codes, and sessions.
+- **`auth/MfaEnrollmentGate.jsx`** is what `App.jsx` renders (ahead of every other read) while the session's `mfaEnrollmentRequired` is true: the server lets that session call `/auth/*` only, so the person gets AccountSecurity plus Sign out instead of a refused app. Client-only; the server gate is unchanged. Done = code confirmed and recovery codes saved, then a reload restores the now-verified session from the cookie.
 - **`modules/administration/EmployeeLoginAccount.jsx`** adds the "EOS Sign-in" section in User detail > Roles & Access. It covers create, setup/reset code, unlock, sign out everywhere (confirmed), reset two-step, require two-step, enable/disable, and remove (confirmed), plus recent activity.
 
 ### (f) Multi-tenant identity — Owner ruling D-12 (2026-10-12)

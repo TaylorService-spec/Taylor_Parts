@@ -97,6 +97,8 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
     readPolicyAuditHistory: ({ limit, roleKey, principalId } = {}) => send("readPolicyAuditHistory", {
       ...(limit ? { limit } : {}), ...(roleKey ? { roleKey } : {}), ...(principalId ? { principalId } : {}) }),
     explainEffectiveAccess: (principalId) => send("explainEffectiveAccess", { principalId }),
+    // "Access explained": the server evaluates every gate; `question` is {capabilityKey|objectKey+actionKey|surfaceKey, businessContext}.
+    explainAccessGates: (principalId, question) => send("explainAccessGates", { principalId, ...(question ? { question } : {}) }),
     // The server's condition vocabulary (kinds, parameters, record kinds, applicable capabilities).
     // NOT YET in the server's closed operation list on this base, so it is deliberately absent from
     // the client's mirror too: callPolicyApi answers UNKNOWN_OPERATION locally and the condition

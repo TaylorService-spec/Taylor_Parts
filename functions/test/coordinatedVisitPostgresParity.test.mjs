@@ -357,6 +357,14 @@ test("coordinated-operations parity, legacy projection vs PostgreSQL", { skip: S
     await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ($1,$1,'proof',$2)`, [p, status]);
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ($1,$2,$3)`, [`m-${p}`, tenant, p]);
   }
+  // DWO-company: the read is bounded by the reader's operating-company reach, so the readers are Taylor Employees of a bound Taylor company.
+  for (const [tenant, principalId, employeeId] of [[TENANT, "p-reader", "e-1"], [OTHER_TENANT, "p-other", "e-2"]]) {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by) VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture')`, [tenant]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+             VALUES ($1,'taylor','taylor','ACTIVE','NATIVE','fixture','fixture','fixture')`, [tenant]);
+    await q(`INSERT INTO eos_policy.employee_principal_links (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ($1,$2,$3,$4,'taylor','OPERATOR_ASSERTED','active','fixture','coordinated parity fixture')`, [`lnk-${principalId}`, tenant, principalId, employeeId]);
+  }
 
   for (const s of SALES_ORDERS) {
     await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, operating_company_key, created_by, updated_by)

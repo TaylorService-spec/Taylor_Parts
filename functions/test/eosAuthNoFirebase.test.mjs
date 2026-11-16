@@ -51,7 +51,10 @@ test("15. the EOS verifier/issuer modules use only node: built-ins and each othe
     for (const s of specifiersOf(read(file))) {
       // `pg`: the EOS native login service (2026-10-11) reads and writes its tables over the EXISTING pool -- the
       // package every PostgreSQL module already uses, not a new dependency.
-      assert.ok(s.startsWith("node:") || s.startsWith("./") || s.startsWith("../adminPolicy/") || s === "pg", `${file}: unexpected dependency '${s}'`);
+      // `../employeeIdentity/employeePrincipalLinkRepository` (A13, makePersonLoginReady): the governed Employee-Principal link
+      // writer on the caller's PoolClient -- an in-repo PostgreSQL module (pg + node: only), named exactly, not a new dependency.
+      assert.ok(s.startsWith("node:") || s.startsWith("./") || s.startsWith("../adminPolicy/") || s === "pg"
+        || s === "../employeeIdentity/employeePrincipalLinkRepository", `${file}: unexpected dependency '${s}'`);
     }
   }
   const pkg = JSON.parse(read("functions/package.json"));

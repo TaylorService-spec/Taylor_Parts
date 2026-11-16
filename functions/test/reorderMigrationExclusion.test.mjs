@@ -4,7 +4,7 @@
 // guess when a declared id is occupied by something else or a copied record would point at an excluded one.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";

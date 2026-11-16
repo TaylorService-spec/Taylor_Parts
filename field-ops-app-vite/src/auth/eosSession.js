@@ -93,6 +93,22 @@ export function clearEosSession({ storage = defaultStorage() } = {}) {
   }
 }
 
+/**
+ * Sign-out: drop every tab-session key this app keeps under the "eos." prefix (the stored session token above, and any
+ * per-person UI memory such as the scan workspace's remembered workflow), so the next person in this tab inherits none of it.
+ * The offline intent queue is deliberately NOT here: signing out does not discard queued work (offline/localIntentStore.js).
+ */
+export function clearEosScopedSessionStorage({ storage = defaultStorage() } = {}) {
+  if (!storage) return;
+  try {
+    for (const key of Object.keys(storage)) {
+      if (key.startsWith("eos.")) storage.removeItem(key);
+    }
+  } catch {
+    // nothing to do
+  }
+}
+
 // ════════════════════ the human-login token source (EOS native identity) ════════════════════
 //
 // A human EOS login keeps its access token in MEMORY (eosLoginClient.js), refreshed by an HttpOnly cookie. The API

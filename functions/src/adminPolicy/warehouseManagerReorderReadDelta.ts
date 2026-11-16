@@ -16,6 +16,7 @@
 //
 // APPLIED at a controlled release, through the Administration API (`grantObjectActionToRole`), which records the Administration
 // decision and the audit row. Not read by any command; nothing changes until Administration applies it.
+// NONPROD ALREADY HOLDS IT (2026-11-15): grid approval a-20261023235337 granted it there, so a nonprod release skips this delta.
 
 export const WAREHOUSE_MANAGER_REORDER_READ_RULING = "Owner ruling PARTS-404 / RO-02 (2026-10-21, Level 3)";
 

@@ -6,7 +6,8 @@
 // No database, no Firebase runtime, no network.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { readFileSync } from "./support/readText.mjs";
 import { join, resolve, relative, sep } from "node:path";
 import { createRequire } from "node:module";
 

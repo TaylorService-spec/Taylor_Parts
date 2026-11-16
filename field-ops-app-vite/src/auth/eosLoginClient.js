@@ -103,10 +103,13 @@ export function createEosLoginClient(deps = {}) {
   const locks = deps.locks === undefined ? defaultLocks() : deps.locks;
   let access = null; // { token, subject, expiresAtMs } -- memory only
   let inflightRefresh = null;
+  // Bumped when Sign Out starts and when the session is forgotten. A refresh that began under an older value must not adopt its
+  // answer: logout does not wait for an in-flight refresh, and adopting after forget() would leave a session set while the UI shows login.
+  let generation = 0;
   const listeners = new Set();
   const notify = () => { for (const l of listeners) { try { l(access); } catch { /* a listener's fault is its own */ } } };
 
-  async function post(path, body, accessToken = null) {
+  async function post(path, body, accessToken = null, { keepalive = false } = {}) {
     const base = apiBase(deps.baseUrl);
     if (!base || !fetchImpl) throw new EosLoginError("NOT_CONFIGURED");
     // EVERY REQUEST IS BOUNDED. A server that never answers (a cold start, a dropped connection) must end as the existing
@@ -130,6 +133,7 @@ export function createEosLoginClient(deps = {}) {
         // The refresh cookie rides on every /auth/* call; it is HttpOnly, so this code never sees it.
         credentials: "include",
         cache: "no-store",
+        ...(keepalive ? { keepalive: true } : {}),
         ...(controller ? { signal: controller.signal } : {}),
       });
       sent.catch(() => {});
@@ -156,12 +160,14 @@ export function createEosLoginClient(deps = {}) {
   function adopt(session) {
     const d = describeAccessToken(session?.accessToken ?? "");
     if (!d) throw new EosLoginError("UNAVAILABLE");
-    access = d;
+    // `mfaEnrollmentRequired` is the server's word that this session owes a second factor and may use /auth/* only.
+    access = Object.freeze({ ...d, mfaEnrollmentRequired: session?.mfaEnrollmentRequired === true });
     notify();
     return d;
   }
 
   function forget() {
+    generation += 1;
     access = null;
     notify();
   }
@@ -183,25 +189,28 @@ export function createEosLoginClient(deps = {}) {
     return { status: "AUTHENTICATED", mfaEnrollmentRequired: r.session.mfaEnrollmentRequired === true };
   }
 
-  async function exchangeOnce() {
+  async function exchangeOnce(startedAt) {
     const r = await post("/auth/refresh", {});
+    if (startedAt !== generation) return null; // signed out (or the session was dropped) while this exchange was in flight
     return adopt(r.session).token;
   }
 
   /** Exchange the cookie for a fresh access token, or null. Single-flight in this tab, serialised across tabs. */
   function refresh() {
     if (inflightRefresh) return inflightRefresh;
+    const startedAt = generation;
+    const forgetIfCurrent = () => { if (startedAt === generation) forget(); };
     const run = async () => {
       // Another tab may have refreshed while this one waited for the lock: its cookie is already the successor.
       try {
-        return await exchangeOnce();
+        return await exchangeOnce(startedAt);
       } catch (err) {
         if (err instanceof EosLoginError && err.code === "REFRESH_SUPERSEDED") {
-          try { return await exchangeOnce(); } catch (again) { if (again?.code !== "NETWORK") forget(); return null; }
+          try { return await exchangeOnce(startedAt); } catch (again) { if (again?.code !== "NETWORK") forgetIfCurrent(); return null; }
         }
         // A refused refresh means no session (the server already cleared the cookie). A network failure keeps the
         // in-memory token for whatever life it has left.
-        if (!(err instanceof EosLoginError) || err.code !== "NETWORK") forget();
+        if (!(err instanceof EosLoginError) || err.code !== "NETWORK") forgetIfCurrent();
         return null;
       }
     };
@@ -217,14 +226,25 @@ export function createEosLoginClient(deps = {}) {
     return (await refresh()) ?? null;
   }
 
-  async function logout() {
-    forget();
-    try {
-      // Server-side revocation: the session row is revoked and the cookie cleared by the response.
-      await post("/auth/logout", {});
-    } catch {
-      // The local session is gone either way; an unreachable server leaves only an idle-expiring session.
-    }
+  // ORDER MATTERS: revoke FIRST, forget AFTER. Forgetting notifies the UI, which flips to signed out; if that ran before the POST
+  // settled, a reload right after Sign Out would abort the POST (the server logged 499) and the cookie would restore the session.
+  // `keepalive` lets the POST outlive a reload or tab close. The access token rides as Bearer so the server can revoke by session
+  // as well as by cookie. LIMIT: if the server is unreachable the session stays alive server-side until idle expiry, and a reload
+  // could restore it; the local session still ends. Single-flight, so a second click shares the first attempt.
+  let inflightLogout = null;
+  function logout() {
+    inflightLogout ??= (async () => {
+      generation += 1;
+      try {
+        await post("/auth/logout", {}, access?.token ?? null, { keepalive: true });
+      } catch {
+        // Never thrown: the local session ends below either way.
+      } finally {
+        forget();
+        inflightLogout = null;
+      }
+    })();
+    return inflightLogout;
   }
 
   const authed = async (path, body) => {
@@ -269,11 +289,14 @@ export const eosLoginClient = createEosLoginClient();
 // (a Firebase-signed-in user's calls never trigger an EOS refresh).
 setHumanEosTokenSource(() => (eosHumanLoginEnabled() && eosLoginClient.currentSession() ? eosLoginClient.freshAccessToken() : null));
 
+/** Why a correct-looking code is refused most often: the phone's clock. Shown wherever a six-digit code is asked for. */
+export const CLOCK_HINT = "Codes depend on the time, so set your phone's date and time to automatic.";
+
 /** Words for the codes a person can act on. Never echoes a value back. */
 export function eosLoginMessage(code, detail) {
   switch (code) {
     case "LOGIN_REFUSED": return "Sign-in failed. Check your sign-in name and password, or ask your administrator.";
-    case "MFA_CODE_REFUSED": return "That code was not accepted. Enter the current code from your authenticator app.";
+    case "MFA_CODE_REFUSED": return `That code was not accepted. Enter the current code from your authenticator app. ${CLOCK_HINT}`;
     case "MFA_CHALLENGE_INVALID": return "This sign-in step expired. Start again.";
     case "MFA_KEY_UNAVAILABLE": return "Two-step verification is temporarily unavailable. Contact your administrator.";
     case "RATE_LIMITED": return "Too many attempts. Wait a minute and try again.";

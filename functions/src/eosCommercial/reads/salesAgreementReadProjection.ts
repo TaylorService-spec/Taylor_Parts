@@ -10,6 +10,7 @@ import { SALES_AGREEMENT_STATES } from "../../salesAgreement/salesAgreementLifec
 import { computeAgreementTotals } from "../../salesAgreement/salesAgreementCommands";
 import { fail } from "../commands/commercialCommandKernel";
 import type { CommercialCompanyReach } from "../commercialCompanyAuthority";
+import { readOperatingCompanyAssignmentOffer, type OperatingCompanyAssignmentOffer } from "../recordCompanyOffer";
 import {
   COMMERCIAL_READ_CAPABILITIES, maskUnreachedLinks, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
@@ -112,6 +113,8 @@ export interface SalesAgreementSummaryProjection {
 }
 
 export interface SalesAgreementDetailProjection extends SalesAgreementSummaryProjection {
+  /** CLC: present only when the server offers "Set operating company" (company-less, the caller may assign, a company it reaches). */
+  readonly operatingCompanyAssignment?: OperatingCompanyAssignmentOffer;
   readonly location: { readonly locationId: string; readonly name: string | null } | null;
   readonly customerPO: string | null;
   readonly isLease: boolean | null;
@@ -205,18 +208,21 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Agreement does not exist in this tenant");
       const r = rows[0] as Row;
+      const parentOpportunityId = r.opportunity_id as string | null; // CLC: the offer below is decided on the real parent, before the link is masked
       await maskUnreachedLinks(db, tenantId, reach.company, [r], { opportunity: "opportunity_id" }); // Q-1a: a link to an unreached record is shown as none
       // An Agreement carries no channel of its own: its channel IS its source Opportunity's, joined in this statement.
       // No source Opportunity (or one with no channel) admits no scoped holder.
       if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Agreement");
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Agreement was not created through a governed command and carries no lifecycle");
       const lines = await linesByAgreement(db, tenantId, [r.id]);
+      const assignment = await readOperatingCompanyAssignmentOffer(db, tenantId, actor, reach.company, { operatingCompanyKey: r.operating_company_key ?? null, parentOpportunityId });
       const { rows: tradeInRows } = await db.query(
         `SELECT item_number, description, manufacturer, model_number, serial_number, equipment_model_id, proposed_value_minor, notes, evidence_reference,
                 approval_status, approved_credit_minor, decided_by, decided_at, decision_reason, receiving_operating_company_id, acquisition_status
            FROM eos_commercial.sales_agreement_trade_ins WHERE tenant_id = $1 AND sales_agreement_id = $2 ORDER BY item_number`, [tenantId, r.id]);
       return {
         ...summaryOf(r, lines.get(r.id)!),
+        ...(assignment ? { operatingCompanyAssignment: assignment } : {}), // CLC: present only when the SERVER offers "Set operating company"
         tradeIns: tradeInRows.map((t) => Object.freeze({ itemNumber: t.item_number, description: t.description, manufacturer: t.manufacturer ?? null,
           modelNumber: t.model_number ?? null, serialNumber: t.serial_number ?? null, equipmentModelId: t.equipment_model_id ?? null,
           proposedValueMinor: Number(t.proposed_value_minor), notes: t.notes ?? null, evidenceReference: t.evidence_reference ?? null,

@@ -126,6 +126,8 @@ export interface AgreementLineRow {
 }
 export interface AgreementRow {
   id: string; number: string; accountId: string; opportunityId: string | null; ownerEmployeeId: string; operatingCompanyId: string | null;
+  /** The RAW stored company key (null = company-less; the resolved id above is also null when the key is unbound or inactive). */
+  operatingCompanyKey: string | null;
   state: string | null; creditedSalespersonId: string | null; locationId: string | null; customerPO: string | null; isLease: boolean | null;
   fulfillmentIntent: string | null; shippingInstructions: string | null; shipVia: string | null; specialInstructions: string | null;
   charges: { shippingMinor: number; installChargeMinor: number; taxMinor: number; downPaymentMinor: number; tradeInMinor: number };
@@ -133,7 +135,7 @@ export interface AgreementRow {
 }
 
 const agreementSelect = `SELECT a.id, a.sales_agreement_number, a.account_id, a.opportunity_id, a.owner_employee_id,
-  ${operatingCompanyIdOfKey("a")} AS operating_company_id, a.state::text,
+  ${operatingCompanyIdOfKey("a")} AS operating_company_id, a.operating_company_key, a.state::text,
   a.credited_salesperson_employee_id, a.location_id, a.customer_po, a.is_lease, a.fulfillment_intent::text, a.shipping_instructions, a.ship_via,
   a.special_instructions, a.shipping_minor, a.install_charge_minor, a.tax_minor, a.down_payment_minor, a.trade_in_minor, a.accepted_at
   FROM ${S}.sales_agreements a`;
@@ -147,7 +149,7 @@ async function agreementFrom(db: Queryable, tenantId: string, r: Record<string, 
   const n = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
   return {
     id: r.id, number: r.sales_agreement_number, accountId: r.account_id, opportunityId: r.opportunity_id, ownerEmployeeId: r.owner_employee_id,
-    operatingCompanyId: r.operating_company_id, state: r.state, creditedSalespersonId: r.credited_salesperson_employee_id,
+    operatingCompanyId: r.operating_company_id, operatingCompanyKey: r.operating_company_key ?? null, state: r.state, creditedSalespersonId: r.credited_salesperson_employee_id,
     locationId: r.location_id, customerPO: r.customer_po, isLease: r.is_lease, fulfillmentIntent: r.fulfillment_intent,
     shippingInstructions: r.shipping_instructions, shipVia: r.ship_via, specialInstructions: r.special_instructions,
     charges: { shippingMinor: n(r.shipping_minor), installChargeMinor: n(r.install_charge_minor), taxMinor: n(r.tax_minor),

@@ -409,3 +409,9 @@ test("U14 the client-address measurement: unmounted by default, credential-gated
   assert.equal(r.headers.get("cache-control"), "no-store");
   on.srv.close();
 });
+
+test("D7 provisionLoginAccount refuses an explicit mfaRequired:false before any I/O", async () => {
+  await assert.rejects(
+    () => S.EosLoginService.prototype.provisionLoginAccount.call({}, {}, { mfaRequired: false }),
+    (e) => e instanceof S.LoginRefusal && e.code === "INVALID_INPUT" && e.status === 400);
+});

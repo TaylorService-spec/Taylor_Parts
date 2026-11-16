@@ -23,10 +23,16 @@ export const PART_WORK_ORDER_DEMAND_STATE = Object.freeze({
   READY: "READY",
 });
 
-export function usePartWorkOrderDemand(partId, { scanCap = PART_DEMAND_SCAN_CAP } = {}) {
+// `readable` (R2.2.1): false = the session says the person does not hold workOrder.record.read (what listWorkOrders requires), so nothing is asked and the state is
+// DENIED; null = the session answer has not arrived (LOADING, nothing asked). Default true: every other caller is unchanged.
+export function usePartWorkOrderDemand(partId, { scanCap = PART_DEMAND_SCAN_CAP, readable = true } = {}) {
   const [state, setState] = useState({ status: PART_WORK_ORDER_DEMAND_STATE.LOADING });
 
   useEffect(() => {
+    if (readable !== true) {
+      setState({ status: readable === false ? PART_WORK_ORDER_DEMAND_STATE.DENIED : PART_WORK_ORDER_DEMAND_STATE.LOADING });
+      return undefined;
+    }
     if (!partId) {
       setState({ status: PART_WORK_ORDER_DEMAND_STATE.LOADING });
       return;
@@ -70,7 +76,7 @@ export function usePartWorkOrderDemand(partId, { scanCap = PART_DEMAND_SCAN_CAP 
     return () => {
       cancelled = true;
     };
-  }, [partId, scanCap]);
+  }, [partId, scanCap, readable]);
 
   return state;
 }
