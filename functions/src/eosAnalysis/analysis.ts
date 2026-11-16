@@ -16,7 +16,7 @@ import { resolveReportingPeriod, PERIOD_TYPES, type PeriodType } from "../report
 import { resolveSharedReportingCalendar } from "../reportingPeriod/reportingCalendar";
 import { MEASURES, measureById, type MeasureDefinition, type MeasureRow, type MeasureScope } from "./measures";
 import { scopedWarehouseIds } from "../eosOps/partsReads";
-import { queueReachKeys } from "../eosOps/reorderLifecycleCommands";
+import { queueReachKeys, queueReadReach } from "../eosOps/reorderLifecycleCommands";
 import { financeCompanyReach, type FinanceReachActor } from "../eosFinance/financeCompanyAccess";
 import { resolveFinanceVisibility, type FinanceVisibility } from "../eosFinance/financeVisibility";
 import { resolveCompanyAuthority } from "../eosOps/companyAuthority";
@@ -185,7 +185,17 @@ async function financeInnerReach(db: Queryable, actor: AnalysisActor, m: Measure
 async function rowsFor(db: Queryable, actor: AnalysisActor, m: MeasureDefinition, scope: Scope, channels: readonly string[] | null,
   start: Date | null, end: Date | null, limit: number, finance: MeasureScope["finance"] = null): Promise<{ rows: MeasureRow[] } | { refused: string }> {
   let companyKeys = scope.companyKeys, warehouses: readonly string[] | null = null;
-  if (m.reach === "REORDER_QUEUE") {
+  let queueCompanyKeys: readonly string[] | undefined, warehouseCompanyKeys: readonly string[] | undefined;
+  if (m.reach === "REORDER_QUEUE" && m.warehouseReach) {
+    // PARTS-404 / RO-02: Reorder REQUESTS are also reached through the caller's WAREHOUSE scopes inside its company authority -- the
+    // same two bases readReorderQueue applies. The Purchase Order measure keeps the queue reach alone.
+    const reach = await queueReadReach(db, actor);
+    queueCompanyKeys = companyKeys.filter((k) => reach.companyKeys.includes(k));
+    warehouseCompanyKeys = reach.warehouseIds.length === 0 ? [] : companyKeys.filter((k) => reach.warehouseCompanyKeys.includes(k));
+    warehouses = reach.warehouseIds;
+    companyKeys = companyKeys.filter((k) => queueCompanyKeys!.includes(k) || warehouseCompanyKeys!.includes(k));
+    if (companyKeys.length === 0) return { refused: "requires the REORDER_QUEUE or a WAREHOUSE Operational Scope over the company in view" };
+  } else if (m.reach === "REORDER_QUEUE") {
     const reach = await queueReachKeys(db, actor);
     companyKeys = companyKeys.filter((k) => reach.includes(k));
     if (companyKeys.length === 0) return { refused: "requires the REORDER_QUEUE Operational Scope over the company in view" };
@@ -195,7 +205,7 @@ async function rowsFor(db: Queryable, actor: AnalysisActor, m: MeasureDefinition
   }
   const companyIds = companyKeys.map((k) => scope.keyToId.get(k)).filter((x): x is string => !!x);
   return { rows: await m.rows!(db, { tenantId: actor.tenantId, companyKeys, companyIds: m.reach ? companyIds : scope.companyIds,
-    start, endExclusive: end, channels, warehouses, limit, finance }) };
+    start, endExclusive: end, channels, warehouses, limit, finance, queueCompanyKeys, warehouseCompanyKeys }) };
 }
 
 // ════════════════════ aggregation ════════════════════

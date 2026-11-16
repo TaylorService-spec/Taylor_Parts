@@ -45,6 +45,8 @@ const PINNED_CLOSURE = [
   "src/eosOps/companyAuthority.ts",
   "src/eosOps/conditionalEntitlement.ts", "src/eosOps/contextualAuthorization.ts", "src/eosOps/entitledActionAuthority.ts",
   "src/eosOps/experienceAuthority.ts", "src/eosOps/governedFieldGroups.ts", "src/eosOps/grantConditionPolicy.ts",
+  // PARTS-404 / RO-02: the inventory.reorderQueue door's reorderWarehouseReach dimension reuses the Reorder read reach helper (reads only; type-only pg import).
+  "src/eosOps/reorderQueueReach.ts",
   "src/opportunity/opportunityLifecycle.ts",
   // PR 3 follow-up: the SECURITY_ROLE workflow-responsibility dimension -- the SAME derivation the
   // listPrincipalWorkflowResponsibilities transport serves (the runtime explanation x the active workflow definitions).

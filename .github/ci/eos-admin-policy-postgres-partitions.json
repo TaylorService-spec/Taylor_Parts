@@ -217,7 +217,8 @@
       "test/commercialCompanyAuthorityBreadthPostgres.test.mjs",
       "test/accessGatesExplanationPostgres.test.mjs",
       "test/workOrderCompanyBoundaryPostgres.test.mjs",
-      "test/operatingCompanyBindingPostgres.test.mjs"
+      "test/operatingCompanyBindingPostgres.test.mjs",
+      "test/warehouseManagerReorderReadPostgres.test.mjs"
     ]
   },
   "measuredSeconds": {

@@ -136,7 +136,8 @@
     "test/commercialCompanyAuthority.test.mjs",
     "test/workOrderCompanyAuthority.test.mjs",
     "test/adminPolicyPartitions.test.mjs",
-    "test/commercialRecordCompany.test.mjs"
+    "test/commercialRecordCompany.test.mjs",
+    "test/warehouseManagerReorderRead.test.mjs"
   ],
   "postgres": [
     "test/adminPolicyPostgres.test.mjs",
@@ -336,6 +337,7 @@
     "test/commercialRecordCompanyPostgres.test.mjs",
     "test/clcSal03InteractionPostgres.test.mjs",
     "test/operatingCompanyBindingPostgres.test.mjs",
-    "test/workOrderCompanyBoundaryPostgres.test.mjs"
+    "test/workOrderCompanyBoundaryPostgres.test.mjs",
+    "test/warehouseManagerReorderReadPostgres.test.mjs"
   ]
 }

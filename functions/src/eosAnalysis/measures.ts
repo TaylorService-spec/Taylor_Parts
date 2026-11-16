@@ -46,6 +46,12 @@ export interface MeasureScope {
   readonly channels: readonly string[] | null;
   /** WAREHOUSE-reach measures: the warehouses the caller's Operational Scope covers (null = not a warehouse-scoped measure). */
   readonly warehouses: readonly string[] | null;
+  /**
+   * `warehouseReach` measures only (PARTS-404 / RO-02): `companyKeys` is then the UNION of the two read bases; these two say which
+   * company each basis covers -- the REORDER_QUEUE companies, and the companies the `warehouses` were restricted to.
+   */
+  readonly queueCompanyKeys?: readonly string[];
+  readonly warehouseCompanyKeys?: readonly string[];
   readonly limit: number;
   /**
    * FINANCE INNER REACH (B1, eosFinance/financeVisibility.ts): set ONLY for a finance receivable measure read by a caller who does
@@ -79,6 +85,8 @@ export interface MeasureDefinition {
    * WAREHOUSE     -- the warehouses the caller's WAREHOUSE Operational Scope covers (on-hand, receipts, transfers, cycle counts).
    */
   readonly reach?: "REORDER_QUEUE" | "WAREHOUSE";
+  /** REORDER_QUEUE measures over Reorder REQUESTS: also reached through the caller's WAREHOUSE scopes inside its company authority (PARTS-404 / RO-02). Never the Purchase Order measure. */
+  readonly warehouseReach?: true;
   /**
    * The measure's dimension and quantity are unit-cost INPUTS (#2084 path B): without inventory.catalog.cost.read the engine
    * withholds them (the dimension drivers, every quantity, each source's dimension and quantity); the count stays.
@@ -364,12 +372,13 @@ export const MEASURES: readonly MeasureDefinition[] = Object.freeze([
   {
     id: "purchasing.reorders.open", version: 1, domain: "purchasing", name: "Open reorder requests", basis: BASIS.EOS_OPERATIONAL_ACTUAL, unit: "COUNT", timeBasis: "POINT_IN_TIME",
     description: "Reorder requests still in progress, by status.", formula: "count of reorder requests not RECEIVED / CANCELLED / REJECTED", periodEvent: null,
-    sourceFacts: ["eos_ops.reorder_requests"], dimension: "status", readCapabilities: ["reorder.request.read", "reorder.purchaseOrder.read"], channelScopedBy: null, reach: "REORDER_QUEUE",
+    sourceFacts: ["eos_ops.reorder_requests"], dimension: "status", readCapabilities: ["reorder.request.read", "reorder.purchaseOrder.read"], channelScopedBy: null, reach: "REORDER_QUEUE", warehouseReach: true,
     drill: { route: "/operations/inventory", operation: "readReorderRequest", idField: "reorderRequestId" },
     availability: "AVAILABLE", absenceReason: null,
     rows: async (db, s) => run(db, `SELECT r.id, r.operating_company_key AS company, r.status::text AS dim, NULL AS currency, NULL AS amount, 1 AS qty, r.reorder_request_number AS label
         FROM eos_ops.reorder_requests r WHERE r.tenant_id = $1 AND r.operating_company_key = ANY($2) AND r.status::text NOT IN ('RECEIVED', 'CANCELLED', 'REJECTED', 'VOIDED')
-       ORDER BY r.created_at LIMIT $3`, [s.tenantId, s.companyKeys, s.limit], "reorderRequest"),
+         AND (r.operating_company_key = ANY($4::text[]) OR (r.warehouse_id = ANY($5::text[]) AND r.operating_company_key = ANY($6::text[])))
+       ORDER BY r.created_at LIMIT $3`, [s.tenantId, s.companyKeys, s.limit, s.queueCompanyKeys ?? s.companyKeys, s.warehouses ?? [], s.warehouseCompanyKeys ?? []], "reorderRequest"),
   },
 
   // ════════════════════ INVENTORY / WAREHOUSE ════════════════════

@@ -67,7 +67,7 @@ import {
 import { resolveCompanyAuthorityForMembers } from "./companyAuthority";
 import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { postgresPrincipalDimensionReader } from "./contextualAuthorization";
-import { administrationReachDimension, grantedSurfaceKeys } from "./experienceAuthority";
+import { administrationReachDimension, grantedSurfaceKeys, reorderWarehouseReachDimension } from "./experienceAuthority";
 import { fieldAccessFor, recordAccessFor, type ObjectFieldGroups } from "./governedFieldGroups";
 
 // ════════════════════ the simulation ════════════════════
@@ -444,8 +444,9 @@ async function principalAuthority(sc: SnapshotContext, principalId: string): Pro
   // expiry shows up as the company it adds or removes -- and as nothing else (no capability, no surface).
   const companyAuthority = [...(sc.companyAuthority.get(principalId)?.companies ?? [])];
   const administrationReach = await administrationReachDimension(q, tenantId, principalId);
+  const reorderWarehouseReach = await reorderWarehouseReachDimension(q, tenantId, principalId, ctx.capabilities);
   const surfaces = await grantedSurfaceKeys({ tenantId, principalId, capabilities: ctx.capabilities, scopedHeld: ctx.scopedHeld },
-    { employeeId, workEligibility, operationalScopes, administrationReach });
+    { employeeId, workEligibility, operationalScopes, administrationReach, reorderWarehouseReach });
   const fields: string[] = [];
   for (const def of fieldGroups) {
     for (const [group, access] of Object.entries(fieldAccessFor(def, ctx.capabilities))) {
