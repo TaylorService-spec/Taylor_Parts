@@ -335,9 +335,14 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   ]),
 
   // ── Administration
+  // SEC-ROSTER-01 (2026-11-15): earned by admin.principalAccess.read ONLY -- the Users table's own read in
+  // administrationSurfaceAuthority.ts, so the two authority modules now agree exactly. It was also earned by
+  // employee.record.read, which the grid grants to 23 Roles, so every Employee (General Employee included) had the
+  // Administration -> Users door. employee.record.read stays the directory read behind pickers and names and opens no
+  // Administration surface. No WRITE earns this door either (the governed-configuration rule: a reader must stay
+  // distinguishable from a writer).
   surface("administration.users", "Users & Employees", [
     { capabilityKey: "admin.principalAccess.read" },
-    { capabilityKey: "employee.record.read" },
   ]),
   surface("administration.dataImport", "Data Import", [{ capabilityKey: "admin.dataImport.execute" }]),
   surface("administration.auditLogs", "Audit Logs", [{ capabilityKey: "audit.event.read" }]),

@@ -1244,7 +1244,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
       // GRANT-1 (1764670000000): equipment.model.manage opens the equipment.register door for general-manager, service-manager (fieldManager), parts-manager and warehouse-manager (+1 each);
       // inventory.stock.receive opens receiving.checkIn for warehouse-associate (+1; parts-associate already had it through inventoryReceivingClerk).
       // G-1 (1764690000000): the four performance.goal authoring keys open the analysis.goals door (+1) for owner-executive, administrator, general-manager, service-manager (fieldManager), parts-manager and warehouse-manager.
-      "owner-executive": 27, "administrator": 29, "general-manager": 19, "office-manager": 4,
+      // SEC-ROSTER-01: administration.users is earned by the people-administration keys only, not employee.record.read; the
+      // compiled catalog's generalManager holds the directory read and none of those keys, so it loses that door (-1).
+      "owner-executive": 27, "administrator": 29, "general-manager": 18, "office-manager": 4,
       "service-manager": 16, "dispatcher": 15, "service-technician-a": 3, "service-technician-b": 3,
       "contract-technician": 3, "technician-on-leave": 0, "retail-sales-a": 9, "retail-sales-b": 9,
       "national-accounts-sales": 9, "parts-manager": 16, "parts-associate": 10,

@@ -178,6 +178,7 @@
     "test/employeeLifecycleCommandPostgres.test.mjs",
     "test/employeeJobRolePostgres.test.mjs",
     "test/employeeChangeHistoryPostgres.test.mjs",
+    "test/employeePersonalFieldsPostgres.test.mjs",
     "test/employeeWorkEligibilityPostgres.test.mjs",
     "test/employeeOperationalScopePostgres.test.mjs",
     "test/employeeEligibilityScopeCommandPostgres.test.mjs",

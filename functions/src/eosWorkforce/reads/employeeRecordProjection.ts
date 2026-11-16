@@ -9,6 +9,7 @@
 // employeeDisplayName (field-ops-app-vite/src/domain/employeeProfile.js:154-159). eos_policy.principals.display_name is
 // never consulted.
 import { isoOf } from "./employeeReadKernel";
+export { holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS } from "../peopleAdministration";
 
 type Row = Record<string, any>;
 
@@ -86,6 +87,36 @@ export function employeeRecordOf(r: Row): EmployeeRecordProjection {
     },
     createdAt: isoOf(r.created_at)!,
     updatedAt: isoOf(r.updated_at)!,
+  };
+}
+
+// ════════════════════ PERSONAL FIELDS (SEC-ROSTER-01, 2026-11-15) ════════════════════
+//
+// employee.record.read is held by nearly every Role (grid approval a-20261023235337: 23 Roles, General Employee among
+// them), so the record it reads must be a COLLEAGUE record, not a personnel file. A colleague's mobile phone, home
+// address and hire / separation dates are PERSONAL fields: they are returned only to a caller who may also WRITE them --
+// admin.employeeProfile.write, the key of the people who maintain the Employee profile. Everyone else gets null for each
+// and `personalFieldsWithheld` saying why, never an empty value presented as "not recorded". The caller's OWN record
+// (readMyEmployeeProfile) is not affected. Work email and work phone stay: they are how colleagues reach each other.
+export const EMPLOYEE_PERSONAL_FIELDS_READ = "admin.employeeProfile.write";
+/** The PROFILE_FIELD_MAP keys that are personal (the change history redacts exactly these). */
+export const EMPLOYEE_PERSONAL_PROFILE_KEYS: readonly string[] = Object.freeze([
+  "mobilePhone", "address.street", "address.unit", "address.city", "address.state", "address.postalCode", "hireDate", "separationDate",
+]);
+export const PERSONAL_FIELDS_WITHHELD = `Personal fields (mobile phone, home address, hire and separation dates) are shown only to holders of ${EMPLOYEE_PERSONAL_FIELDS_READ}`;
+
+export function holdsPersonalFieldsRead(capabilities: ReadonlySet<string>): boolean {
+  return capabilities.has(EMPLOYEE_PERSONAL_FIELDS_READ);
+}
+
+/** The record with every personal field nulled. Pure; the caller decides whether to apply it. */
+export function withPersonalFieldsWithheld<T extends EmployeeRecordProjection>(record: T): T {
+  return {
+    ...record,
+    contact: { ...record.contact, mobilePhone: null },
+    address: { street: null, unit: null, city: null, state: null, postalCode: null },
+    hireDate: null,
+    separationDate: null,
   };
 }
 

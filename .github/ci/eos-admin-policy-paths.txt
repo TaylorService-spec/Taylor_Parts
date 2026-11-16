@@ -340,6 +340,9 @@ functions/src/adminPolicy/migration/legacyConsumerLedger.ts
 functions/test/legacyWorkforceEvidencePostgres.test.mjs
 functions/scripts/legacyWorkforceEvidenceCli.js
 functions/test/employeeChangeHistoryPostgres.test.mjs
+# SEC-ROSTER-01 (2026-11-15): colleague personal fields and roster Administration columns (sources are under eosWorkforce/**, eosAdministration/**, eosOps/** above).
+functions/test/employeePersonalFieldsPostgres.test.mjs
+functions/src/eosAdministration/workforceRoster.ts
 # LANE BT (required registration): the governed Employee ADMINISTRATION capability -- createEmployee and the
 # Employee <-> Principal link commands. The SOURCE files they guard are listed too, because a path filter that
 # omits the subject produces a guard that is green because it never runs.

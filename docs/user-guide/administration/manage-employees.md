@@ -3,9 +3,16 @@
 **What this lets you do:** Look up anyone in your company, open their Employee record, and — where your account
 is authorised — correct their details.
 
-**Who can do it:** People whose Security Roles give them `Administration ▸ Users`. By default the Administrator,
-the Owner and the General Manager can **read** Employee records; only the Administrator and the Owner can **edit**
-them. (A Dispatcher or Technician does not see the Administration area.)
+**Who can do it:** People whose Security Roles let them read Employees' access: by default the Administrator, the Owner,
+the General Manager and the Finance Manager. Those people see `Administration ▸ Users`. Everyone else can still find a
+colleague's name, title and work contact in pickers, but cannot open this page. (A Dispatcher, Technician or General
+Employee does not see it.)
+
+> **Personal details are protected.** A colleague's **mobile phone, home address, hire date and separation date**
+> show only to people who can edit Employee profiles. Anyone else sees **Not available to you** for those fields, and
+> the change history leaves them out. The Work Eligibility and Operational Scope columns of the
+> Users list follow the same rule for people who do not administer them. Your own details are always visible to you on
+> **My profile**.
 
 > **Access is administered on the same record.** Security Roles, Effective Access, Direct Exceptions and the
 > other access sections of an Employee record are covered in the canonical Administration guide:

@@ -22,10 +22,21 @@
 import {
   acceptOnly, refuse, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
 } from "../eosWorkforce/reads/employeeReadKernel";
-import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
+import { directoryItemOf, EMPLOYEE_DIRECTORY_COLUMNS, holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS, type EmployeeDirectoryItem } from "../eosWorkforce/reads/employeeRecordProjection";
 import { EMPLOYEE_RECORD_READ, EMPLOYMENT_STATUSES } from "../eosWorkforce/reads/employeeDirectoryReads";
 
 export const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
+
+/**
+ * SEC-ROSTER-01 (2026-11-15). employee.record.read is held by nearly every Role (grid approval a-20261023235337: 23 Roles)
+ * and is the DIRECTORY read: names, numbers, titles, Job Role, manager, company, status and Application user (Owner ruling B,
+ * the same Employee-facing fact readEmployee carries) stay readable here -- Sales' owner picker and the Users search read them.
+ * Work Eligibility and Operational Scope (which truck / warehouse) are returned only to a holder of a PEOPLE_ADMINISTRATION_KEYS
+ * key (employeeRecordProjection), the same set that guards their dedicated reads and opens Administration -> Users; everyone
+ * else gets [] and `administrationColumnsWithheld` saying why. No key is new and no grant changes.
+ */
+export { PEOPLE_ADMINISTRATION_KEYS };
+export const ADMINISTRATION_COLUMNS_WITHHELD = `Work Eligibility and Operational Scope are shown only to holders of one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`;
 export const WORKFORCE_ROSTER_LIMIT = 500;
 
 /**
@@ -57,6 +68,7 @@ export interface WorkforceRoster {
   readonly total: number;
   readonly truncated: boolean;
   readonly securityRolesWithheld: string | null;
+  readonly administrationColumnsWithheld: string | null;
   /** The order actually applied: the default (name ascending) unless the caller asked for a column. */
   readonly sort: { readonly key: WorkforceRosterSortKey; readonly direction: "asc" | "desc"; readonly isDefault: boolean };
   readonly facets: {
@@ -87,12 +99,17 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
       if (securityRoleKey && !actor.capabilities.has(PRINCIPAL_ACCESS_READ)) {
         refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Security Role requires ${PRINCIPAL_ACCESS_READ}`);
       }
+      if (scopeType && !holdsPeopleAdministration(actor.capabilities)) {
+        refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `filtering by Operational Scope requires one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`);
+      }
       return { jobRoleId: text(input?.jobRoleId, "jobRoleId"), securityRoleKey, status, operatingCompanyId: text(input?.operatingCompanyId, "operatingCompanyId"),
         scopeType, noJobRole: input?.noJobRole === true, query: text(input?.query, "query", 100), sort: rosterSortOf(input?.sort), limit: limitOf(input?.limit) };
     },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, f, reach) => {
       const roles = actor.capabilities.has(PRINCIPAL_ACCESS_READ);
+      // Masked BEFORE filtering and sorting, so neither a filter nor a sort on a withheld column can act as an oracle.
+      const administers = holdsPeopleAdministration(actor.capabilities);
       const pattern = f.query ? `%${f.query.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
       const { rows } = await db.query(
         `WITH roster AS (
@@ -131,8 +148,8 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         ...directoryItemOf(r),
         jobRole: r.job_role_id ? { id: String(r.job_role_id), label: String(r.job_role_label ?? r.job_role_id), since: iso(r.job_role_since)! } : null,
         manager: r.manager_employee_id ? { employeeId: String(r.manager_employee_id), displayName: r.manager_name ?? null } : null,
-        workEligibility: (r.eligibility ?? []) as string[],
-        operationalScopes: (r.scopes ?? []) as WorkforceRosterItem["operationalScopes"],
+        workEligibility: administers ? (r.eligibility ?? []) as string[] : [],
+        operationalScopes: administers ? (r.scopes ?? []) as WorkforceRosterItem["operationalScopes"] : [],
         applicationUser: r.principal_id ? "LINKED" : "UNLINKED",
         principalId: roles && r.principal_id ? String(r.principal_id) : null,
         securityRoles: roles ? ((r.security_roles ?? []) as NonNullable<WorkforceRosterItem["securityRoles"]>) : null,
@@ -160,6 +177,7 @@ export function listWorkforceRoster(deps: EmployeeReadDeps, actor: EmployeeReadA
         total: matches.length,
         truncated: matches.length > f.limit,
         securityRolesWithheld: roles ? null : `Security Roles are shown only to holders of ${PRINCIPAL_ACCESS_READ}`,
+        administrationColumnsWithheld: administers ? null : ADMINISTRATION_COLUMNS_WITHHELD,
         sort: { key: f.sort.key, direction: f.sort.direction, isDefault: f.sort.isDefault },
         facets: {
           jobRoles: [...facet((i) => (i.jobRole ? [i.jobRole.id] : []))].map(([id, count]) => ({ id, label: jobRoleLabels.get(id) ?? id, count })).sort((a, b) => a.label.localeCompare(b.label)),

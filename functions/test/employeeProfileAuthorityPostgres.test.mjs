@@ -219,14 +219,22 @@ test("employee.record.read, admin.principalAccess.read and the reporting writer 
       const res = await call(gm, "readEmployee", { employeeId: `e-${s.toLowerCase()}` });
       assert.deepEqual([res.status, res.body.result?.employmentStatus, res.body.result?.displayName, res.body.result?.userAccess], [200, s, null, "UNLINKED"], s);
     }
-    const full = (await call(gm, "readEmployee", { employeeId: "e-full" })).body.result;
+    // SEC-ROSTER-01: the personal fields are returned to the profile maintainer (admin holds admin.employeeProfile.write) ...
+    const full = (await call(admin, "readEmployee", { employeeId: "e-full" })).body.result;
     assert.deepEqual({ ...full, createdAt: undefined, updatedAt: undefined }, {
       employeeId: "e-full", employmentStatus: "ACTIVE", operatingCompanyId: "taylor", employeeNumber: "TAZ-0001", displayName: "Bob",
       name: { displayName: "Robert Jones", firstName: "Robert", middleName: "Q", lastName: "Jones", preferredName: "Bob" },
       jobTitle: "Service Lead", contact: { workEmail: "bob@example.com", workPhone: "555-0100", mobilePhone: "555-0101" },
       address: { street: "1 Main St", unit: "Suite 2", city: "Phoenix", state: "AZ", postalCode: "85001" },
       hireDate: "2019-05-06", separationDate: null, currentManager: null, createdAt: undefined, updatedAt: undefined, userAccess: "LINKED",
+      personalFieldsWithheld: null,
     });
+    // ... and withheld, with the reason, from a directory-only reader (the compiled General Manager holds employee.record.read only).
+    const directory = (await call(gm, "readEmployee", { employeeId: "e-full" })).body.result;
+    assert.deepEqual([directory.contact, directory.address, directory.hireDate, directory.separationDate], [
+      { workEmail: "bob@example.com", workPhone: "555-0100", mobilePhone: null },
+      { street: null, unit: null, city: null, state: null, postalCode: null }, null, null]);
+    assert.match(directory.personalFieldsWithheld, /admin\.employeeProfile\.write/);
     assert.equal((await call(gm, "readEmployee", { employeeId: "e-display-only" })).body.result.displayName, "Dana Display");
     assert.equal((await call(gm, "readEmployee", { employeeId: "e-first-last" })).body.result.displayName, "Fiona Last");
     const res = await call(gm, "readEmployee", { employeeId: "e-full" });

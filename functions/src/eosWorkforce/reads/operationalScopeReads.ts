@@ -21,6 +21,14 @@ import {
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
 import { OPERATIONAL_SCOPE_TYPES, OPERATIONAL_SCOPE_TYPE_LABEL, type OperationalScopeType } from "../operationalScopeVocabulary";
 import { employeeCompanyKeys, governedCompanyKeys, warehouseCompanyAllowed } from "../employeeCompanyReach";
+import { holdsPeopleAdministration, PEOPLE_ADMINISTRATION_KEYS } from "./employeeRecordProjection";
+/** SEC-ROSTER-01: another Employee's Operational Scope is Administration data, read with a people-administration key (refused before any database work). */
+function requirePeopleAdministration(actor: EmployeeReadActor): void {
+  if (!(actor?.capabilities instanceof Set) || !holdsPeopleAdministration(actor.capabilities)) {
+    refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this read requires one of ${PEOPLE_ADMINISTRATION_KEYS.join(", ")}`);
+  }
+}
+
 
 const MAX_HISTORY = 100;
 
@@ -70,7 +78,7 @@ export function listEmployeeOperationalScopes(deps: EmployeeReadDeps, actor: Emp
   readonly items: OperationalScopeItem[];
 }> {
   return runEmployeeRead(deps, actor,
-    () => { acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
+    () => { requirePeopleAdministration(actor); acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, employeeId) => {
       await requireEmployee(db, tenantId, employeeId);
@@ -91,7 +99,7 @@ export function listEmployeeOperationalScopeHistory(deps: EmployeeReadDeps, acto
   readonly truncated: boolean;
 }> {
   return runEmployeeRead(deps, actor,
-    () => { acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
+    () => { requirePeopleAdministration(actor); acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); },
     () => [EMPLOYEE_RECORD_READ],
     async (db, tenantId, _principalId, employeeId) => {
       await requireEmployee(db, tenantId, employeeId);

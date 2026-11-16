@@ -3345,8 +3345,8 @@
           "functions/src/eosExperience/previewAsUser.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
-          "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts",
-          "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts"
+          "functions/src/eosWorkforce/peopleAdministration.ts",
+          "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -3355,7 +3355,7 @@
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 13,
+        "serverReferenceCount": 14,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3378,6 +3378,8 @@
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
           "functions/src/eosWorkforce/commands/employeeCommandKernel.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/peopleAdministration.ts",
+          "functions/src/eosWorkforce/reads/employeeRecordProjection.ts",
           "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
@@ -3385,7 +3387,7 @@
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/UserDetail.jsx"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3406,7 +3408,6 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosExperience/myWork.ts",
-          "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosOps/operationAccessMap.ts",
           "functions/src/eosOps/workOrderAvailability.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
@@ -3420,7 +3421,7 @@
           "field-ops-app-vite/src/access/operationAccess.generated.js",
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
         ],
-        "serverReferenceCount": 10,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3442,6 +3443,7 @@
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
           "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/peopleAdministration.ts",
           "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
@@ -3449,7 +3451,7 @@
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/domain/employeeJobRole.js"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3470,6 +3472,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/peopleAdministration.ts",
           "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts",
           "functions/src/eosWorkforce/workEligibilityVocabulary.ts"
         ],
@@ -3478,7 +3481,7 @@
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/EmployeeWorkAuthorization.jsx"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3500,6 +3503,7 @@
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
           "functions/src/eosWorkforce/operationalScopeVocabulary.ts",
+          "functions/src/eosWorkforce/peopleAdministration.ts",
           "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
@@ -3507,7 +3511,7 @@
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/EmployeeWorkAuthorization.jsx"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

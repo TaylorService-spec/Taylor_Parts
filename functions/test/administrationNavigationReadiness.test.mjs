@@ -389,11 +389,10 @@ test("the two authority modules AGREE on every Administration surface -- pinned 
     [ADMINISTRATION_SURFACE_READ_CAPABILITY.objects]);
   assert.deepEqual(projection.get("administration.workflows"),
     [ADMINISTRATION_SURFACE_READ_CAPABILITY.workflows]);
-  // Users carries a SECOND path (`employee.record.read`) that the read-authority table does not
-  // model, so it is asserted as a superset rather than an equality -- the table's key must be among
-  // the surface's grant paths, and it is the first of them.
-  assert.deepEqual(projection.get("administration.users"),
-    ["admin.principalAccess.read", "employee.record.read"]);
+  // Users USED TO carry a second path (`employee.record.read`) the read-authority table does not model.
+  // SEC-ROSTER-01 removed it -- that key is held by 23 Roles, so it opened Administration to every
+  // Employee -- and the two modules now agree on Users exactly, like the other surfaces.
+  assert.deepEqual(projection.get("administration.users"), ["admin.principalAccess.read"]);
   assert.equal(projection.get("administration.users")[0],
     ADMINISTRATION_SURFACE_READ_CAPABILITY.users);
 
